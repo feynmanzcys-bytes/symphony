@@ -2,6 +2,12 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## 硬性规定
+
+1. 非必要情况下，用精炼的简体中文大白话。
+2. 没有完整的测试验收，不许提交，不许推送。
+3. 凡是涉及代码的改动，必须在本地新开 git branch + worktree 里做；得到用户确认后，才能在本地合并回 `dev`。
+
 ## 项目是什么
 
 symphony：用 Claude Code 对标 grok bot 的试验仓库。独立开发，不参考其它仓库。
@@ -14,4 +20,4 @@ symphony：用 Claude Code 对标 grok bot 的试验仓库。独立开发，不�
 
 ## 分支
 
-开发在 `dev` 分支上进行。
+`dev` 是开发主线，代码改动按硬性规定第 3 条走。
