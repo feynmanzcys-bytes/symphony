@@ -1,0 +1,5 @@
+{
+  "name": "symphony-bridge",
+  "version": "0.1.0",
+  "description": "把权限审批和 AskUserQuestion 转发到 symphony bridge，并上报会话事件"
+}

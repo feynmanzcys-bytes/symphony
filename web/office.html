@@ -1,0 +1,1053 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Symphony 办公室</title>
+<style>
+  html, body { margin:0; height:100%; background:#2f2e2b; color:#f2efe8; font:13px/1.45 system-ui, "PingFang SC", "Noto Sans CJK SC", sans-serif; overflow:hidden; }
+  canvas#office { position:fixed; inset:0; width:100vw; height:100vh; image-rendering:pixelated; }
+  #labels { position:fixed; inset:0; pointer-events:none; }
+  #hud { position:fixed; top:10px; left:10px; z-index:3; background:rgba(47,46,43,.88); padding:6px 10px 8px; }
+  #hud h1 { margin:0; font-size:14px; font-weight:700; }
+  #hud .stats { margin-top:2px; color:#c9c4ba; }
+  #hud .btns { margin-top:6px; display:flex; gap:6px; flex-wrap:wrap; }
+  #log { position:fixed; left:16px; bottom:12px; z-index:3; font:12px/1.6 ui-monospace, monospace; color:#a9a49b; max-width:min(560px, calc(100vw - 32px)); pointer-events:none; }
+  #log div { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .dot { display:inline-block; width:8px; height:8px; margin-right:4px; vertical-align:0; }
+  #hud .stats .dot { margin-left:8px; }
+  #hud .stats .dot:first-child { margin-left:0; }
+  button.px { background:#fffdf7; color:#2b2a28; border:2px solid #2b2a28; padding:2px 10px; font:inherit; cursor:pointer; box-shadow:2px 2px 0 rgba(0,0,0,.3); }
+  button.px.primary { background:#2b2a28; color:#fffdf7; }
+  button.px.alert { background:#d64541; color:#fff; border-color:#7a1f1c; }
+  button.px:disabled { opacity:.5; cursor:default; }
+  /* 小人头上的名字牌 */
+  .emp-label { position:absolute; transform:translate(-50%, -100%); pointer-events:auto; cursor:pointer; background:#fffdf7; color:#2b2a28;
+    border:2px solid #2b2a28; border-left-width:5px; padding:0 6px; font-size:11px; line-height:1.35; white-space:nowrap; text-align:center;
+    box-shadow:2px 2px 0 rgba(0,0,0,.3); }
+  .emp-label .nm { font-weight:700; font-size:12px; }
+  .emp-label .st { color:#6f6b64; }
+  .emp-label.off { opacity:.55; }
+  .room-label { position:absolute; background:rgba(43,42,40,.82); color:#fffdf7; padding:0 6px; font-size:11px; line-height:1.6; letter-spacing:1px; white-space:nowrap; }
+  .sign-text { position:absolute; transform:translate(-50%, -50%); color:#fffdf7; font:700 13px/1 ui-monospace, monospace; letter-spacing:3px; white-space:nowrap; }
+  .seat-add { position:absolute; transform:translate(-50%, -50%); pointer-events:auto; cursor:pointer; width:22px; height:22px; padding:0;
+    background:#fffdf7; color:#2b2a28; border:2px solid #2b2a28; font:700 16px/16px ui-monospace, monospace; box-shadow:2px 2px 0 rgba(0,0,0,.3); }
+  .seat-add:hover { background:#f2b705; }
+  .bubble { position:absolute; transform:translate(-50%, calc(-100% - 36px)); background:#fffdf7; color:#2b2a28; border:2px solid #2b2a28;
+    padding:1px 6px; font-size:12px; max-width:220px; box-shadow:2px 2px 0 rgba(0,0,0,.3); }
+  .bubble b { font-weight:700; }
+  /* 弹窗通用 */
+  .modal { position:fixed; inset:0; z-index:10; background:rgba(0,0,0,.45); display:flex; align-items:center; justify-content:center; }
+  .modal[hidden] { display:none; }
+  .panel { width:min(560px, calc(100vw - 32px)); max-height:calc(100vh - 32px); overflow:auto; background:#fffdf7; color:#2b2a28;
+    border:2px solid #2b2a28; box-shadow:4px 4px 0 rgba(0,0,0,.35); padding:14px 16px; box-sizing:border-box; }
+  .panel h2 { margin:0 0 10px; font-size:15px; }
+  .panel .actions { display:flex; justify-content:flex-end; gap:8px; margin-top:12px; }
+  /* 待处理卡片（asks.js 生成） */
+  #asks .card { border:2px solid #2b2a28; padding:10px 12px; margin-bottom:10px; background:#fff; }
+  #asks .who { display:flex; gap:8px; align-items:baseline; margin-bottom:6px; }
+  #asks .who .name { font-weight:700; }
+  #asks .who .kind, #asks .meta { color:#8a867e; font-size:12px; }
+  #asks .tool { font:700 13px ui-monospace, monospace; }
+  #asks pre { background:#f2efe8; border:1px solid #d6d1c6; padding:6px 8px; max-height:200px; overflow:auto; white-space:pre-wrap; word-break:break-all; font-size:12px; margin:6px 0; }
+  #asks .row { display:flex; gap:8px; align-items:center; margin-top:6px; }
+  #asks .row input { flex:1; }
+  #asks input[type=text] { border:2px solid #2b2a28; padding:3px 6px; font:inherit; background:#fff; color:#2b2a28; }
+  #asks button { border:2px solid #2b2a28; background:#fffdf7; padding:2px 12px; font:inherit; cursor:pointer; }
+  #asks button.allow, #asks button.submit { background:#2b2a28; color:#fffdf7; }
+  #asks .q h3 { margin:4px 0; font-size:14px; } #asks .q .hd { color:#8a867e; font-weight:400; font-size:12px; margin-right:6px; }
+  #asks label.opt { display:block; cursor:pointer; padding:1px 0; } #asks label.opt small { color:#8a867e; margin-left:6px; }
+  #asks .q input.other { display:block; width:100%; box-sizing:border-box; margin-top:4px; }
+  /* 启动框 */
+  #launch label { display:block; margin:8px 0 2px; font-size:12px; color:#6f6b64; }
+  #launch input, #launch select { width:100%; box-sizing:border-box; font:inherit; color:#2b2a28; background:#fff; border:2px solid #2b2a28; padding:3px 6px; }
+  #launch input[readonly] { background:#ece8df; }
+  #launch .row { display:flex; gap:6px; }
+  #launch .row input { flex:1; }
+  #launch .grid { display:grid; grid-template-columns:1fr 1fr; gap:0 10px; }
+  #launch .browser { border:2px solid #2b2a28; margin-top:6px; background:#fff; }
+  #launch .browser .cur { padding:3px 6px; background:#ece8df; font:12px ui-monospace, monospace; word-break:break-all; }
+  #launch .browser ul { list-style:none; margin:0; padding:0; max-height:180px; overflow:auto; }
+  #launch .browser li { padding:2px 8px; cursor:pointer; font-size:13px; }
+  #launch .browser li:hover { background:#f2b705; }
+  #launch .browser .pick { margin:6px; }
+  #launch .recent { margin-top:4px; display:flex; flex-wrap:wrap; gap:4px; }
+  #launch .recent span { font:11px ui-monospace, monospace; border:1px solid #b9b3a8; padding:0 5px; cursor:pointer; }
+  #launch pre { margin:10px 0 0; padding:6px 8px; background:#2b2a28; color:#f2efe8; font:12px/1.5 ui-monospace, monospace; white-space:pre-wrap; word-break:break-all; }
+  #launch .status { margin-top:8px; font-size:12px; white-space:pre-wrap; }
+  #launch .status.err { color:#c0392b; }
+  /* 员工卡片、消息记录：右侧面板 */
+  .side { position:fixed; right:12px; top:12px; bottom:12px; z-index:5; width:min(340px, calc(100vw - 24px)); overflow:auto; background:#fffdf7; color:#2b2a28;
+    border:2px solid #2b2a28; box-shadow:4px 4px 0 rgba(0,0,0,.35); padding:10px 12px; box-sizing:border-box; }
+  .side[hidden] { display:none; }
+  .side h2 { margin:0 0 6px; font-size:15px; }
+  .side .close { position:absolute; right:8px; top:4px; cursor:pointer; color:#8a867e; }
+  .side dl { margin:0; display:grid; grid-template-columns:auto 1fr; gap:2px 10px; font-size:12px; }
+  .side dt { color:#8a867e; } .side dd { margin:0; word-break:break-all; }
+  .side .btns { display:flex; gap:6px; flex-wrap:wrap; margin-top:10px; }
+  .msg { border-bottom:1px dashed #d6d1c6; padding:5px 0; font-size:12px; }
+  .msg .meta { color:#8a867e; font-size:11px; }
+  .msg .meta b { color:#2b2a28; }
+  .msg .lost { color:#c0392b; }
+  .side h3 { font-size:13px; margin:12px 0 4px; }
+</style>
+</head>
+<body>
+<canvas id="office"></canvas>
+<div id="labels"></div>
+<div id="hud">
+  <h1>Symphony 办公室</h1>
+  <div class="stats" id="stats">还没有人</div>
+  <div class="btns">
+    <button class="px alert" id="open-asks" hidden></button>
+    <button class="px" id="open-msgs">消息记录</button>
+    <button class="px" id="new-emp" hidden>+ 新员工</button>
+  </div>
+</div>
+<div id="log"></div>
+
+<div class="modal" id="asks-modal" hidden>
+  <div class="panel">
+    <h2 id="asks-title">待处理</h2>
+    <div id="asks"></div>
+    <div class="actions"><button class="px" id="asks-later">稍后再说</button></div>
+  </div>
+</div>
+
+<div class="modal" id="launch" hidden>
+  <form class="panel" autocomplete="off">
+    <h2 class="title">新员工上班</h2>
+    <label>名字（军团身份，也是会话名 --name）</label>
+    <input name="name" placeholder="比如：前端小王" required>
+    <label>工作目录</label>
+    <div class="row"><input name="dir" placeholder="绝对路径" required><button type="button" class="px browse">浏览</button></div>
+    <div class="browser" hidden><div class="cur"></div><ul></ul><button type="button" class="px pick">用这个目录</button></div>
+    <div class="recent"></div>
+    <div class="grid">
+      <div><label>模型（--model）</label><select name="model"></select></div>
+      <div><label>思考强度（--effort）</label><select name="effort"></select></div>
+      <div><label>权限模式（--permission-mode）</label><select name="permissionMode"></select></div>
+      <div><label>会话</label><select name="resume"></select></div>
+    </div>
+    <pre class="preview"></pre>
+    <div class="status"></div>
+    <div class="actions"><button type="button" class="px cancel">取消</button><button type="submit" class="px primary go">上班</button></div>
+  </form>
+</div>
+
+<div class="side" id="card" hidden><span class="close">✕</span><h2></h2><dl></dl><div class="btns"></div><h3>最近消息</h3><div class="msgs"></div></div>
+<div class="side" id="msgs-panel" hidden><span class="close">✕</span><h2>消息记录</h2><div class="msgs"></div></div>
+
+<script type="module">
+import { esc, syncCards } from '/asks.js'
+
+// ================= 常量 =================
+const T = 16 // 一格 16 像素
+const GREEN = '#2e9e5b', YELLOW = '#f2b705', RED = '#d64541', GRAY = '#a9a49b'
+// 状态三色：空闲绿，工作中黄，待审批/待回答红；下班灰
+const STATE_COLOR = { idle:GREEN, thinking:YELLOW, tool:YELLOW, waiting:RED, ended:GRAY, done:GRAY }
+const STATE_TEXT = { idle:'空闲', thinking:'思考中', tool:'工作中', waiting:'待处理', ended:'下班', done:'完成' }
+const COLS = 6, COL_PITCH = 3 * T, ROW_PITCH = 4 * T, WALL_H = 3 * T, AISLE = 24, LABEL_ROOM = 2 * T + 10
+const CLAWD = '#d97757', CLAWD_SHADE = '#b9603f', EYE = '#2b1b14', MINI = '#e6a58d', MINI_SHADE = '#c98a72'
+const OFF = '#3b3e44' // 没人用的笔记本灯
+
+const rect = (g, x, y, w, h, c) => { g.fillStyle = c; g.fillRect(x, y, w, h) }
+const base = p => (p || '').split(/[\\/]/).filter(Boolean).pop() || p || '?' // Windows 路径是反斜杠
+const dot = state => `<span class="dot" style="background:${STATE_COLOR[state] ?? GRAY}"></span>`
+const hash = s => [...String(s)].reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 7) >>> 0
+
+let snapshot = { accounts:[], sessions:[], asks:[], messages:[], launches:[] }
+let launchOpts = null // /api/launch/options：能不能从页面启动、各个下拉选项
+const sessionOf = acc => acc.session ? snapshot.sessions.find(s => s.id === acc.session) : null
+
+// 等的是什么：权限审批还是回答问题
+function waitingText(sessionId) {
+  const kinds = new Set(snapshot.asks.filter(a => a.session === sessionId).map(a => a.kind))
+  const parts = []
+  if (kinds.has('permission')) parts.push('待审批')
+  if (kinds.has('question')) parts.push('待回答')
+  return parts.join('、') || '待处理'
+}
+function statusText(s) {
+  if (!s || s.state === 'ended') return '下班'
+  if (s.state === 'waiting') return waitingText(s.id)
+  if (s.state === 'tool' && s.tool) return `工作中 · ${s.tool}`
+  return STATE_TEXT[s.state] ?? s.state
+}
+
+// ================= 小人：块头看模型，肌肉看思考强度 =================
+// 原型是终端横幅那只小家伙（▐▛███▜▌ / ▝▜█████▛▘ / ▘▘ ▝▝）：方身子、两道竖眼、两侧小手、四只脚。
+const MODEL_TIERS = [['haiku', 0], ['sonnet', 1], ['opus', 2], ['fable', 3]]
+const EFFORT_TIERS = { low:0, medium:1, high:2, xhigh:3, max:4 }
+function modelTier(model) {
+  const m = String(model || '').toLowerCase()
+  const hit = MODEL_TIERS.find(([k]) => m.includes(k))
+  return hit ? hit[1] : 1
+}
+function effortTier(effort) {
+  if (effort in EFFORT_TIERS) return EFFORT_TIERS[effort]
+  const n = Number(effort)
+  return effort && Number.isFinite(n) ? Math.max(0, Math.min(4, Math.round(n / 25))) : 1
+}
+function build(session) {
+  const size = modelTier(session?.model), muscle = effortTier(session?.effort)
+  return {
+    size, muscle,
+    bw:[10, 12, 14, 16][size], bh:[7, 8, 9, 10][size],
+    armW:[1, 2, 2, 3, 3][muscle], armH:[2, 2, 3, 3, 4][muscle],
+    headband:muscle >= 4, // 拼到 max 的系上红头带
+  }
+}
+const MODEL_NAME = ['Haiku', 'Sonnet', 'Opus', 'Fable']
+const EFFORT_NAME = ['low', 'medium', 'high', 'xhigh', 'max']
+function buildText(s) {
+  if (!s?.model) return ''
+  const b = build(s)
+  return `${s.model}${s.effort ? ' · ' + s.effort : ''}（块头 ${MODEL_NAME[b.size]}，肌肉 ${EFFORT_NAME[b.muscle]}）`
+}
+
+// cx：身体中线；by：身体底边（脚的上沿）
+// pose: eyes 'open'|'down'|'closed'|'none'，armL/armR 上下偏移，raiseL 举左手，legs 是否画脚，step 迈哪只脚
+function drawClawd(g, cx, by, b, pose, body = CLAWD, shade = CLAWD_SHADE) {
+  const left = cx - (b.bw >> 1), top = by - b.bh
+  rect(g, left, top, b.bw, b.bh, body)
+  rect(g, left + b.bw - 1, top + 1, 1, b.bh - 1, shade)
+  rect(g, left, by - 1, b.bw, 1, shade)
+  const ex1 = left + 2, ex2 = left + b.bw - 3
+  if (pose.eyes === 'open') { rect(g, ex1, top + 2, 1, 2, EYE); rect(g, ex2, top + 2, 1, 2, EYE) }
+  else if (pose.eyes === 'down') { rect(g, ex1, top + 3, 1, 2, EYE); rect(g, ex2, top + 3, 1, 2, EYE) }
+  else if (pose.eyes === 'closed') { rect(g, ex1 - 1, top + 3, 2, 1, EYE); rect(g, ex2, top + 3, 2, 1, EYE) }
+  if (b.headband) {
+    rect(g, left, top + 1, b.bw, 1, RED)
+    rect(g, left + b.bw, top + 1, 2, 1, RED); rect(g, left + b.bw + 1, top + 2, 2, 1, RED)
+  }
+  const armY = top + Math.floor(b.bh / 2) - 1
+  if (pose.raiseL) rect(g, left - b.armW, top - 4, b.armW, b.armH + 4, body)
+  else rect(g, left - b.armW, armY + (pose.armL || 0), b.armW, b.armH, body)
+  rect(g, left + b.bw, armY + (pose.armR || 0), b.armW, b.armH, body)
+  if (b.muscle >= 3) { // 二头肌
+    if (!pose.raiseL) rect(g, left - b.armW - 1, armY + (pose.armL || 0), 1, b.armH - 1, body)
+    rect(g, left + b.bw + b.armW, armY + (pose.armR || 0), 1, b.armH - 1, body)
+  }
+  if (pose.legs) {
+    const xs = [left + 1, left + 3, left + b.bw - 4, left + b.bw - 2]
+    xs.forEach((x, i) => rect(g, x, by - (pose.step === (i < 2 ? 0 : 1) ? 1 : 0), 1, 2, body))
+  }
+}
+
+const MINI_ROWS = ['..XXXXXX..', '..XEXXEX..', 'AXXXXXXXXB', '..SSSSSS..', '..L.LR.R..']
+function drawMini(g, x, y, body, shade) {
+  MINI_ROWS.forEach((row, r) => [...row].forEach((ch, c) => {
+    if (ch === '.') return
+    rect(g, x + c, y + r, 1, 1, ch === 'E' ? EYE : ch === 'S' ? shade : body)
+  }))
+}
+
+// ---------- 空闲时的小动作 ----------
+function drawPhone(g, cx, by, t) {
+  rect(g, cx + 1, by - 7, 4, 6, '#2b2a28')
+  rect(g, cx + 2, by - 6, 2, 3, Math.floor(t / 700) % 2 ? '#9fd3f0' : '#c4e6f8')
+}
+function drawConsole(g, cx, by, t) {
+  rect(g, cx - 5, by - 6, 10, 5, '#5a5e66')
+  rect(g, cx - 2, by - 5, 4, 3, Math.floor(t / 250) % 2 ? '#7ccf6b' : '#5fb04f')
+  rect(g, cx - 4, by - 4, 1, 1, RED); rect(g, cx + 3, by - 5, 1, 1, '#4a90d9'); rect(g, cx + 3, by - 3, 1, 1, YELLOW)
+}
+function drawZ(g, x, y, c) { rect(g, x, y, 3, 1, c); rect(g, x + 1, y + 1, 1, 1, c); rect(g, x, y + 2, 3, 1, c) }
+function drawThinking(g, cx, top, t) {
+  const n = Math.floor(t / 350) % 4
+  for (let i = 0; i < n; i++) rect(g, cx - 4 + i * 3, top - 5, 2, 2, '#fffdf7')
+}
+function drawAlert(g, x, y) {
+  rect(g, x, y, 7, 9, '#2b2a28'); rect(g, x + 1, y + 1, 5, 7, '#fffdf7')
+  rect(g, x + 3, y + 2, 1, 3, RED); rect(g, x + 3, y + 6, 1, 1, RED)
+  rect(g, x + 1, y + 9, 2, 1, '#2b2a28')
+}
+function drawEnvelope(g, x, y) {
+  rect(g, x, y, 9, 6, '#2b2a28'); rect(g, x + 1, y + 1, 7, 4, '#fffdf7')
+  rect(g, x + 2, y + 2, 1, 1, '#b9b3a8'); rect(g, x + 3, y + 3, 3, 1, '#b9b3a8'); rect(g, x + 6, y + 2, 1, 1, '#b9b3a8')
+  rect(g, x + 4, y + 2, 1, 1, RED)
+}
+
+// ---------- 家具和摆设 ----------
+function drawChair(g, x, y) {
+  rect(g, x + 9, y - 15, 14, 13, '#5d6169')
+  rect(g, x + 9, y - 15, 14, 1, '#7a7f89')
+}
+function drawDesk(g, x, y, light) {
+  rect(g, x, y, 32, 8, '#c9a477'); rect(g, x, y, 32, 1, '#dcbb90')
+  rect(g, x, y + 8, 32, 6, '#a77d53'); rect(g, x, y + 13, 32, 1, '#87623f')
+  rect(g, x + 1, y + 14, 2, 2, '#87623f'); rect(g, x + 29, y + 14, 2, 2, '#87623f')
+  // 笔记本：屏幕朝员工，背面朝我们，背面的小灯是状态色
+  rect(g, x + 11, y, 10, 5, '#565a62'); rect(g, x + 11, y, 10, 1, '#6e737c')
+  rect(g, x + 10, y + 5, 12, 1, '#3b3e44'); rect(g, x + 15, y + 2, 2, 2, light)
+}
+function drawPlant(g, x, y) {
+  rect(g, x + 3, y + 12, 10, 2, '#c27b55'); rect(g, x + 4, y + 14, 8, 6, '#b06a45'); rect(g, x + 4, y + 19, 8, 1, '#8e5336')
+  rect(g, x + 2, y + 4, 12, 8, '#5f9150'); rect(g, x + 4, y + 1, 8, 4, '#6fa35d')
+  rect(g, x + 1, y + 7, 3, 3, '#4f7d42'); rect(g, x + 12, y + 6, 3, 4, '#4f7d42'); rect(g, x + 6, y + 2, 2, 2, '#86b873')
+}
+function drawCooler(g, x, y) {
+  rect(g, x + 2, y, 8, 9, '#9cc7e0'); rect(g, x + 3, y + 1, 2, 6, '#c3e0ef')
+  rect(g, x, y + 9, 12, 19, '#e9e6df'); rect(g, x, y + 9, 12, 1, '#c9c3b8'); rect(g, x + 11, y + 10, 1, 18, '#c9c3b8')
+  rect(g, x + 5, y + 13, 2, 2, '#5a8bb5'); rect(g, x + 2, y + 22, 8, 1, '#c9c3b8')
+}
+function drawBookshelf(g, x, y) {
+  rect(g, x, y, 32, 32, '#8a6747'); rect(g, x + 2, y + 2, 28, 28, '#6e5138')
+  const books = ['#a65d4e', '#5d7da6', '#6f9a63', '#c9a24e', '#8a6fa6', '#b5ada0']
+  for (let shelf = 0; shelf < 3; shelf++) {
+    const sy = y + 3 + shelf * 9
+    let bx = x + 3, k = shelf * 2
+    while (bx < x + 28) {
+      const w = 2 + ((k * 7) % 3), h = 6 + ((k * 5) % 2)
+      if (bx + w > x + 29) break
+      rect(g, bx, sy + (7 - h), w, h, books[k % books.length])
+      bx += w + 1; k++
+    }
+    rect(g, x + 2, sy + 7, 28, 2, '#8a6747')
+  }
+}
+function drawWindow(g, x, y) {
+  rect(g, x, y, 30, 22, '#8f8676'); rect(g, x + 2, y + 2, 12, 18, '#c6dfec'); rect(g, x + 16, y + 2, 12, 18, '#c6dfec')
+  rect(g, x + 4, y + 4, 2, 6, '#e6f2f8'); rect(g, x + 18, y + 4, 2, 6, '#e6f2f8'); rect(g, x - 1, y + 22, 32, 2, '#b1a792')
+}
+function drawWhiteboard(g, x, y) {
+  rect(g, x, y, 42, 24, '#b9b3a8'); rect(g, x + 2, y + 2, 38, 19, '#fbfbf8')
+  rect(g, x + 5, y + 6, 18, 1, '#5d7da6'); rect(g, x + 5, y + 10, 26, 1, '#5d7da6'); rect(g, x + 5, y + 14, 12, 1, '#a65d4e')
+  rect(g, x + 4, y + 21, 34, 2, '#9b958a')
+}
+function drawClock(g, x, y) {
+  rect(g, x + 2, y, 6, 10, '#2b2a28'); rect(g, x, y + 2, 10, 6, '#2b2a28')
+  rect(g, x + 2, y + 1, 6, 8, '#fbfbf8'); rect(g, x + 1, y + 2, 8, 6, '#fbfbf8')
+  rect(g, x + 4, y + 2, 1, 3, '#2b2a28'); rect(g, x + 5, y + 4, 2, 1, '#2b2a28')
+}
+
+// ---------- 大公司的家当 ----------
+function drawTV(g, x, y) {
+  rect(g, x, y, 48, 28, '#2b2a28'); rect(g, x + 2, y + 2, 44, 22, '#2d4b6b')
+  rect(g, x + 6, y + 15, 4, 7, '#7cc4e8'); rect(g, x + 12, y + 11, 4, 11, YELLOW); rect(g, x + 18, y + 7, 4, 15, '#7ccf6b')
+  rect(g, x + 26, y + 6, 16, 1, '#c4e6f8'); rect(g, x + 26, y + 9, 12, 1, '#c4e6f8'); rect(g, x + 26, y + 12, 14, 1, '#c4e6f8')
+  rect(g, x + 20, y + 28, 8, 2, '#55534f')
+}
+function drawSeatTop(g, x, y, c) { rect(g, x, y, 10, 8, c); rect(g, x, y, 10, 2, '#7a7f89') } // 从上往下看的椅子
+function drawMeetingTable(g, x, y, w, h) {
+  for (let i = 0; i < 4; i++) { drawSeatTop(g, x + 10 + i * 26, y - 9, '#5d6169'); drawSeatTop(g, x + 10 + i * 26, y + h + 1, '#5d6169') }
+  drawSeatTop(g, x - 11, y + 11, '#5d6169'); drawSeatTop(g, x + w + 1, y + 11, '#5d6169')
+  rect(g, x, y, w, h, '#8a6747'); rect(g, x, y, w, 2, '#a5815e'); rect(g, x, y + h - 3, w, 3, '#6e5138')
+  rect(g, x + 14, y + 8, 12, 9, '#fbfbf8'); rect(g, x + 50, y + 10, 10, 6, '#565a62'); rect(g, x + 84, y + 9, 4, 4, '#fbfbf8')
+}
+function drawGlassV(g, x, y, h) {
+  rect(g, x, y, 4, h, '#cfe3ee'); rect(g, x, y, 1, h, '#7d8a94'); rect(g, x + 3, y, 1, h, '#7d8a94')
+}
+function drawGlassH(g, x, y, w, gapX, gapW) {
+  for (const [sx, sw] of [[x, gapX - x], [gapX + gapW, x + w - gapX - gapW]]) {
+    rect(g, sx, y, sw, 10, '#d7e8f1'); rect(g, sx, y, sw, 1, '#7d8a94'); rect(g, sx, y + 9, sw, 1, '#7d8a94')
+    for (let mx = sx; mx < sx + sw; mx += 24) rect(g, mx, y, 1, 10, '#7d8a94')
+    rect(g, sx + 3, y + 2, 6, 1, '#f2f8fb')
+  }
+}
+function drawCounter(g, x, y, w, h) {
+  rect(g, x, y, w, h, '#d6d1c7'); rect(g, x, y, 2, h, '#b9b3a8'); rect(g, x + w - 1, y, 1, h, '#a9a49b')
+}
+function drawSink(g, x, y) { rect(g, x, y, 14, 10, '#9aa7b1'); rect(g, x + 2, y + 2, 10, 6, '#7d8a94'); rect(g, x + 6, y, 2, 3, '#c9cfd4') }
+function drawCoffeeMachine(g, x, y) {
+  rect(g, x, y, 12, 13, '#2b2a28'); rect(g, x + 2, y + 2, 8, 3, '#55534f'); rect(g, x + 8, y + 6, 2, 2, RED)
+  rect(g, x + 3, y + 9, 4, 3, '#fbfbf8')
+}
+function drawMicrowave(g, x, y) { rect(g, x, y, 14, 10, '#b9b3a8'); rect(g, x + 2, y + 2, 8, 6, '#2b2a28'); rect(g, x + 11, y + 3, 2, 4, '#55534f') }
+function drawFridge(g, x, y) {
+  rect(g, x, y, 20, 32, '#f1efe9'); rect(g, x, y, 20, 1, '#c9c3b8'); rect(g, x + 19, y, 1, 32, '#c9c3b8')
+  rect(g, x, y + 12, 20, 1, '#c9c3b8'); rect(g, x + 2, y + 4, 1, 6, '#9b958a'); rect(g, x + 2, y + 16, 1, 10, '#9b958a')
+}
+function drawVending(g, x, y) {
+  rect(g, x, y, 22, 32, '#b5372e'); rect(g, x + 2, y + 3, 13, 22, '#2b2a28')
+  const cans = ['#f2b705', '#4a90d9', '#7ccf6b', '#fbfbf8', RED]
+  for (let r = 0; r < 4; r++) for (let c = 0; c < 3; c++) rect(g, x + 4 + c * 4, y + 5 + r * 5, 2, 3, cans[(r + c) % cans.length])
+  rect(g, x + 17, y + 6, 3, 6, '#d9d5cc'); rect(g, x + 4, y + 27, 9, 3, '#2b2a28')
+}
+function drawSofa(g, x, y, w, c, dark) { // 面朝北，靠背在下面
+  rect(g, x - 3, y + 1, 3, 13, dark); rect(g, x + w, y + 1, 3, 13, dark)
+  rect(g, x, y, w, 9, c); rect(g, x, y + 9, w, 5, dark)
+  for (let cx = x + Math.floor(w / 3); cx < x + w - 2; cx += Math.floor(w / 3)) rect(g, cx, y + 1, 1, 7, dark)
+}
+function drawRug(g, x, y, w, h, c1, c2) { rect(g, x, y, w, h, c1); rect(g, x + 3, y + 3, w - 6, h - 6, c2); rect(g, x + 5, y + 5, w - 10, h - 10, c1) }
+function drawCoffeeTable(g, x, y) { rect(g, x, y, 28, 12, '#8a6747'); rect(g, x, y, 28, 2, '#a5815e'); rect(g, x + 6, y + 4, 3, 3, '#fbfbf8'); rect(g, x + 16, y + 3, 7, 5, '#5d7da6') }
+function drawFoosball(g, x, y) {
+  rect(g, x, y, 46, 26, '#6e5138'); rect(g, x + 3, y + 3, 40, 20, '#4f9a52')
+  rect(g, x + 22, y + 3, 1, 20, '#e9f3e6'); rect(g, x + 3, y + 10, 2, 6, '#e9f3e6'); rect(g, x + 41, y + 10, 2, 6, '#e9f3e6')
+  for (let i = 0; i < 6; i++) {
+    const rx = x + 7 + i * 6.5 | 0
+    rect(g, rx, y - 2, 1, 30, '#c9cfd4')
+    for (let p = 0; p < 2; p++) rect(g, rx - 1, y + 7 + p * 9, 3, 3, i % 2 ? '#4a90d9' : RED)
+  }
+}
+function drawRoundTable(g, x, y) {
+  rect(g, x + 2, y, 12, 12, '#efece6'); rect(g, x, y + 2, 16, 8, '#efece6'); rect(g, x + 2, y + 11, 12, 1, '#c9c3b8')
+  rect(g, x + 6, y + 4, 3, 3, '#5d7da6')
+  for (const [sx, sy] of [[-7, 3], [19, 3], [5, 15]]) { rect(g, x + sx, y + sy, 6, 6, '#c27b55'); rect(g, x + sx, y + sy, 6, 1, '#d99a77') }
+}
+function drawReception(g, x, y) {
+  rect(g, x, y, 76, 10, '#c9a477'); rect(g, x, y, 76, 1, '#dcbb90'); rect(g, x, y + 10, 76, 7, '#8a6747'); rect(g, x, y + 16, 76, 1, '#6e5138')
+  rect(g, x + 30, y + 11, 16, 4, '#d97757') // 前台正面的品牌色
+  rect(g, x + 10, y - 6, 12, 8, '#2b2a28'); rect(g, x + 11, y - 5, 10, 5, '#5d7da6') // 显示器
+  rect(g, x + 56, y + 3, 4, 3, '#c9a24e') // 服务铃
+}
+function drawPrinter(g, x, y) {
+  rect(g, x, y, 26, 20, '#d9d5cc'); rect(g, x, y, 26, 4, '#efece6'); rect(g, x + 3, y + 7, 9, 4, '#55534f')
+  rect(g, x + 16, y + 7, 2, 2, GREEN); rect(g, x + 6, y + 14, 14, 3, '#fbfbf8')
+}
+function drawCabinet(g, x, y) {
+  rect(g, x, y, 14, 26, '#9da3a8'); rect(g, x + 13, y, 1, 26, '#7d8389')
+  for (let d = 0; d < 3; d++) { rect(g, x + 1, y + 8 + d * 8, 12, 1, '#7d8389'); rect(g, x + 5, y + 3 + d * 8, 4, 1, '#55534f') }
+}
+function drawPainting(g, x, y, w, h, colors) {
+  rect(g, x, y, w, h, '#6e5138'); rect(g, x + 2, y + 2, w - 4, h - 4, colors[0])
+  rect(g, x + 2, y + h - 8, w - 4, 6, colors[1]); rect(g, x + w - 8, y + 4, 3, 3, colors[2])
+}
+function drawSign(g, x, y) {
+  rect(g, x, y, 100, 20, '#2b2a28'); rect(g, x + 1, y + 1, 98, 1, '#55534f')
+  drawMini(g, x + 6, y + 8, CLAWD, CLAWD_SHADE)
+}
+function drawBigPlant(g, x, y) {
+  rect(g, x + 4, y + 20, 10, 10, '#d9d5cc'); rect(g, x + 4, y + 20, 10, 2, '#efece6')
+  rect(g, x + 2, y + 2, 14, 18, '#4f7d42'); rect(g, x + 5, y - 3, 8, 8, '#5f9150'); rect(g, x, y + 8, 4, 6, '#5f9150')
+  rect(g, x + 14, y + 6, 4, 7, '#5f9150'); rect(g, x + 7, y + 4, 3, 3, '#86b873'); rect(g, x + 3, y + 12, 3, 2, '#86b873')
+}
+function drawExtinguisher(g, x, y) { rect(g, x, y, 5, 10, RED); rect(g, x + 1, y - 2, 3, 2, '#2b2a28'); rect(g, x, y + 3, 5, 1, '#fbfbf8') }
+// 桌上的小摆件，每张桌子按座位号固定一种，空桌也不显得光秃秃
+function drawClutter(g, x, y, seat) {
+  switch (hash('seat' + seat) % 6) {
+    case 0: rect(g, x + 25, y + 1, 5, 4, '#b06a45'); rect(g, x + 24, y - 3, 7, 5, '#5f9150'); break // 小盆栽
+    case 1: rect(g, x + 4, y + 2, 4, 4, '#fbfbf8'); rect(g, x + 8, y + 3, 1, 2, '#fbfbf8'); break // 杯子
+    case 2: rect(g, x + 2, y + 1, 8, 6, '#fbfbf8'); rect(g, x + 3, y + 2, 6, 1, '#b9b3a8'); rect(g, x + 3, y + 4, 5, 1, '#b9b3a8'); break // 文件
+    case 3: rect(g, x + 25, y - 2, 6, 7, '#6e5138'); rect(g, x + 26, y - 1, 4, 4, '#9fd3f0'); break // 相框
+    case 4: rect(g, x + 26, y - 6, 1, 8, '#55534f'); rect(g, x + 24, y - 7, 5, 2, YELLOW); break // 台灯
+    default: break
+  }
+}
+
+// ================= 布局：正规大公司（开放办公区 + 会议室 + 休息区 + 前台） =================
+// 工位按座位号固定：6 列一排，至少摆 3 排；人少桌子也摆满，人多了往下加排。
+const MIN_ROWS = 3
+const WORK_X = 16                                // 开放办公区左边
+const RIGHT_X = WORK_X + COLS * COL_PITCH + 24  // 会议室、休息区那一侧的左边
+const RIGHT_W = 13 * T
+let W = 0, H = 0, rows = MIN_ROWS
+const door = { x:0, y:0 }
+const rooms = {} // 各区域的范围，摆家具和挂牌子用
+let addSeat = -1 // 带“+”的空座位，-1 表示没有
+const bgCanvas = document.createElement('canvas')
+const buf = document.createElement('canvas')
+
+function deskOf(seat) {
+  return { x:WORK_X + (seat % COLS) * COL_PITCH + 8, y:WALL_H + AISLE + LABEL_ROOM + Math.floor(seat / COLS) * ROW_PITCH }
+}
+
+function layout() {
+  const taken = new Set(snapshot.accounts.map(a => a.seat))
+  addSeat = -1
+  if (launchOpts?.enabled) { addSeat = 0; while (taken.has(addSeat)) addSeat++ }
+  const seats = Math.max(addSeat + 1, ...snapshot.accounts.map(a => a.seat + 1), 1)
+  rows = Math.max(MIN_ROWS, Math.ceil(seats / COLS))
+  const workBottom = deskOf((rows - 1) * COLS).y + 24
+  W = RIGHT_X + RIGHT_W + 8
+  H = Math.max(22 * T, workBottom + 5 * T)
+  door.x = WORK_X + (COLS * COL_PITCH) / 2; door.y = H - 12
+  const meetH = 9 * T
+  rooms.work = { x:WORK_X - 6, y:WALL_H + AISLE + 6, w:COLS * COL_PITCH + 12, h:workBottom - (WALL_H + AISLE + 6) }
+  rooms.meeting = { x:RIGHT_X, y:WALL_H, w:RIGHT_W, h:meetH }
+  rooms.lounge = { x:RIGHT_X, y:WALL_H + meetH + 10, w:RIGHT_W, h:H - 6 - (WALL_H + meetH + 10) }
+  rooms.front = { x:4, y:workBottom + 6, w:RIGHT_X - 8, h:H - 6 - (workBottom + 6) }
+  for (const e of emps.values()) {
+    const d = deskOf(e.acc.seat)
+    e.desk = d
+    e.seat = { x:d.x + 16, y:d.y - 2 }
+    e.lane = d.x + 40
+  }
+  drawBackground()
+  resize()
+}
+
+function drawBackground() {
+  bgCanvas.width = W; bgCanvas.height = H
+  buf.width = W; buf.height = H
+  const g = bgCanvas.getContext('2d')
+  // 地面：走廊浅色地砖，各区域各铺各的
+  for (let ty = 0; ty * T < H; ty++) for (let tx = 0; tx * T < W; tx++) rect(g, tx * T, ty * T, T, T, (tx + ty) % 2 ? '#e0dcd3' : '#dcd8ce')
+  const { work, meeting, lounge, front } = rooms
+  rect(g, work.x, work.y, work.w, work.h, '#cdd4dc') // 办公区地毯
+  for (let y = work.y; y < work.y + work.h; y += 4) rect(g, work.x, y, work.w, 1, '#c8cfd8')
+  g.strokeStyle = '#a9b1bb'; g.lineWidth = 1; g.strokeRect(work.x + 0.5, work.y + 0.5, work.w - 1, work.h - 1)
+  for (let y = meeting.y; y < meeting.y + meeting.h; y += 6) { // 会议室木地板
+    rect(g, meeting.x, y, meeting.w, 6, (y / 6) % 2 ? '#c49c6d' : '#bd9566'); rect(g, meeting.x, y + 5, meeting.w, 1, '#a9845a')
+  }
+  for (let y = lounge.y; y < lounge.y + lounge.h; y += 8) for (let x = lounge.x; x < lounge.x + lounge.w; x += 8) {
+    rect(g, x, y, 8, 8, ((x - lounge.x) / 8 + (y - lounge.y) / 8) % 2 ? '#ebe5d8' : '#e2dbcc') // 休息区小方砖
+  }
+  rect(g, front.x, front.y, front.w, front.h, '#e8e4dc') // 前台大理石
+  for (let x = front.x + 20; x < front.x + front.w; x += 37) rect(g, x, front.y, 1, front.h, '#ddd8ce')
+
+  // 后墙：窗户、招牌、挂画、时钟；会议室那段挂电视
+  rect(g, 0, 0, W, WALL_H, '#ebe5d9'); rect(g, 0, 0, W, 3, '#8f8676')
+  rect(g, 0, WALL_H - 4, W, 4, '#b9ad98'); rect(g, 0, WALL_H - 4, W, 1, '#cfc4b0')
+  const signX = WORK_X + (COLS * COL_PITCH) / 2 - 50
+  drawSign(g, signX, 12)
+  drawWindow(g, WORK_X + 14, 10); drawWindow(g, WORK_X + COLS * COL_PITCH - 44, 10)
+  drawPainting(g, signX - 34, 13, 18, 22, ['#c6dfec', '#6f9a63', '#f2b705'])
+  drawPainting(g, signX + 116, 13, 18, 22, ['#f0d9c4', '#a65d4e', '#5d7da6'])
+  drawClock(g, RIGHT_X - 15, 6)
+  drawTV(g, meeting.x + meeting.w / 2 - 24, 10)
+
+  // 会议室：玻璃墙、长桌、十把椅子、两盆大绿植
+  drawGlassV(g, RIGHT_X, WALL_H, meeting.h)
+  drawMeetingTable(g, meeting.x + 48, meeting.y + 52, 112, 30)
+  drawBigPlant(g, meeting.x + meeting.w - 22, meeting.y + 6)
+  drawBigPlant(g, meeting.x + 8, meeting.y + meeting.h - 34)
+  drawGlassH(g, RIGHT_X, meeting.y + meeting.h, meeting.w, RIGHT_X + 14, 26)
+
+  // 休息区：吧台（水槽、咖啡机、微波炉）、冰箱、售货机、沙发茶几、桌上足球、小圆桌、饮水机
+  const lx = lounge.x, ly = lounge.y, lr = lounge.x + lounge.w
+  drawCounter(g, lr - 22, ly + 4, 22, 74)
+  drawSink(g, lr - 18, ly + 8); drawCoffeeMachine(g, lr - 17, ly + 26); drawMicrowave(g, lr - 18, ly + 48)
+  drawFridge(g, lr - 21, ly + 82)
+  drawVending(g, lx + 8, ly + 6)
+  drawFoosball(g, lx + 70, ly + 14)
+  drawRoundTable(g, lx + 152, ly + 58)
+  drawRug(g, lx + 34, ly + lounge.h - 52, 92, 46, '#c98b6b', '#d9a184')
+  drawCoffeeTable(g, lx + 66, ly + lounge.h - 44)
+  drawSofa(g, lx + 46, ly + lounge.h - 27, 68, '#4f7d8a', '#3d6370')
+  drawCooler(g, lx + 6, ly + lounge.h - 32)
+  drawPlant(g, lr - 20, ly + lounge.h - 24)
+
+  // 前台：前台桌、访客沙发、打印机、文件柜、书架、门口两盆大绿植、灭火器
+  const fx = front.x, fy = front.y
+  drawBookshelf(g, fx + 4, fy + 4)
+  drawReception(g, fx + 48, fy + 22)
+  drawBigPlant(g, door.x - 34, fy + front.h - 34); drawBigPlant(g, door.x + 16, fy + front.h - 34)
+  drawSofa(g, door.x + 46, fy + front.h - 22, 40, '#8a6f8a', '#6e566e')
+  drawPrinter(g, front.x + front.w - 74, fy + 8)
+  drawCabinet(g, front.x + front.w - 44, fy + 4); drawCabinet(g, front.x + front.w - 28, fy + 4)
+  drawExtinguisher(g, 6, WALL_H + 30)
+
+  // 侧墙、南墙，南墙留门
+  rect(g, 0, WALL_H, 4, H - WALL_H, '#b9ad98'); rect(g, W - 4, WALL_H, 4, H - WALL_H, '#b9ad98')
+  const doorL = door.x - T, doorR = door.x + T
+  rect(g, 0, H - 6, doorL, 6, '#b9ad98'); rect(g, doorR, H - 6, W - doorR, 6, '#b9ad98')
+  rect(g, 0, H - 6, doorL, 1, '#cfc4b0'); rect(g, doorR, H - 6, W - doorR, 1, '#cfc4b0')
+  rect(g, doorL + 2, H - 10, doorR - doorL - 4, 6, '#9a8f7e')
+}
+
+// ================= 员工（一个账号一个） =================
+const emps = new Map() // account id -> 员工
+const SPEED = 48 // 像素/秒
+
+function makeEmployee(acc) {
+  const label = document.createElement('div')
+  label.className = 'emp-label'
+  label.dataset.account = acc.id
+  label.addEventListener('click', () => onEmployeeClick(acc.id))
+  document.getElementById('labels').appendChild(label)
+  return { acc, s:null, label, x:0, y:0, path:[], inside:false, facing:1,
+    blinkAt:performance.now() + 2000 + Math.random() * 4000, phase:hash(acc.id) % 1000 }
+}
+
+// 走廊路线：先横到自己那列桌子旁边的过道，再竖着走，最后横进座位
+const route = (from, to, laneX) => [{ x:laneX, y:from.y }, { x:laneX, y:to.y }, { x:to.x, y:to.y }]
+
+function updateEmployee(e, acc, walkIn) {
+  const was = e.s && e.s.state !== 'ended'
+  e.acc = acc
+  e.s = sessionOf(acc)
+  const online = !!e.s && e.s.state !== 'ended'
+  if (online && !was) {
+    if (walkIn) { e.x = door.x; e.y = door.y; e.path = route(e, e.seat, e.lane) }
+    else { e.x = e.seat.x; e.y = e.seat.y; e.path = [] }
+    e.inside = true
+  } else if (!online && was && e.inside) {
+    e.path = route(e, door, e.lane) // 下班走人
+  }
+  const state = online ? e.s.state : 'ended'
+  e.label.style.borderLeftColor = STATE_COLOR[state] ?? GRAY
+  e.label.className = 'emp-label' + (online ? '' : ' off')
+  e.label.dataset.state = state
+  e.label.innerHTML = `<div class="nm">${esc(acc.name)}</div><div class="st">${dot(state)}${esc(statusText(online ? e.s : null))}</div>`
+}
+
+function dropEmployee(e) { e.label.remove(); e.bubble?.remove(); emps.delete(e.acc.id) }
+
+function step(e, dt) {
+  if (!e.path.length) return false
+  const p = e.path[0]
+  const dx = p.x - e.x, dy = p.y - e.y, d = Math.hypot(dx, dy)
+  const move = SPEED * dt
+  if (d <= move) { e.x = p.x; e.y = p.y; e.path.shift() }
+  else { e.x += dx / d * move; e.y += dy / d * move }
+  e.facing = dy < -0.01 ? -1 : 1 // 往上走看到的是背影
+  if (!e.path.length && !(e.s && e.s.state !== 'ended')) e.inside = false
+  return true
+}
+
+// 空闲时干什么：刚闲下来玩手机或打游戏（每人偏好不同，半分钟换一次），闲久了就睡觉。
+// 闲了多久按 bridge 记的进入空闲的时间算，刷新页面不会把人吵醒。
+function idleActivity(e) {
+  const since = Date.parse(e.s?.stateSince || '') || Date.now()
+  const idleFor = Date.now() - since
+  if (idleFor > 120000) return 'sleep'
+  return ['phone', 'game'][(hash(e.acc.id) + Math.floor(idleFor / 30000)) % 2]
+}
+
+// ================= 画面 =================
+const cv = document.getElementById('office'), ctx = cv.getContext('2d')
+let S = 1, offX = 0, offY = 0, dpr = 1
+
+function resize() {
+  dpr = devicePixelRatio || 1
+  cv.width = Math.round(innerWidth * dpr); cv.height = Math.round(innerHeight * dpr)
+  const fit = Math.min(cv.width / W, cv.height / H)
+  S = fit >= 2 ? Math.floor(fit) : fit // 尽量整数倍放大，像素才方正；屏幕太小时宁可小数倍也别缩成一团
+  offX = Math.round((cv.width - W * S) / 2); offY = Math.round((cv.height - H * S) / 2)
+}
+const toCss = (x, y) => [(offX + x * S) / dpr, (offY + y * S) / dpr]
+
+const flights = [] // 正在飞的信封 { from, to, t, toAcc }
+const mailAt = new Map() // account id -> 收到信的时间，头上亮一会儿
+
+function frame(now) {
+  const dt = Math.min((now - (frame.last || now)) / 1000, 0.1)
+  frame.last = now
+  const g = buf.getContext('2d')
+  g.drawImage(bgCanvas, 0, 0)
+
+  const items = [] // 按脚下的 y 排序，近的盖住远的
+  const taken = new Set(snapshot.accounts.map(a => a.seat))
+  for (let seat = 0; seat < rows * COLS; seat++) { // 没人的桌子也摆着
+    if (taken.has(seat)) continue
+    const d = deskOf(seat)
+    items.push({ y:d.y - 3, draw:() => drawChair(g, d.x, d.y) })
+    items.push({ y:d.y + 14, draw:() => { drawDesk(g, d.x, d.y, OFF); drawClutter(g, d.x, d.y, seat) } })
+  }
+  for (const e of emps.values()) {
+    if (!e.desk) continue
+    const walking = step(e, dt)
+    const online = !!e.s && e.s.state !== 'ended'
+    const st = online ? e.s.state : 'ended'
+    items.push({ y:e.desk.y - 3, draw:() => drawChair(g, e.desk.x, e.desk.y) })
+    items.push({ y:e.desk.y + 14, draw:() => { drawDesk(g, e.desk.x, e.desk.y, online ? STATE_COLOR[st] : OFF); drawClutter(g, e.desk.x, e.desk.y, e.acc.seat) } })
+    if (e.inside) {
+      const t = now + e.phase, b = build(e.s)
+      const seated = !walking && Math.round(e.x) === e.seat.x && Math.round(e.y) === e.seat.y
+      const activity = seated && st === 'idle' ? idleActivity(e) : null
+      const x = Math.round(e.x), y = Math.round(e.y) + (activity === 'sleep' ? 1 : 0)
+      const typing = seated && st === 'tool'
+      const blink = now > e.blinkAt && now < e.blinkAt + 140
+      if (now > e.blinkAt + 140) e.blinkAt = now + 2500 + Math.random() * 4000
+      const pose = {
+        eyes:e.facing < 0 ? 'none' : activity === 'sleep' || blink ? 'closed' : activity ? 'down' : 'open',
+        armL:typing ? Math.floor(t / 140) % 2 : activity === 'game' ? Math.floor(t / 120) % 2 : 0,
+        armR:typing ? 1 - Math.floor(t / 140) % 2 : activity === 'phone' ? -2 : activity === 'game' ? Math.floor(t / 170) % 2 : 0,
+        raiseL:seated && st === 'waiting',
+        legs:!seated, step:walking ? Math.floor(t / 150) % 2 : -1,
+      }
+      const body = online ? CLAWD : GRAY, shade = online ? CLAWD_SHADE : '#8f8a82'
+      items.push({ y:y + 10, draw:() => {
+        drawClawd(g, x, y, b, pose, body, shade)
+        const top = y - b.bh
+        if (activity === 'phone') drawPhone(g, x, y, t)
+        else if (activity === 'game') drawConsole(g, x, y, t)
+        else if (activity === 'sleep') {
+          for (let i = 0; i < 3; i++) {
+            const p = ((t / 900) + i / 3) % 1
+            drawZ(g, x + (b.bw >> 1) + 3 + Math.round(p * 6), top + 2 - Math.round(p * 10), `rgba(255,253,247,${(1 - p).toFixed(2)})`) // 从头的右边往上飘，别被名字牌挡住
+          }
+        }
+        if (seated && st === 'thinking') drawThinking(g, x, top, t)
+        if (seated && st === 'waiting') drawAlert(g, x + (b.bw >> 1) + b.armW + 2, top - 3 - (Math.floor(t / 400) % 2))
+        const got = mailAt.get(e.acc.id)
+        if (got && now - got < 4000) drawEnvelope(g, x - 4, top - 10 - (Math.floor(now / 300) % 2))
+      } })
+    }
+    // 子代理：桌子两边的过道里站着小号的
+    if (online) Object.values(e.s.agents || {}).slice(-4).forEach((a, i) => {
+      const ax = e.desk.x + (i % 2 ? 35 : -13), ay = e.desk.y + 2 + Math.floor(i / 2) * 8
+      const busy = a.state === 'tool' || a.state === 'thinking'
+      const bob = busy && Math.floor((now + i * 90) / 200) % 2 ? -1 : 0
+      const color = a.state === 'done' ? GRAY : MINI, shade = a.state === 'done' ? '#8f8a82' : MINI_SHADE
+      items.push({ y:ay + 5, draw:() => drawMini(g, ax, ay + bob, color, shade) })
+    })
+  }
+  items.sort((a, b) => a.y - b.y).forEach(it => it.draw())
+
+  // 飞着的信封：从发件人头顶划一道弧到收件人头顶
+  for (let i = flights.length - 1; i >= 0; i--) {
+    const f = flights[i]
+    f.t += dt / 1.6
+    const p = Math.min(f.t, 1)
+    const x = f.from.x + (f.to.x - f.from.x) * p, y = f.from.y + (f.to.y - f.from.y) * p - Math.sin(p * Math.PI) * 24
+    drawEnvelope(g, Math.round(x) - 4, Math.round(y) - 3)
+    if (f.t >= 1) { flights.splice(i, 1); mailAt.set(f.toAcc, now) }
+  }
+
+  ctx.imageSmoothingEnabled = false
+  ctx.fillStyle = '#2f2e2b'
+  ctx.fillRect(0, 0, cv.width, cv.height)
+  ctx.drawImage(buf, 0, 0, W, H, offX, offY, W * S, H * S)
+  placeLabels()
+  requestAnimationFrame(frame)
+}
+
+function headOf(e) {
+  const b = build(e.s)
+  return e.inside ? { x:Math.round(e.x), y:Math.round(e.y) - b.bh - 4 } : { x:e.desk.x + 16, y:e.desk.y - 12 }
+}
+
+function placeLabels() {
+  for (const e of emps.values()) {
+    if (!e.desk) continue
+    const h = headOf(e)
+    const [lx, ly] = toCss(h.x, h.y - 2)
+    e.label.style.left = lx + 'px'; e.label.style.top = ly + 'px'
+    if (e.bubble) { e.bubble.style.left = lx + 'px'; e.bubble.style.top = ly + 'px' }
+  }
+  for (const [key, el] of Object.entries(roomEls)) {
+    const r = rooms[key]
+    if (!r) continue
+    // 办公区的牌子放左下角，左上角会被第一排的名字牌挡住
+    const [x, y] = key === 'sign' ? toCss(WORK_X + (COLS * COL_PITCH) / 2 + 6, 22)
+      : key === 'work' ? toCss(r.x + 3, r.y + r.h - 12) : toCss(r.x + 3, r.y + 3)
+    el.style.left = x + 'px'; el.style.top = y + 'px'
+  }
+  addBtn.hidden = addSeat < 0
+  if (addSeat >= 0) {
+    const d = deskOf(addSeat)
+    const [ax, ay] = toCss(d.x + 16, d.y - 10)
+    addBtn.style.left = ax + 'px'; addBtn.style.top = ay + 'px'
+  }
+}
+
+// ================= 数据 =================
+const logEl = document.getElementById('log')
+function log(text) {
+  const d = document.createElement('div')
+  d.textContent = `${new Date().toLocaleTimeString()}  ${text}`
+  logEl.appendChild(d)
+  while (logEl.children.length > 6) logEl.firstChild.remove()
+}
+
+const empBySession = id => [...emps.values()].find(e => e.s && e.s.id === id)
+
+// 会话间消息：信封从发件人飞到收件人，发件人头上冒气泡，同时进消息记录
+function showMessage(m) {
+  const from = empBySession(m.from), to = empBySession(m.to)
+  if (from && to) flights.push({ from:headOf(from), to:headOf(to), t:0, toAcc:to.acc.id })
+  else if (to) mailAt.set(to.acc.id, performance.now())
+  if (!from) return
+  from.bubble?.remove()
+  const el = document.createElement('div')
+  el.className = 'bubble'
+  el.innerHTML = `<b>→ ${esc(m.toName || '?')}</b>：${esc(m.text.length > 60 ? m.text.slice(0, 60) + '…' : m.text)}`
+  document.getElementById('labels').appendChild(el)
+  from.bubble = el
+  setTimeout(() => { if (from.bubble === el) from.bubble = null; el.remove() }, 6000)
+}
+
+let first = true
+const seenMessages = new Set()
+const seenAsks = new Set()
+function applySnapshot(snap) {
+  snapshot = snap
+  const live = new Set(snap.accounts.map(a => a.id))
+  for (const [id, e] of emps) if (!live.has(id)) dropEmployee(e)
+  for (const acc of snap.accounts) {
+    if (!emps.has(acc.id)) emps.set(acc.id, makeEmployee(acc))
+    emps.get(acc.id).acc = acc
+  }
+  layout()
+  for (const acc of snap.accounts) updateEmployee(emps.get(acc.id), acc, !first)
+  for (const m of snap.messages) {
+    if (seenMessages.has(m.id)) continue
+    seenMessages.add(m.id)
+    if (!first) { showMessage(m); log(`${m.fromName || '?'} → ${m.toName || '?'}：${m.text}`) }
+  }
+  // 新来的待处理事项：直接弹窗（正在填启动框时先不打扰，HUD 上有按钮）
+  const fresh = snap.asks.filter(a => !seenAsks.has(a.id))
+  fresh.forEach(a => seenAsks.add(a.id))
+  if (fresh.length && dlg.hidden) openAsks()
+  renderAsks()
+  first = false
+
+  const online = snap.accounts.map(sessionOf).filter(s => s && s.state !== 'ended')
+  const count = (...states) => online.filter(s => states.includes(s.state)).length
+  document.getElementById('stats').innerHTML = snap.accounts.length
+    ? `${dot('idle')}空闲 ${count('idle')}${dot('tool')}工作中 ${count('thinking', 'tool')}${dot('waiting')}待处理 ${count('waiting')}${dot('ended')}下班 ${snap.accounts.length - online.length}`
+    : '还没有人'
+  if (cardFor) showCard(cardFor)
+  if (!msgsPanel.hidden) renderMessages()
+  watchLaunch()
+}
+
+function applyEvent(ev, name) {
+  const who = (name || ev.session.slice(0, 6)) + (ev.agentId ? ' / 子代理' : '')
+  if (ev.kind === 'tool.start') log(`${who}  ${ev.tool}`)
+  else if (ev.kind === 'session.start') log(`${who}  上班`)
+  else if (ev.kind === 'session.end') log(`${who}  下班`)
+}
+
+// ================= 待处理弹窗 =================
+const asksModal = document.getElementById('asks-modal')
+let asksFilter = null // 只看某个会话的
+function askWho(a) {
+  const acc = snapshot.accounts.find(x => x.id === a.account)
+  return `<div class="who"><span class="name">${esc(acc?.name ?? a.session.slice(0, 6))}</span>
+    <span class="kind">${a.agentId ? '子代理 · ' : ''}${a.kind === 'question' ? '提问' : '权限审批'}</span></div>`
+}
+function renderAsks() {
+  let asks = snapshot.asks
+  if (asksFilter && asks.some(a => a.session === asksFilter)) asks = asks.filter(a => a.session === asksFilter)
+  syncCards(document.getElementById('asks'), asks, askWho)
+  document.getElementById('asks-title').textContent = `待处理（${snapshot.asks.length}）`
+  const btn = document.getElementById('open-asks')
+  btn.hidden = !snapshot.asks.length
+  btn.textContent = `待处理 ${snapshot.asks.length}`
+  if (!snapshot.asks.length) asksModal.hidden = true
+}
+function openAsks(session = null) { asksFilter = session; renderAsks(); if (snapshot.asks.length) asksModal.hidden = false }
+document.getElementById('asks-later').onclick = () => { asksModal.hidden = true }
+document.getElementById('open-asks').onclick = () => openAsks()
+asksModal.addEventListener('click', ev => { if (ev.target === asksModal) asksModal.hidden = true })
+
+// ================= 消息记录 =================
+const msgsPanel = document.getElementById('msgs-panel')
+const fmtTime = t => new Date(t).toLocaleString()
+function msgHTML(m) {
+  return `<div class="msg"><div class="meta">${fmtTime(m.time)} · <b>${esc(m.fromName || '?')}</b> → <b>${esc(m.toName || '?')}</b>
+    ${m.delivered ? '' : '<span class="lost">（没送到）</span>'}</div>${esc(m.text)}</div>`
+}
+function renderMessages() {
+  msgsPanel.querySelector('.msgs').innerHTML = [...snapshot.messages].reverse().map(msgHTML).join('') || '<div class="msg">还没有消息</div>'
+}
+document.getElementById('open-msgs').onclick = () => { renderMessages(); msgsPanel.hidden = false }
+msgsPanel.querySelector('.close').onclick = () => { msgsPanel.hidden = true }
+
+// ================= 员工卡片 =================
+const card = document.getElementById('card')
+let cardFor = null
+card.querySelector('.close').onclick = () => { card.hidden = true; cardFor = null }
+
+function onEmployeeClick(id) {
+  const acc = snapshot.accounts.find(a => a.id === id)
+  const s = acc && sessionOf(acc)
+  if (s && s.state === 'waiting') return openAsks(s.id)
+  showCard(id)
+}
+
+function showCard(id) {
+  const acc = snapshot.accounts.find(a => a.id === id)
+  if (!acc) { card.hidden = true; cardFor = null; return }
+  cardFor = id
+  const s = sessionOf(acc), online = !!s && s.state !== 'ended'
+  card.querySelector('h2').textContent = acc.name
+  const rows = [['座位', `${acc.seat + 1} 号`], ['状态', statusText(online ? s : null)], ['模型', online ? buildText(s) : ''],
+    ['工具', online ? s.tool : ''], ['目录', s?.cwd || acc.last?.dir], ['最近指令', online ? s.prompt : ''], ['工具调用', online ? s.tools : ''],
+    ['子代理', online ? Object.keys(s.agents || {}).length || '' : ''], ['终端', online ? s.attach : ''],
+    ['Claude 登录', s?.login], ['会话', online ? s.id : '']]
+  card.querySelector('dl').innerHTML = rows.filter(r => r[1] !== undefined && r[1] !== '' && r[1] !== null)
+    .map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join('')
+  const btns = card.querySelector('.btns')
+  btns.innerHTML = ''
+  const add = (text, cls, fn) => { const b = document.createElement('button'); b.className = 'px ' + cls; b.textContent = text; b.onclick = fn; btns.appendChild(b) }
+  if (online && s.state === 'waiting') add('去处理', 'alert', () => openAsks(s.id))
+  if (!online && launchOpts?.enabled) add('上班', 'primary go-work', () => openLaunch(acc.id))
+  if (!online) add('删除这个员工', '', async () => {
+    if (!confirm(`删掉 ${acc.name}？座位会空出来。`)) return
+    const r = await fetch(`/api/accounts/${acc.id}`, { method:'DELETE' })
+    if (!r.ok) alert('删不掉：' + (await r.text()))
+    card.hidden = true; cardFor = null
+  })
+  const mine = snapshot.messages.filter(m => m.fromName === acc.name || m.toName === acc.name)
+  card.querySelector('.msgs').innerHTML = mine.slice(-10).reverse().map(msgHTML).join('') || '<div class="msg">没有</div>'
+  card.hidden = false
+}
+
+cv.addEventListener('click', ev => {
+  const x = (ev.clientX * dpr - offX) / S, y = (ev.clientY * dpr - offY) / S
+  for (const e of emps.values()) {
+    if (!e.desk) continue
+    const b = build(e.s)
+    const hitChar = e.inside && x >= e.x - b.bw / 2 - 3 && x < e.x + b.bw / 2 + 3 && y >= e.y - b.bh - 4 && y < e.y + 2
+    const hitDesk = x >= e.desk.x && x < e.desk.x + 32 && y >= e.desk.y - 15 && y < e.desk.y + 16
+    if (hitChar || hitDesk) return onEmployeeClick(e.acc.id)
+  }
+})
+
+// ================= 从页面启动会话 =================
+const dlg = document.getElementById('launch'), form = dlg.querySelector('form')
+const field = name => form.elements[name]
+let pendingLaunch = null // 正在等上线的启动编号
+let launchAccount = null // 让哪个已有员工上班；null 表示新员工
+
+async function loadLaunchOptions() {
+  try { launchOpts = await (await fetch('/api/launch/options')).json() } catch { launchOpts = null }
+  document.getElementById('new-emp').hidden = !launchOpts?.enabled
+  layout()
+}
+
+const fill = (select, options, value) => {
+  select.innerHTML = options.map(o => `<option value="${esc(o.value)}">${esc(o.label)}</option>`).join('')
+  select.value = value ?? ''
+}
+
+async function openLaunch(accountId) {
+  await loadLaunchOptions()
+  if (!launchOpts?.enabled) return alert('这个 bridge 没开页面启动（缺 tmux、claude 或 mod 目录）')
+  const acc = accountId ? snapshot.accounts.find(a => a.id === accountId) : null
+  launchAccount = acc ? acc.id : null
+  const last = acc?.last || {}
+  form.querySelector('.title').textContent = acc ? `让 ${acc.name} 上班` : '新员工上班'
+  field('name').value = acc ? acc.name : ''
+  field('name').readOnly = !!acc
+  const recent = launchOpts.recentDirs || []
+  field('dir').value = last.dir || recent[0] || launchOpts.home || ''
+  fill(field('model'), launchOpts.models, last.model)
+  fill(field('effort'), launchOpts.efforts, last.effort)
+  fill(field('permissionMode'), launchOpts.permissionModes, last.permissionMode)
+  fill(field('resume'), launchOpts.resumes, '')
+  form.querySelector('.recent').innerHTML = recent.map(d => `<span title="${esc(d)}">${esc(base(d))}</span>`).join('')
+  form.querySelectorAll('.recent span').forEach((el, i) => el.onclick = () => { field('dir').value = recent[i]; preview() })
+  form.querySelector('.browser').hidden = true
+  setStatus('')
+  form.querySelector('.go').disabled = false
+  pendingLaunch = null
+  preview()
+  asksModal.hidden = true
+  card.hidden = true; cardFor = null
+  dlg.hidden = false
+  ;(acc ? field('dir') : field('name')).focus()
+}
+
+function closeLaunch() { dlg.hidden = true; pendingLaunch = null; if (snapshot.asks.length) openAsks() }
+function setStatus(text, err) {
+  const el = form.querySelector('.status')
+  el.textContent = text
+  el.className = 'status' + (err ? ' err' : '')
+}
+function request() {
+  const r = { dir:field('dir').value.trim(), model:field('model').value, effort:field('effort').value,
+    permissionMode:field('permissionMode').value, resume:field('resume').value }
+  if (launchAccount) r.account = launchAccount
+  else r.name = field('name').value.trim()
+  return r
+}
+
+// 命令预览：和 bridge 实际拼的参数一致（另外它会带上 --plugin-dir 和环境变量）
+function preview() {
+  const r = request()
+  const q = s => /^[\w\-./=:@]+$/.test(s) ? s : `'${s.replace(/'/g, `'\\''`)}'`
+  const args = ['claude', '--name', q(field('name').value.trim() || '?')]
+  if (r.model) args.push('--model', r.model)
+  if (r.effort) args.push('--effort', r.effort)
+  if (r.permissionMode) args.push('--permission-mode', r.permissionMode)
+  if (r.resume === 'continue') args.push('--continue')
+  form.querySelector('.preview').textContent = `cd ${q(r.dir || '?')}\n${args.join(' ')}\n# 示意：另外带上 --plugin-dir、这个员工的 token 和 bridge 地址，开一个终端来跑`
+}
+
+async function browse(path) {
+  const box = form.querySelector('.browser')
+  try {
+    const res = await fetch('/api/dirs?path=' + encodeURIComponent(path || launchOpts.home))
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.error)
+    box.hidden = false
+    box.dataset.path = data.path
+    box.querySelector('.cur').textContent = data.path
+    // 路径都用 bridge 拼好的，页面不管 / 还是 \；到了最上层就列出各个盘符（Windows）
+    const up = data.parent ? [['⬆ 上一级', data.parent]] : (data.roots || []).filter(r => r !== data.path).map(r => ['💽 ' + r, r])
+    const items = up.concat((data.dirs || []).map(d => [d.name + '/', d.path]))
+    const ul = box.querySelector('ul')
+    ul.innerHTML = items.map(([label]) => `<li>${esc(label)}</li>`).join('') || '<li style="color:#8a867e;cursor:default">（没有子目录）</li>'
+    ul.querySelectorAll('li').forEach((li, i) => { if (items[i]) li.onclick = () => browse(items[i][1]) })
+  } catch (err) {
+    setStatus('打不开这个目录：' + err.message, true)
+  }
+}
+
+form.addEventListener('input', preview)
+form.addEventListener('change', preview)
+form.querySelector('.browse').onclick = () => browse(field('dir').value.trim())
+form.querySelector('.pick').onclick = () => {
+  field('dir').value = form.querySelector('.browser').dataset.path
+  form.querySelector('.browser').hidden = true
+  preview()
+}
+form.querySelector('.cancel').onclick = closeLaunch
+dlg.addEventListener('click', ev => { if (ev.target === dlg) closeLaunch() })
+document.getElementById('new-emp').onclick = () => openLaunch(null)
+
+form.addEventListener('submit', async ev => {
+  ev.preventDefault()
+  const r = request()
+  if (!launchAccount && !r.name) return setStatus('名字要填', true)
+  form.querySelector('.go').disabled = true
+  setStatus('启动中…')
+  try {
+    const res = await fetch('/api/launch', { method:'POST', headers:{ 'content-type':'application/json' }, body:JSON.stringify(r) })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.error)
+    pendingLaunch = data.id
+    setStatus(launchOpts.trustHint
+      ? `已打开终端窗口，等它上线…\n第一次在这个目录启动的话，要在弹出的窗口里按一下“信任此目录”。`
+      : `启动中…（${data.attach}）`)
+    watchLaunch()
+  } catch (err) {
+    setStatus('启动失败：' + err.message, true)
+    form.querySelector('.go').disabled = false
+  }
+})
+
+// 盯着快照里的启动记录：上线了就关框，失败了就把原因摆出来
+function watchLaunch() {
+  if (!pendingLaunch) return
+  const l = (snapshot.launches || []).find(x => x.id === pendingLaunch)
+  if (!l) return
+  if (l.status === 'online') {
+    log(`${l.name} 上班了（${l.attach}）`)
+    closeLaunch()
+  } else if (l.status === 'failed') {
+    setStatus('启动失败：' + l.error, true)
+    form.querySelector('.go').disabled = false
+    pendingLaunch = null
+  }
+}
+
+// ================= 启动 =================
+// 各区域的牌子，和公司招牌上的字（中文用网页字体画，比像素字清楚）
+const roomEls = {}
+for (const [key, text] of [['work', '开放办公区'], ['meeting', '会议室'], ['lounge', '休息区'], ['front', '前台'], ['sign', 'SYMPHONY']]) {
+  const el = document.createElement('div')
+  el.className = key === 'sign' ? 'sign-text' : 'room-label'
+  el.textContent = text
+  document.getElementById('labels').appendChild(el)
+  roomEls[key] = el
+}
+rooms.sign = {}
+const addBtn = document.createElement('button')
+addBtn.className = 'seat-add'
+addBtn.textContent = '+'
+addBtn.title = '新员工：在这个空座位上启动一个会话'
+addBtn.hidden = true
+addBtn.addEventListener('click', () => openLaunch(null))
+document.getElementById('labels').appendChild(addBtn)
+
+layout()
+loadLaunchOptions()
+fetch('/api/state').then(r => r.json()).then(s => { if (first) applySnapshot(s) }).catch(() => {})
+const es = new EventSource('/api/stream')
+es.onmessage = m => {
+  const msg = JSON.parse(m.data)
+  if (msg.type === 'snapshot') applySnapshot(msg)
+  else if (msg.type === 'event') applyEvent(msg.event, msg.title)
+}
+addEventListener('resize', layout)
+requestAnimationFrame(frame)
+</script>
+</body>
+</html>
