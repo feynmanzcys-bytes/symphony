@@ -21,7 +21,7 @@
 ## Требования
 
 - Claude Code 2.1.314 (проверено на этой версии). Для mod нужны function hooks из Claude Code, а это API пока в раннем доступе, поэтому после обновления Claude Code прогоните сквозные тесты.
-- Go 1.27 или новее — чтобы запускать bridge.
+- Для Linux, macOS и Windows есть готовая программа bridge; Go 1.27 или новее нужен только для запуска из исходников.
 - Для запуска сеансов со страницы на Linux и macOS лучше всего подходит tmux.
 
 ## Установка
@@ -52,6 +52,30 @@ claude plugin install symphony-bridge --marketplace /path/to/symphony
 
 ### 2. Запустите bridge
 
+Скачайте архив для своей системы из [последнего релиза](https://github.com/feynmanzcys-bytes/symphony/releases/latest), распакуйте его и запустите программу `symphony` из архива:
+
+| Система | x86-64 | ARM64 |
+| --- | --- | --- |
+| Linux | `symphony_linux_amd64.tar.gz` | `symphony_linux_arm64.tar.gz` |
+| macOS | `symphony_darwin_amd64.tar.gz` (Intel) | `symphony_darwin_arm64.tar.gz` (Apple silicon) |
+| Windows | `symphony_windows_amd64.zip` | `symphony_windows_arm64.zip` |
+
+Например, на Linux:
+
+```bash
+curl -fLO https://github.com/feynmanzcys-bytes/symphony/releases/latest/download/symphony_linux_amd64.tar.gz
+tar xzf symphony_linux_amd64.tar.gz
+./symphony
+```
+
+На Windows распакуйте zip и запустите `symphony.exe`; по двойному щелчку программа откроется в отдельном окне, а если закрыть это окно, bridge остановится.
+
+Программы не подписаны, поэтому первый запуск может быть заблокирован. macOS может отказаться открывать копию, скачанную через браузер, потому что не может проверить разработчика: нажмите «Все равно открыть» в разделе «Системные настройки» → «Конфиденциальность и безопасность» или один раз выполните `xattr -d com.apple.quarantine symphony`. На Windows SmartScreen тоже может предупредить: нажмите «Подробнее», а затем «Выполнить в любом случае». В `checksums.txt` релиза есть SHA-256 каждого архива.
+
+У программы и mod один номер версии: `symphony -version` показывает версию программы, `claude plugin list` — версию mod. Чтобы обновиться, скачайте новый релиз и выполните `claude plugin update symphony-bridge@symphony`.
+
+Или запустите bridge из исходников, с Go 1.27 или новее:
+
 ```bash
 git clone https://github.com/feynmanzcys-bytes/symphony.git
 cd symphony
@@ -69,6 +93,7 @@ go run ./cmd/bridge
 | `-lang` | язык системы | Язык сообщений bridge |
 | `-mod` | пусто | Для разработки: передавать сеансам mod из этой папки через `--plugin-dir` вместо установленной копии |
 | `-web` | пусто | Для разработки: отдавать страницы из этой папки, чтобы правки были видны после перезагрузки |
+| `-version` | — | Показать версию и выйти |
 
 ### 3. Запустите сеансы
 
@@ -118,6 +143,7 @@ SYMPHONY_E2E=1 go test -tags e2e -v -count=1 -timeout 20m ./e2e/   # сквоз�
 - Чтобы посмотреть на офис без настоящих сеансов, запустите второй bridge и наполните его выдуманной активностью: `go run ./cmd/bridge -addr 127.0.0.1:7799 -data /tmp/demo`, затем `go run ./cmd/demo -base http://127.0.0.1:7799`.
 - Переводы: каждый язык — это один файл (`web/locales/<lang>.json` для страниц и `internal/i18n/locales/<lang>.json` для bridge) с теми же ключами, что и в `en.json`; немногие сообщения самого mod лежат в `mods/symphony-bridge/hooks/messages.ts`. Модульные тесты проверяют, что в каждом языке есть все ключи и те же `{плейсхолдеры}`, а сквозной тест `TestI18n` открывает страницы на каждом языке.
 - Сквозным тестам нужны claude, tmux и chromium, поэтому они запускаются на Linux и на macOS с tmux. По умолчанию они берут mod из этого репозитория; чтобы использовать установленный mod, задайте `SYMPHONY_E2E_MOD=installed`. Скриншоты сохраняются в `e2e/artifacts/`.
+- Релизы: поставьте на коммит в main тег с его версией и отправьте тег (`git tag -a v0.3.0 -m v0.3.0 && git push origin v0.3.0`); GitHub Actions соберёт программу для всех платформ и опубликует релиз (`.github/workflows/release.yml`). Тег должен совпадать с версией mod в `plugin.json`. `.github/release.sh v0.3.0 dist` собирает такие же архивы локально.
 
 | Папка | Что это |
 | --- | --- |

@@ -1,10 +1,12 @@
-// symphony bridge: go run ./cmd/bridge [-addr 127.0.0.1:7788] [-data folder] [-web web] [-lang en]
+// symphony bridge: go run ./cmd/bridge [-addr 127.0.0.1:7788] [-data folder] [-web web] [-lang en] [-version]
+// Releases ship it as the symphony program (.github/release.sh).
 package main
 
 import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"io/fs"
 	"log"
 	"net"
@@ -13,6 +15,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -20,6 +23,20 @@ import (
 	"github.com/feynmanzcys-bytes/symphony/internal/i18n"
 	"github.com/feynmanzcys-bytes/symphony/web"
 )
+
+// version is set by release builds: -ldflags "-X main.version=v0.3.0".
+var version string
+
+// buildVersion is the release's version; other builds use what go build stamped from git, or "dev".
+func buildVersion() string {
+	if version != "" {
+		return version
+	}
+	if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" && info.Main.Version != "(devel)" {
+		return info.Main.Version
+	}
+	return "dev"
+}
 
 func main() {
 	// The flag help is translated, so the language has to be known before the flags exist:
@@ -35,7 +52,12 @@ func main() {
 	claude := flag.String("claude", "claude", i18n.T("flag.claude"))
 	terminal := flag.String("terminal", "auto", i18n.T("flag.terminal"))
 	flag.String("lang", i18n.Lang(), i18n.T("flag.lang", "langs", strings.Join(i18n.Langs, ", ")))
+	showVersion := flag.Bool("version", false, i18n.T("flag.version"))
 	flag.Parse()
+	if *showVersion {
+		fmt.Printf("symphony %s (%s/%s)\n", buildVersion(), runtime.GOOS, runtime.GOARCH)
+		return
+	}
 
 	var pages fs.FS = web.FS
 	if *webDir != "" {
@@ -70,7 +92,7 @@ func main() {
 		}
 	}()
 
-	log.Print(i18n.T("log.listening", "addr", *addr, "data", *dataDir))
+	log.Print(i18n.T("log.listening", "version", buildVersion(), "addr", *addr, "data", *dataDir))
 	log.Fatal(http.ListenAndServe(*addr, srv))
 }
 

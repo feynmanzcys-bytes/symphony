@@ -21,7 +21,7 @@ Setz ein Team aus Claude-Code-Sitzungen in ein Pixel-Art-Büro: Du siehst auf ei
 ## Voraussetzungen
 
 - Claude Code 2.1.314 (mit dieser Version getestet). Der Mod nutzt die Function Hooks von Claude Code, die noch eine Early-Access-API sind; führe also nach einem Update von Claude Code die End-to-End-Tests aus.
-- Go 1.27 oder neuer, um die Bridge zu starten.
+- Die Bridge gibt es als fertiges Programm für Linux, macOS und Windows; Go 1.27 oder neuer brauchst du nur, um sie aus dem Quellcode zu starten.
 - Zum Starten von Sitzungen über die Seite: Unter Linux und macOS ist tmux am besten.
 
 ## Installation
@@ -52,6 +52,30 @@ Aktualisieren: `claude plugin update symphony-bridge@symphony`. Deinstallieren: 
 
 ### 2. Die Bridge starten
 
+Lade das Archiv für dein System aus dem [neuesten Release](https://github.com/feynmanzcys-bytes/symphony/releases/latest) herunter, entpacke es und starte das enthaltene Programm `symphony`:
+
+| System | x86-64 | ARM64 |
+| --- | --- | --- |
+| Linux | `symphony_linux_amd64.tar.gz` | `symphony_linux_arm64.tar.gz` |
+| macOS | `symphony_darwin_amd64.tar.gz` (Intel) | `symphony_darwin_arm64.tar.gz` (Apple Silicon) |
+| Windows | `symphony_windows_amd64.zip` | `symphony_windows_arm64.zip` |
+
+Zum Beispiel unter Linux:
+
+```bash
+curl -fLO https://github.com/feynmanzcys-bytes/symphony/releases/latest/download/symphony_linux_amd64.tar.gz
+tar xzf symphony_linux_amd64.tar.gz
+./symphony
+```
+
+Unter Windows entpackst du das ZIP-Archiv und startest `symphony.exe`; per Doppelklick läuft es in einem eigenen Fenster, und wenn du das Fenster schließt, stoppt die Bridge.
+
+Die Programme sind nicht signiert, daher kann der erste Start blockiert werden. macOS lehnt eine mit dem Browser heruntergeladene Kopie womöglich ab, weil es den Entwickler nicht überprüfen kann: Klick unter Systemeinstellungen → Datenschutz & Sicherheit auf „Dennoch öffnen“ oder führe einmal `xattr -d com.apple.quarantine symphony` aus. Unter Windows kann SmartScreen ebenfalls warnen: Klick auf „Weitere Informationen“ und dann auf „Trotzdem ausführen“. Die `checksums.txt` im Release enthält die SHA-256-Prüfsumme jedes Archivs.
+
+Programm und Mod haben dieselbe Versionsnummer: `symphony -version` zeigt die des Programms, `claude plugin list` die des Mods. Zum Aktualisieren lädst du das neue Release herunter und führst `claude plugin update symphony-bridge@symphony` aus.
+
+Oder starte die Bridge aus dem Quellcode, mit Go 1.27 oder neuer:
+
 ```bash
 git clone https://github.com/feynmanzcys-bytes/symphony.git
 cd symphony
@@ -69,6 +93,7 @@ Unter <http://127.0.0.1:7788/> findest du das Büro. <http://127.0.0.1:7788/appr
 | `-lang` | deine Systemsprache | Sprache der Bridge-Meldungen |
 | `-mod` | leer | Für die Entwicklung: gibt Sitzungen per `--plugin-dir` den Mod aus diesem Ordner mit, statt der installierten Kopie |
 | `-web` | leer | Für die Entwicklung: liefert die Seiten aus diesem Ordner aus, sodass Änderungen nach dem Neuladen sichtbar sind |
+| `-version` | — | Gibt die Version aus und beendet sich |
 
 ### 3. Sitzungen starten
 
@@ -118,6 +143,7 @@ SYMPHONY_E2E=1 go test -tags e2e -v -count=1 -timeout 20m ./e2e/   # End-to-End:
 - Das Büro ohne echte Sitzungen ansehen: Starte eine zweite Bridge und füll sie mit ausgedachter Aktivität: `go run ./cmd/bridge -addr 127.0.0.1:7799 -data /tmp/demo`, dann `go run ./cmd/demo -base http://127.0.0.1:7799`.
 - Übersetzungen: Jede Sprache ist eine Datei, `web/locales/<lang>.json` für die Seiten und `internal/i18n/locales/<lang>.json` für die Bridge, mit denselben Schlüsseln wie `en.json`; die paar Meldungen des Mods stehen in `mods/symphony-bridge/hooks/messages.ts`. Die Unit-Tests prüfen, dass jede Sprache alle Schlüssel und dieselben `{Platzhalter}` hat, und der End-to-End-Test `TestI18n` öffnet die Seiten in jeder Sprache.
 - Die End-to-End-Tests brauchen claude, tmux und chromium, laufen also unter Linux und unter macOS mit tmux. Standardmäßig nutzen sie den Mod aus diesem Repository; mit `SYMPHONY_E2E_MOD=installed` nehmen sie den installierten Mod. Screenshots landen in `e2e/artifacts/`.
+- Releases: Versieh einen Commit auf main mit seiner Version als Tag und pushe den Tag (`git tag -a v0.3.0 -m v0.3.0 && git push origin v0.3.0`); GitHub Actions baut dann das Programm für alle Plattformen und veröffentlicht ein Release (`.github/workflows/release.yml`). Der Tag muss die Version des Mods in `plugin.json` sein. `.github/release.sh v0.3.0 dist` baut dieselben Archive lokal.
 
 | Ordner | Was drin ist |
 | --- | --- |

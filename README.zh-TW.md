@@ -21,7 +21,7 @@
 ## 環境需求
 
 - Claude Code 2.1.314（在這個版本上測試過）。mod 用的是 Claude Code 的 function hooks，這個 API 還在搶先體驗階段，所以升級 Claude Code 之後，請先跑一次端對端測試。
-- Go 1.27 以上，用來執行 bridge。
+- bridge 有 Linux、macOS、Windows 的現成程式，下載就能用；只有從原始碼執行才需要 Go 1.27 以上。
 - 想從頁面啟動工作階段的話：在 Linux 和 macOS 上最好安裝 tmux。
 
 ## 安裝
@@ -52,6 +52,30 @@ claude plugin install symphony-bridge --marketplace /path/to/symphony
 
 ### 2. 啟動 bridge
 
+從[最新 Release](https://github.com/feynmanzcys-bytes/symphony/releases/latest) 下載符合你系統的壓縮檔，解壓縮後執行裡面的 `symphony`：
+
+| 系統 | x86-64 | ARM64 |
+| --- | --- | --- |
+| Linux | `symphony_linux_amd64.tar.gz` | `symphony_linux_arm64.tar.gz` |
+| macOS | `symphony_darwin_amd64.tar.gz`（Intel） | `symphony_darwin_arm64.tar.gz`（Apple 晶片） |
+| Windows | `symphony_windows_amd64.zip` | `symphony_windows_arm64.zip` |
+
+例如在 Linux 上：
+
+```bash
+curl -fLO https://github.com/feynmanzcys-bytes/symphony/releases/latest/download/symphony_linux_amd64.tar.gz
+tar xzf symphony_linux_amd64.tar.gz
+./symphony
+```
+
+在 Windows 上，解壓縮後執行 `symphony.exe`；用滑鼠點兩下的話，它會在自己的視窗裡執行，關掉視窗 bridge 就會停止。
+
+這些程式沒有簽章，第一次執行時可能會被擋下。用瀏覽器下載的話，macOS 可能會顯示「無法驗證開發者」：請到「系統設定 → 隱私權與安全性」按「強制打開」，或執行一次 `xattr -d com.apple.quarantine symphony`。Windows 的 SmartScreen 也可能跳出警告：按「其他資訊」，再按「仍要執行」。Release 裡的 `checksums.txt` 列出了每個壓縮檔的 SHA-256。
+
+程式和 mod 使用同一個版本號：`symphony -version` 會顯示程式的版本，`claude plugin list` 會列出 mod 的版本。要更新時，下載新版的壓縮檔，再執行 `claude plugin update symphony-bridge@symphony`。
+
+也可以從原始碼執行（需要 Go 1.27 以上）：
+
 ```bash
 git clone https://github.com/feynmanzcys-bytes/symphony.git
 cd symphony
@@ -69,6 +93,7 @@ go run ./cmd/bridge
 | `-lang` | 系統語言 | bridge 訊息使用的語言 |
 | `-mod` | 空白 | 開發用：透過 `--plugin-dir` 讓工作階段載入這個資料夾裡的 mod，覆蓋已安裝的版本 |
 | `-web` | 空白 | 開發用：直接從這個資料夾提供頁面，修改後重新整理就會生效 |
+| `-version` | — | 顯示版本號後結束 |
 
 ### 3. 啟動工作階段
 
@@ -118,6 +143,7 @@ SYMPHONY_E2E=1 go test -tags e2e -v -count=1 -timeout 20m ./e2e/   # 端對端�
 - 不開真的工作階段也想看看辦公室：另外啟動第二個 bridge，並灌入模擬的活動：`go run ./cmd/bridge -addr 127.0.0.1:7799 -data /tmp/demo`，接著執行 `go run ./cmd/demo -base http://127.0.0.1:7799`。
 - 翻譯：每種語言一個檔案，頁面的是 `web/locales/<lang>.json`，bridge 的是 `internal/i18n/locales/<lang>.json`，鍵和 `en.json` 相同；mod 的那幾則訊息在 `mods/symphony-bridge/hooks/messages.ts`。單元測試會檢查每種語言的鍵是否齊全、`{佔位符}` 是否和英文一致；端對端測試 `TestI18n` 會用每種語言開啟頁面。
 - 端對端測試需要 claude、tmux 和 chromium，所以只在 Linux 和裝了 tmux 的 macOS 上執行。預設使用這個儲存庫裡的 mod；設定 `SYMPHONY_E2E_MOD=installed` 就會改用已安裝的 mod。截圖會存到 `e2e/artifacts/`。
+- 發布版本：在 main 的提交上建立版本標籤並推送（`git tag -a v0.3.0 -m v0.3.0 && git push origin v0.3.0`），GitHub Actions 就會為所有平台編譯程式並發布 Release（`.github/workflows/release.yml`）。標籤必須和 `plugin.json` 裡 mod 的版本號相同。`.github/release.sh v0.3.0 dist` 可以在本機打包出同樣的壓縮檔。
 
 | 資料夾 | 內容 |
 | --- | --- |

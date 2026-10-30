@@ -21,7 +21,7 @@ Coloque uma equipe de sessões do Claude Code num escritório em pixel art: veja
 ## Requisitos
 
 - Claude Code 2.1.314 (testado nesta versão). O mod usa os function hooks do Claude Code, que ainda são uma API em acesso antecipado; por isso, rode os testes de ponta a ponta depois de atualizar o Claude Code.
-- Go 1.27 ou mais recente, para rodar o bridge.
+- O bridge vem como programa pronto para Linux, macOS e Windows; Go 1.27 ou mais recente só é necessário para rodá-lo a partir do código-fonte.
 - Para iniciar sessões pela página: no Linux e no macOS, o ideal é usar o tmux.
 
 ## Instalação
@@ -52,6 +52,30 @@ Para atualizar: `claude plugin update symphony-bridge@symphony`. Para desinstala
 
 ### 2. Inicie o bridge
 
+Baixe o arquivo do seu sistema na [versão mais recente](https://github.com/feynmanzcys-bytes/symphony/releases/latest), descompacte e rode o programa `symphony` que vem dentro:
+
+| Sistema | x86-64 | ARM64 |
+| --- | --- | --- |
+| Linux | `symphony_linux_amd64.tar.gz` | `symphony_linux_arm64.tar.gz` |
+| macOS | `symphony_darwin_amd64.tar.gz` (Intel) | `symphony_darwin_arm64.tar.gz` (Apple silicon) |
+| Windows | `symphony_windows_amd64.zip` | `symphony_windows_arm64.zip` |
+
+Por exemplo, no Linux:
+
+```bash
+curl -fLO https://github.com/feynmanzcys-bytes/symphony/releases/latest/download/symphony_linux_amd64.tar.gz
+tar xzf symphony_linux_amd64.tar.gz
+./symphony
+```
+
+No Windows, descompacte o zip e rode `symphony.exe`; com um clique duplo, ele abre em uma janela própria, e fechar essa janela encerra o bridge.
+
+Os programas não são assinados, então a primeira execução pode ser bloqueada. O macOS pode recusar uma cópia baixada pelo navegador por não conseguir verificar o desenvolvedor: clique em "Abrir Mesmo Assim" em Ajustes do Sistema → Privacidade e Segurança, ou rode uma vez `xattr -d com.apple.quarantine symphony`. No Windows, o SmartScreen também pode avisar: clique em "Mais informações" e depois em "Executar assim mesmo". O `checksums.txt` da versão traz o SHA-256 de cada arquivo.
+
+O programa e o mod usam o mesmo número de versão: `symphony -version` mostra o do programa, e `claude plugin list`, o do mod. Para atualizar, baixe a nova versão e rode `claude plugin update symphony-bridge@symphony`.
+
+Ou rode o bridge a partir do código-fonte, com Go 1.27 ou mais recente:
+
 ```bash
 git clone https://github.com/feynmanzcys-bytes/symphony.git
 cd symphony
@@ -69,6 +93,7 @@ Abra <http://127.0.0.1:7788/> para ver o escritório. <http://127.0.0.1:7788/app
 | `-lang` | o idioma do seu sistema | Idioma das mensagens do bridge |
 | `-mod` | vazio | Para desenvolvimento: passa às sessões o mod desta pasta com `--plugin-dir`, no lugar da cópia instalada |
 | `-web` | vazio | Para desenvolvimento: serve as páginas desta pasta, e as alterações aparecem ao recarregar |
+| `-version` | — | Mostra a versão e sai |
 
 ### 3. Inicie sessões
 
@@ -118,6 +143,7 @@ SYMPHONY_E2E=1 go test -tags e2e -v -count=1 -timeout 20m ./e2e/   # ponta a pon
 - Para ver o escritório sem sessões de verdade: inicie um segundo bridge e alimente-o com atividade fictícia: `go run ./cmd/bridge -addr 127.0.0.1:7799 -data /tmp/demo` e depois `go run ./cmd/demo -base http://127.0.0.1:7799`.
 - Traduções: cada idioma é um arquivo, `web/locales/<lang>.json` para as páginas e `internal/i18n/locales/<lang>.json` para o bridge, com as mesmas chaves do `en.json`; as poucas mensagens do mod ficam em `mods/symphony-bridge/hooks/messages.ts`. Os testes unitários verificam se cada idioma tem todas as chaves e os mesmos `{placeholders}`, e o teste de ponta a ponta `TestI18n` abre as páginas em todos os idiomas.
 - Os testes de ponta a ponta precisam de claude, tmux e chromium, então rodam no Linux e no macOS com tmux. Por padrão, eles usam o mod deste repositório; defina `SYMPHONY_E2E_MOD=installed` para usar o mod instalado. As capturas de tela vão para `e2e/artifacts/`.
+- Versões: marque um commit da main com a versão dele e envie a tag (`git tag -a v0.3.0 -m v0.3.0 && git push origin v0.3.0`); o GitHub Actions então compila o programa para todas as plataformas e publica uma versão (`.github/workflows/release.yml`). A tag precisa ser a versão do mod em `plugin.json`. `.github/release.sh v0.3.0 dist` gera os mesmos arquivos localmente.
 
 | Pasta | O que é |
 | --- | --- |

@@ -21,7 +21,7 @@ Réunissez une équipe de sessions Claude Code dans un bureau en pixel art : voy
 ## Prérequis
 
 - Claude Code 2.1.314 (testé avec cette version). Le mod utilise les function hooks de Claude Code, une API encore en accès anticipé : après chaque mise à jour de Claude Code, relancez les tests de bout en bout.
-- Go 1.27 ou plus récent, pour faire tourner le bridge.
+- Le bridge existe en programme prêt à l’emploi pour Linux, macOS et Windows ; Go 1.27 ou plus récent n’est nécessaire que pour le lancer depuis les sources.
 - Pour démarrer des sessions depuis la page : tmux est recommandé sous Linux et macOS.
 
 ## Installation
@@ -52,6 +52,30 @@ Mise à jour : `claude plugin update symphony-bridge@symphony`. Désinstallation
 
 ### 2. Démarrer le bridge
 
+Téléchargez l’archive pour votre système depuis la [dernière version](https://github.com/feynmanzcys-bytes/symphony/releases/latest), décompressez-la et lancez le programme `symphony` qu’elle contient :
+
+| Système | x86-64 | ARM64 |
+| --- | --- | --- |
+| Linux | `symphony_linux_amd64.tar.gz` | `symphony_linux_arm64.tar.gz` |
+| macOS | `symphony_darwin_amd64.tar.gz` (Intel) | `symphony_darwin_arm64.tar.gz` (Apple silicon) |
+| Windows | `symphony_windows_amd64.zip` | `symphony_windows_arm64.zip` |
+
+Par exemple, sous Linux :
+
+```bash
+curl -fLO https://github.com/feynmanzcys-bytes/symphony/releases/latest/download/symphony_linux_amd64.tar.gz
+tar xzf symphony_linux_amd64.tar.gz
+./symphony
+```
+
+Sous Windows, décompressez le zip et lancez `symphony.exe` ; d’un double-clic, il s’ouvre dans sa propre fenêtre, et fermer cette fenêtre arrête le bridge.
+
+Les programmes ne sont pas signés : le premier lancement peut être bloqué. macOS peut refuser une copie téléchargée avec un navigateur, faute de pouvoir vérifier le développeur : cliquez sur « Ouvrir quand même » dans Réglages Système → Confidentialité et sécurité, ou lancez une fois `xattr -d com.apple.quarantine symphony`. Sous Windows, SmartScreen peut aussi vous avertir : cliquez sur « Informations complémentaires », puis sur « Exécuter quand même ». Le fichier `checksums.txt` de la version donne le SHA-256 de chaque archive.
+
+Le programme et le mod partagent le même numéro de version : `symphony -version` affiche celui du programme, `claude plugin list` celui du mod. Pour mettre à jour, téléchargez la nouvelle version et lancez `claude plugin update symphony-bridge@symphony`.
+
+Ou lancez le bridge depuis les sources, avec Go 1.27 ou plus récent :
+
 ```bash
 git clone https://github.com/feynmanzcys-bytes/symphony.git
 cd symphony
@@ -69,6 +93,7 @@ Ouvrez <http://127.0.0.1:7788/> pour voir le bureau. <http://127.0.0.1:7788/appr
 | `-lang` | la langue de votre système | Langue des messages du bridge |
 | `-mod` | vide | Pour le développement : donne aux sessions le mod de ce dossier avec `--plugin-dir`, à la place de la copie installée |
 | `-web` | vide | Pour le développement : sert les pages depuis ce dossier, pour voir les modifications après un rechargement |
+| `-version` | — | Affiche la version et quitte |
 
 ### 3. Démarrer des sessions
 
@@ -118,6 +143,7 @@ SYMPHONY_E2E=1 go test -tags e2e -v -count=1 -timeout 20m ./e2e/   # bout en bou
 - Voir le bureau sans vraies sessions : démarrez un second bridge et remplissez-le d’activité fictive : `go run ./cmd/bridge -addr 127.0.0.1:7799 -data /tmp/demo`, puis `go run ./cmd/demo -base http://127.0.0.1:7799`.
 - Traductions : chaque langue tient dans un fichier, `web/locales/<lang>.json` pour les pages et `internal/i18n/locales/<lang>.json` pour le bridge, avec les mêmes clés que `en.json` ; les quelques messages du mod se trouvent dans `mods/symphony-bridge/hooks/messages.ts`. Les tests unitaires vérifient que chaque langue a toutes les clés et les mêmes `{variables}`, et le test de bout en bout `TestI18n` ouvre les pages dans chaque langue.
 - Les tests de bout en bout ont besoin de claude, tmux et chromium : ils tournent donc sous Linux, et sous macOS avec tmux. Par défaut, ils utilisent le mod de ce dépôt ; définissez `SYMPHONY_E2E_MOD=installed` pour utiliser le mod installé. Les captures d’écran sont enregistrées dans `e2e/artifacts/`.
+- Versions : étiquetez un commit de main avec sa version et poussez l’étiquette (`git tag -a v0.3.0 -m v0.3.0 && git push origin v0.3.0`) ; GitHub Actions compile alors le programme pour toutes les plateformes et publie une version (`.github/workflows/release.yml`). L’étiquette doit être la version du mod dans `plugin.json`. `.github/release.sh v0.3.0 dist` produit les mêmes archives en local.
 
 | Dossier | Contenu |
 | --- | --- |

@@ -21,7 +21,7 @@ Claude Code 세션들을 한 팀으로 꾸려 픽셀 아트 사무실에 앉혀 
 ## 요구 사항
 
 - Claude Code 2.1.314 (이 버전에서 테스트했습니다). mod는 Claude Code의 function hooks를 쓰는데, 아직 얼리 액세스 단계의 API이므로 Claude Code를 업그레이드한 뒤에는 엔드투엔드 테스트를 돌려 보세요.
-- bridge를 실행할 Go 1.27 이상.
+- bridge는 Linux, macOS, Windows용으로 미리 빌드된 프로그램이 있습니다. Go 1.27 이상은 소스에서 실행할 때만 필요합니다.
 - 페이지에서 세션을 시작하려면: Linux와 macOS에서는 tmux가 가장 좋습니다.
 
 ## 설치
@@ -52,6 +52,30 @@ claude plugin install symphony-bridge --marketplace /path/to/symphony
 
 ### 2. bridge 실행
 
+[최신 릴리스](https://github.com/feynmanzcys-bytes/symphony/releases/latest)에서 사용하는 시스템에 맞는 압축 파일을 내려받아 풀고, 안에 있는 `symphony`를 실행합니다.
+
+| 시스템 | x86-64 | ARM64 |
+| --- | --- | --- |
+| Linux | `symphony_linux_amd64.tar.gz` | `symphony_linux_arm64.tar.gz` |
+| macOS | `symphony_darwin_amd64.tar.gz` (Intel) | `symphony_darwin_arm64.tar.gz` (Apple 실리콘) |
+| Windows | `symphony_windows_amd64.zip` | `symphony_windows_arm64.zip` |
+
+예를 들어 Linux에서는:
+
+```bash
+curl -fLO https://github.com/feynmanzcys-bytes/symphony/releases/latest/download/symphony_linux_amd64.tar.gz
+tar xzf symphony_linux_amd64.tar.gz
+./symphony
+```
+
+Windows에서는 압축을 풀고 `symphony.exe`를 실행합니다. 더블클릭하면 별도의 창에서 실행되며, 그 창을 닫으면 bridge도 멈춥니다.
+
+프로그램에 서명이 없어서 처음 실행할 때 막힐 수 있습니다. 브라우저로 내려받았다면 macOS가 "개발자를 확인할 수 없음"이라고 할 수 있습니다. "시스템 설정 → 개인정보 보호 및 보안"에서 "그래도 열기"를 누르거나, `xattr -d com.apple.quarantine symphony`를 한 번 실행하세요. Windows에서도 SmartScreen이 경고할 수 있습니다. "추가 정보"를 누른 뒤 "실행"을 누르세요. 릴리스의 `checksums.txt`에는 압축 파일마다 SHA-256이 들어 있습니다.
+
+프로그램과 mod는 같은 버전 번호를 씁니다. 프로그램 버전은 `symphony -version`, mod 버전은 `claude plugin list`로 확인합니다. 업데이트하려면 새 릴리스를 내려받고 `claude plugin update symphony-bridge@symphony`를 실행하세요.
+
+소스에서 실행할 수도 있습니다(Go 1.27 이상 필요).
+
 ```bash
 git clone https://github.com/feynmanzcys-bytes/symphony.git
 cd symphony
@@ -69,6 +93,7 @@ go run ./cmd/bridge
 | `-lang` | 시스템 언어 | bridge 메시지 언어 |
 | `-mod` | 비어 있음 | 개발용: 이 폴더의 mod를 `--plugin-dir`로 세션에 넘겨, 설치된 사본 대신 쓰게 합니다 |
 | `-web` | 비어 있음 | 개발용: 이 폴더의 페이지를 제공해서, 수정한 내용이 새로고침하면 바로 보입니다 |
+| `-version` | — | 버전을 출력하고 종료합니다 |
 
 ### 3. 세션 시작
 
@@ -118,6 +143,7 @@ SYMPHONY_E2E=1 go test -tags e2e -v -count=1 -timeout 20m ./e2e/   # 엔드투�
 - 실제 세션 없이 사무실 보기: 두 번째 bridge를 띄워 가짜 활동으로 채웁니다. `go run ./cmd/bridge -addr 127.0.0.1:7799 -data /tmp/demo`를 실행한 다음 `go run ./cmd/demo -base http://127.0.0.1:7799`를 실행하세요.
 - 번역: 언어마다 파일이 하나씩 있습니다. 페이지용은 `web/locales/<lang>.json`, bridge용은 `internal/i18n/locales/<lang>.json`이고 키는 `en.json`과 같습니다. mod의 몇 안 되는 메시지는 `mods/symphony-bridge/hooks/messages.ts`에 있습니다. 단위 테스트는 모든 언어에 모든 키와 같은 `{플레이스홀더}`가 있는지 확인하고, 엔드투엔드 테스트 `TestI18n`은 모든 언어로 페이지를 열어 봅니다.
 - 엔드투엔드 테스트에는 claude, tmux, chromium이 필요하므로 Linux와 tmux를 설치한 macOS에서 돌아갑니다. 기본적으로 이 저장소의 mod를 쓰고, `SYMPHONY_E2E_MOD=installed`로 설정하면 설치된 mod를 씁니다. 스크린샷은 `e2e/artifacts/`에 저장됩니다.
+- 릴리스: main에 있는 커밋에 버전 태그를 달아 push하면(`git tag -a v0.3.0 -m v0.3.0 && git push origin v0.3.0`) GitHub Actions가 모든 플랫폼용 프로그램을 빌드해 릴리스를 게시합니다(`.github/workflows/release.yml`). 태그는 `plugin.json`에 있는 mod 버전과 같아야 합니다. `.github/release.sh v0.3.0 dist`로 같은 압축 파일을 로컬에서 만들 수 있습니다.
 
 | 폴더 | 설명 |
 | --- | --- |

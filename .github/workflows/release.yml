@@ -1,0 +1,71 @@
+# Publishes a release when a version tag is pushed on main (git tag -a v0.3.0 -m v0.3.0 && git push origin v0.3.0):
+# a few checks and the unit tests, then the symphony program for every platform with checksums (.github/release.sh),
+# attached to a GitHub release whose notes start with .github/release-notes.md. A tag with a suffix (v0.3.0-rc.1)
+# makes a pre-release. Run by hand (workflow_dispatch) it's a dry run: the same build, kept for 7 days as a workflow
+# artifact, nothing published.
+# Plain go build and the gh on the runner, no third-party actions; only this job may write (to create the release).
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+
+jobs:
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # main's history, for the check below
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: The tag is the mod's version, on main
+        if: github.ref_type == 'tag'
+        run: |
+          # one version for the whole project: the tag, without a pre-release suffix, is plugin.json's version
+          mod=$(jq -r .version mods/symphony-bridge/.claude-plugin/plugin.json)
+          tag=${GITHUB_REF_NAME#v}
+          if [ "${tag%%-*}" != "$mod" ]; then
+            echo "::error::tag $GITHUB_REF_NAME doesn't match the mod's version $mod (plugin.json)"
+            exit 1
+          fi
+          # the plugin marketplace is read from main, so releases come from there too
+          if ! git merge-base --is-ancestor HEAD origin/main; then
+            echo "::error::$GITHUB_REF_NAME is not on main"
+            exit 1
+          fi
+      - name: Unit tests
+        run: go test ./...
+      - name: Build and pack for every platform
+        run: |
+          version=$GITHUB_REF_NAME
+          if [ "$GITHUB_REF_TYPE" != tag ]; then version=$GITHUB_REF_NAME-${GITHUB_SHA::7}; fi
+          .github/release.sh "$version" dist
+      - name: Publish the release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pre=()
+          if [[ $GITHUB_REF_NAME == *-* ]]; then pre=(--prerelease); fi
+          gh release create "$GITHUB_REF_NAME" dist/* --verify-tag "${pre[@]}" \
+            --title "symphony $GITHUB_REF_NAME" --notes-file .github/release-notes.md --generate-notes
+      - name: Keep the dry run's archives
+        if: github.ref_type != 'tag'
+        uses: actions/upload-artifact@v7
+        with:
+          name: symphony-${{ github.sha }}
+          path: dist/
+          retention-days: 7
