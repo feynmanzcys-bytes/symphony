@@ -3,7 +3,9 @@
 package e2e
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -70,6 +72,23 @@ func startBridge(t *testing.T, mod string) *testBridge {
 		}
 	}()
 	return b
+}
+
+// post sends a request the way the mod does, with an account's token: made-up activity for tests without sessions.
+func (b *testBridge) post(t *testing.T, token, path string, body any) {
+	t.Helper()
+	data, _ := json.Marshal(body)
+	req, _ := http.NewRequest("POST", b.URL+path, bytes.NewReader(data))
+	req.Header.Set("content-type", "application/json")
+	req.Header.Set("authorization", "Bearer "+token)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("POST %s: %v", path, err)
+	}
+	res.Body.Close()
+	if res.StatusCode != 200 {
+		t.Fatalf("POST %s: %s", path, res.Status)
+	}
 }
 
 func isModAPI(path string) bool {
@@ -250,6 +269,17 @@ func openTab(t *testing.T, browser context.Context, url string) (context.Context
 	t.Cleanup(cancel)
 	do(t, ctx, 30*time.Second, chromedp.Navigate(url))
 	return ctx, cancel
+}
+
+// clickLabel clicks an employee's name tag from inside the page: tags move with their employees and may pass in
+// front of each other, so a mouse click at a tag's position could land on another one.
+func clickLabel(t *testing.T, ctx context.Context, account string) {
+	t.Helper()
+	ok := get(t, ctx, 10*time.Second, chromedp.Evaluate[bool](fmt.Sprintf(
+		`(l => l ? (l.click(), true) : false)(document.querySelector('.emp-label[data-account=%q]'))`, account)))
+	if !ok {
+		t.Fatalf("no name tag for account %s", account)
+	}
 }
 
 // do runs browser actions in order and fails the test on an error or a timeout.

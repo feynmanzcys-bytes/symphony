@@ -3,11 +3,7 @@
 package e2e
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
-	"fmt"
-	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -17,6 +13,7 @@ import (
 	"time"
 
 	"github.com/chromedp/chromedp"
+	"github.com/chromedp/chromedp/kb"
 
 	"github.com/feynmanzcys-bytes/symphony/internal/i18n"
 )
@@ -42,18 +39,7 @@ func TestI18n(t *testing.T) {
 
 	// made-up activity in ASCII: alice works and waits for a permission and an answer, bob idles with a
 	// message from alice, carol is off duty
-	post := func(token, path string, body any) {
-		t.Helper()
-		data, _ := json.Marshal(body)
-		req, _ := http.NewRequest("POST", b.URL+path, bytes.NewReader(data))
-		req.Header.Set("content-type", "application/json")
-		req.Header.Set("authorization", "Bearer "+token)
-		res, err := http.DefaultClient.Do(req)
-		if err != nil || res.StatusCode != 200 {
-			t.Fatalf("POST %s: %v %v", path, err, res)
-		}
-		res.Body.Close()
-	}
+	post := func(token, path string, body any) { t.Helper(); b.post(t, token, path, body) }
 	alice, _ := b.Hub.CreateAccount("alice")
 	bob, _ := b.Hub.CreateAccount("bob")
 	if _, err := b.Hub.CreateAccount("carol"); err != nil {
@@ -122,10 +108,20 @@ func checkOffice(t *testing.T, b *testBridge, browser context.Context, lang stri
 	read()
 	do(t, office, 10*time.Second, chromedp.Click(chromedp.CSS(`#msgs-panel .close`)))
 	for _, name := range []string{"bob", "carol"} { // an online card and an offline one
-		do(t, office, 10*time.Second,
-			chromedp.Click(chromedp.CSS(fmt.Sprintf(`.emp-label[data-account="%s"]`, b.account(name).ID))),
-			chromedp.WaitVisible(chromedp.CSS(`#card`)))
+		clickLabel(t, office, b.account(name).ID)
+		do(t, office, 10*time.Second, chromedp.WaitVisible(chromedp.CSS(`#card`)))
 		read()
+	}
+	// the search box: "bo" finds bob alone, and Enter opens his card
+	do(t, office, 10*time.Second, chromedp.Click(chromedp.CSS(`#card .close`)), chromedp.SendKeys(chromedp.CSS(`#find`), "bo"))
+	waitUntil(t, 10*time.Second, lang+": the search lists bob alone", func() bool {
+		return get(t, office, 5*time.Second, chromedp.Evaluate[bool](
+			`(h => h.length === 1 && h[0].textContent.includes('bob'))(document.querySelectorAll('#find-list:not([hidden]) .hit'))`))
+	})
+	read()
+	do(t, office, 10*time.Second, chromedp.SendKeys(chromedp.CSS(`#find`), kb.Enter), chromedp.WaitVisible(chromedp.CSS(`#card`)))
+	if got := get(t, office, 5*time.Second, chromedp.Evaluate[string](`document.querySelector('#card h2').textContent`)); got != "bob" {
+		t.Fatalf("%s: Enter in the search box should open bob's card, got %q", lang, got)
 	}
 	do(t, office, 10*time.Second, chromedp.Click(chromedp.CSS(`#card .close`)),
 		chromedp.Click(chromedp.CSS(`#new-emp`)), chromedp.WaitVisible(chromedp.CSS(`#launch form`)))

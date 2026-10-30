@@ -340,8 +340,8 @@ func TestOffice(t *testing.T) {
 	}, paneB.dump)
 	paneB.say("/exit")
 	waitUntil(t, 30*time.Second, "B is off duty after /exit", func() bool { return b.online(nameB) == nil }, paneB.dump)
+	clickLabel(t, office, accB.ID) // B may still be walking out of the door
 	do(t, office, 20*time.Second,
-		chromedp.Click(chromedp.CSS(fmt.Sprintf(`.emp-label[data-account="%s"]`, accB.ID))),
 		chromedp.WaitVisible(chromedp.CSS(`#card .go-work`)),
 		chromedp.Click(chromedp.CSS(`#card .go-work`)),
 		chromedp.WaitVisible(chromedp.CSS(`#launch form`)),

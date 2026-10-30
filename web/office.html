@@ -19,6 +19,19 @@
   #hud .btns { margin-top:6px; display:flex; gap:6px; flex-wrap:wrap; }
   #hud select.lang { font:inherit; font-size:12px; background:#fffdf7; color:#2b2a28; border:2px solid #2b2a28; padding:0 2px; cursor:pointer; }
   #hud .note { margin-top:6px; max-width:420px; color:#f0c674; line-height:1.5; }
+  /* the search box, beside the title: matches show in a list below it, the rest of the office dims */
+  #hud .top { display:flex; align-items:center; gap:10px; }
+  #hud .find { position:relative; }
+  #find { width:210px; box-sizing:border-box; font:inherit; font-size:12px; background:#fffdf7; color:#2b2a28; border:2px solid #2b2a28;
+    padding:2px 6px; box-shadow:2px 2px 0 rgba(0,0,0,.3); }
+  #find:focus { outline:none; border-color:#f2b705; }
+  #find-list { position:absolute; z-index:1; left:0; top:calc(100% + 4px); min-width:240px; max-width:380px; background:#fffdf7; color:#2b2a28;
+    border:2px solid #2b2a28; box-shadow:4px 4px 0 rgba(0,0,0,.35); }
+  #find-list[hidden] { display:none; }
+  #find-list .hit { padding:2px 8px; cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  #find-list .hit.on { background:#f2b705; }
+  #find-list .hit small { color:#6f6b64; margin-left:8px; }
+  #find-list .none { padding:2px 8px; color:#8a867e; }
   #hud .note code { display:block; margin-top:2px; padding:2px 6px; background:#1f1e1c; color:#fffdf7; user-select:all; word-break:break-all; }
   #log { position:fixed; left:16px; bottom:12px; z-index:3; font:12px/1.6 ui-monospace, monospace; color:#a9a49b; max-width:min(560px, calc(100vw - 32px)); pointer-events:none; }
   #log div { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
@@ -38,6 +51,11 @@
   .emp-label .nm { font-weight:700; font-size:12px; }
   .emp-label .st { color:#6f6b64; }
   .emp-label.off { opacity:.55; }
+  .emp-label.away .st { display:none; } /* away from the desk: the name only, so a sofa full of people stays readable */
+  .emp-label.dim { opacity:.25; }
+  .emp-label.match { outline:2px solid #f2b705; outline-offset:1px; }
+  .emp-label.found { animation:found .4s steps(1) 8; }
+  @keyframes found { 50% { background:#f2b705; } }
   .room-label { position:absolute; background:rgba(43,42,40,.82); color:#fffdf7; padding:0 6px; font-size:11px; line-height:1.6; letter-spacing:1px; white-space:nowrap; }
   .sign-text { position:absolute; transform:translate(-50%, -50%); color:#fffdf7; font:700 13px/1 ui-monospace, monospace; letter-spacing:3px; white-space:nowrap; }
   .seat-add { position:absolute; transform:translate(-50%, -50%); pointer-events:auto; cursor:pointer; width:22px; height:22px; padding:0;
@@ -106,7 +124,8 @@
 <canvas id="office"></canvas>
 <div id="labels"></div>
 <div id="hud">
-  <h1 data-i18n="office.title"></h1>
+  <div class="top"><h1 data-i18n="office.title"></h1>
+    <div class="find"><input id="find" type="search" autocomplete="off" spellcheck="false" data-i18n-placeholder="search.placeholder" data-i18n-title="search.title"><div id="find-list" hidden></div></div></div>
   <div class="stats" id="stats" data-i18n="office.nobody"></div>
   <div class="btns">
     <button class="px alert" id="open-asks" hidden></button>
@@ -222,7 +241,7 @@ function buildText(s) {
 }
 
 // cx: the body's center line; by: the body's bottom edge (the top of the feet)
-// pose: eyes 'open'|'down'|'closed'|'none'; armL/armR move the arms up or down; raiseL raises the left hand;
+// pose: eyes 'open'|'down'|'closed'|'none'; armL/armR move the arms up or down; raiseL/raiseR raise a hand;
 // legs draws the feet; step is the foot stepping forward
 function drawClawd(g, cx, by, b, pose, body = CLAWD, shade = CLAWD_SHADE) {
   const left = cx - (b.bw >> 1), top = by - b.bh
@@ -240,10 +259,11 @@ function drawClawd(g, cx, by, b, pose, body = CLAWD, shade = CLAWD_SHADE) {
   const armY = top + Math.floor(b.bh / 2) - 1
   if (pose.raiseL) rect(g, left - b.armW, top - 4, b.armW, b.armH + 4, body)
   else rect(g, left - b.armW, armY + (pose.armL || 0), b.armW, b.armH, body)
-  rect(g, left + b.bw, armY + (pose.armR || 0), b.armW, b.armH, body)
+  if (pose.raiseR) rect(g, left + b.bw, top - 4, b.armW, b.armH + 4, body)
+  else rect(g, left + b.bw, armY + (pose.armR || 0), b.armW, b.armH, body)
   if (b.muscle >= 3) { // biceps
     if (!pose.raiseL) rect(g, left - b.armW - 1, armY + (pose.armL || 0), 1, b.armH - 1, body)
-    rect(g, left + b.bw + b.armW, armY + (pose.armR || 0), 1, b.armH - 1, body)
+    if (!pose.raiseR) rect(g, left + b.bw + b.armW, armY + (pose.armR || 0), 1, b.armH - 1, body)
   }
   if (pose.legs) {
     const xs = [left + 1, left + 3, left + b.bw - 4, left + b.bw - 2]
@@ -283,6 +303,53 @@ function drawEnvelope(g, x, y) {
   rect(g, x, y, 9, 6, '#2b2a28'); rect(g, x + 1, y + 1, 7, 4, '#fffdf7')
   rect(g, x + 2, y + 2, 1, 1, '#b9b3a8'); rect(g, x + 3, y + 3, 3, 1, '#b9b3a8'); rect(g, x + 6, y + 2, 1, 1, '#b9b3a8')
   rect(g, x + 4, y + 2, 1, 1, RED)
+}
+// Zs floating up from the right of the head, clear of the name tag
+function drawZzz(g, x, top, b, t) {
+  for (let i = 0; i < 3; i++) {
+    const p = ((t / 900) + i / 3) % 1
+    drawZ(g, x + (b.bw >> 1) + 3 + Math.round(p * 6), top + 2 - Math.round(p * 10), `rgba(255,253,247,${(1 - p).toFixed(2)})`)
+  }
+}
+// the right hand of a character standing at cx, by: where it holds a mug, a can or a cup
+const handOf = (cx, by, b, armR = 0) => ({ x:cx - (b.bw >> 1) + b.bw + b.armW, y:by - b.bh + Math.floor(b.bh / 2) - 1 + armR })
+function drawMug(g, h, t) {
+  rect(g, h.x, h.y - 2, 3, 4, '#fbfbf8'); rect(g, h.x + 3, h.y - 1, 1, 2, '#fbfbf8'); rect(g, h.x, h.y - 2, 3, 1, '#6e5138')
+  for (let i = 0; i < 2; i++) { // steam
+    const p = ((t / 1300) + i / 2) % 1
+    rect(g, h.x + i, h.y - 4 - Math.round(p * 6), 1, 1, `rgba(255,253,247,${(0.9 * (1 - p)).toFixed(2)})`)
+  }
+}
+function drawCan(g, h) { rect(g, h.x, h.y - 2, 2, 4, RED); rect(g, h.x, h.y - 2, 2, 1, '#d9d5cc') }
+function drawCup(g, h) { rect(g, h.x, h.y - 1, 3, 3, '#fbfbf8'); rect(g, h.x, h.y - 1, 3, 1, '#9cc7e0') }
+function drawBook(g, cx, by, b) { // held open in front of the body
+  const y = by - b.bh + Math.floor(b.bh / 2)
+  rect(g, cx - 5, y, 10, 5, '#a65d4e'); rect(g, cx - 4, y, 8, 4, '#fbfbf8'); rect(g, cx, y, 1, 4, '#b9b3a8')
+}
+// a small speech bubble with an icon; x, y is the bottom left corner
+const ICONS = {
+  '!': ['..X..', '..X..', '..X..', '.....', '..X..'],
+  '?': ['.XXX.', '....X', '..XX.', '.....', '..X..'],
+  '♥': ['.X.X.', 'XXXXX', 'XXXXX', '.XXX.', '..X..'],
+  '♪': ['..XX.', '..X.X', '..X..', 'XXX..', 'XX...'],
+  '…': ['.....', '.....', '.....', '.....', 'X.X.X'],
+}
+const ICON_COLOR = { '!':RED, '?':'#4a90d9', '♥':RED, '♪':'#2b2a28', '…':'#6f6b64' }
+function drawSay(g, x, y, icon) {
+  rect(g, x, y - 9, 9, 9, '#2b2a28'); rect(g, x + 1, y - 8, 7, 7, '#fffdf7'); rect(g, x + 1, y, 2, 2, '#2b2a28')
+  ICONS[icon].forEach((row, r) => [...row].forEach((c, k) => { if (c === 'X') rect(g, x + 2 + k, y - 7 + r, 1, 1, ICON_COLOR[icon]) }))
+}
+// the burst where a tag lands; p runs from 0 to 1
+function drawPow(g, x, y, p) {
+  const r = 2 + Math.round(p * 4), c = p < 0.5 ? YELLOW : '#fffdf7'
+  rect(g, x - r, y, 2 * r + 1, 1, c); rect(g, x, y - r, 1, 2 * r + 1, c)
+  for (const [dx, dy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) rect(g, x + dx * (r - 1), y + dy * (r - 1), 1, 1, c)
+}
+// a blinking ring around the feet of an employee the search found
+function drawRing(g, x, y, b, t) {
+  const c = Math.floor(t / 250) % 2 ? YELLOW : '#fffdf7', hw = (b.bw >> 1) + b.armW + 3
+  rect(g, x - hw + 2, y - 1, 2 * hw - 4, 1, c); rect(g, x - hw + 2, y + 3, 2 * hw - 4, 1, c)
+  rect(g, x - hw, y, 2, 3, c); rect(g, x + hw - 2, y, 2, 3, c)
 }
 
 // ---------- furniture and decor ----------
@@ -352,15 +419,16 @@ function drawMeetingTable(g, x, y, w, h) {
   rect(g, x, y, w, h, '#8a6747'); rect(g, x, y, w, 2, '#a5815e'); rect(g, x, y + h - 3, w, 3, '#6e5138')
   rect(g, x + 14, y + 8, 12, 9, '#fbfbf8'); rect(g, x + 50, y + 10, 10, 6, '#565a62'); rect(g, x + 84, y + 9, 4, 4, '#fbfbf8')
 }
-function drawGlassV(g, x, y, h) {
-  rect(g, x, y, 4, h, '#cfe3ee'); rect(g, x, y, 1, h, '#7d8a94'); rect(g, x + 3, y, 1, h, '#7d8a94')
-}
-function drawGlassH(g, x, y, w, gapX, gapW) {
-  for (const [sx, sw] of [[x, gapX - x], [gapX + gapW, x + w - gapX - gapW]]) {
-    rect(g, sx, y, sw, 10, '#d7e8f1'); rect(g, sx, y, sw, 1, '#7d8a94'); rect(g, sx, y + 9, sw, 1, '#7d8a94')
-    for (let mx = sx; mx < sx + sw; mx += 24) rect(g, mx, y, 1, 10, '#7d8a94')
-    rect(g, sx + 3, y + 2, 6, 1, '#f2f8fb')
+function drawGlassV(g, x, y, h, gapY, gapH) { // with a doorway from gapY down
+  for (const [sy, sh] of [[y, gapY - y], [gapY + gapH, y + h - gapY - gapH]]) {
+    rect(g, x, sy, 4, sh, '#cfe3ee'); rect(g, x, sy, 1, sh, '#7d8a94'); rect(g, x + 3, sy, 1, sh, '#7d8a94')
   }
+  rect(g, x - 1, gapY - 2, 6, 2, '#7d8a94'); rect(g, x - 1, gapY + gapH, 6, 2, '#7d8a94')
+}
+function drawGlassH(g, x, y, w) {
+  rect(g, x, y, w, 10, '#d7e8f1'); rect(g, x, y, w, 1, '#7d8a94'); rect(g, x, y + 9, w, 1, '#7d8a94')
+  for (let mx = x; mx < x + w; mx += 24) rect(g, mx, y, 1, 10, '#7d8a94')
+  rect(g, x + 3, y + 2, 6, 1, '#f2f8fb')
 }
 function drawCounter(g, x, y, w, h) {
   rect(g, x, y, w, h, '#d6d1c7'); rect(g, x, y, 2, h, '#b9b3a8'); rect(g, x + w - 1, y, 1, h, '#a9a49b')
@@ -386,8 +454,44 @@ function drawSofa(g, x, y, w, c, dark) { // facing north, backrest at the bottom
   rect(g, x, y, w, 9, c); rect(g, x, y + 9, w, 5, dark)
   for (let cx = x + Math.floor(w / 3); cx < x + w - 2; cx += Math.floor(w / 3)) rect(g, cx, y + 1, 1, 7, dark)
 }
+// the backrest again, over whoever sits on the sofa: they face away from us, so it hides their lower half
+function drawSofaBack(g, s) { rect(g, s.x, s.y + 9, s.w, 5, s.dark) }
 function drawRug(g, x, y, w, h, c1, c2) { rect(g, x, y, w, h, c1); rect(g, x + 3, y + 3, w - 6, h - 6, c2); rect(g, x + 5, y + 5, w - 10, h - 10, c1) }
-function drawCoffeeTable(g, x, y) { rect(g, x, y, 28, 12, '#8a6747'); rect(g, x, y, 28, 2, '#a5815e'); rect(g, x + 6, y + 4, 3, 3, '#fbfbf8'); rect(g, x + 16, y + 3, 7, 5, '#5d7da6') }
+function drawLoungeTV(g, x, y) { // on a low cabinet, the screen facing the sofa (and us)
+  rect(g, x - 4, y + 20, 44, 6, '#6e5138'); rect(g, x - 4, y + 20, 44, 1, '#8a6747')
+  rect(g, x + 2, y + 23, 14, 1, '#55402c'); rect(g, x + 20, y + 23, 14, 1, '#55402c')
+  rect(g, x + 15, y + 18, 6, 2, '#2b2a28')
+  rect(g, x, y, 36, 19, '#2b2a28'); rect(g, x + 2, y + 2, 32, 15, '#1f2a33'); rect(g, x + 4, y + 3, 6, 1, '#34475a')
+}
+// what's on while someone watches: football, the countryside, a cartoon; the screen is 32x15 at x+2, y+2
+function drawTVShow(g, x, y, t) {
+  const sx = x + 2, sy = y + 2, tri = (period, span) => Math.round(Math.abs(((t / period) % 2) - 1) * span)
+  switch (Math.floor(t / 7000) % 3) {
+    case 0:
+      rect(g, sx, sy, 32, 15, '#4f9a52'); rect(g, sx + 16, sy, 1, 15, '#e9f3e6'); rect(g, sx, sy + 5, 2, 5, '#e9f3e6'); rect(g, sx + 30, sy + 5, 2, 5, '#e9f3e6')
+      rect(g, sx + 4 + tri(1500, 22), sy + 2 + tri(1100, 9), 2, 2, '#fbfbf8')
+      rect(g, sx + 7 + tri(2300, 8), sy + 4 + tri(1700, 7), 2, 3, RED); rect(g, sx + 19 + tri(1900, 8), sy + 3 + tri(2100, 8), 2, 3, '#4a90d9')
+      break
+    case 1:
+      rect(g, sx, sy, 32, 15, '#8fc3e8'); rect(g, sx + 24, sy + 2, 4, 4, YELLOW)
+      const cloud = sx + ((t / 200) % 40 | 0) - 8 // drifting across, cut at the screen's edges
+      rect(g, Math.max(cloud, sx), sy + 3, Math.min(cloud + 8, sx + 32) - Math.max(cloud, sx), 2, '#fbfbf8')
+      rect(g, sx, sy + 10, 32, 5, '#6f9a63'); rect(g, sx + 4, sy + 8, 10, 2, '#6f9a63'); rect(g, sx + 18, sy + 9, 8, 1, '#5f8a53')
+      break
+    default:
+      rect(g, sx, sy, 32, 15, '#2d4b6b')
+      for (let i = 0; i < 4; i++) rect(g, sx + 3 + i * 8, sy + 2 + (i % 2) * 3, 1, 1, (Math.floor(t / 400) + i) % 2 ? '#fbfbf8' : '#2d4b6b')
+      drawMini(g, sx + 11, sy + 8 - tri(500, 5), CLAWD, CLAWD_SHADE)
+  }
+  rect(g, sx, sy + (Math.floor(t / 60) % 15), 32, 1, 'rgba(255,255,255,.08)') // a faint scan line
+}
+// the ball while two play: it bounces around the field, x, y is the table's top left
+function drawFoosBall(g, x, y, t) {
+  const tri = (period, span) => Math.round(Math.abs(((t / period) % 2) - 1) * span)
+  rect(g, x + 4 + tri(900, 37), y + 4 + tri(1300, 17), 2, 2, '#fbfbf8')
+}
+// a sheet coming out of the printer, x, y is the printer's top left
+function drawPaper(g, x, y, t) { rect(g, x + 6, y + 14, 14, 3 + (Math.floor(t / 300) % 6), '#fbfbf8') }
 function drawFoosball(g, x, y) {
   rect(g, x, y, 46, 26, '#6e5138'); rect(g, x + 3, y + 3, 40, 20, '#4f9a52')
   rect(g, x + 22, y + 3, 1, 20, '#e9f3e6'); rect(g, x + 3, y + 10, 2, 6, '#e9f3e6'); rect(g, x + 41, y + 10, 2, 6, '#e9f3e6')
@@ -475,14 +579,134 @@ function layout() {
   rooms.meeting = { x:RIGHT_X, y:WALL_H, w:RIGHT_W, h:meetH }
   rooms.lounge = { x:RIGHT_X, y:WALL_H + meetH + 10, w:RIGHT_W, h:H - 6 - (WALL_H + meetH + 10) }
   rooms.front = { x:4, y:workBottom + 6, w:RIGHT_X - 8, h:H - 6 - (workBottom + 6) }
+  buildPlaces()
+  if (rows !== navRows) { // the graph changed under everyone's feet: put them straight where they're going
+    navRows = rows
+    for (const e of emps.values()) if (e.inside) e.fresh = true
+  }
   for (const e of emps.values()) {
     const d = deskOf(e.acc.seat)
     e.desk = d
     e.seat = { x:d.x + 16, y:d.y - 2 }
-    e.lane = d.x + 40
   }
   drawBackground()
   resize()
+}
+
+// ================= walkways and spots =================
+// Employees walk on a small graph: an aisle beside each column of desks, a corridor along the back wall and one
+// along the reception, the corridor between the office and the rooms on the right, and walkways in each room.
+// A spot is a node where an idle employee spends a while: a chair, a sofa seat, a place to stand.
+const MEET_DOOR = 95 // the meeting room's doorway is in its glass wall on the corridor, this far down from its top
+let nav = { pts:[], adj:[], door:-1, seats:[] }, navRows = 0
+const navCache = new Map() // target node -> the way there from every node
+const spots = new Map()    // id -> { id, x, y, node, room, face (1 front, -1 back), sit, nap }
+let geo = {}               // furniture that comes alive (TV, foosball, printer) or hides people (sofa backrests)
+
+function buildPlaces() {
+  const pts = [], adj = []
+  const node = (x, y) => (pts.push({ x, y }), adj.push([]), pts.length - 1)
+  const link = (a, b) => { adj[a].push(b); adj[b].push(a) }
+  const chain = ids => ids.reduce((a, b) => (link(a, b), b))
+  const mark = (id, n, o) => spots.set(id, { id, x:pts[n].x, y:pts[n].y, node:n, face:1, sit:false, nap:false, ...o })
+  const spot = (id, x, y, from, o) => { const n = node(x, y); link(n, from); mark(id, n, o) }
+  spots.clear(); navCache.clear()
+  const { work, meeting, lounge, front } = rooms
+  const TOP = WALL_H + 14, BOT = work.y + work.h + 3, CX = (work.x + work.w + RIGHT_X) >> 1
+  const top = new Map(), bot = new Map(), side = new Map() // corridor nodes, by x (by y for the side corridor)
+  const at = (m, k, x, y) => m.get(k) ?? m.set(k, node(x, y)).get(k)
+  const onTop = x => at(top, x, x, TOP), onBot = x => at(bot, x, x, BOT), onSide = y => at(side, y, CX, y)
+  top.set(CX, onSide(TOP)); bot.set(CX, onSide(BOT))
+
+  // the open office: each column's aisle runs from the back corridor to the front one, past its desks;
+  // two windows on the back wall to look out of
+  const seats = []
+  for (let c = 0; c < COLS; c++) {
+    const ax = deskOf(c).x + 40, aisle = [onTop(ax)]
+    for (let r = 0; r < rows; r++) {
+      const s = r * COLS + c, d = deskOf(s)
+      aisle.push(node(ax, d.y - 2))
+      seats[s] = node(d.x + 16, d.y - 2); link(seats[s], aisle.at(-1))
+    }
+    chain([...aisle, onBot(ax)])
+  }
+  spot('win0', WORK_X + 29, TOP - 4, onTop(WORK_X + 29), { room:'work', face:-1 })
+  spot('win1', WORK_X + COLS * COL_PITCH - 29, TOP - 4, onTop(WORK_X + COLS * COL_PITCH - 29), { room:'work', face:-1 })
+
+  // meeting room: a walkway around the table, ten chairs to nap on, the door on the corridor
+  const tx = meeting.x + 48, ty = meeting.y + 52, tw = 112, th = 30, chairX = i => tx + 15 + i * 26
+  const mL = tx - 24, mR = tx + tw + 22, mT = ty - 16, mB = ty + th + 22, doorY = meeting.y + MEET_DOOR
+  const tops = [0, 1, 2, 3].map(i => node(chairX(i), mT)), bottoms = [0, 1, 2, 3].map(i => node(chairX(i), mB))
+  const TL = node(mL, mT), TR = node(mR, mT), BR = node(mR, mB), BL = node(mL, mB)
+  const byLeft = node(mL, ty + 19), byRight = node(mR, ty + 19), inside = node(mL, doorY)
+  chain([TL, ...tops, TR, byRight, BR, ...[...bottoms].reverse(), BL, inside, byLeft, TL])
+  link(inside, onSide(doorY))
+  tops.forEach((n, i) => spot('mt' + i, chairX(i), ty, n, { room:'meeting', sit:true, nap:true }))
+  bottoms.forEach((n, i) => spot('mb' + i, chairX(i), ty + th + 9, n, { room:'meeting', sit:true, nap:true, face:-1 }))
+  spot('ml', tx - 8, ty + 19, byLeft, { room:'meeting', sit:true, nap:true })
+  spot('mr', tx + tw + 9, ty + 19, byRight, { room:'meeting', sit:true, nap:true })
+
+  // lounge: a street across the middle, a loop around the foosball table (for tag), an aisle in front of the sofa
+  const lx = lounge.x, ly = lounge.y, lr = lx + lounge.w, lb = ly + lounge.h
+  const street = ly + 64, aisle = lb - 32, north = ly + 10
+  const fx = lx + 60, fy = ly + 22
+  const NW = node(fx - 12, north), NE = node(fx + 58, north), SE = node(fx + 58, street), SW = node(fx - 12, street)
+  const fbN = node(fx + 17, north), fbS = node(fx + 29, street)
+  chain([onSide(north), NW, fbN, NE, SE]); link(NW, SW)
+  const west = node(lx + 38, street), east = node(lx + 130, street), vend = node(lx + 143, street), cafe = node(lr - 31, street)
+  chain([onSide(street), west, SW, fbS, SE, east, vend, cafe])
+  const sofa = { x:lx + 46, y:lb - 27, w:68, c:'#4f7d8a', dark:'#3d6370' }, seatX = [11, 33, 56].map(dx => sofa.x + dx)
+  const coolA = node(lx + 28, aisle), westA = node(lx + 38, aisle), eastA = node(lx + 130, aisle), sofaA = seatX.map(x => node(x, aisle))
+  link(west, westA); link(east, eastA)
+  chain([coolA, westA, ...sofaA, eastA])
+  spot('fb0', fx + 17, fy - 2, fbN, { room:'lounge' })
+  spot('fb1', fx + 29, street - 4, fbS, { room:'lounge', face:-1 })
+  mark('tag0', NW, { room:'lounge' }); mark('tag1', SE, { room:'lounge' })
+  spot('vend', lx + 143, ly + 50, vend, { room:'lounge', face:-1 })
+  spot('coffee', lr - 31, ly + 42, cafe, { room:'lounge' })
+  seatX.forEach((x, i) => spot('ls' + i, x, lb - 17, sofaA[i], { room:'lounge', sit:true, nap:true, face:-1 }))
+  spot('water', lx + 28, lb - 10, coolA, { room:'lounge' })
+  spot('rt0', lx + 142, lb - 52, east, { room:'lounge', sit:true })
+  spot('rt1', lx + 172, lb - 52, cafe, { room:'lounge', sit:true })
+
+  // reception: the bookshelf, the reception desk (someone may mind it), the visitors' sofa, the printer, the door
+  const fb = front.y + front.h, fr = front.x + front.w, raisle = fb - 30
+  const doorN = node(door.x, door.y); link(doorN, onBot(door.x))
+  const shelfA = node(front.x + 44, front.y + 46); link(shelfA, onBot(front.x + 44))
+  spot('books', front.x + 20, front.y + 46, shelfA, { room:'front' })
+  spot('front', front.x + 92, front.y + 21, onBot(front.x + 92), { room:'front', sit:true })
+  const rsofa = { x:door.x + 46, y:fb - 22, w:40, c:'#8a6f8a', dark:'#6e566e' }
+  const rA = node(rsofa.x + 20, raisle), r0 = node(rsofa.x + 9, raisle), r1 = node(rsofa.x + 31, raisle)
+  link(rA, onBot(rsofa.x + 20)); chain([r0, rA, r1])
+  spot('rs0', rsofa.x + 9, fb - 12, r0, { room:'front', sit:true, nap:true, face:-1 })
+  spot('rs1', rsofa.x + 31, fb - 12, r1, { room:'front', sit:true, nap:true, face:-1 })
+  spot('print', fr - 61, raisle, r1, { room:'front', face:-1 })
+
+  const sorted = m => [...m].sort((a, b) => a[0] - b[0]).map(([, n]) => n)
+  chain(sorted(top)); chain(sorted(bot)); chain(sorted(side))
+  nav = { pts, adj, door:doorN, seats }
+  geo = { foos:{ x:fx, y:fy }, tv:{ x:lx + 62, y:lb - 72 }, sofa, rsofa, printer:{ x:fr - 74, y:front.y + 8 }, loop:[NW, NE, SE, SW] }
+}
+
+// the shortest way to a node from every node: dist[n] is how far, next[n] the node to go to next
+function towards(target) {
+  if (navCache.has(target)) return navCache.get(target)
+  const { pts, adj } = nav, n = pts.length
+  const dist = new Array(n).fill(Infinity), next = new Array(n).fill(-1), done = new Array(n).fill(false)
+  dist[target] = 0
+  for (;;) {
+    let u = -1
+    for (let i = 0; i < n; i++) if (!done[i] && dist[i] < Infinity && (u < 0 || dist[i] < dist[u])) u = i
+    if (u < 0) break
+    done[u] = true
+    for (const v of adj[u]) {
+      const d = dist[u] + Math.hypot(pts[u].x - pts[v].x, pts[u].y - pts[v].y)
+      if (d < dist[v]) { dist[v] = d; next[v] = u }
+    }
+  }
+  const way = { dist, next }
+  navCache.set(target, way)
+  return way
 }
 
 function drawBackground() {
@@ -515,36 +739,36 @@ function drawBackground() {
   drawClock(g, RIGHT_X - 15, 6)
   drawTV(g, meeting.x + meeting.w / 2 - 24, 10)
 
-  // meeting room: glass walls, a long table, ten chairs, two big plants
-  drawGlassV(g, RIGHT_X, WALL_H, meeting.h)
+  // meeting room: glass walls (the door faces the corridor), a long table, ten chairs, two big plants
+  drawGlassV(g, RIGHT_X, WALL_H, meeting.h, meeting.y + MEET_DOOR - 13, 26)
   drawMeetingTable(g, meeting.x + 48, meeting.y + 52, 112, 30)
   drawBigPlant(g, meeting.x + meeting.w - 22, meeting.y + 6)
   drawBigPlant(g, meeting.x + 8, meeting.y + meeting.h - 34)
-  drawGlassH(g, RIGHT_X, meeting.y + meeting.h, meeting.w, RIGHT_X + 14, 26)
+  drawGlassH(g, RIGHT_X, meeting.y + meeting.h, meeting.w)
 
-  // lounge: a counter (sink, coffee machine, microwave), a fridge, a vending machine, a sofa and coffee table,
-  // foosball, a small round table, a water cooler
-  const lx = lounge.x, ly = lounge.y, lr = lounge.x + lounge.w
+  // lounge: a counter (sink, coffee machine, microwave), a fridge, a vending machine, foosball, a TV in front of
+  // the sofa, a small round table, a water cooler
+  const lx = lounge.x, ly = lounge.y, lr = lounge.x + lounge.w, lb = ly + lounge.h, { sofa, rsofa } = geo
   drawCounter(g, lr - 22, ly + 4, 22, 74)
   drawSink(g, lr - 18, ly + 8); drawCoffeeMachine(g, lr - 17, ly + 26); drawMicrowave(g, lr - 18, ly + 48)
   drawFridge(g, lr - 21, ly + 82)
-  drawVending(g, lx + 8, ly + 6)
-  drawFoosball(g, lx + 70, ly + 14)
-  drawRoundTable(g, lx + 152, ly + 58)
-  drawRug(g, lx + 34, ly + lounge.h - 52, 92, 46, '#c98b6b', '#d9a184')
-  drawCoffeeTable(g, lx + 66, ly + lounge.h - 44)
-  drawSofa(g, lx + 46, ly + lounge.h - 27, 68, '#4f7d8a', '#3d6370')
-  drawCooler(g, lx + 6, ly + lounge.h - 32)
-  drawPlant(g, lr - 20, ly + lounge.h - 24)
+  drawVending(g, lx + 132, ly + 6)
+  drawFoosball(g, geo.foos.x, geo.foos.y)
+  drawRug(g, lx + 34, lb - 52, 92, 46, '#c98b6b', '#d9a184')
+  drawLoungeTV(g, geo.tv.x, geo.tv.y)
+  drawSofa(g, sofa.x, sofa.y, sofa.w, sofa.c, sofa.dark)
+  drawRoundTable(g, lx + 148, lb - 62)
+  drawCooler(g, lx + 6, lb - 32)
+  drawPlant(g, lr - 20, lb - 24)
 
   // reception: the desk, a visitors' sofa, a printer, filing cabinets, a bookshelf, two big plants by the door,
   // a fire extinguisher
   const fx = front.x, fy = front.y
   drawBookshelf(g, fx + 4, fy + 4)
-  drawReception(g, fx + 48, fy + 22)
+  drawReception(g, fx + 52, fy + 22)
   drawBigPlant(g, door.x - 34, fy + front.h - 34); drawBigPlant(g, door.x + 16, fy + front.h - 34)
-  drawSofa(g, door.x + 46, fy + front.h - 22, 40, '#8a6f8a', '#6e566e')
-  drawPrinter(g, front.x + front.w - 74, fy + 8)
+  drawSofa(g, rsofa.x, rsofa.y, rsofa.w, rsofa.c, rsofa.dark)
+  drawPrinter(g, geo.printer.x, geo.printer.y)
   drawCabinet(g, front.x + front.w - 44, fy + 4); drawCabinet(g, front.x + front.w - 28, fy + 4)
   drawExtinguisher(g, 6, WALL_H + 30)
 
@@ -558,7 +782,7 @@ function drawBackground() {
 
 // ================= employees (one per account) =================
 const emps = new Map() // account id -> employee
-const SPEED = 48 // pixels per second
+const WALK = 48, HURRY = 90, TAG_RUN = 70, TAG_CHASE = 84 // pixels per second
 
 function makeEmployee(acc) {
   const label = document.createElement('div')
@@ -566,57 +790,267 @@ function makeEmployee(acc) {
   label.dataset.account = acc.id
   label.addEventListener('click', () => onEmployeeClick(acc.id))
   document.getElementById('labels').appendChild(label)
-  return { acc, s:null, label, x:0, y:0, path:[], inside:false, facing:1,
+  return { acc, s:null, label, x:0, y:0, path:[], node:-1, goal:null, want:null, inside:false, fresh:false, facing:1,
     blinkAt:performance.now() + 2000 + Math.random() * 4000, phase:hash(acc.id) % 1000 }
 }
 
-// corridor route: across to the aisle beside one's column of desks, along it, then across into the seat
-const route = (from, to, laneX) => [{ x:laneX, y:from.y }, { x:laneX, y:to.y }, { x:to.x, y:to.y }]
+const isOnline = e => !!e.s && e.s.state !== 'ended'
 
 function updateEmployee(e, acc, walkIn) {
-  const was = e.s && e.s.state !== 'ended'
+  const was = isOnline(e)
   e.acc = acc
   e.s = sessionOf(acc)
-  const online = !!e.s && e.s.state !== 'ended'
-  if (online && !was) {
-    if (walkIn) { e.x = door.x; e.y = door.y; e.path = route(e, e.seat, e.lane) }
-    else { e.x = e.seat.x; e.y = e.seat.y; e.path = [] }
+  const online = isOnline(e)
+  if (online && !was && !e.inside) { // on duty: in through the door, or straight to its spot when the page opens
+    if (walkIn) { e.x = door.x; e.y = door.y; e.node = nav.door; e.path = []; e.goal = null }
+    else e.fresh = true
     e.inside = true
-  } else if (!online && was && e.inside) {
-    e.path = route(e, door, e.lane) // off duty: walk out
-  }
+  } // off duty: the planner walks it out
   const state = online ? e.s.state : 'ended'
   e.label.style.borderLeftColor = STATE_COLOR[state] ?? GRAY
-  e.label.className = 'emp-label' + (online ? '' : ' off')
+  e.label.classList.toggle('off', !online)
   e.label.dataset.state = state
   const status = statusText(online ? e.s : null)
   e.label.innerHTML = `<div class="nm">${esc(acc.name)}</div><div class="st">${dot(state)}${esc(status)}</div>`
-  e.label.title = `${acc.name} · ${status}`
+  e.status = `${acc.name} · ${status}`
+  e.sized = false
 }
 
 function dropEmployee(e) { e.label.remove(); e.bubble?.remove(); emps.delete(e.acc.id) }
 
-function step(e, dt) {
+// ================= idle life =================
+// An idle employee stays at its desk a while (the next prompt may be on its way), then wanders off: TV on the
+// lounge sofa, coffee, the vending machine, the water cooler, a window, the bookshelf, the printer, minding
+// reception, or with a colleague foosball, tag or a chat at the round table. After a while it naps (most hide in
+// the meeting room) and now and then wakes up for another round. It all counts from when the bridge saw the
+// session go idle, so reloading the page wakes nobody. Work or a pending ask sends it back to its desk; so does a
+// click, and then it stays there until its next turn.
+const SETTLE = 20000, FIRST_NAP = 150000, NAP = 240000, WAKE = 90000, SLOT = 30000, PAIR_SLOT = 40000
+const SOLO = [['tv', 4], ['coffee', 2], ['vending', 2], ['water', 2], ['window', 2], ['books', 2], ['print', 1], ['front', 2], ['desk', 1]]
+const SOLO_SPOTS = { tv:['ls0', 'ls1', 'ls2'], coffee:['coffee'], vending:['vend'], water:['water'], window:['win0', 'win1'],
+  books:['books'], print:['print'], front:['front'] }
+const PAIR_SPOTS = { foosball:['fb0', 'fb1'], chase:['tag0', 'tag1'], chat:['rt0', 'rt1'] }
+const NAP_SPOTS = [['mt0', 'mt1', 'mt2', 'mt3', 'mb0', 'mb1', 'mb2', 'mb3', 'ml', 'mr'], ['ls0', 'ls1', 'ls2'], ['rs0', 'rs1']]
+
+// a well-mixed hash for the choices (similar strings get similar numbers from hash())
+function rnd(s) {
+  let h = 2166136261
+  for (const c of String(s)) { h ^= c.codePointAt(0); h = Math.imul(h, 16777619) }
+  h ^= h >>> 16; h = Math.imul(h, 2246822507); h ^= h >>> 13; h = Math.imul(h, 3266489909); h ^= h >>> 16
+  return h >>> 0
+}
+const idleSince = e => Date.parse(e.s?.stateSince || '') || Date.now()
+const summoned = e => !!e.summon && e.s?.id === e.summon.session && e.s.stateSince === e.summon.since && e.s.state === 'idle'
+
+// where an idle employee is in its rhythm at `at` (ms since 1970): settling at its desk, wandering, or napping;
+// for a nap, also when it began
+function rhythm(e, at) {
+  const t = at - idleSince(e)
+  if (t < SETTLE) return { phase:'settle' }
+  if (t < FIRST_NAP) return { phase:'roam' }
+  const k = (t - FIRST_NAP + rnd(e.acc.id + '/nap') % (NAP / 2)) % (NAP + WAKE) // each has its own
+  return k < NAP ? { phase:'nap', since:at - k } : { phase:'roam' }
+}
+
+// at its desk: ready for work right after a click, then the phone or games (each has a preference, switching
+// every half minute), asleep in the end
+function deskPastime(e, at) {
+  const called = summoned(e), t = at - (called ? e.summon.at : idleSince(e))
+  if (e.want?.act === 'nap' || (called && t > FIRST_NAP)) return 'sleep'
+  if (called && t < 60000) return 'ready'
+  return ['phone', 'game'][(hash(e.acc.id) + Math.floor(t / 30000)) % 2]
+}
+
+// Pairs form on a clock all pages share: in each PAIR_SLOT, the employees who were already wandering when it
+// began may pair up (not every time) for foosball, tag or a chat. Foosball and tag need the same table.
+let pairMemo = { slot:-1, pairs:[] }
+function pairsAt(at, roamers) {
+  const P = Math.floor(at / PAIR_SLOT)
+  if (pairMemo.slot !== P) {
+    const start = P * PAIR_SLOT
+    const pool = roamers.filter(e => rhythm(e, start).phase === 'roam')
+      .sort((a, b) => rnd(a.acc.id + '/' + P) - rnd(b.acc.id + '/' + P))
+    const pairs = [], used = new Set(), kinds = ['foosball', 'chase', 'chat'], table = k => k === 'chase' ? 'foosball' : k
+    for (let i = 0; i + 1 < pool.length && pairs.length < 2; i += 2) {
+      if (rnd('pair/' + P + '/' + i) % 10 >= 7) continue
+      const first = rnd('kind/' + P + '/' + i) % 3
+      const kind = [0, 1, 2].map(k => kinds[(first + k) % 3]).find(k => !used.has(table(k)))
+      if (!kind) break
+      used.add(table(kind))
+      pairs.push({ kind, key:P + '/' + i, ids:[pool[i].acc.id, pool[i + 1].acc.id] })
+    }
+    pairMemo = { slot:P, pairs }
+  }
+  return pairMemo.pairs
+}
+
+// a solo idea for each half minute, best first: a weighted pick that differs from the last one, then the rest
+function soloIdeas(e, slot) {
+  const total = SOLO.reduce((n, [, w]) => n + w, 0)
+  const pick = k => { let r = rnd(e.acc.id + '/' + k) % total; return SOLO.find(([, w]) => (r -= w) < 0)[0] }
+  let first = pick(slot)
+  if (slot > 0 && first === pick(slot - 1)) first = pick(slot + 1e6)
+  const rest = SOLO.map(([a]) => a).filter(a => a !== first), h = rnd(e.acc.id + '/order/' + slot)
+  return [first, ...rest.map((_, i) => rest[(i + h) % rest.length])]
+}
+
+// where everyone in the building should be now, and what for: Map employee -> { act, spot, hurry, pair }
+function planLife(at) {
+  const plan = new Map(), taken = new Set()
+  const desk = e => ({ id:'desk', x:e.seat.x, y:e.seat.y, node:nav.seats[e.acc.seat], room:'desk', face:1, sit:true })
+  const free = (ids, turn) => ids.map((_, i) => spots.get(ids[(i + turn) % ids.length])).find(s => s && !taken.has(s.id))
+  const claim = (e, act, s, more) => { taken.add(s.id); plan.set(e, { act, spot:s, ...more }) }
+  const naps = [], roam = []
+  for (const e of emps.values()) {
+    if (!e.inside || !e.desk) continue
+    if (!isOnline(e)) plan.set(e, { act:'out', spot:{ id:'out', x:door.x, y:door.y, node:nav.door, room:'out', face:1 } })
+    else if (e.s.state !== 'idle') plan.set(e, { act:'work', spot:desk(e), hurry:true })
+    else if (summoned(e)) plan.set(e, { act:'ready', spot:desk(e), hurry:true })
+    else {
+      const r = rhythm(e, at)
+      if (r.phase === 'settle') plan.set(e, { act:'desk', spot:desk(e) })
+      else if (r.phase === 'nap') naps.push([e, r.since])
+      else roam.push(e)
+    }
+  }
+  // nappers keep their spot for the whole nap (whoever fell asleep first chose first): most like the meeting
+  // room, some a sofa, some their own desk
+  naps.sort((a, b) => a[1] - b[1] || (a[0].acc.id < b[0].acc.id ? -1 : 1))
+  for (const [e] of naps) {
+    const h = rnd(e.acc.id + '/bed'), k = h % 20
+    const order = k < 11 ? [0, 1, 2] : k < 14 ? [1, 0, 2] : k < 17 ? [2, 0, 1] : []
+    const s = order.map(i => free(NAP_SPOTS[i], h)).find(Boolean)
+    if (s) claim(e, 'nap', s); else plan.set(e, { act:'nap', spot:desk(e) })
+  }
+  // pairs
+  const paired = new Set()
+  for (const pair of pairsAt(at, roam)) {
+    const two = pair.ids.map(id => emps.get(id)), ids = PAIR_SPOTS[pair.kind]
+    if (!two.every(e => e && roam.includes(e)) || ids.some(id => taken.has(id))) continue
+    two.forEach((e, i) => { claim(e, pair.kind, spots.get(ids[i]), { pair }); paired.add(e) })
+  }
+  // the rest wander on their own; whoever had its idea first gets the spot
+  const solo = roam.filter(e => !paired.has(e)).map(e => {
+    const t = at - idleSince(e) - SETTLE + rnd(e.acc.id + '/beat') % (SLOT / 2) // each its own beat, the first idea lasting 15 to 30 s
+    return { e, slot:Math.floor(t / SLOT), since:at - t % SLOT }
+  })
+  solo.sort((a, b) => a.since - b.since || (a.e.acc.id < b.e.acc.id ? -1 : 1))
+  for (const { e, slot } of solo) {
+    const act = soloIdeas(e, slot).find(a => a === 'desk' || free(SOLO_SPOTS[a], 0))
+    if (act === 'desk') plan.set(e, { act, spot:desk(e) })
+    else claim(e, act, free(SOLO_SPOTS[act], rnd(e.acc.id + '/' + act)))
+  }
+  return plan
+}
+
+// every frame: follow the plan, walk, play
+function lifeTick(at, now, dt) {
+  const plan = planLife(at)
+  for (const [e, w] of plan) {
+    e.want = w
+    if (e.fresh) { place(e, w.spot, now); e.fresh = false }
+    else if (e.goal?.id !== w.spot.id) go(e, w.spot)
+    else e.goal = w.spot // the same spot, maybe rebuilt by a new layout
+  }
+  playTag(plan, now, dt)
+  for (const e of plan.keys()) e.moving = move(e, dt, now)
+}
+
+function place(e, spot, now) {
+  e.x = spot.x; e.y = spot.y; e.node = spot.node; e.path = []; e.goal = spot; e.arrived = now; e.tag = null
+  if (spot.id === 'out') e.inside = false
+}
+
+// sets off for a spot along the walkways, from the node it last passed or the one it was heading for,
+// whichever makes the shorter trip
+function go(e, spot) {
+  e.goal = spot; e.tag = null
+  const { pts } = nav, { dist, next } = towards(spot.node)
+  let from = -1, best = Infinity
+  for (const n of [e.node, e.path[0]?.n]) {
+    if (!(n >= 0)) continue
+    const d = Math.hypot(pts[n].x - e.x, pts[n].y - e.y) + dist[n]
+    if (d < best) { from = n; best = d }
+  }
+  if (from < 0 || best === Infinity) return place(e, spot, performance.now())
+  e.path = []
+  for (let n = from; n >= 0; n = next[n]) e.path.push({ x:pts[n].x, y:pts[n].y, n })
+}
+
+// one frame of walking; true while on the way
+function move(e, dt, now) {
+  if (e.tag) return true // the game of tag moves it
   if (!e.path.length) return false
-  const p = e.path[0]
-  const dx = p.x - e.x, dy = p.y - e.y, d = Math.hypot(dx, dy)
-  const move = SPEED * dt
-  if (d <= move) { e.x = p.x; e.y = p.y; e.path.shift() }
-  else { e.x += dx / d * move; e.y += dy / d * move }
-  e.facing = dy < -0.01 ? -1 : 1 // walking up, we see the back
-  if (!e.path.length && !(e.s && e.s.state !== 'ended')) e.inside = false
+  let left = (e.want?.hurry ? HURRY : WALK) * dt
+  while (left > 0 && e.path.length) {
+    const p = e.path[0], dx = p.x - e.x, dy = p.y - e.y, d = Math.hypot(dx, dy)
+    e.facing = dy < -0.01 ? -1 : 1 // walking up, we see the back
+    if (d <= left) { e.x = p.x; e.y = p.y; e.node = p.n; e.path.shift(); left -= d }
+    else { e.x += dx / d * left; e.y += dy / d * left; left = 0 }
+  }
+  if (!e.path.length) { e.arrived = now; if (e.goal?.id === 'out') e.inside = false }
   return true
 }
 
-// What an idle employee does: phone or games at first (each has a preference, switching every half minute),
-// then sleep after a long while. Idle time counts from when the bridge saw the session go idle, so reloading
-// the page wakes nobody.
-function idleActivity(e) {
-  const since = Date.parse(e.s?.stateSince || '') || Date.now()
-  const idleFor = Date.now() - since
-  if (idleFor > 120000) return 'sleep'
-  return ['phone', 'game'][(hash(e.acc.id) + Math.floor(idleFor / 30000)) % 2]
+// Tag around the foosball table: "it" runs a little faster than the other; a tag turns them both around,
+// and the new "it" counts a second before giving chase.
+const tagGames = new Map() // pair key -> { s:[distance along the loop of each], it, dir, wait, pow }
+function playTag(plan, now, dt) {
+  const loop = geo.loop.map(n => nav.pts[n]), lens = loop.map((p, i) => Math.hypot(loop[(i + 1) % 4].x - p.x, loop[(i + 1) % 4].y - p.y))
+  const L = lens.reduce((a, b) => a + b)
+  const where = s => {
+    s = ((s % L) + L) % L
+    let i = 0
+    while (i < 3 && s > lens[i]) s -= lens[i++]
+    const p = loop[i], q = loop[(i + 1) % 4], f = Math.min(1, s / lens[i])
+    return { x:p.x + (q.x - p.x) * f, y:p.y + (q.y - p.y) * f, edge:i }
+  }
+  const live = new Set()
+  for (const pair of pairMemo.pairs) {
+    if (pair.kind !== 'chase') continue
+    const two = pair.ids.map(id => emps.get(id))
+    if (!two.every(e => e && plan.get(e)?.pair === pair)) continue
+    if (!two.every(e => e.tag || (!e.path.length && e.goal?.id.startsWith('tag')))) continue // waiting for the other
+    live.add(pair.key)
+    let game = tagGames.get(pair.key)
+    if (!game) tagGames.set(pair.key, game = { s:[0, L / 2], it:0, dir:1, wait:0, pow:null })
+    const run = 1 - game.it
+    game.s[run] += game.dir * TAG_RUN * dt
+    if (game.wait > 0) game.wait -= dt
+    else game.s[game.it] += game.dir * TAG_CHASE * dt
+    if (game.wait <= 0 && (((game.s[run] - game.s[game.it]) * game.dir) % L + L) % L < 6) {
+      const p = where(game.s[run])
+      game.pow = { x:p.x, y:p.y - 6, at:now }
+      game.it = run; game.dir = -game.dir; game.wait = 1
+    }
+    two.forEach((e, i) => {
+      const p = where(game.s[i])
+      e.x = p.x; e.y = p.y; e.node = geo.loop[p.edge]; e.path = []
+      e.facing = (game.dir > 0 ? p.edge === 3 : p.edge === 1) ? -1 : 1
+      e.tag = { it:game.it === i, wait:game.it === i && game.wait > 0 }
+    })
+  }
+  for (const key of tagGames.keys()) if (!live.has(key)) tagGames.delete(key)
 }
+
+// a chat at the round table: they take turns, a bubble each
+function chatLine(e, pair, now) {
+  const k = Math.floor(now / 1800)
+  if (!pair || now % 1800 > 1400 || !pair.ids.every(id => emps.get(id)?.there)) return null
+  if (pair.ids[rnd(pair.key + '/' + k) % 2] !== e.acc.id) return null
+  return ['…', '!', '?', '♥', '♪'][rnd(pair.key + '/say/' + k) % 5]
+}
+
+// what an idle employee is doing, in words (for the card, the search list and the name tag's tooltip)
+function doingText(e) {
+  if (!e.inside || !isOnline(e) || e.s.state !== 'idle' || !e.want) return ''
+  const w = e.want, room = e.goal?.room
+  if (e.moving && !e.tag) return t(w.act === 'ready' ? 'idle.back' : 'idle.walk')
+  const doing = t('idle.' + w.act)
+  if (room && room !== 'desk') return t('idle.where', { doing, room:t('room.' + room) })
+  return w.act === 'nap' ? t('idle.where', { doing, room:t('idle.desk') }) : doing
+}
+const stateLine = e => { const doing = doingText(e); return statusText(isOnline(e) ? e.s : null) + (doing ? ' · ' + doing : '') }
 
 // ================= rendering =================
 const cv = document.getElementById('office'), ctx = cv.getContext('2d')
@@ -635,10 +1069,13 @@ const flights = [] // envelopes in flight { from, to, t, toAcc }
 const mailAt = new Map() // account id -> when mail arrived; it shows above the head for a while
 
 function frame(now) {
+  requestAnimationFrame(frame) // first, so one bad frame doesn't stop the office
   const dt = Math.min((now - (frame.last || now)) / 1000, 0.1)
   frame.last = now
+  const at = Date.now()
   const g = buf.getContext('2d')
   g.drawImage(bgCanvas, 0, 0)
+  lifeTick(at, now, dt)
 
   const items = [] // sorted by the feet's y, so nearer things cover farther ones
   const taken = new Set(snapshot.accounts.map(a => a.seat))
@@ -648,46 +1085,17 @@ function frame(now) {
     items.push({ y:d.y - 3, draw:() => drawChair(g, d.x, d.y) })
     items.push({ y:d.y + 14, draw:() => { drawDesk(g, d.x, d.y, OFF); drawClutter(g, d.x, d.y, seat) } })
   }
+  const using = new Set() // spots someone has reached
+  let watching = false
   for (const e of emps.values()) {
     if (!e.desk) continue
-    const walking = step(e, dt)
-    const online = !!e.s && e.s.state !== 'ended'
-    const st = online ? e.s.state : 'ended'
+    const online = isOnline(e), st = online ? e.s.state : 'ended'
     items.push({ y:e.desk.y - 3, draw:() => drawChair(g, e.desk.x, e.desk.y) })
     items.push({ y:e.desk.y + 14, draw:() => { drawDesk(g, e.desk.x, e.desk.y, online ? STATE_COLOR[st] : OFF); drawClutter(g, e.desk.x, e.desk.y, e.acc.seat) } })
     if (e.inside) {
-      const t = now + e.phase, b = build(e.s)
-      const seated = !walking && Math.round(e.x) === e.seat.x && Math.round(e.y) === e.seat.y
-      const activity = seated && st === 'idle' ? idleActivity(e) : null
-      const x = Math.round(e.x), y = Math.round(e.y) + (activity === 'sleep' ? 1 : 0)
-      const typing = seated && st === 'tool'
-      const blink = now > e.blinkAt && now < e.blinkAt + 140
-      if (now > e.blinkAt + 140) e.blinkAt = now + 2500 + Math.random() * 4000
-      const pose = {
-        eyes:e.facing < 0 ? 'none' : activity === 'sleep' || blink ? 'closed' : activity ? 'down' : 'open',
-        armL:typing ? Math.floor(t / 140) % 2 : activity === 'game' ? Math.floor(t / 120) % 2 : 0,
-        armR:typing ? 1 - Math.floor(t / 140) % 2 : activity === 'phone' ? -2 : activity === 'game' ? Math.floor(t / 170) % 2 : 0,
-        raiseL:seated && st === 'waiting',
-        legs:!seated, step:walking ? Math.floor(t / 150) % 2 : -1,
-      }
-      const body = online ? CLAWD : GRAY, shade = online ? CLAWD_SHADE : '#8f8a82'
-      items.push({ y:y + 10, draw:() => {
-        drawClawd(g, x, y, b, pose, body, shade)
-        const top = y - b.bh
-        if (activity === 'phone') drawPhone(g, x, y, t)
-        else if (activity === 'game') drawConsole(g, x, y, t)
-        else if (activity === 'sleep') {
-          for (let i = 0; i < 3; i++) {
-            const p = ((t / 900) + i / 3) % 1
-            drawZ(g, x + (b.bw >> 1) + 3 + Math.round(p * 6), top + 2 - Math.round(p * 10), `rgba(255,253,247,${(1 - p).toFixed(2)})`) // floating up from the right of the head, clear of the name tag
-          }
-        }
-        if (seated && st === 'thinking') drawThinking(g, x, top, t)
-        if (seated && st === 'waiting') drawAlert(g, x + (b.bw >> 1) + b.armW + 2, top - 3 - (Math.floor(t / 400) % 2))
-        const got = mailAt.get(e.acc.id)
-        if (got && now - got < 4000) drawEnvelope(g, x - 4, top - 10 - (Math.floor(now / 300) % 2))
-      } })
-    }
+      items.push(employeeItem(g, e, now, at))
+      if (e.there) { using.add(e.goal.id); watching ||= e.want?.act === 'tv' }
+    } else e.there = e.atDesk = false
     // subagents: small ones standing in the aisles beside the desk
     if (online) Object.values(e.s.agents || {}).slice(-4).forEach((a, i) => {
       const ax = e.desk.x + (i % 2 ? 35 : -13), ay = e.desk.y + 2 + Math.floor(i / 2) * 8
@@ -696,6 +1104,15 @@ function frame(now) {
       const color = a.state === 'done' ? GRAY : MINI, shade = a.state === 'done' ? '#8f8a82' : MINI_SHADE
       items.push({ y:ay + 5, draw:() => drawMini(g, ax, ay + bob, color, shade) })
     })
+  }
+  // furniture that comes alive while it's used, the sofa backrests over whoever sits there, and a tag's burst
+  const { tv, foos, printer, sofa, rsofa } = geo
+  if (watching) items.push({ y:tv.y + 19, draw:() => drawTVShow(g, tv.x, tv.y, now) })
+  if (using.has('fb0') && using.has('fb1')) items.push({ y:foos.y + 13, draw:() => drawFoosBall(g, foos.x, foos.y, now) })
+  if (using.has('print')) items.push({ y:printer.y + 21, draw:() => drawPaper(g, printer.x, printer.y, now) })
+  for (const s of [sofa, rsofa]) items.push({ y:s.y + 24, draw:() => drawSofaBack(g, s) })
+  for (const { pow } of tagGames.values()) {
+    if (pow && now - pow.at < 500) items.push({ y:Infinity, draw:() => drawPow(g, Math.round(pow.x), Math.round(pow.y), (now - pow.at) / 500) })
   }
   items.sort((a, b) => a.y - b.y).forEach(it => it.draw())
 
@@ -713,8 +1130,95 @@ function frame(now) {
   ctx.fillStyle = '#2f2e2b'
   ctx.fillRect(0, 0, cv.width, cv.height)
   ctx.drawImage(buf, 0, 0, W, H, offX, offY, W * S, H * S)
-  placeLabels()
-  requestAnimationFrame(frame)
+  placeLabels(now)
+  if (!findList.hidden && now - (frame.listed || 0) > 500) { frame.listed = now; renderFind() } // what they're doing changes
+  refreshCardLine()
+}
+
+// one employee in the building, as a depth-sorted item: its pose follows its state, where it is and what it does there
+function employeeItem(g, e, now, at) {
+  const online = isOnline(e), st = online ? e.s.state : 'ended', w = e.want || {}, spot = e.goal
+  const t = now + e.phase, b = build(e.s)
+  e.there = !e.moving && !e.tag && !!spot && !e.path.length
+  e.atDesk = e.there && spot.id === 'desk'
+  const act = e.there ? w.act : null, pastime = e.atDesk && st === 'idle' ? deskPastime(e, at) : null
+  const blink = now > e.blinkAt && now < e.blinkAt + 140
+  if (now > e.blinkAt + 140) e.blinkAt = now + 2500 + Math.random() * 4000
+  const x = Math.round(e.x)
+  let y = Math.round(e.y), face = e.there ? spot.face : e.facing, extra = null
+  const pose = { eyes:blink ? 'closed' : 'open', legs:!(e.there && spot.sit), step:-1, armL:0, armR:0 }
+  const sip = Math.floor(t / 3000) % 3 === 0 // now and then a sip
+  if (e.tag) {
+    pose.step = Math.floor(t / 80) % 2
+    if (e.tag.wait) pose.eyes = 'closed' // counting
+    else if (e.tag.it) pose.raiseL = pose.raiseR = true
+  } else if (e.moving) {
+    pose.step = Math.floor(t / (w.hurry ? 90 : 150)) % 2
+  } else if (e.atDesk) {
+    const typing = st === 'tool'
+    if (pastime === 'sleep') { y += 1; pose.eyes = 'closed' } else if (pastime && pastime !== 'ready' && !blink) pose.eyes = 'down'
+    pose.armL = typing ? Math.floor(t / 140) % 2 : pastime === 'game' ? Math.floor(t / 120) % 2 : 0
+    pose.armR = typing ? 1 - Math.floor(t / 140) % 2 : pastime === 'phone' ? -2 : pastime === 'game' ? Math.floor(t / 170) % 2 : 0
+    pose.raiseL = st === 'waiting'
+    extra = top => {
+      if (pastime === 'phone') drawPhone(g, x, y, t)
+      else if (pastime === 'game') drawConsole(g, x, y, t)
+      else if (pastime === 'sleep') drawZzz(g, x, top, b, t)
+      if (st === 'thinking') drawThinking(g, x, top, t)
+      if (st === 'waiting') drawAlert(g, x + (b.bw >> 1) + b.armW + 2, top - 3 - (Math.floor(t / 400) % 2))
+    }
+  } else if (e.there) {
+    switch (act) {
+      case 'nap':
+        if (face > 0) { y += 1; pose.eyes = 'closed' } // head down on the table
+        extra = top => drawZzz(g, x, top, b, t)
+        break
+      case 'tv':
+        if (Math.floor(t / 600) % 12 === 0) pose.raiseL = pose.raiseR = true // what a goal
+        break
+      case 'coffee': case 'water':
+        pose.armR = sip ? -2 : 0
+        extra = () => act === 'coffee' ? drawMug(g, handOf(x, y, b, pose.armR), t) : drawCup(g, handOf(x, y, b, pose.armR))
+        break
+      case 'vending':
+        if (now - e.arrived < 4000) { face = -1; pose.armR = Math.floor(t / 250) % 2 ? -1 : 0 } // choosing, pressing buttons
+        else { pose.armR = sip ? -2 : 0; extra = () => drawCan(g, handOf(x, y, b, pose.armR)) }
+        break
+      case 'books':
+        if (!blink) pose.eyes = 'down'
+        extra = () => drawBook(g, x, y, b)
+        break
+      case 'front':
+        if (!blink && Math.floor(t / 2500) % 2) pose.eyes = 'down'
+        pose.raiseL = Math.floor(t / 500) % 14 === 0 // waves at the door
+        break
+      case 'foosball':
+        pose.armL = Math.floor(t / 110) % 2; pose.armR = 1 - Math.floor(t / 130) % 2
+        if (Math.floor(t / 700) % 9 === 0) pose.raiseL = pose.raiseR = true // scored
+        break
+      case 'chat':
+        extra = top => {
+          const say = chatLine(e, w.pair, now)
+          if (say) drawSay(g, spot.id === 'rt0' ? x - (b.bw >> 1) - b.armW - 10 : x + (b.bw >> 1) + b.armW + 1, top + 1, say)
+        }
+        break
+      // window, print, and tag (waiting at the corner for the other): just standing there
+    }
+  }
+  if (face < 0) pose.eyes = 'none'
+  const body = online ? CLAWD : GRAY, shade = online ? CLAWD_SHADE : '#8f8a82'
+  const dim = findQ && !matchesFind(e, findQ), ring = (findQ && !dim) || now - (e.foundAt ?? -1e9) < 4000
+  return { y:y + 10, draw:() => {
+    if (dim) g.globalAlpha = 0.3
+    if (ring) drawRing(g, x, y, b, now)
+    drawClawd(g, x, y, b, pose, body, shade)
+    const top = y - b.bh
+    extra?.(top)
+    if (now - (e.popAt ?? -1e9) < 1200) drawSay(g, x + (b.bw >> 1) + b.armW + 1, top - 1, '!') // called back
+    const got = mailAt.get(e.acc.id)
+    if (got && now - got < 4000) drawEnvelope(g, x - 4, top - 10 - (Math.floor(now / 300) % 2))
+    g.globalAlpha = 1
+  } }
 }
 
 function headOf(e) {
@@ -722,14 +1226,50 @@ function headOf(e) {
   return e.inside ? { x:Math.round(e.x), y:Math.round(e.y) - b.bh - 4 } : { x:e.desk.x + 16, y:e.desk.y - 12 }
 }
 
-function placeLabels() {
+const setData = (el, key, value) => { if (el.dataset[key] !== value) el.dataset[key] = value }
+
+// Name tags follow their employees. Away from its desk a tag shows just the name, and a tag that stays put
+// (on a sofa, at the meeting table) moves up out of the way of the tags already there.
+function placeLabels(now) {
+  const maxW = Math.max(60, COL_PITCH * S / dpr - 6), placed = [], loose = []
+  const box = (e, y) => ({ l:e.lx - e.lw / 2, r:e.lx + e.lw / 2, t:y - e.lh, b:y })
   for (const e of emps.values()) {
     if (!e.desk) continue
+    const el = e.label, away = e.inside && !e.atDesk
+    if (el.classList.contains('away') !== away) { el.classList.toggle('away', away); e.sized = false }
+    if (e.maxW !== maxW) { el.style.maxWidth = maxW + 'px'; e.maxW = maxW; e.sized = false }
+    if (!e.sized) { e.lw = el.offsetWidth; e.lh = el.offsetHeight; e.sized = true }
     const h = headOf(e)
-    const [lx, ly] = toCss(h.x, h.y - 2)
-    e.label.style.left = lx + 'px'; e.label.style.top = ly + 'px'
-    e.label.style.maxWidth = Math.max(60, COL_PITCH * S / dpr - 6) + 'px'
-    if (e.bubble) { e.bubble.style.left = lx + 'px'; e.bubble.style.top = ly + 'px' }
+    ;[e.lx, e.ly] = toCss(h.x, h.y - 2)
+    e.ty = e.ly
+    if (!away) placed.push(box(e, e.ly))
+    else if (!e.moving) loose.push(e)
+    // for the tests and the curious: what it's up to, and where
+    setData(el, 'act', e.inside ? e.want?.act ?? '' : '')
+    setData(el, 'room', e.inside ? e.goal?.room ?? '' : '')
+    setData(el, 'spot', e.inside ? e.goal?.id ?? '' : '')
+    setData(el, 'moving', e.inside && e.moving ? '1' : '0')
+    const hit = !!findQ && matchesFind(e, findQ)
+    el.classList.toggle('dim', !!findQ && !hit)
+    el.classList.toggle('match', hit)
+    el.classList.toggle('found', now - (e.foundAt ?? -1e9) < 3200)
+    const doing = doingText(e)
+    const title = e.status + (doing ? ' · ' + doing : '') + (doing && away ? ' · ' + t('office.callBack') : '')
+    if (el.title !== title) el.title = title
+  }
+  loose.sort((a, b) => b.ly - a.ly)
+  for (const e of loose) {
+    for (let k = 0; k < 12; k++) {
+      const me = box(e, e.ty), hit = placed.find(p => p.l < me.r && me.l < p.r && p.t < me.b && me.t < p.b)
+      if (!hit) break
+      e.ty = hit.t - 1
+    }
+    placed.push(box(e, e.ty))
+  }
+  for (const e of emps.values()) {
+    if (!e.desk) continue
+    e.label.style.left = e.lx + 'px'; e.label.style.top = e.ty + 'px'
+    if (e.bubble) { e.bubble.style.left = e.lx + 'px'; e.bubble.style.top = e.ty + 'px' }
   }
   for (const [key, el] of Object.entries(roomEls)) {
     const r = rooms[key]
@@ -746,6 +1286,59 @@ function placeLabels() {
     addBtn.style.left = ax + 'px'; addBtn.style.top = ay + 'px'
   }
 }
+
+// ================= search =================
+// Finds employees by name (or session name, or folder): the matches light up in the office and show in a list
+// under the box; picking one (a click, or Enter for the highlighted one) is the same as clicking that employee.
+const findEl = document.getElementById('find'), findList = document.getElementById('find-list')
+let findQ = '', findSel = 0
+const lower = s => String(s ?? '').toLowerCase()
+// a folder matches by its last part ("symphony"), or by its whole path once the query has a slash in it
+const matchesFind = (e, q) => [e.acc.name, e.s?.title, ...[e.s?.cwd, e.acc.last?.dir].map(d => d && (/[\\/]/.test(q) ? d : base(d)))]
+  .some(v => lower(v).includes(q))
+function findHits() {
+  if (!findQ) return []
+  const rank = e => lower(e.acc.name).startsWith(findQ) ? 0 : lower(e.acc.name).includes(findQ) ? 1 : 2
+  return [...emps.values()].filter(e => matchesFind(e, findQ))
+    .sort((a, b) => rank(a) - rank(b) || a.acc.name.localeCompare(b.acc.name, lang)).slice(0, 8)
+}
+function renderFind() {
+  findQ = lower(findEl.value.trim())
+  const hits = findHits()
+  findSel = Math.max(0, Math.min(findSel, hits.length - 1))
+  findList.hidden = !findQ || document.activeElement !== findEl
+  findList.innerHTML = hits.map((e, i) => `<div class="hit${i === findSel ? ' on' : ''}" data-account="${esc(e.acc.id)}">` +
+    `${dot(isOnline(e) ? e.s.state : 'ended')}<b>${esc(e.acc.name)}</b><small>${esc(stateLine(e))}</small></div>`).join('') ||
+    `<div class="none">${esc(t('search.none'))}</div>`
+}
+function pickFound(e) {
+  findEl.value = ''; findSel = 0; findEl.blur(); renderFind()
+  if (!e) return
+  e.foundAt = performance.now()
+  onEmployeeClick(e.acc.id)
+}
+findEl.addEventListener('input', () => { findSel = 0; renderFind() })
+findEl.addEventListener('focus', renderFind)
+findEl.addEventListener('blur', () => { findList.hidden = true })
+findEl.addEventListener('keydown', ev => {
+  if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') { findSel += ev.key === 'ArrowDown' ? 1 : -1; renderFind() }
+  else if (ev.key === 'Enter') pickFound(findHits()[findSel])
+  else if (ev.key === 'Escape') { findEl.value = ''; renderFind(); findEl.blur() }
+  else return
+  ev.preventDefault()
+})
+findList.addEventListener('mousedown', ev => { // mousedown, so the box keeps its focus until the pick
+  const row = ev.target.closest('.hit')
+  if (!row) return
+  ev.preventDefault()
+  pickFound(emps.get(row.dataset.account))
+})
+addEventListener('keydown', ev => { // "/" jumps to the search box
+  if (ev.key !== '/' || ev.ctrlKey || ev.metaKey || ev.altKey || !asksModal.hidden || !dlg.hidden) return
+  if (/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName)) return
+  ev.preventDefault()
+  findEl.focus()
+})
 
 // ================= data =================
 const logEl = document.getElementById('log')
@@ -808,6 +1401,7 @@ function applySnapshot(snap) {
     : esc(t('office.nobody'))
   if (cardFor) showCard(cardFor)
   if (!msgsPanel.hidden) renderMessages()
+  if (!findList.hidden) renderFind()
   watchLaunch()
 }
 
@@ -858,25 +1452,31 @@ const card = document.getElementById('card')
 let cardFor = null
 card.querySelector('.close').onclick = () => { card.hidden = true; cardFor = null }
 
+// a click on an employee: the pending popup if it waits for you; otherwise its card, and an idle one goes back
+// to its desk and waits there for its next turn
 function onEmployeeClick(id) {
   const acc = snapshot.accounts.find(a => a.id === id)
-  const s = acc && sessionOf(acc)
+  const s = acc && sessionOf(acc), e = emps.get(id)
   if (s && s.state === 'waiting') return openAsks(s.id)
+  if (e?.inside && s?.state === 'idle') {
+    e.summon = { session:s.id, since:s.stateSince, at:Date.now() }
+    e.popAt = performance.now()
+  }
   showCard(id)
 }
 
 function showCard(id) {
-  const acc = snapshot.accounts.find(a => a.id === id)
-  if (!acc) { card.hidden = true; cardFor = null; return }
+  const acc = snapshot.accounts.find(a => a.id === id), e = emps.get(id)
+  if (!acc || !e) { card.hidden = true; cardFor = null; return }
   cardFor = id
   const s = sessionOf(acc), online = !!s && s.state !== 'ended'
   card.querySelector('h2').textContent = acc.name
-  const rows = [['seat', t('card.seatNo', { n:acc.seat + 1 })], ['state', statusText(online ? s : null)], ['model', online ? buildText(s) : ''],
+  const rows = [['seat', t('card.seatNo', { n:acc.seat + 1 })], ['state', stateLine(e)], ['model', online ? buildText(s) : ''],
     ['tool', online ? s.tool : ''], ['dir', s?.cwd || acc.last?.dir], ['prompt', online ? s.prompt : ''], ['tools', online ? s.tools : ''],
     ['subagents', online ? Object.keys(s.agents || {}).length || '' : ''], ['terminal', online ? attachText(s.attach) : ''],
     ['login', s?.login], ['session', online ? s.id : '']]
   card.querySelector('dl').innerHTML = rows.filter(r => r[1] !== undefined && r[1] !== '' && r[1] !== null)
-    .map(([k, v]) => `<dt>${esc(t('card.' + k))}</dt><dd>${esc(v)}</dd>`).join('')
+    .map(([k, v]) => `<dt>${esc(t('card.' + k))}</dt><dd${k === 'state' ? ' class="state-line"' : ''}>${esc(v)}</dd>`).join('')
   const btns = card.querySelector('.btns')
   btns.innerHTML = ''
   const add = (text, cls, fn) => { const b = document.createElement('button'); b.className = 'px ' + cls; b.textContent = text; b.onclick = fn; btns.appendChild(b) }
@@ -892,16 +1492,21 @@ function showCard(id) {
   card.querySelector('.msgs').innerHTML = mine.slice(-10).reverse().map(msgHTML).join('') || `<div class="msg">${esc(t('card.noMessages'))}</div>`
   card.hidden = false
 }
+// the status line of an open card follows what the employee is doing
+function refreshCardLine() {
+  const e = cardFor && !card.hidden && emps.get(cardFor), dd = e && card.querySelector('dd.state-line')
+  if (dd && dd.textContent !== stateLine(e)) dd.textContent = stateLine(e)
+}
 
+// a click on a character, or else on a desk, is a click on that employee
 cv.addEventListener('click', ev => {
   const x = (ev.clientX * dpr - offX) / S, y = (ev.clientY * dpr - offY) / S
-  for (const e of emps.values()) {
-    if (!e.desk) continue
+  const list = [...emps.values()].filter(e => e.desk)
+  const hit = list.find(e => {
     const b = build(e.s)
-    const hitChar = e.inside && x >= e.x - b.bw / 2 - 3 && x < e.x + b.bw / 2 + 3 && y >= e.y - b.bh - 4 && y < e.y + 2
-    const hitDesk = x >= e.desk.x && x < e.desk.x + 32 && y >= e.desk.y - 15 && y < e.desk.y + 16
-    if (hitChar || hitDesk) return onEmployeeClick(e.acc.id)
-  }
+    return e.inside && x >= e.x - b.bw / 2 - 3 && x < e.x + b.bw / 2 + 3 && y >= e.y - b.bh - 4 && y < e.y + 2
+  }) || list.find(e => x >= e.desk.x && x < e.desk.x + 32 && y >= e.desk.y - 15 && y < e.desk.y + 16)
+  if (hit) onEmployeeClick(hit.acc.id)
 })
 
 // ================= starting sessions from the page =================

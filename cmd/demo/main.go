@@ -65,12 +65,16 @@ func main() {
 	seconds := flag.Float64("seconds", 0, i18n.T("demo.flag.seconds"))
 	flag.Parse()
 
-	// name, model, effort: every character has its own size and muscles; the names come from around the world
-	roster := [][3]string{
-		{"demo-Alice", "haiku", "low"}, {"demo-小王", "sonnet", "medium"}, {"demo-Yuki", "sonnet", "high"},
-		{"demo-Carlos", "opus", "high"}, {"demo-Amélie", "opus", "max"}, {"demo-Олег", "fable", "max"},
+	// name, model, effort, role: every character has its own size and muscles, and the names come from around the
+	// world. Two wait for you (a question, a permission), some keep busy, and the idle ones have nothing to do: they
+	// wander around the office, and nap after a while.
+	roster := [][4]string{
+		{"demo-Alice", "haiku", "low", "ask"}, {"demo-小王", "sonnet", "medium", "ask"}, {"demo-Yuki", "sonnet", "high", "work"},
+		{"demo-Carlos", "opus", "high", "work"}, {"demo-Amélie", "opus", "max", "work"}, {"demo-Олег", "fable", "max", "work"},
+		{"demo-Priya", "sonnet", "high", "idle"}, {"demo-Kwame", "opus", "medium", "idle"}, {"demo-Lena", "haiku", "low", "idle"},
+		{"demo-Mateo", "fable", "xhigh", "idle"},
 	}
-	var team []member
+	var team, askers, workers []member
 	for _, r := range roster {
 		res := post("", "/api/accounts", map[string]string{"name": r[0]})
 		token, _ := res["token"].(string)
@@ -80,18 +84,28 @@ func main() {
 		}
 		m := member{id: fmt.Sprintf("demo-%06x", rand.IntN(1<<24)), name: r[0], token: token}
 		team = append(team, m)
+		switch r[3] {
+		case "ask":
+			askers = append(askers, m)
+		case "work":
+			workers = append(workers, m)
+		}
 		event(m, "session.start", map[string]any{"cwd": "/work/" + r[0], "model": r[1], "effort": r[2]})
 		event(m, "session.title", map[string]any{"title": r[0]})
 	}
-	if len(team) < 2 {
+	if len(team) < 2 || len(workers) == 0 {
 		log.Fatal(i18n.T("demo.not_enough"))
 	}
-	// leave one permission and one question pending
-	post(team[1].token, "/api/ask", map[string]any{"session": team[1].id, "kind": "permission", "tool": "Bash", "input": map[string]any{"command": "rm -rf build"}})
-	post(team[0].token, "/api/ask", map[string]any{"session": team[0].id, "kind": "question", "questions": []map[string]any{{
-		"question": "Which layout should the home page use?", "header": "Layout", "multiSelect": false,
-		"options": []map[string]string{{"label": "Single column", "description": "One column"}, {"label": "Two columns", "description": "Left and right"}},
-	}}})
+	// leave one question and one permission pending
+	if len(askers) > 0 {
+		post(askers[0].token, "/api/ask", map[string]any{"session": askers[0].id, "kind": "question", "questions": []map[string]any{{
+			"question": "Which layout should the home page use?", "header": "Layout", "multiSelect": false,
+			"options": []map[string]string{{"label": "Single column", "description": "One column"}, {"label": "Two columns", "description": "Left and right"}},
+		}}})
+	}
+	if len(askers) > 1 {
+		post(askers[1].token, "/api/ask", map[string]any{"session": askers[1].id, "kind": "permission", "tool": "Bash", "input": map[string]any{"command": "rm -rf build"}})
+	}
 
 	tools := []string{"Bash", "Read", "Edit", "Grep", "Write", "WebFetch"}
 	lines := []string{"The API is ready, please try it on your side", "Meeting at 8 tonight", "12 of 13 test cases pass", "Could you look at this error?", "The design mockups are updated"}
@@ -104,7 +118,7 @@ func main() {
 			}
 			last = time.Now()
 		}
-		m := team[2+rand.IntN(max(1, len(team)-2))%len(team)]
+		m := workers[rand.IntN(len(workers))]
 		agent := ""
 		if rand.Float64() < 0.25 {
 			agent = fmt.Sprintf("agent-%d", rand.IntN(3))
