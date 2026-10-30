@@ -72,7 +72,7 @@ Windows では zip を展開して `symphony.exe` を実行します。ダブル
 
 プログラムには署名がないため、初回の実行がブロックされることがあります。ブラウザでダウンロードした場合、macOS は「開発元を検証できません」と表示することがあります。「システム設定 → プライバシーとセキュリティ」で「このまま開く」をクリックするか、`xattr -d com.apple.quarantine symphony` を一度実行してください。Windows でも SmartScreen が警告することがあります。「詳細情報」をクリックしてから「実行」を選んでください。リリースの `checksums.txt` には各アーカイブの SHA-256 が載っています。
 
-プログラムと mod は同じバージョン番号を使います。プログラムのバージョンは `symphony -version`、mod のバージョンは `claude plugin list` で確認できます。更新するときは、新しいリリースをダウンロードしてから `claude plugin update symphony-bridge@symphony` を実行します。
+プログラムと mod は同じバージョン番号を使います。プログラムのバージョンは `symphony -version`、mod のバージョンは `claude plugin list` で確認できます。更新するときは、新しいリリースをダウンロードしてから `claude plugin update symphony-bridge@symphony` を実行します。各リリースの変更点は [CHANGELOG.md](CHANGELOG.md) にあります。
 
 ソースから実行することもできます（Go 1.27 以降）：
 
@@ -150,7 +150,7 @@ SYMPHONY_E2E=1 go test -tags e2e -v -count=1 -timeout 20m ./e2e/   # エンド�
 - 本物のセッションなしでオフィスを見るとき：2 つ目の bridge を起動して、架空のアクティビティを流し込みます。`go run ./cmd/bridge -addr 127.0.0.1:7799 -data /tmp/demo` を実行してから、`go run ./cmd/demo -base http://127.0.0.1:7799` を実行してください。
 - 翻訳：1 言語につき 1 ファイルで、ページ用は `web/locales/<lang>.json`、bridge 用は `internal/i18n/locales/<lang>.json` です。キーは `en.json` と同じです。mod のわずかなメッセージは `mods/symphony-bridge/hooks/messages.ts` にあります。単体テストでは、すべての言語にすべてのキーがそろっていて、`{プレースホルダー}` も一致していることを確認します。エンドツーエンドテストの `TestI18n` は、すべての言語でページを開いて確かめます。
 - エンドツーエンドテストには claude、tmux、chromium が必要なので、Linux と、tmux を入れた macOS で実行できます。デフォルトではこのリポジトリの mod を使います。インストール済みの mod を使うには `SYMPHONY_E2E_MOD=installed` を設定してください。スクリーンショットは `e2e/artifacts/` に保存されます。
-- リリース：main 上のコミットにバージョンタグを付けて push すると（`git tag -a v0.3.0 -m v0.3.0 && git push origin v0.3.0`）、GitHub Actions が全プラットフォーム向けにプログラムをビルドしてリリースを公開します（`.github/workflows/release.yml`）。タグは `plugin.json` にある mod のバージョンと一致している必要があります。`.github/release.sh v0.3.0 dist` で同じアーカイブを手元で作れます。
+- リリース：main 上のコミットにバージョンタグを付けて push すると（`git tag -a v0.3.0 -m v0.3.0 && git push origin v0.3.0`）、GitHub Actions が全プラットフォーム向けにプログラムをビルドしてリリースを公開します（`.github/workflows/release.yml`）。タグは `plugin.json` にある mod のバージョンと一致している必要があります。`.github/release.sh v0.3.0 dist` で同じアーカイブを手元で作れます。各リリースには `CHANGELOG.md` の節が必要で、それがリリースノートの冒頭になります。
 
 | フォルダ | 内容 |
 | --- | --- |

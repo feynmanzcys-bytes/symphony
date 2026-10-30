@@ -72,7 +72,7 @@ Sous Windows, décompressez le zip et lancez `symphony.exe` ; d’un double-clic
 
 Les programmes ne sont pas signés : le premier lancement peut être bloqué. macOS peut refuser une copie téléchargée avec un navigateur, faute de pouvoir vérifier le développeur : cliquez sur « Ouvrir quand même » dans Réglages Système → Confidentialité et sécurité, ou lancez une fois `xattr -d com.apple.quarantine symphony`. Sous Windows, SmartScreen peut aussi vous avertir : cliquez sur « Informations complémentaires », puis sur « Exécuter quand même ». Le fichier `checksums.txt` de la version donne le SHA-256 de chaque archive.
 
-Le programme et le mod partagent le même numéro de version : `symphony -version` affiche celui du programme, `claude plugin list` celui du mod. Pour mettre à jour, téléchargez la nouvelle version et lancez `claude plugin update symphony-bridge@symphony`.
+Le programme et le mod partagent le même numéro de version : `symphony -version` affiche celui du programme, `claude plugin list` celui du mod. Pour mettre à jour, téléchargez la nouvelle version et lancez `claude plugin update symphony-bridge@symphony`. [CHANGELOG.md](CHANGELOG.md) liste ce qui a changé dans chaque version.
 
 Ou lancez le bridge depuis les sources, avec Go 1.27 ou plus récent :
 
@@ -150,7 +150,7 @@ SYMPHONY_E2E=1 go test -tags e2e -v -count=1 -timeout 20m ./e2e/   # bout en bou
 - Voir le bureau sans vraies sessions : démarrez un second bridge et remplissez-le d’activité fictive : `go run ./cmd/bridge -addr 127.0.0.1:7799 -data /tmp/demo`, puis `go run ./cmd/demo -base http://127.0.0.1:7799`.
 - Traductions : chaque langue tient dans un fichier, `web/locales/<lang>.json` pour les pages et `internal/i18n/locales/<lang>.json` pour le bridge, avec les mêmes clés que `en.json` ; les quelques messages du mod se trouvent dans `mods/symphony-bridge/hooks/messages.ts`. Les tests unitaires vérifient que chaque langue a toutes les clés et les mêmes `{variables}`, et le test de bout en bout `TestI18n` ouvre les pages dans chaque langue.
 - Les tests de bout en bout ont besoin de claude, tmux et chromium : ils tournent donc sous Linux, et sous macOS avec tmux. Par défaut, ils utilisent le mod de ce dépôt ; définissez `SYMPHONY_E2E_MOD=installed` pour utiliser le mod installé. Les captures d’écran sont enregistrées dans `e2e/artifacts/`.
-- Versions : étiquetez un commit de main avec sa version et poussez l’étiquette (`git tag -a v0.3.0 -m v0.3.0 && git push origin v0.3.0`) ; GitHub Actions compile alors le programme pour toutes les plateformes et publie une version (`.github/workflows/release.yml`). L’étiquette doit être la version du mod dans `plugin.json`. `.github/release.sh v0.3.0 dist` produit les mêmes archives en local.
+- Versions : étiquetez un commit de main avec sa version et poussez l’étiquette (`git tag -a v0.3.0 -m v0.3.0 && git push origin v0.3.0`) ; GitHub Actions compile alors le programme pour toutes les plateformes et publie une version (`.github/workflows/release.yml`). L’étiquette doit être la version du mod dans `plugin.json`. `.github/release.sh v0.3.0 dist` produit les mêmes archives en local. Chaque version doit avoir sa section dans `CHANGELOG.md`, qui ouvre ses notes.
 
 | Dossier | Contenu |
 | --- | --- |

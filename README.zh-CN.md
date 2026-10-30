@@ -72,7 +72,7 @@ Windows 上解压后运行 `symphony.exe`；双击的话它会开一个自己的
 
 程序没有签名，第一次运行可能被拦。用浏览器下载的话，macOS 可能提示“无法验证开发者”：到“系统设置 → 隐私与安全性”里点“仍要打开”，或者运行一次 `xattr -d com.apple.quarantine symphony`。Windows 的 SmartScreen 也可能拦一下：点“更多信息”，再点“仍要运行”。Release 里的 `checksums.txt` 有每个压缩包的 SHA-256。
 
-程序和 mod 用同一个版本号：`symphony -version` 看程序的，`claude plugin list` 看 mod 的。更新就是下载新版的压缩包，再运行 `claude plugin update symphony-bridge@symphony`。
+程序和 mod 用同一个版本号：`symphony -version` 看程序的，`claude plugin list` 看 mod 的。更新就是下载新版的压缩包，再运行 `claude plugin update symphony-bridge@symphony`。每个版本改了什么，见 [CHANGELOG.md](CHANGELOG.md)。
 
 也可以从源码跑（要 Go 1.27 以上）：
 
@@ -150,7 +150,7 @@ SYMPHONY_E2E=1 go test -tags e2e -v -count=1 -timeout 20m ./e2e/   # 端到端�
 - 不开真会话看效果：另起一个 bridge 灌假数据，`go run ./cmd/bridge -addr 127.0.0.1:7799 -data /tmp/demo`，再 `go run ./cmd/demo -base http://127.0.0.1:7799`。
 - 翻译：每种语言一个文件，页面的在 `web/locales/<语言>.json`，bridge 的在 `internal/i18n/locales/<语言>.json`，键和 `en.json` 一样；mod 那几句提示在 `mods/symphony-bridge/hooks/messages.ts`。单测会检查每种语言的键是不是齐全、`{占位符}` 对不对得上；端到端测试 `TestI18n` 会用每种语言打开页面。
 - 端到端测试需要 claude、tmux、chromium，所以只在 Linux 和装了 tmux 的 macOS 上跑。默认用仓库里的 mod；设了 `SYMPHONY_E2E_MOD=installed` 就改用装好的 mod。截图在 `e2e/artifacts/`。
-- 发版：在 main 的提交上打版本标签并推送（`git tag -a v0.3.0 -m v0.3.0 && git push origin v0.3.0`），GitHub Actions 就会给所有平台编好程序、发布 Release（`.github/workflows/release.yml`）。标签必须和 `plugin.json` 里 mod 的版本号一致。`.github/release.sh v0.3.0 dist` 能在本地打出同样的包。
+- 发版：在 main 的提交上打版本标签并推送（`git tag -a v0.3.0 -m v0.3.0 && git push origin v0.3.0`），GitHub Actions 就会给所有平台编好程序、发布 Release（`.github/workflows/release.yml`）。标签必须和 `plugin.json` 里 mod 的版本号一致。`.github/release.sh v0.3.0 dist` 能在本地打出同样的包。每个版本都要在 `CHANGELOG.md` 里写一节，它会放在发布说明的最前面。
 
 | 目录 | 是什么 |
 | --- | --- |

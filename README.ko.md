@@ -72,7 +72,7 @@ Windows에서는 압축을 풀고 `symphony.exe`를 실행합니다. 더블클�
 
 프로그램에 서명이 없어서 처음 실행할 때 막힐 수 있습니다. 브라우저로 내려받았다면 macOS가 "개발자를 확인할 수 없음"이라고 할 수 있습니다. "시스템 설정 → 개인정보 보호 및 보안"에서 "그래도 열기"를 누르거나, `xattr -d com.apple.quarantine symphony`를 한 번 실행하세요. Windows에서도 SmartScreen이 경고할 수 있습니다. "추가 정보"를 누른 뒤 "실행"을 누르세요. 릴리스의 `checksums.txt`에는 압축 파일마다 SHA-256이 들어 있습니다.
 
-프로그램과 mod는 같은 버전 번호를 씁니다. 프로그램 버전은 `symphony -version`, mod 버전은 `claude plugin list`로 확인합니다. 업데이트하려면 새 릴리스를 내려받고 `claude plugin update symphony-bridge@symphony`를 실행하세요.
+프로그램과 mod는 같은 버전 번호를 씁니다. 프로그램 버전은 `symphony -version`, mod 버전은 `claude plugin list`로 확인합니다. 업데이트하려면 새 릴리스를 내려받고 `claude plugin update symphony-bridge@symphony`를 실행하세요. 릴리스마다 바뀐 점은 [CHANGELOG.md](CHANGELOG.md)에 있습니다.
 
 소스에서 실행할 수도 있습니다(Go 1.27 이상 필요).
 
@@ -150,7 +150,7 @@ SYMPHONY_E2E=1 go test -tags e2e -v -count=1 -timeout 20m ./e2e/   # 엔드투�
 - 실제 세션 없이 사무실 보기: 두 번째 bridge를 띄워 가짜 활동으로 채웁니다. `go run ./cmd/bridge -addr 127.0.0.1:7799 -data /tmp/demo`를 실행한 다음 `go run ./cmd/demo -base http://127.0.0.1:7799`를 실행하세요.
 - 번역: 언어마다 파일이 하나씩 있습니다. 페이지용은 `web/locales/<lang>.json`, bridge용은 `internal/i18n/locales/<lang>.json`이고 키는 `en.json`과 같습니다. mod의 몇 안 되는 메시지는 `mods/symphony-bridge/hooks/messages.ts`에 있습니다. 단위 테스트는 모든 언어에 모든 키와 같은 `{플레이스홀더}`가 있는지 확인하고, 엔드투엔드 테스트 `TestI18n`은 모든 언어로 페이지를 열어 봅니다.
 - 엔드투엔드 테스트에는 claude, tmux, chromium이 필요하므로 Linux와 tmux를 설치한 macOS에서 돌아갑니다. 기본적으로 이 저장소의 mod를 쓰고, `SYMPHONY_E2E_MOD=installed`로 설정하면 설치된 mod를 씁니다. 스크린샷은 `e2e/artifacts/`에 저장됩니다.
-- 릴리스: main에 있는 커밋에 버전 태그를 달아 push하면(`git tag -a v0.3.0 -m v0.3.0 && git push origin v0.3.0`) GitHub Actions가 모든 플랫폼용 프로그램을 빌드해 릴리스를 게시합니다(`.github/workflows/release.yml`). 태그는 `plugin.json`에 있는 mod 버전과 같아야 합니다. `.github/release.sh v0.3.0 dist`로 같은 압축 파일을 로컬에서 만들 수 있습니다.
+- 릴리스: main에 있는 커밋에 버전 태그를 달아 push하면(`git tag -a v0.3.0 -m v0.3.0 && git push origin v0.3.0`) GitHub Actions가 모든 플랫폼용 프로그램을 빌드해 릴리스를 게시합니다(`.github/workflows/release.yml`). 태그는 `plugin.json`에 있는 mod 버전과 같아야 합니다. `.github/release.sh v0.3.0 dist`로 같은 압축 파일을 로컬에서 만들 수 있습니다. 릴리스마다 `CHANGELOG.md`에 해당 절이 있어야 하며, 그 내용이 릴리스 노트 맨 앞에 들어갑니다.
 
 | 폴더 | 설명 |
 | --- | --- |

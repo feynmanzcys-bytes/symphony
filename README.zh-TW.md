@@ -72,7 +72,7 @@ tar xzf symphony_linux_amd64.tar.gz
 
 這些程式沒有簽章，第一次執行時可能會被擋下。用瀏覽器下載的話，macOS 可能會顯示「無法驗證開發者」：請到「系統設定 → 隱私權與安全性」按「強制打開」，或執行一次 `xattr -d com.apple.quarantine symphony`。Windows 的 SmartScreen 也可能跳出警告：按「其他資訊」，再按「仍要執行」。Release 裡的 `checksums.txt` 列出了每個壓縮檔的 SHA-256。
 
-程式和 mod 使用同一個版本號：`symphony -version` 會顯示程式的版本，`claude plugin list` 會列出 mod 的版本。要更新時，下載新版的壓縮檔，再執行 `claude plugin update symphony-bridge@symphony`。
+程式和 mod 使用同一個版本號：`symphony -version` 會顯示程式的版本，`claude plugin list` 會列出 mod 的版本。要更新時，下載新版的壓縮檔，再執行 `claude plugin update symphony-bridge@symphony`。每個版本改了什麼，請見 [CHANGELOG.md](CHANGELOG.md)。
 
 也可以從原始碼執行（需要 Go 1.27 以上）：
 
@@ -150,7 +150,7 @@ SYMPHONY_E2E=1 go test -tags e2e -v -count=1 -timeout 20m ./e2e/   # 端對端�
 - 不開真的工作階段也想看看辦公室：另外啟動第二個 bridge，並灌入模擬的活動：`go run ./cmd/bridge -addr 127.0.0.1:7799 -data /tmp/demo`，接著執行 `go run ./cmd/demo -base http://127.0.0.1:7799`。
 - 翻譯：每種語言一個檔案，頁面的是 `web/locales/<lang>.json`，bridge 的是 `internal/i18n/locales/<lang>.json`，鍵和 `en.json` 相同；mod 的那幾則訊息在 `mods/symphony-bridge/hooks/messages.ts`。單元測試會檢查每種語言的鍵是否齊全、`{佔位符}` 是否和英文一致；端對端測試 `TestI18n` 會用每種語言開啟頁面。
 - 端對端測試需要 claude、tmux 和 chromium，所以只在 Linux 和裝了 tmux 的 macOS 上執行。預設使用這個儲存庫裡的 mod；設定 `SYMPHONY_E2E_MOD=installed` 就會改用已安裝的 mod。截圖會存到 `e2e/artifacts/`。
-- 發布版本：在 main 的提交上建立版本標籤並推送（`git tag -a v0.3.0 -m v0.3.0 && git push origin v0.3.0`），GitHub Actions 就會為所有平台編譯程式並發布 Release（`.github/workflows/release.yml`）。標籤必須和 `plugin.json` 裡 mod 的版本號相同。`.github/release.sh v0.3.0 dist` 可以在本機打包出同樣的壓縮檔。
+- 發布版本：在 main 的提交上建立版本標籤並推送（`git tag -a v0.3.0 -m v0.3.0 && git push origin v0.3.0`），GitHub Actions 就會為所有平台編譯程式並發布 Release（`.github/workflows/release.yml`）。標籤必須和 `plugin.json` 裡 mod 的版本號相同。`.github/release.sh v0.3.0 dist` 可以在本機打包出同樣的壓縮檔。每個版本都要在 `CHANGELOG.md` 裡寫一節，它會放在發布說明的最前面。
 
 | 資料夾 | 內容 |
 | --- | --- |

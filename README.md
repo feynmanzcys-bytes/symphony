@@ -72,7 +72,7 @@ On Windows, unzip it and run `symphony.exe`; double-clicked, it runs in a window
 
 The programs aren't signed, so the first run may be blocked. macOS may refuse a copy downloaded with a browser because it can't verify the developer: click "Open Anyway" under System Settings → Privacy & Security, or run `xattr -d com.apple.quarantine symphony` once. Windows SmartScreen may warn you too: click "More info", then "Run anyway". The release's `checksums.txt` holds the SHA-256 of every archive.
 
-The program and the mod share one version number: `symphony -version` prints the program's, `claude plugin list` shows the mod's. To update, download the new release and run `claude plugin update symphony-bridge@symphony`.
+The program and the mod share one version number: `symphony -version` prints the program's, `claude plugin list` shows the mod's. To update, download the new release and run `claude plugin update symphony-bridge@symphony`. [CHANGELOG.md](CHANGELOG.md) lists what each release changed.
 
 Or run the bridge from source, with Go 1.27 or later:
 
@@ -150,7 +150,7 @@ SYMPHONY_E2E=1 go test -tags e2e -v -count=1 -timeout 20m ./e2e/   # end-to-end:
 - Seeing the office without real sessions: start a second bridge and fill it with made-up activity: `go run ./cmd/bridge -addr 127.0.0.1:7799 -data /tmp/demo`, then `go run ./cmd/demo -base http://127.0.0.1:7799`.
 - Translations: each language is one file, `web/locales/<lang>.json` for the pages and `internal/i18n/locales/<lang>.json` for the bridge, with the same keys as `en.json`; the mod's few messages are in `mods/symphony-bridge/hooks/messages.ts`. The unit tests check that every language has every key and the same `{placeholders}`, and the `TestI18n` end-to-end test opens the pages in every language.
 - The end-to-end tests need claude, tmux and chromium, so they run on Linux and on macOS with tmux. They use this repository's mod by default; set `SYMPHONY_E2E_MOD=installed` to use the installed mod. Screenshots go to `e2e/artifacts/`.
-- Releases: tag a commit on main with its version and push the tag (`git tag -a v0.3.0 -m v0.3.0 && git push origin v0.3.0`); GitHub Actions then builds the program for every platform and publishes a release (`.github/workflows/release.yml`). The tag must be the mod's version in `plugin.json`. `.github/release.sh v0.3.0 dist` builds the same archives locally.
+- Releases: tag a commit on main with its version and push the tag (`git tag -a v0.3.0 -m v0.3.0 && git push origin v0.3.0`); GitHub Actions then builds the program for every platform and publishes a release (`.github/workflows/release.yml`). The tag must be the mod's version in `plugin.json`. `.github/release.sh v0.3.0 dist` builds the same archives locally. Each release needs a section in `CHANGELOG.md`, which becomes the top of its notes.
 
 | Folder | What it is |
 | --- | --- |
