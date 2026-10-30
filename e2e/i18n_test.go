@@ -5,7 +5,6 @@ package e2e
 import (
 	"context"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -30,9 +29,7 @@ var (
 // tokens). Every key a page asks for must exist in its language, and pages in a Latin-script language must
 // show no CJK, kana, Hangul or Cyrillic: that catches text the code shows without going through t().
 func TestI18n(t *testing.T) {
-	if _, err := exec.LookPath("chromium"); err != nil {
-		t.Skip("chromium not found")
-	}
+	requireBrowser(t)
 	repo, _ := filepath.Abs("..")
 	// development mode, so the launch dialog opens without an installed mod
 	b := startBridge(t, filepath.Join(repo, "mods", "symphony-bridge"))

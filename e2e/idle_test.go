@@ -6,7 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -22,10 +22,9 @@ import (
 // the search box finds employees; after a long while they nap; work sends a napper back to its desk, and off duty
 // sends one out of the door. Instead of waiting minutes, the test moves the page's clock forward.
 func TestIdle(t *testing.T) {
-	if _, err := exec.LookPath("chromium"); err != nil {
-		t.Skip("chromium not found")
-	}
-	b := startBridge(t, "")
+	requireBrowser(t)
+	repo, _ := filepath.Abs("..")
+	b := startBridge(t, filepath.Join(repo, "mods", "symphony-bridge")) // development mode: no installed mod needed
 	tokens := map[string]string{}
 	for i, name := range []string{"alice", "bob", "carol", "dave", "erin", "frank", "gina"} {
 		acc, err := b.Hub.CreateAccount(name)

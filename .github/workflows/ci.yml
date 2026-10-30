@@ -1,0 +1,90 @@
+# Checks every push to dev and main: the Go code (format, vet, unit tests, builds for the three platforms), the mod
+# (validation and unit tests, with the Claude Code version it's tested with) and the pages in a real browser.
+# TestOffice starts real Claude sessions and spends tokens, so it runs on a developer's machine only (see CLAUDE.md).
+# A private repo on GitHub Free can't require these checks; look at the run after each push (gh run list).
+name: CI
+
+on:
+  push:
+    branches: [dev, main]
+    paths-ignore: ['**.md', 'docs/**', 'LICENSE']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  go:
+    name: Go
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Format
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then echo "needs gofmt:"; echo "$unformatted"; exit 1; fi
+      - name: Vet
+        run: go vet ./... && go vet -tags e2e ./e2e/
+      - name: Unit tests (catalogs included)
+        run: go test -race ./...
+      - name: Builds for Windows, macOS and Linux
+        run: |
+          for os in windows darwin linux; do
+            GOOS=$os go vet ./internal/... ./cmd/...
+            GOOS=$os go build -o /dev/null ./cmd/bridge
+          done
+
+  mod:
+    name: Mod
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CLAUDE_CODE_VERSION: 2.1.314 # the version the mod is tested with, as CLAUDE.md says; bump both together
+    steps:
+      - uses: actions/checkout@v7
+      - name: Cache Claude Code
+        id: cache
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.local/share/claude
+            ~/.local/bin/claude
+          key: claude-code-${{ env.CLAUDE_CODE_VERSION }}
+      - name: Install Claude Code
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: curl -fsSL https://claude.ai/install.sh | bash -s "$CLAUDE_CODE_VERSION"
+      - run: echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Validate the marketplace and the mod
+        run: |
+          claude --version
+          claude plugin validate .
+          claude plugin validate mods/symphony-bridge
+      - name: Mod unit tests
+        run: claude plugin test mods/symphony-bridge
+
+  pages:
+    name: Pages in a browser
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: TestI18n and TestIdle with Chrome (no tokens)
+        run: go test -tags e2e -count=1 -v -run 'TestI18n|TestIdle' ./e2e/
+      - name: Keep the screenshots of a failed run
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: screenshots
+          path: e2e/artifacts/
+          retention-days: 7

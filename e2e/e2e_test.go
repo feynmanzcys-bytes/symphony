@@ -32,11 +32,12 @@ func requireTools(t *testing.T) {
 	if os.Getenv("SYMPHONY_E2E") != "1" {
 		t.Skip("starts real Claude sessions and spends tokens; set SYMPHONY_E2E=1 to run")
 	}
-	for _, bin := range []string{"claude", "tmux", "chromium"} {
+	for _, bin := range []string{"claude", "tmux"} {
 		if _, err := exec.LookPath(bin); err != nil {
 			t.Skipf("%s not found", bin)
 		}
 	}
+	requireBrowser(t)
 }
 
 // workDir uses fixed folders (trusted once) and empties them before each run; they live outside the repository,

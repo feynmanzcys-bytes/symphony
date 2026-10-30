@@ -227,12 +227,39 @@ func (p *pane) dump() string { return fmt.Sprintf("[%s screen]\n%s", p.name, p.c
 
 // ---------- browser ----------
 
+// browserPath finds the browser for chromedp: SYMPHONY_E2E_BROWSER when set, otherwise Chromium or Google Chrome
+// (GitHub's Ubuntu runners have Chrome).
+func browserPath() (string, bool) {
+	names := []string{"chromium", "chromium-browser", "google-chrome", "google-chrome-stable"}
+	if b := os.Getenv("SYMPHONY_E2E_BROWSER"); b != "" {
+		names = []string{b}
+	}
+	for _, name := range names {
+		if path, err := exec.LookPath(name); err == nil {
+			return path, true
+		}
+	}
+	return "", false
+}
+
+// requireBrowser skips a test when there's no browser, except on CI, where that's a broken setup.
+func requireBrowser(t *testing.T) string {
+	t.Helper()
+	path, ok := browserPath()
+	switch {
+	case ok:
+		return path
+	case os.Getenv("CI") != "":
+		t.Fatal("no browser on CI: install Chromium or Chrome, or set SYMPHONY_E2E_BROWSER")
+	default:
+		t.Skip("no browser found: install Chromium or Chrome, or set SYMPHONY_E2E_BROWSER")
+	}
+	return ""
+}
+
 func newBrowser(t *testing.T) context.Context {
 	t.Helper()
-	path, err := exec.LookPath("chromium")
-	if err != nil {
-		t.Skip("chromium not found")
-	}
+	path := requireBrowser(t)
 	opts := append(chromedp.DefaultExecAllocatorOptions[:],
 		chromedp.ExecPath(path),
 		chromedp.Flag("headless", "new"),
@@ -244,7 +271,7 @@ func newBrowser(t *testing.T) context.Context {
 	ctx, cancel := chromedp.NewContext(alloc)
 	t.Cleanup(func() { cancel(); cancelAlloc() })
 	if err := chromedp.Do(ctx); err != nil {
-		t.Fatalf("chromium failed to start: %v", err)
+		t.Fatalf("the browser failed to start: %v", err)
 	}
 	return ctx
 }
