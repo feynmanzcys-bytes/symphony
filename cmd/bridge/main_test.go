@@ -204,9 +204,16 @@ func TestAutostartRefuses(t *testing.T) {
 	if err != nil {
 		t.Skip("needs the go command")
 	}
-	// were anything written anyway, it would land here, not in the real config
+	// were anything written anyway, it would land here, not in the real config; go keeps its own caches
 	home := t.TempDir()
 	env := append(os.Environ(), "SYMPHONY_LANG=en", "HOME="+home, "XDG_CONFIG_HOME="+filepath.Join(home, ".config"))
+	caches, err := exec.Command(gobin, "env", "GOCACHE", "GOMODCACHE", "GOPATH").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, name := range []string{"GOCACHE", "GOMODCACHE", "GOPATH"} {
+		env = append(env, name+"="+strings.Split(strings.TrimSpace(string(caches)), "\n")[i])
+	}
 	for _, c := range []struct {
 		cmd  *exec.Cmd
 		want string
