@@ -9,6 +9,8 @@ import { type Lang, matchLang, message } from './messages'
 // The mod is usually installed at user scope, so every Claude Code session loads it, but only sessions started
 // with SYMPHONY_TOKEN belong to the office. In any other session it does nothing: it doesn't contact the bridge,
 // read login details, show messages or touch approvals.
+// When a bridge on this machine doesn't answer as the session starts, the mod starts it with the symphony program
+// (symphony -background, if it's on PATH; SYMPHONY_DATA, if set, tells it where the accounts are).
 // When the bridge is unreachable, rejects the token or the account is busy, everything falls back to Claude Code's
 // own terminal interaction; the session never hangs.
 const DEFAULT_BRIDGE = 'http://127.0.0.1:7788'
@@ -78,6 +80,25 @@ async function call($: EngineInterface, path: string, body?: unknown) {
     headers,
     body: body === undefined ? undefined : JSON.stringify(body),
   })
+}
+
+// a bridge on this machine, which the mod may start itself: http://127.0.0.1:7788 and the like
+const LOCAL_BRIDGE = /^http:\/\/(127\.0\.0\.1|localhost|\[::1\]):(\d+)\/?$/
+
+// Nothing answers at the bridge's address. When it's on this machine, start the bridge with the symphony program, if
+// it's on PATH: -background detaches it, so it keeps running after this session, and returns once it answers (a
+// session starting it at the same moment finds it running and starts nothing).
+async function startBridge($: EngineInterface, bridge: string) {
+  const local = LOCAL_BRIDGE.exec(bridge)
+  if (!local) return false
+  try {
+    const ran = await $.process.run(['symphony', '-background', '-open=false', '-addr', `${local[1]}:${local[2]}`], {
+      timeoutMs: 30_000,
+    })
+    return ran.exitCode === 0
+  } catch {
+    return false // no symphony on PATH, or it didn't finish in time
+  }
 }
 
 // reports an event to the office page; a failure is ignored and never affects the session.
@@ -167,7 +188,12 @@ export const register: Register = on => {
     sticky = { cwd: e.cwd, launch: (await $.env.get('SYMPHONY_LAUNCH')) || undefined }
     const model = await $.session.model()
     reported = { model, effort: '' }
-    const res = await emit($, 'session.start', { interactive: e.isInteractive, login: id.login, model })
+    const online = { interactive: e.isInteractive, login: id.login, model }
+    let res = await emit($, 'session.start', online)
+    if (!res && (await startBridge($, id.bridge))) {
+      res = await emit($, 'session.start', online)
+      if (res?.ok) $.ui.toast(message(id.lang, 'started', { bridge: id.bridge }))
+    }
     if (!res) $.ui.toast(message(id.lang, 'unreachable', { bridge: id.bridge }))
     else if (res.status === 401) $.ui.toast(message(id.lang, 'badToken'))
     else if (res.status === 409) $.ui.toast(message(id.lang, 'busy'))

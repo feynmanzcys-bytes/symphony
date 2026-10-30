@@ -124,6 +124,45 @@ func TestOpen(t *testing.T) {
 	}
 }
 
+// TestBackground starts the bridge with -background, as the mod does: the command returns once the bridge answers,
+// even with a pipe on its output (the bridge writes to bridge.log instead), and the bridge keeps running after it;
+// a second -background finds it and starts nothing.
+func TestBackground(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("stops the bridge with pkill")
+	}
+	exe := buildBridge(t)
+	dir := t.TempDir()
+	data := filepath.Join(dir, "data")
+	t.Cleanup(func() { exec.Command("pkill", "-f", "--", "-data="+data).Run() })
+	addr := freeAddr(t)
+	office := "http://" + addr + "/"
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	run := func() string {
+		cmd := exec.CommandContext(ctx, exe, "-background", "-open=false", "-addr", addr, "-data="+data, "-claude", filepath.Join(dir, "no-claude"))
+		cmd.Env = append(os.Environ(), "SYMPHONY_LANG=en")
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("-background: %v\n%s", err, out)
+		}
+		return string(out)
+	}
+
+	if out := run(); !strings.Contains(out, "runs in the background at "+office) {
+		t.Fatalf("-background should say where the bridge runs:\n%s", out)
+	}
+	if !bridgeAt("http://" + addr) {
+		t.Fatal("the bridge should keep running after -background returns")
+	}
+	if log, err := os.ReadFile(filepath.Join(data, "bridge.log")); err != nil || !strings.Contains(string(log), "symphony bridge v9.8.7: http://"+addr) {
+		t.Errorf("bridge.log should have the bridge's own log: %v\n%s", err, log)
+	}
+	if out := run(); !strings.Contains(out, "already running at "+office) {
+		t.Fatalf("a second -background should find the running bridge:\n%s", out)
+	}
+}
+
 func freeAddr(t *testing.T) string {
 	t.Helper()
 	l, err := net.Listen("tcp", "127.0.0.1:0")

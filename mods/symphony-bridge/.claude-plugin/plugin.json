@@ -1,6 +1,6 @@
 {
   "name": "symphony-bridge",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Brings Claude Code sessions into the symphony office: permission requests and AskUserQuestion are handled in the office web page, and session activity is reported there. Only affects sessions started with SYMPHONY_TOKEN.",
   "author": { "name": "feynmanzcys-bytes", "url": "https://github.com/feynmanzcys-bytes" },
   "homepage": "https://github.com/feynmanzcys-bytes/symphony",

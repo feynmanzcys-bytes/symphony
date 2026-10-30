@@ -87,7 +87,7 @@ bridge가 시작되면 브라우저에서 사무실(<http://127.0.0.1:7788/>)이
 | 플래그 | 기본값 | 설명 |
 | --- | --- | --- |
 | `-addr` | `127.0.0.1:7788` | 수신 대기할 주소. 페이지에 아직 로그인 기능이 없으니 이 컴퓨터 외의 주소에는 바인딩하지 마세요 |
-| `-data` | 설정 폴더 안의 `symphony` | 계정(token 포함)과 메시지 기록을 저장하는 곳 |
+| `-data` | `$SYMPHONY_DATA`, 없으면 설정 폴더 안의 `symphony` | 계정(token 포함)과 메시지 기록을 저장하는 곳 |
 | `-terminal` | `auto` | 페이지에서 시작한 세션에 쓸 터미널: `auto`, `tmux`, `window` 중 하나 |
 | `-claude` | `claude` | claude 실행 파일 |
 | `-lang` | 시스템 언어 | bridge 메시지 언어 |
@@ -95,6 +95,7 @@ bridge가 시작되면 브라우저에서 사무실(<http://127.0.0.1:7788/>)이
 | `-web` | 비어 있음 | 개발용: 이 폴더의 페이지를 제공해서, 수정한 내용이 새로고침하면 바로 보입니다 |
 | `-open` | `true` | bridge가 시작되면 브라우저에서 사무실을 엽니다. `-addr`에서 이미 bridge가 실행 중이면 그 사무실만 엽니다 |
 | `-autostart` | — | `on`: 로그인할 때마다 bridge를 자동으로 시작하고(함께 준 플래그 포함) 지금 바로 시작합니다. `off`: 되돌립니다 |
+| `-background` | — | bridge를 백그라운드에서 시작합니다. 터미널과 분리되고 로그는 데이터 폴더의 `bridge.log`에 남기며, 응답하면 돌아옵니다 |
 | `-version` | — | 버전을 출력하고 종료합니다 |
 
 **로그인할 때 시작**: `symphony -autostart on`을 실행하면 이후 로그인할 때마다 bridge가 자동으로 시작되고(함께 준 플래그, 예를 들어 `-addr`도 그대로 씁니다) 지금 바로 시작됩니다. `symphony -autostart off`로 되돌릴 수 있습니다. Linux에서는 systemd 사용자 서비스(로그는 `journalctl --user -u symphony`), macOS에서는 launchd 에이전트(로그는 `~/Library/Logs/symphony.log`), Windows에서는 레지스트리 Run 키의 값입니다(bridge는 콘솔 창에서 실행되며, 창을 닫으면 다음 로그인 때까지 멈춥니다). `go run`이 아니라 symphony 프로그램 자체가 필요합니다.
@@ -111,6 +112,8 @@ SYMPHONY_TOKEN=<token> claude --name frontend-alice --permission-mode manual
 ```
 
 권한 모드는 `manual`을 추천합니다. `auto` 모드에서는 대부분의 작업을 아무에게도 묻지 않기 때문에 페이지까지 오는 승인이 거의 없습니다. bridge가 기본 주소에 있지 않다면 `SYMPHONY_BRIDGE=http://host:port`도 설정하세요. mod 메시지의 언어는 `SYMPHONY_LANG`으로 고릅니다.
+
+이 컴퓨터의 bridge 주소가 응답하지 않으면, 세션이 `symphony -background`로 bridge를 직접 시작합니다(`symphony`가 PATH에 있을 때). bridge는 세션이 끝나도 계속 실행됩니다. 계정이 기본 데이터 폴더에 없다면 `SYMPHONY_DATA`를 설정하세요.
 
 ## 계정과 자리
 

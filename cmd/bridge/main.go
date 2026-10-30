@@ -1,5 +1,5 @@
 // symphony bridge: go run ./cmd/bridge [-addr 127.0.0.1:7788] [-data folder] [-web web] [-lang en] [-open=false]
-// [-autostart on|off] [-version]
+// [-autostart on|off] [-background] [-version]
 // Releases ship it as the symphony program (.github/release.sh).
 package main
 
@@ -57,6 +57,7 @@ func main() {
 	flag.String("lang", i18n.Lang(), i18n.T("flag.lang", "langs", strings.Join(i18n.Langs, ", ")))
 	open := flag.Bool("open", true, i18n.T("flag.open"))
 	auto := flag.String("autostart", "", i18n.T("flag.autostart"))
+	background := flag.Bool("background", false, i18n.T("flag.background"))
 	showVersion := flag.Bool("version", false, i18n.T("flag.version"))
 	flag.Parse()
 	if *showVersion {
@@ -77,6 +78,10 @@ func main() {
 		set := map[string]string{}
 		flag.Visit(func(f *flag.Flag) { set[f.Name] = f.Value.String() })
 		setAutostart(*auto, autostartArgs(set, *dataDir), base, *open)
+		return
+	}
+	if *background {
+		startBackground(base, *dataDir)
 		return
 	}
 	// The address first: when a bridge already answers there (symphony started a second time, say with a
@@ -139,6 +144,62 @@ func bridgeAt(base string) bool {
 		Type string `json:"type"`
 	}
 	return res.StatusCode == http.StatusOK && json.NewDecoder(res.Body).Decode(&state) == nil && state.Type == "snapshot"
+}
+
+// startBackground starts a copy of this program without -background, detached from this terminal and writing its log
+// to bridge.log in the data folder, and returns once it answers. The mod starts the bridge this way, so it keeps
+// running after the session; when a bridge already answers at the address, there's nothing to start.
+func startBackground(base, dataDir string) {
+	if bridgeAt(base) {
+		log.Print(i18n.T("log.already_running", "url", base+"/"))
+		return
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		log.Fatal(err)
+	}
+	if err := os.MkdirAll(dataDir, 0o700); err != nil {
+		log.Fatal(err)
+	}
+	logPath := filepath.Join(dataDir, "bridge.log")
+	out, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		log.Fatal(err)
+	}
+	var args []string
+	for _, a := range os.Args[1:] {
+		if name, _, _ := strings.Cut(strings.TrimLeft(a, "-"), "="); strings.HasPrefix(a, "-") && name == "background" {
+			continue
+		}
+		args = append(args, a)
+	}
+	// its own output goes to the log, so whoever ran this (the mod's process.run) isn't kept waiting on a pipe
+	cmd := exec.Command(exe, args...)
+	cmd.Stdout, cmd.Stderr = out, out
+	detach(cmd)
+	err = cmd.Start()
+	out.Close()
+	if err != nil {
+		log.Fatal(err)
+	}
+	exited := make(chan error, 1)
+	go func() { exited <- cmd.Wait() }()
+	deadline := time.After(15 * time.Second)
+	for !bridgeAt(base) {
+		select {
+		case err := <-exited:
+			// another bridge may have taken the address a moment ago; then this one stepped aside
+			if bridgeAt(base) {
+				log.Print(i18n.T("log.already_running", "url", base+"/"))
+				return
+			}
+			log.Fatal(i18n.T("log.background_failed", "reason", fmt.Sprint(err), "log", logPath))
+		case <-deadline:
+			log.Fatal(i18n.T("log.background_slow", "url", base+"/", "log", logPath))
+		case <-time.After(200 * time.Millisecond):
+		}
+	}
+	log.Print(i18n.T("log.background", "url", base+"/", "log", logPath))
 }
 
 // waitBridge waits for a bridge to answer at base, and says whether one did in time.
@@ -254,7 +315,12 @@ func langArg(args []string) string {
 	return ""
 }
 
+// defaultDataDir is SYMPHONY_DATA, else symphony in the user config folder. The environment variable reaches a bridge
+// started by the mod too, which gets no -data.
 func defaultDataDir() string {
+	if dir := os.Getenv("SYMPHONY_DATA"); dir != "" {
+		return dir
+	}
 	if dir, err := os.UserConfigDir(); err == nil {
 		return filepath.Join(dir, "symphony")
 	}

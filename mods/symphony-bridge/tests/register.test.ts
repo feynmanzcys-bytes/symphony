@@ -7,12 +7,26 @@ import { expect, mock, test } from 'claude-code/testing'
 type Req = { url: string; method?: string; auth?: string; body?: Record<string, unknown> }
 // 'down' means the bridge isn't running and can't be reached
 type Reply = { status: number; text: string } | 'down'
+// what running symphony does: exits with a code, or 'missing' when it isn't on PATH
+type Ran = { exitCode: number } | 'missing'
 
-function world(on: On, env: Record<string, string>, reply: (r: Req) => Reply = () => ({ status: 200, text: '{}' })) {
+function world(
+  on: On,
+  env: Record<string, string>,
+  reply: (r: Req) => Reply = () => ({ status: 200, text: '{}' }),
+  run: (argv: readonly string[]) => Ran = () => 'missing',
+) {
   mock.env(on, env)
   const clock = mock.clock(on)
   const reqs: Req[] = []
   const toasts: string[] = []
+  const runs: string[][] = []
+  on('process.run', (_$, e) => {
+    runs.push([...e.argv])
+    const ran = run(e.argv)
+    if (ran === 'missing') return { deny: `${e.argv[0]}: not found` }
+    return { value: { exitCode: ran.exitCode, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+  })
   on('http.fetch', (_$, e) => {
     const headers = (e.init?.headers ?? {}) as Record<string, string>
     const body = typeof e.init?.body === 'string' ? JSON.parse(e.init.body) : undefined
@@ -31,7 +45,7 @@ function world(on: On, env: Record<string, string>, reply: (r: Req) => Reply = (
   on('session.model', () => ({ value: 'claude-sonnet-5-5' }))
   on('fs.read', () => ({ deny: 'tests read no files' }))
   on('session.start', (_$, e) => ({ cwd: e.cwd }))
-  return { reqs, toasts, clock }
+  return { reqs, toasts, runs, clock }
 }
 
 const start = { cwd: '/work', surface: 'terminal', isInteractive: true } as const
@@ -78,13 +92,51 @@ test('the bridge rejects the token: one message, approvals stay in the terminal'
   expect((await $.tool.check(bash)).decision).toBe('ask')
 })
 
-test('the bridge is unreachable: one message, approvals in the terminal for now', async ($, on) => {
+test('the bridge is unreachable and symphony is not installed: one message, approvals in the terminal for now', async ($, on) => {
   const w = world(on, { SYMPHONY_TOKEN: 'tok' }, () => 'down')
   on('tool.check', () => ({ decision: 'ask' }))
 
   await $.session.start(start)
+  expect(w.runs).toEqual([['symphony', '-background', '-open=false', '-addr', '127.0.0.1:7788']])
   expect(w.toasts).toEqual(["symphony: can't reach the bridge (http://127.0.0.1:7788); approvals stay in the terminal for now"])
   expect((await $.tool.check(bash)).decision).toBe('ask')
+})
+
+test('a bridge on this machine that is down: the mod starts it with symphony -background and takes its seat', async ($, on) => {
+  let up = false
+  const w = world(
+    on,
+    { SYMPHONY_TOKEN: 'tok', SYMPHONY_BRIDGE: 'http://localhost:7790' },
+    () => (up ? { status: 200, text: '{}' } : 'down'),
+    () => {
+      up = true
+      return { exitCode: 0 }
+    },
+  )
+
+  await $.session.start(start)
+  expect(w.runs).toEqual([['symphony', '-background', '-open=false', '-addr', 'localhost:7790']])
+  const starts = w.reqs.filter(r => r.body?.kind === 'session.start')
+  expect(starts.length).toBe(2)
+  expect(starts[1]).toEqual(expect.objectContaining({ url: 'http://localhost:7790/api/event', auth: 'Bearer tok' }))
+  expect(w.toasts).toEqual(['symphony: started the bridge (http://localhost:7790) in the background'])
+})
+
+test('symphony fails to start the bridge: the usual message, and no second try', async ($, on) => {
+  const w = world(on, { SYMPHONY_TOKEN: 'tok' }, () => 'down', () => ({ exitCode: 1 }))
+
+  await $.session.start(start)
+  expect(w.runs.length).toBe(1)
+  expect(w.reqs.filter(r => r.body?.kind === 'session.start').length).toBe(1)
+  expect(w.toasts).toEqual(["symphony: can't reach the bridge (http://127.0.0.1:7788); approvals stay in the terminal for now"])
+})
+
+test('a bridge on another machine is never started from here', async ($, on) => {
+  const w = world(on, { SYMPHONY_TOKEN: 'tok', SYMPHONY_BRIDGE: 'http://bridge.test' }, () => 'down', () => ({ exitCode: 0 }))
+
+  await $.session.start(start)
+  expect(w.runs).toEqual([])
+  expect(w.toasts).toEqual(["symphony: can't reach the bridge (http://bridge.test); approvals stay in the terminal for now"])
 })
 
 test('with a token: a call that needs a person waits on the bridge and goes ahead once the page allows it', async ($, on) => {

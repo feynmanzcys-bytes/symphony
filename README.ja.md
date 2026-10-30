@@ -87,7 +87,7 @@ go run ./cmd/bridge
 | フラグ | デフォルト | 説明 |
 | --- | --- | --- |
 | `-addr` | `127.0.0.1:7788` | 待ち受けるアドレス。ページにはまだログイン機能がないので、このマシン以外のアドレスにはバインドしないでください |
-| `-data` | 設定フォルダ内の `symphony` | アカウント（token を含む）とメッセージ履歴の保存先 |
+| `-data` | `$SYMPHONY_DATA`、なければ設定フォルダ内の `symphony` | アカウント（token を含む）とメッセージ履歴の保存先 |
 | `-terminal` | `auto` | ページから起動したセッションのターミナル：`auto`、`tmux`、`window` のいずれか |
 | `-claude` | `claude` | claude の実行ファイル |
 | `-lang` | システムの言語 | bridge のメッセージの言語 |
@@ -95,6 +95,7 @@ go run ./cmd/bridge
 | `-web` | なし | 開発用：このフォルダのページを配信し、編集を再読み込みで反映させる |
 | `-open` | `true` | bridge の起動後にブラウザでオフィスを開く。`-addr` で既に bridge が動いていれば、そのオフィスを開くだけ |
 | `-autostart` | — | `on`：ログインのたびに bridge を自動で起動し（ほかに指定したフラグ付き）、今すぐ起動する。`off`：元に戻す |
+| `-background` | — | bridge をバックグラウンドで起動する。ターミナルから切り離し、ログはデータフォルダの `bridge.log` に書き、応答するようになったら戻る |
 | `-version` | — | バージョンを表示して終了する |
 
 **ログイン時に起動**：`symphony -autostart on` を実行すると、以後ログインのたびに bridge が自動で起動し（一緒に指定したフラグ、たとえば `-addr` も引き継ぎます）、今すぐにも起動します。`symphony -autostart off` で元に戻せます。Linux では systemd のユーザーサービス（ログは `journalctl --user -u symphony` で見られます）、macOS では launchd エージェント（ログは `~/Library/Logs/symphony.log`）、Windows ではレジストリの Run キーの値です（bridge はコンソールウィンドウで動き、閉じると次のログインまで止まります）。`go run` ではなく、symphony プログラムそのものが必要です。
@@ -111,6 +112,8 @@ SYMPHONY_TOKEN=<token> claude --name frontend-alice --permission-mode manual
 ```
 
 権限モードは `manual` がおすすめです。`auto` モードではほとんどの操作で誰にも確認しないので、ページに届く承認がほとんどなくなります。bridge がデフォルトのアドレスにない場合は、`SYMPHONY_BRIDGE=http://host:port` も設定してください。mod のメッセージの言語は `SYMPHONY_LANG` で選べます。
+
+このマシン上の bridge のアドレスが応答しないときは、セッションが `symphony -background` で bridge を自分で起動します（`symphony` が PATH にある場合）。bridge はセッションが終わっても動き続けます。アカウントが既定のデータフォルダにない場合は `SYMPHONY_DATA` を設定してください。
 
 ## アカウントと席
 

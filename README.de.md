@@ -87,7 +87,7 @@ Das Büro öffnet sich in deinem Browser unter <http://127.0.0.1:7788/> (`-open=
 | Flag | Standard | Wozu |
 | --- | --- | --- |
 | `-addr` | `127.0.0.1:7788` | Adresse, auf der die Bridge lauscht. Die Seite hat noch keine Anmeldung, also binde die Bridge nur an diesen Rechner |
-| `-data` | `symphony` in deinem Konfigurationsordner | Wo Konten (mit ihren Tokens) und der Nachrichtenverlauf liegen |
+| `-data` | `$SYMPHONY_DATA`, sonst `symphony` in deinem Konfigurationsordner | Wo Konten (mit ihren Tokens) und der Nachrichtenverlauf liegen |
 | `-terminal` | `auto` | Terminal für über die Seite gestartete Sitzungen: `auto`, `tmux` oder `window` |
 | `-claude` | `claude` | Die ausführbare Datei von claude |
 | `-lang` | deine Systemsprache | Sprache der Bridge-Meldungen |
@@ -95,6 +95,7 @@ Das Büro öffnet sich in deinem Browser unter <http://127.0.0.1:7788/> (`-open=
 | `-web` | leer | Für die Entwicklung: liefert die Seiten aus diesem Ordner aus, sodass Änderungen nach dem Neuladen sichtbar sind |
 | `-open` | `true` | Öffnet das Büro im Browser, sobald die Bridge läuft; läuft unter `-addr` schon eine Bridge, wird nur ihr Büro geöffnet |
 | `-autostart` | — | `on`: Startet die Bridge bei jeder Anmeldung, mit den übrigen angegebenen Optionen, und startet sie gleich; `off`: macht das rückgängig |
+| `-background` | — | Startet die Bridge im Hintergrund, losgelöst vom Terminal und mit Log in `bridge.log` im Datenordner, und kehrt zurück, sobald sie antwortet |
 | `-version` | — | Gibt die Version aus und beendet sich |
 
 **Beim Anmelden starten**: `symphony -autostart on` lässt die Bridge bei jeder Anmeldung starten, mit den gleich mitgegebenen Optionen (etwa `-addr`), und startet sie sofort; `symphony -autostart off` macht das rückgängig. Unter Linux ist das ein systemd-Benutzerdienst (`journalctl --user -u symphony` zeigt sein Log), unter macOS ein launchd-Agent (Log in `~/Library/Logs/symphony.log`), unter Windows ein Wert unter dem Run-Schlüssel der Registry (die Bridge läuft in einem Konsolenfenster; schließt du es, ist sie bis zur nächsten Anmeldung aus). Dafür braucht es das Programm symphony selbst, nicht `go run`.
@@ -111,6 +112,8 @@ SYMPHONY_TOKEN=<token> claude --name frontend-alice --permission-mode manual
 ```
 
 Empfohlen ist der Berechtigungsmodus `manual`: Im Modus `auto` wird bei den meisten Aktionen niemand gefragt, also kommen kaum Freigaben auf der Seite an. Läuft die Bridge nicht unter der Standardadresse, setz zusätzlich `SYMPHONY_BRIDGE=http://host:port`. `SYMPHONY_LANG` legt die Sprache der Mod-Meldungen fest.
+
+Antwortet unter der Adresse der Bridge auf diesem Rechner nichts, startet die Sitzung die Bridge selbst mit `symphony -background` (wenn `symphony` in deinem PATH liegt), und die Bridge läuft nach dem Ende der Sitzung weiter. Setz `SYMPHONY_DATA`, wenn deine Konten nicht im Standard-Datenordner liegen.
 
 ## Konten und Plätze
 

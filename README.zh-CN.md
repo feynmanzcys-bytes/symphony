@@ -87,7 +87,7 @@ bridge 一启动就会在浏览器里打开办公室 <http://127.0.0.1:7788/>（
 | 参数 | 默认 | 说明 |
 | --- | --- | --- |
 | `-addr` | `127.0.0.1:7788` | 监听地址。网页还没有登录，别绑到本机以外的地址 |
-| `-data` | 系统配置目录下的 `symphony` | 放账号（含 token）和消息记录 |
+| `-data` | `$SYMPHONY_DATA`，没有就用系统配置目录下的 `symphony` | 放账号（含 token）和消息记录 |
 | `-terminal` | `auto` | 页面开会话用什么终端：`auto`、`tmux`、`window` |
 | `-claude` | `claude` | claude 可执行文件 |
 | `-lang` | 系统语言 | bridge 提示用的语言 |
@@ -95,6 +95,7 @@ bridge 一启动就会在浏览器里打开办公室 <http://127.0.0.1:7788/>（
 | `-web` | 空 | 开发用：直接读这个目录里的页面，改了刷新就生效 |
 | `-open` | `true` | bridge 启动后在浏览器里打开办公室；`-addr` 上已经有 bridge 在跑的话，只打开它的办公室 |
 | `-autostart` | — | `on`：以后每次登录都自动启动 bridge（带上一起给的参数），并且马上启动；`off`：取消 |
+| `-background` | — | 在后台启动 bridge：脱离终端，日志写到数据目录的 `bridge.log`，等它能响应了就返回 |
 | `-version` | — | 显示版本号后退出 |
 
 **随登录启动**：`symphony -autostart on` 让 bridge 以后每次登录都自动启动（一起给的参数也会带上，比如 `-addr`），并且马上启动；`symphony -autostart off` 取消。Linux 上是 systemd 用户服务（日志用 `journalctl --user -u symphony` 看），macOS 上是 launchd 代理（日志在 `~/Library/Logs/symphony.log`），Windows 上是注册表 Run 键里的一项（bridge 跑在一个控制台窗口里，关掉窗口它就停到下次登录）。这要用 symphony 程序本身，`go run` 不行。
@@ -111,6 +112,8 @@ SYMPHONY_TOKEN=<token> claude --name 前端小王 --permission-mode manual
 ```
 
 权限模式建议用 `manual`：`auto` 模式下大部分操作不问人，审批也就到不了网页。bridge 不在默认地址的话，再加上 `SYMPHONY_BRIDGE=http://地址:端口`。`SYMPHONY_LANG` 决定 mod 提示用的语言。
+
+本机上 bridge 的地址没有响应时，会话会自己用 `symphony -background` 把 bridge 拉起来（前提是 `symphony` 在 PATH 里），会话结束后 bridge 还会继续跑。账号不在默认数据目录的话，设好 `SYMPHONY_DATA`。
 
 ## 账号和座位
 
