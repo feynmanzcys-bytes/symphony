@@ -107,6 +107,25 @@ func TestIdle(t *testing.T) {
 		return all["alice"].Act == "work" && all["alice"].Room == "desk" && all["gina"].Room == ""
 	}, show)
 
+	// the walkways: from every spot, the way to every desk is little longer than going straight across and then
+	// down (desks in a middle row once had to be reached round by the back wall or the reception)
+	type route struct {
+		From string  `json:"from"`
+		Seat int     `json:"seat"`
+		Walk float64 `json:"walk"`
+		Dx   float64 `json:"dx"`
+		Dy   float64 `json:"dy"`
+	}
+	routes := get(t, office, 5*time.Second, chromedp.Evaluate[[]route](`window.__routes()`))
+	if len(routes) < 100 {
+		t.Fatalf("too few routes to check: %d", len(routes))
+	}
+	for _, r := range routes {
+		if over := r.Walk - r.Dx - r.Dy; over > 150 {
+			t.Errorf("the way from %s to desk %d is %.0f px, %.0f more than across and down", r.From, r.Seat+1, r.Walk, over)
+		}
+	}
+
 	// ---------- 2. a minute later they wander off, each to a spot of its own ----------
 	warp(time.Minute)
 	waitUntil(t, 40*time.Second, "most idle employees leave their desks and get where they're going", func() bool {
