@@ -1,9 +1,10 @@
-// symphony bridge: go run ./cmd/bridge [-addr 127.0.0.1:7788] [-data folder] [-web web] [-lang en] [-version]
+// symphony bridge: go run ./cmd/bridge [-addr 127.0.0.1:7788] [-data folder] [-web web] [-lang en] [-open=false] [-version]
 // Releases ship it as the symphony program (.github/release.sh).
 package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -52,10 +53,34 @@ func main() {
 	claude := flag.String("claude", "claude", i18n.T("flag.claude"))
 	terminal := flag.String("terminal", "auto", i18n.T("flag.terminal"))
 	flag.String("lang", i18n.Lang(), i18n.T("flag.lang", "langs", strings.Join(i18n.Langs, ", ")))
+	open := flag.Bool("open", true, i18n.T("flag.open"))
 	showVersion := flag.Bool("version", false, i18n.T("flag.version"))
 	flag.Parse()
 	if *showVersion {
 		fmt.Printf("symphony %s (%s/%s)\n", buildVersion(), runtime.GOOS, runtime.GOARCH)
+		return
+	}
+
+	host, port, err := net.SplitHostPort(*addr)
+	if err != nil {
+		log.Fatal(err)
+	}
+	named := host != "" && host != "0.0.0.0" && host != "::"
+	if !named {
+		host = "127.0.0.1"
+	}
+	base := "http://" + net.JoinHostPort(host, port)
+	// The address first: when a bridge already answers there (symphony started a second time, say with a
+	// double-click), there is nothing to start, so show its office and stop.
+	ln, err := net.Listen("tcp", *addr)
+	if err != nil {
+		if !bridgeAt(base) {
+			log.Fatal(err)
+		}
+		log.Print(i18n.T("log.already_running", "url", base+"/"))
+		if *open {
+			openBrowser(base + "/")
+		}
 		return
 	}
 
@@ -69,16 +94,10 @@ func main() {
 		log.Fatal(err)
 	}
 	srv := bridge.NewServer(hub, pages)
-	host, port, err := net.SplitHostPort(*addr)
-	if err != nil {
-		log.Fatal(err)
-	}
-	if host != "" && host != "0.0.0.0" && host != "::" {
+	if named {
 		srv.AllowedHosts = append(srv.AllowedHosts, host)
-	} else {
-		host = "127.0.0.1"
 	}
-	if l := launcher(*modDir, *claude, *terminal, "http://"+net.JoinHostPort(host, port)); l != nil {
+	if l := launcher(*modDir, *claude, *terminal, base); l != nil {
 		srv.SetLauncher(l)
 	}
 	go func() {
@@ -93,7 +112,38 @@ func main() {
 	}()
 
 	log.Print(i18n.T("log.listening", "version", buildVersion(), "addr", *addr, "data", *dataDir))
-	log.Fatal(http.ListenAndServe(*addr, srv))
+	if *open {
+		openBrowser(base + "/")
+	}
+	log.Fatal(http.Serve(ln, srv))
+}
+
+// bridgeAt says whether a symphony bridge answers at base (http://host:port).
+func bridgeAt(base string) bool {
+	c := http.Client{Timeout: 2 * time.Second}
+	res, err := c.Get(base + "/api/state")
+	if err != nil {
+		return false
+	}
+	defer res.Body.Close()
+	var state struct {
+		Type string `json:"type"`
+	}
+	return res.StatusCode == http.StatusOK && json.NewDecoder(res.Body).Decode(&state) == nil && state.Type == "snapshot"
+}
+
+// openBrowser shows url in the default browser. Without one (no graphical session) the address in the log has to do.
+func openBrowser(url string) {
+	argv, ok := bridge.BrowserCommand(runtime.GOOS, url, os.Getenv, exec.LookPath)
+	if !ok {
+		return
+	}
+	cmd := exec.Command(argv[0], argv[1:]...)
+	if err := cmd.Start(); err != nil {
+		log.Print(i18n.T("log.open_failed", "url", url, "reason", err.Error()))
+		return
+	}
+	go cmd.Wait()
 }
 
 // langArg finds -lang in the arguments before the flags are parsed: -lang x, -lang=x, --lang x, --lang=x.

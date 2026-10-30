@@ -82,7 +82,7 @@ cd symphony
 go run ./cmd/bridge
 ```
 
-Ouvrez <http://127.0.0.1:7788/> pour voir le bureau. <http://127.0.0.1:7788/approve> est une page plus simple, réservée aux approbations.
+Le bureau s’ouvre dans votre navigateur à l’adresse <http://127.0.0.1:7788/> (`-open=false` le désactive) ; <http://127.0.0.1:7788/approve> est une page plus simple, réservée aux approbations. Relancer le bridge alors qu’il tourne déjà ouvre simplement le bureau.
 
 | Option | Par défaut | Rôle |
 | --- | --- | --- |
@@ -93,6 +93,7 @@ Ouvrez <http://127.0.0.1:7788/> pour voir le bureau. <http://127.0.0.1:7788/appr
 | `-lang` | la langue de votre système | Langue des messages du bridge |
 | `-mod` | vide | Pour le développement : donne aux sessions le mod de ce dossier avec `--plugin-dir`, à la place de la copie installée |
 | `-web` | vide | Pour le développement : sert les pages depuis ce dossier, pour voir les modifications après un rechargement |
+| `-open` | `true` | Ouvre le bureau dans le navigateur une fois le bridge démarré ; si un bridge tourne déjà sur `-addr`, ouvre simplement son bureau |
 | `-version` | — | Affiche la version et quitte |
 
 ### 3. Démarrer des sessions

@@ -82,7 +82,7 @@ cd symphony
 go run ./cmd/bridge
 ```
 
-Unter <http://127.0.0.1:7788/> findest du das Büro. <http://127.0.0.1:7788/approve> ist eine einfachere Seite nur für Freigaben.
+Das Büro öffnet sich in deinem Browser unter <http://127.0.0.1:7788/> (`-open=false` schaltet das ab); <http://127.0.0.1:7788/approve> ist eine einfachere Seite nur für Freigaben. Startest du die Bridge erneut, während sie schon läuft, öffnet sich nur das Büro.
 
 | Flag | Standard | Wozu |
 | --- | --- | --- |
@@ -93,6 +93,7 @@ Unter <http://127.0.0.1:7788/> findest du das Büro. <http://127.0.0.1:7788/appr
 | `-lang` | deine Systemsprache | Sprache der Bridge-Meldungen |
 | `-mod` | leer | Für die Entwicklung: gibt Sitzungen per `--plugin-dir` den Mod aus diesem Ordner mit, statt der installierten Kopie |
 | `-web` | leer | Für die Entwicklung: liefert die Seiten aus diesem Ordner aus, sodass Änderungen nach dem Neuladen sichtbar sind |
+| `-open` | `true` | Öffnet das Büro im Browser, sobald die Bridge läuft; läuft unter `-addr` schon eine Bridge, wird nur ihr Büro geöffnet |
 | `-version` | — | Gibt die Version aus und beendet sich |
 
 ### 3. Sitzungen starten

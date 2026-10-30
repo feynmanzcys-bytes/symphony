@@ -82,7 +82,7 @@ cd symphony
 go run ./cmd/bridge
 ```
 
-Open <http://127.0.0.1:7788/> for the office. <http://127.0.0.1:7788/approve> is a simpler page for approvals only.
+The office opens in your browser at <http://127.0.0.1:7788/> (`-open=false` turns that off); <http://127.0.0.1:7788/approve> is a simpler page for approvals only. Starting the bridge again while it runs just opens the office.
 
 | Flag | Default | What it does |
 | --- | --- | --- |
@@ -93,6 +93,7 @@ Open <http://127.0.0.1:7788/> for the office. <http://127.0.0.1:7788/approve> is
 | `-lang` | your system language | Language of the bridge's messages |
 | `-mod` | empty | For development: give sessions this folder's mod with `--plugin-dir`, overriding the installed copy |
 | `-web` | empty | For development: serve the pages from this folder, so edits show after a reload |
+| `-open` | `true` | Open the office in the browser once the bridge is up; when a bridge already runs at `-addr`, just open its office |
 | `-version` | — | Print the version and exit |
 
 ### 3. Start sessions

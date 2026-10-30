@@ -1,32 +1,146 @@
 package main
 
 import (
+	"context"
+	"net"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
+	"strings"
+	"sync"
 	"testing"
+	"time"
 )
 
-// TestVersion builds the bridge the way .github/release.sh does and checks that -version prints the
-// version set with -ldflags, so a renamed variable can't quietly turn releases into "dev".
-func TestVersion(t *testing.T) {
+// built is the bridge built once for these tests, the way .github/release.sh builds it.
+var built struct {
+	once     sync.Once
+	dir, exe string
+	out      []byte
+	err      error
+}
+
+func TestMain(m *testing.M) {
+	code := m.Run()
+	if built.dir != "" {
+		os.RemoveAll(built.dir)
+	}
+	os.Exit(code)
+}
+
+func buildBridge(t *testing.T) string {
+	t.Helper()
 	gobin, err := exec.LookPath("go")
 	if err != nil {
 		t.Skip("needs the go command")
 	}
-	exe := filepath.Join(t.TempDir(), "symphony")
-	if runtime.GOOS == "windows" {
-		exe += ".exe"
+	built.once.Do(func() {
+		if built.dir, built.err = os.MkdirTemp("", "symphony-test"); built.err != nil {
+			return
+		}
+		built.exe = filepath.Join(built.dir, "symphony")
+		if runtime.GOOS == "windows" {
+			built.exe += ".exe"
+		}
+		built.out, built.err = exec.Command(gobin, "build", "-trimpath", "-ldflags", "-s -w -X main.version=v9.8.7", "-o", built.exe, ".").CombinedOutput()
+	})
+	if built.err != nil {
+		t.Fatalf("go build: %v\n%s", built.err, built.out)
 	}
-	build := exec.Command(gobin, "build", "-trimpath", "-ldflags", "-s -w -X main.version=v9.8.7", "-o", exe, ".")
-	if out, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("go build: %v\n%s", err, out)
-	}
-	out, err := exec.Command(exe, "-version").Output()
+	return built.exe
+}
+
+// TestVersion checks that -version prints the version set with -ldflags, so a renamed variable can't quietly turn
+// releases into "dev".
+func TestVersion(t *testing.T) {
+	out, err := exec.Command(buildBridge(t), "-version").Output()
 	if err != nil {
 		t.Fatalf("-version: %v", err)
 	}
 	if want := "symphony v9.8.7 (" + runtime.GOOS + "/" + runtime.GOARCH + ")\n"; string(out) != want {
 		t.Errorf("-version printed %q, want %q", out, want)
+	}
+}
+
+// TestOpen runs the bridge with a stand-in browser that notes what it was asked to open: the office opens once the
+// bridge is up; started again at the same address, it opens the running bridge's office and exits; with -open=false
+// nothing opens.
+func TestOpen(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the stand-in browser is a shell script")
+	}
+	exe := buildBridge(t)
+	dir := t.TempDir()
+	opened := filepath.Join(dir, "opened")
+	bin := filepath.Join(dir, "bin")
+	if err := os.Mkdir(bin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	script := "#!/bin/sh\necho \"$@\" >> '" + strings.ReplaceAll(opened, "'", `'\''`) + "'\n"
+	for _, name := range []string{"xdg-open", "open"} { // Linux, macOS
+		if err := os.WriteFile(filepath.Join(bin, name), []byte(script), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	addr := freeAddr(t)
+	office := "http://" + addr + "/"
+	cmd := func(ctx context.Context, args ...string) *exec.Cmd {
+		// no claude here, so the bridge doesn't look for the mod
+		c := exec.CommandContext(ctx, exe, append([]string{"-addr", addr, "-data", filepath.Join(dir, "data"), "-claude", filepath.Join(dir, "no-claude")}, args...)...)
+		c.Env = append(os.Environ(), "PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"), "DISPLAY=:0", "SYMPHONY_LANG=en")
+		return c
+	}
+	asked := func() []string {
+		data, _ := os.ReadFile(opened)
+		return strings.Fields(string(data))
+	}
+
+	first := cmd(context.Background())
+	if err := first.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { first.Process.Kill(); first.Wait() })
+	waitFor(t, 10*time.Second, "the office opens once the bridge is up", func() bool { return slices.Equal(asked(), []string{office}) })
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	out, err := cmd(ctx).CombinedOutput()
+	if err != nil || !strings.Contains(string(out), "already running at "+office) {
+		t.Fatalf("started again, the bridge should say it's already running and exit: %v\n%s", err, out)
+	}
+	waitFor(t, 10*time.Second, "started again, it opens the running bridge's office", func() bool { return slices.Equal(asked(), []string{office, office}) })
+
+	if out, err := cmd(ctx, "-open=false").CombinedOutput(); err != nil || !strings.Contains(string(out), "already running") {
+		t.Fatalf("with -open=false it should still find the running bridge and exit: %v\n%s", err, out)
+	}
+	time.Sleep(time.Second)
+	if got := asked(); len(got) != 2 {
+		t.Errorf("-open=false opened something: %q", got)
+	}
+	if !bridgeAt("http://" + addr) {
+		t.Error("the first bridge should still be running")
+	}
+}
+
+func freeAddr(t *testing.T) string {
+	t.Helper()
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer l.Close()
+	return l.Addr().String()
+}
+
+func waitFor(t *testing.T, timeout time.Duration, what string, cond func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for !cond() {
+		if time.Now().After(deadline) {
+			t.Fatalf("still waiting after %s: %s", timeout, what)
+		}
+		time.Sleep(100 * time.Millisecond)
 	}
 }

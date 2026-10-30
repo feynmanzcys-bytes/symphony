@@ -1,4 +1,4 @@
-Download the archive for your system, unpack it and run `symphony` (`symphony.exe` on Windows), then open <http://127.0.0.1:7788/>. Install the mod in Claude Code with `claude plugin install symphony-bridge --marketplace feynmanzcys-bytes/symphony`. The [README](https://github.com/feynmanzcys-bytes/symphony#readme) has the details.
+Download the archive for your system, unpack it and run `symphony` (`symphony.exe` on Windows): the office opens in your browser at <http://127.0.0.1:7788/>. Install the mod in Claude Code with `claude plugin install symphony-bridge --marketplace feynmanzcys-bytes/symphony`. The [README](https://github.com/feynmanzcys-bytes/symphony#readme) has the details.
 
 | System | x86-64 | ARM64 |
 | --- | --- | --- |
