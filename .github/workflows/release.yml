@@ -1,8 +1,8 @@
 # Publishes a release when a version tag is pushed on main (git tag -a v0.3.0 -m v0.3.0 && git push origin v0.3.0):
 # a few checks and the unit tests, then the symphony program for every platform with checksums (.github/release.sh),
-# attached to a GitHub release whose notes start with .github/release-notes.md. A tag with a suffix (v0.3.0-rc.1)
-# makes a pre-release. Run by hand (workflow_dispatch) it's a dry run: the same build, kept for 7 days as a workflow
-# artifact, nothing published.
+# attached to a GitHub release whose notes start with .github/release-notes.md ({tag} there becomes the tag, so its
+# links point at this release's archives). A tag with a suffix (v0.3.0-rc.1) makes a pre-release. Run by hand
+# (workflow_dispatch) it's a dry run: the same build, kept for 7 days as a workflow artifact, nothing published.
 # Plain go build and the gh on the runner, no third-party actions; only this job may write (to create the release).
 name: Release
 
@@ -58,10 +58,16 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # the notes link to this release's own archives
+          sed "s/{tag}/$GITHUB_REF_NAME/g" .github/release-notes.md >"$RUNNER_TEMP/notes.md"
+          if grep -n '{[a-z]*}' "$RUNNER_TEMP/notes.md"; then
+            echo "::error::a placeholder is left in .github/release-notes.md"
+            exit 1
+          fi
           pre=()
           if [[ $GITHUB_REF_NAME == *-* ]]; then pre=(--prerelease); fi
           gh release create "$GITHUB_REF_NAME" dist/* --verify-tag "${pre[@]}" \
-            --title "symphony $GITHUB_REF_NAME" --notes-file .github/release-notes.md --generate-notes
+            --title "symphony $GITHUB_REF_NAME" --notes-file "$RUNNER_TEMP/notes.md" --generate-notes
       - name: Keep the dry run's archives
         if: github.ref_type != 'tag'
         uses: actions/upload-artifact@v7
