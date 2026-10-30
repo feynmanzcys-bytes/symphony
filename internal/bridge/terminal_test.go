@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-// looker 假装只装了 bins 里这些程序。
+// looker pretends that only the programs in bins are installed.
 func looker(bins ...string) LookPath {
 	return func(file string) (string, error) {
 		if slices.Contains(bins, file) {
@@ -20,32 +20,48 @@ func looker(bins ...string) LookPath {
 	}
 }
 
+// asError returns err as a bridge *Error, or nil when it isn't one.
+func asError(err error) *Error {
+	var e *Error
+	if errors.As(err, &e) {
+		return e
+	}
+	return nil
+}
+
 func TestPickTerminal(t *testing.T) {
 	cases := []struct {
 		goos, kind string
 		bins       []string
-		want       string // 空表示应报错
+		want, code string // the backend's name, or the error's code when there is none
 	}{
-		{"linux", "auto", []string{"tmux"}, "tmux"},
-		{"linux", "auto", []string{"gnome-terminal"}, "window:gnome-terminal"},
-		{"linux", "auto", []string{"xterm", "konsole"}, "window:konsole"},
-		{"linux", "auto", nil, ""},
-		{"darwin", "auto", []string{"tmux"}, "window:open"}, // Mac 上默认弹 Terminal.app，想用 tmux 得明说
-		{"darwin", "tmux", []string{"tmux"}, "tmux"},
-		{"darwin", "tmux", nil, ""},
-		{"windows", "auto", nil, "console"},
-		{"windows", "tmux", nil, ""},
-		{"linux", "screen", []string{"tmux"}, ""},
+		{"linux", "auto", []string{"tmux"}, "tmux", ""},
+		{"linux", "auto", []string{"gnome-terminal"}, "window:gnome-terminal", ""},
+		{"linux", "auto", []string{"xterm", "konsole"}, "window:konsole", ""},
+		{"linux", "auto", nil, "", "terminal_none"},
+		{"darwin", "auto", []string{"tmux"}, "window:open", ""}, // on macOS the default is Terminal.app; tmux must be asked for
+		{"darwin", "tmux", []string{"tmux"}, "tmux", ""},
+		{"darwin", "tmux", nil, "", "terminal_no_tmux"},
+		{"windows", "auto", nil, "console", ""},
+		{"windows", "tmux", nil, "", "terminal_no_tmux"},
+		{"linux", "screen", []string{"tmux"}, "", "terminal_unknown"},
 	}
 	for _, c := range cases {
 		term, err := PickTerminal(c.goos, c.kind, looker(c.bins...))
-		got := ""
+		got, code := "", ""
 		if err == nil {
 			got = term.Name()
+		} else if e := asError(err); e != nil {
+			code = e.Code
 		}
-		if got != c.want {
-			t.Errorf("%s/%s/%v: 想要 %q，得到 %q（%v）", c.goos, c.kind, c.bins, c.want, got, err)
+		if got != c.want || code != c.code {
+			t.Errorf("%s/%s/%v: want %q %q, got %q %q (%v)", c.goos, c.kind, c.bins, c.want, c.code, got, code, err)
 		}
+	}
+	// the startup log names the unknown type
+	_, err := PickTerminal("linux", "screen", looker())
+	if e := asError(err); e == nil || e.Params["kind"] != "screen" {
+		t.Errorf("an unknown type should come back in params.kind: %v", err)
 	}
 }
 
@@ -62,7 +78,7 @@ func TestScriptBody(t *testing.T) {
 	lines := strings.Split(strings.TrimSpace(body), "\n")
 	want := []string{
 		"#!/bin/sh",
-		`rm -f -- "$0"`, // 脚本里有 token，先删掉自己
+		`rm -f -- "$0"`, // the script holds the token, so it deletes itself first
 		`cd '/w/it'\''s 项目' || exit 1`,
 		`exec env SYMPHONY_TOKEN=t0k /usr/bin/claude --name '前端 小王'`,
 	}
@@ -79,31 +95,49 @@ func TestScriptTerminalStart(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(opened) != 4 || opened[0] != "open" || opened[2] != "Terminal" {
-		t.Fatalf("打开终端的命令不对: %v", opened)
+		t.Fatalf("wrong command to open the terminal: %v", opened)
 	}
 	script := opened[3]
 	t.Cleanup(func() { _ = os.Remove(script) })
 	fi, err := os.Stat(script)
 	if err != nil || fi.Mode().Perm() != 0o700 || !strings.HasSuffix(script, ".command") {
-		t.Fatalf("脚本应是只给自己的可执行 .command 文件: %v %v", fi, err)
+		t.Fatalf("the script should be an executable .command file only its owner can use: %v %v", fi, err)
 	}
-	// 打不开终端时，脚本（里面有 token）要删掉
+	// when the terminal won't open, the script (it holds the token) is deleted
 	bad := &scriptTerminal{opener: []string{"nope"}, spawn: func(argv []string) error { opened = argv; return errors.New("boom") }}
-	if err := bad.Start(l, "/w", nil, []string{"claude"}); err == nil {
-		t.Fatal("应报错")
+	err = bad.Start(l, "/w", nil, []string{"claude"})
+	if e := asError(err); e == nil || e.Code != "window_open_failed" || e.Params["opener"] != "nope" || e.Params["detail"] != "boom" {
+		t.Fatalf("want window_open_failed naming the opener and the cause, got %v (%+v)", err, e)
 	}
 	if _, err := os.Stat(opened[len(opened)-1]); !os.IsNotExist(err) {
-		t.Fatal("失败时应删掉脚本")
+		t.Fatal("the script should be deleted on failure")
+	}
+}
+
+// TestAttach checks where each backend sends people to find a session's terminal; the page turns
+// "window" and "console" into a sentence in its own language.
+func TestAttach(t *testing.T) {
+	for _, tc := range []struct {
+		term Terminal
+		want string
+	}{
+		{&tmuxTerminal{}, "tmux attach -t sym-x"},
+		{&scriptTerminal{opener: []string{"open"}}, "window"},
+		{&consoleTerminal{}, "console"},
+	} {
+		if got := tc.term.Attach("x"); got != tc.want {
+			t.Errorf("%s: want %q, got %q", tc.term.Name(), tc.want, got)
+		}
 	}
 }
 
 func TestConsoleCmd(t *testing.T) {
 	cmd := consoleCmd(`C:\work\项目`, map[string]string{"SYMPHONY_TOKEN": "t"}, []string{`C:\bin\claude.exe`, "--name", "前端 小王"})
 	if cmd.Dir != `C:\work\项目` || !slices.Equal(cmd.Args, []string{`C:\bin\claude.exe`, "--name", "前端 小王"}) {
-		t.Fatalf("应直接起 claude（不经过 cmd.exe）: %v %v", cmd.Dir, cmd.Args)
+		t.Fatalf("claude should start directly (no cmd.exe): %v %v", cmd.Dir, cmd.Args)
 	}
 	if !slices.Contains(cmd.Env, "SYMPHONY_TOKEN=t") || len(cmd.Env) <= 1 {
-		t.Fatal("环境变量要在继承的基础上加上")
+		t.Fatal("the extra variables should be added to the inherited environment")
 	}
 }
 
@@ -119,8 +153,8 @@ func TestConsoleExitBeforeOnline(t *testing.T) {
 	term.exits[l.ID] = exited
 	exited <- errors.New("exit status 1")
 	term.Watch(hub, l, 5*time.Second)
-	if st := hub.launchStatus(l.ID); st != LaunchFailed {
-		t.Fatalf("进程先退出了应标失败: %s", st)
+	if st := hub.launchStatus(l.ID); st != LaunchFailed || l.ErrorCode != "launch_exited_early" || l.ErrorParams["detail"] != "exit status 1" {
+		t.Fatalf("a process that exits first should fail the launch with launch_exited_early: %s %s %v", st, l.ErrorCode, l.ErrorParams)
 	}
 }
 
@@ -129,7 +163,7 @@ func TestWindowWatchTimesOut(t *testing.T) {
 	l := &Launch{ID: "w1", Status: LaunchStarting}
 	hub.addLaunch(l)
 	(&scriptTerminal{opener: []string{"open"}}).Watch(hub, l, 600*time.Millisecond)
-	if st := hub.launchStatus(l.ID); st != LaunchFailed {
-		t.Fatalf("超时没上线应标失败: %s", st)
+	if st := hub.launchStatus(l.ID); st != LaunchFailed || l.ErrorCode != "launch_timeout_window" || l.ErrorParams["timeout"] != "600ms" {
+		t.Fatalf("a launch not online in time should fail with launch_timeout_window: %s %s %v", st, l.ErrorCode, l.ErrorParams)
 	}
 }

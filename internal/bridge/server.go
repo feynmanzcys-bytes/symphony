@@ -14,22 +14,29 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/feynmanzcys-bytes/symphony/internal/i18n"
 )
 
 type Server struct {
 	Hub *Hub
-	// WaitTimeout 是长轮询单次挂起时间，mod 那边会循环再来。
+	// WaitTimeout is how long one long poll hangs; the mod simply comes back.
 	WaitTimeout time.Duration
-	// Launcher 不为空时页面上可以启动会话
+	// Launcher, when set, lets the page start sessions
 	Launcher *Launcher
-	// AllowedHosts 是请求 Host 允许的主机名，挡 DNS rebinding；默认只认本机
+	// AllowedHosts are the host names a request's Host may carry, against DNS rebinding; only this machine by default
 	AllowedHosts []string
 
 	web fs.FS
 	mux *http.ServeMux
 }
 
-// NewServer 建一个 bridge；web 里要有 office.html、approve.html 和 asks.js。
+var (
+	errTokenInvalid   = newError("token_invalid", "no valid account token")
+	errLaunchDisabled = newError("launch_disabled", "this bridge can't start sessions from the page (no claude or no usable terminal; see the bridge's startup log)")
+)
+
+// NewServer builds a bridge; web must hold office.html, approve.html, asks.js, i18n.js and locales/*.json.
 func NewServer(hub *Hub, web fs.FS) *Server {
 	s := &Server{Hub: hub, WaitTimeout: 20 * time.Second, AllowedHosts: []string{"localhost", "127.0.0.1", "::1"},
 		web: web, mux: http.NewServeMux()}
@@ -37,16 +44,18 @@ func NewServer(hub *Hub, web fs.FS) *Server {
 	s.mux.HandleFunc("GET /{$}", s.file("office.html"))
 	s.mux.HandleFunc("GET /approve", s.file("approve.html"))
 	s.mux.HandleFunc("GET /asks.js", s.file("asks.js"))
+	s.mux.HandleFunc("GET /i18n.js", s.file("i18n.js"))
+	s.mux.HandleFunc("GET /locales/{file}", s.locale)
 	s.mux.HandleFunc("GET /api/state", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, 200, hub.Snapshot()) })
 	s.mux.HandleFunc("GET /api/stream", s.stream)
 
-	// 下面这些是 mod 调的，要凭账号 token
+	// called by the mod, with the account's token
 	s.mux.HandleFunc("POST /api/event", s.event)
 	s.mux.HandleFunc("POST /api/ask", s.ask)
 	s.mux.HandleFunc("GET /api/wait/{id}", s.wait)
 	s.mux.HandleFunc("POST /api/cancel/{id}", s.cancel)
 
-	// 网页端：回答、账号、启动会话
+	// called by the page: answers, accounts, starting sessions
 	s.mux.HandleFunc("POST /api/answer/{id}", s.answer)
 	s.mux.HandleFunc("POST /api/accounts", s.createAccount)
 	s.mux.HandleFunc("DELETE /api/accounts/{id}", s.deleteAccount)
@@ -56,7 +65,8 @@ func NewServer(hub *Hub, web fs.FS) *Server {
 	return s
 }
 
-// SetLauncher 打开页面启动；会话的“去哪儿找终端”也跟着这个终端后端走。
+// SetLauncher turns on starting sessions from the page; where to find a session's terminal follows
+// the same terminal backend.
 func (s *Server) SetLauncher(l *Launcher) {
 	s.Launcher = l
 	s.Hub.mu.Lock()
@@ -64,8 +74,9 @@ func (s *Server) SetLauncher(l *Launcher) {
 	s.Hub.mu.Unlock()
 }
 
-// ServeHTTP 先挡掉两类跨站请求：Host 不是本机的（DNS rebinding），
-// 以及别的网站借浏览器发来的写请求（带了 Origin 且不是本站）。mod 和 curl 不带 Origin。
+// ServeHTTP first refuses two kinds of cross-site requests: a Host that isn't this machine (DNS
+// rebinding), and writes another site sends through the browser (an Origin that isn't this site).
+// The mod and curl send no Origin.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	host := r.Host
 	if h, _, err := net.SplitHostPort(r.Host); err == nil {
@@ -102,15 +113,16 @@ func writeErr(w http.ResponseWriter, err error) {
 	case errors.Is(err, ErrWrongAccount):
 		status = http.StatusForbidden
 	}
-	writeJSON(w, status, map[string]string{"error": err.Error()})
+	writeJSON(w, status, errorBody(err))
 }
 
-// authed 按 Authorization: Bearer <token> 认出账号；认不出就 401，mod 那边会退回终端。
+// authed finds the account from Authorization: Bearer <token>; otherwise it answers 401 and the mod
+// falls back to the terminal.
 func (s *Server) authed(w http.ResponseWriter, r *http.Request) (*Account, bool) {
 	token := strings.TrimPrefix(r.Header.Get("authorization"), "Bearer ")
 	acc := s.Hub.AccountByToken(token)
 	if acc == nil {
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "没有有效的军团账号 token"})
+		writeJSON(w, http.StatusUnauthorized, errorBody(errTokenInvalid))
 		return nil, false
 	}
 	return acc, true
@@ -118,7 +130,7 @@ func (s *Server) authed(w http.ResponseWriter, r *http.Request) (*Account, bool)
 
 func decode(w http.ResponseWriter, r *http.Request, v any) bool {
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(v); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeJSON(w, http.StatusBadRequest, errorBody(err))
 		return false
 	}
 	return true
@@ -134,7 +146,7 @@ func (s *Server) event(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if ev.Session == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "缺 session"})
+		writeJSON(w, http.StatusBadRequest, errorBody(newError("event_no_session", "missing session")))
 		return
 	}
 	if err := s.Hub.Apply(ev, acc); err != nil {
@@ -154,7 +166,7 @@ func (s *Server) ask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.Session == "" || (req.Kind != "permission" && req.Kind != "question") {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "缺 session 或 kind 不对"})
+		writeJSON(w, http.StatusBadRequest, errorBody(newError("ask_bad_request", "missing session or unknown kind")))
 		return
 	}
 	id, err := s.Hub.CreateAsk(req, acc)
@@ -202,7 +214,8 @@ func (s *Server) answer(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]bool{"ok": true})
 }
 
-// createAccount 建账号并把 token 返回一次（命令行手动起会话时用：SYMPHONY_TOKEN=<token>）。
+// createAccount creates an account and returns its token once (for starting a session by hand:
+// SYMPHONY_TOKEN=<token>).
 func (s *Server) createAccount(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Name string `json:"name"`
@@ -265,8 +278,11 @@ func (s *Server) stream(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) file(name string) http.HandlerFunc {
 	ctype := "text/html; charset=utf-8"
-	if strings.HasSuffix(name, ".js") {
+	switch {
+	case strings.HasSuffix(name, ".js"):
 		ctype = "text/javascript; charset=utf-8"
+	case strings.HasSuffix(name, ".json"):
+		ctype = "application/json; charset=utf-8"
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
 		data, err := fs.ReadFile(s.web, name)
@@ -280,24 +296,32 @@ func (s *Server) file(name string) http.HandlerFunc {
 	}
 }
 
-// ---------- 页面启动会话 ----------
+// locale serves the page's translations, locales/<lang>.json, for the supported languages only.
+func (s *Server) locale(w http.ResponseWriter, r *http.Request) {
+	lang, ok := strings.CutSuffix(r.PathValue("file"), ".json")
+	if !ok || !slices.Contains(i18n.Langs, lang) {
+		http.NotFound(w, r)
+		return
+	}
+	s.file("locales/"+lang+".json")(w, r)
+}
+
+// ---------- starting sessions from the page ----------
 
 func (s *Server) launchOptions(w http.ResponseWriter, r *http.Request) {
 	home, _ := os.UserHomeDir()
 	trustHint, terminal := false, ""
-	reason := "这个 bridge 没开页面启动（缺 claude 或能用的终端，看 bridge 启动时的日志）"
 	var mod *ModStatus
 	if s.Launcher != nil {
 		trustHint, terminal = s.Launcher.Term.TrustHint(), s.Launcher.Term.Name()
 		m := s.Launcher.Mod(r.Context())
-		mod, reason = &m, m.Error
+		mod = &m
 	}
 	writeJSON(w, 200, map[string]any{
 		"enabled":         mod != nil && mod.OK,
-		"reason":          reason, // 开不了的原因
-		"mod":             mod,    // mod 装好没有；没装好时 fix 是装的命令
+		"mod":             mod, // whether sessions will have the mod; when not, its code says why and fix how to install it
 		"terminal":        terminal,
-		"trustHint":       trustHint, // 新目录第一次启动要人在弹出的窗口里点“信任”
+		"trustHint":       trustHint, // the first start in a new folder needs a click on "trust" in the window that opens
 		"models":          launchModels,
 		"efforts":         launchEfforts,
 		"permissionModes": launchPermissionModes,
@@ -314,26 +338,26 @@ func (s *Server) dirs(w http.ResponseWriter, r *http.Request) {
 	}
 	dirs, parent, err := ListDirs(path)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeJSON(w, http.StatusBadRequest, errorBody(err))
 		return
 	}
 	writeJSON(w, 200, map[string]any{"path": filepath.Clean(path), "parent": parent, "dirs": dirs, "roots": Roots(runtime.GOOS)})
 }
 
-// launch 用一个账号启动会话：给了 account 就是让这个（不在线的）账号上班，
-// 没给就按 name 新建一个账号，坐最小的空座位。
+// launch starts a session for an account: with account it puts that (offline) account back to work,
+// without it a new account named name is created and takes the lowest free seat.
 func (s *Server) launch(w http.ResponseWriter, r *http.Request) {
 	if s.Launcher == nil {
-		writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "这个 bridge 没开页面启动"})
+		writeJSON(w, http.StatusNotImplemented, errorBody(errLaunchDisabled))
 		return
 	}
-	// 没装 mod 的话起出来的会话进不了办公室，干脆不起
+	// without the mod the session could never reach the office, so don't start it
 	if mod := s.Launcher.Mod(r.Context()); !mod.OK {
-		msg := mod.Error
+		body := map[string]any{"error": mod.Error, "code": mod.Code, "params": mod.Params, "fix": mod.Fix}
 		if mod.Fix != "" {
-			msg += "，先运行：" + mod.Fix
+			body["error"] = mod.Error + "; run first: " + mod.Fix
 		}
-		writeJSON(w, http.StatusPreconditionFailed, map[string]string{"error": msg})
+		writeJSON(w, http.StatusPreconditionFailed, body)
 		return
 	}
 	var req LaunchRequest
@@ -342,7 +366,7 @@ func (s *Server) launch(w http.ResponseWriter, r *http.Request) {
 	}
 	req, err := normalizeLaunch(req)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeJSON(w, http.StatusBadRequest, errorBody(err))
 		return
 	}
 
@@ -368,17 +392,20 @@ func (s *Server) launch(w http.ResponseWriter, r *http.Request) {
 
 	id := newID()
 	env := map[string]string{"SYMPHONY_BRIDGE": s.Launcher.BridgeURL, "SYMPHONY_LAUNCH": id, "SYMPHONY_TOKEN": acc.Token}
+	if req.Lang != "" {
+		env["SYMPHONY_LANG"] = req.Lang // the mod speaks the page's language
+	}
 	l := &Launch{ID: id, Name: acc.Name, Dir: req.Dir, Account: acc.ID,
 		Model: req.Model, Effort: req.Effort, Status: LaunchStarting, Time: time.Now()}
 	if err := s.Launcher.Start(l, req, env); err != nil {
 		if created {
 			_ = s.Hub.DeleteAccount(acc.ID)
 		}
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		writeJSON(w, http.StatusInternalServerError, errorBody(err))
 		return
 	}
 	s.Hub.setLast(acc.ID, req)
-	resp := *l // l 交给 hub 之后会被后台改状态，回给页面的用一份拷贝
+	resp := *l // the hub updates l in the background once it has it; the page gets a copy
 	s.Hub.addLaunch(l)
 	go s.Launcher.watch(s.Hub, l)
 	writeJSON(w, 200, resp)

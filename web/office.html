@@ -1,17 +1,23 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Symphony 办公室</title>
+<title data-i18n="office.title">Symphony Office</title>
 <style>
-  html, body { margin:0; height:100%; background:#2f2e2b; color:#f2efe8; font:13px/1.45 system-ui, "PingFang SC", "Noto Sans CJK SC", sans-serif; overflow:hidden; }
+  html, body { margin:0; height:100%; background:#2f2e2b; color:#f2efe8; font:13px/1.45 system-ui, sans-serif; overflow:hidden; }
+  /* CJK fonts per language, so each gets its own glyph forms */
+  body:lang(zh-CN) { font-family:system-ui, "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif; }
+  body:lang(zh-TW) { font-family:system-ui, "PingFang TC", "Microsoft JhengHei", "Noto Sans CJK TC", sans-serif; }
+  body:lang(ja) { font-family:system-ui, "Hiragino Sans", "Yu Gothic UI", "Noto Sans CJK JP", sans-serif; }
+  body:lang(ko) { font-family:system-ui, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans CJK KR", sans-serif; }
   canvas#office { position:fixed; inset:0; width:100vw; height:100vh; image-rendering:pixelated; }
   #labels { position:fixed; inset:0; pointer-events:none; }
   #hud { position:fixed; top:10px; left:10px; z-index:3; background:rgba(47,46,43,.88); padding:6px 10px 8px; }
   #hud h1 { margin:0; font-size:14px; font-weight:700; }
   #hud .stats { margin-top:2px; color:#c9c4ba; }
   #hud .btns { margin-top:6px; display:flex; gap:6px; flex-wrap:wrap; }
+  #hud select.lang { font:inherit; font-size:12px; background:#fffdf7; color:#2b2a28; border:2px solid #2b2a28; padding:0 2px; cursor:pointer; }
   #hud .note { margin-top:6px; max-width:420px; color:#f0c674; line-height:1.5; }
   #hud .note code { display:block; margin-top:2px; padding:2px 6px; background:#1f1e1c; color:#fffdf7; user-select:all; word-break:break-all; }
   #log { position:fixed; left:16px; bottom:12px; z-index:3; font:12px/1.6 ui-monospace, monospace; color:#a9a49b; max-width:min(560px, calc(100vw - 32px)); pointer-events:none; }
@@ -23,10 +29,12 @@
   button.px.primary { background:#2b2a28; color:#fffdf7; }
   button.px.alert { background:#d64541; color:#fff; border-color:#7a1f1c; }
   button.px:disabled { opacity:.5; cursor:default; }
-  /* 小人头上的名字牌 */
+  /* name tags above the characters */
   .emp-label { position:absolute; transform:translate(-50%, -100%); pointer-events:auto; cursor:pointer; background:#fffdf7; color:#2b2a28;
     border:2px solid #2b2a28; border-left-width:5px; padding:0 6px; font-size:11px; line-height:1.35; white-space:nowrap; text-align:center;
     box-shadow:2px 2px 0 rgba(0,0,0,.3); }
+  .emp-label { box-sizing:border-box; } /* no wider than a desk (set in placeLabels); longer text ends in … and shows in full on hover */
+  .emp-label .nm, .emp-label .st { overflow:hidden; text-overflow:ellipsis; }
   .emp-label .nm { font-weight:700; font-size:12px; }
   .emp-label .st { color:#6f6b64; }
   .emp-label.off { opacity:.55; }
@@ -38,14 +46,14 @@
   .bubble { position:absolute; transform:translate(-50%, calc(-100% - 36px)); background:#fffdf7; color:#2b2a28; border:2px solid #2b2a28;
     padding:1px 6px; font-size:12px; max-width:220px; box-shadow:2px 2px 0 rgba(0,0,0,.3); }
   .bubble b { font-weight:700; }
-  /* 弹窗通用 */
+  /* popups */
   .modal { position:fixed; inset:0; z-index:10; background:rgba(0,0,0,.45); display:flex; align-items:center; justify-content:center; }
   .modal[hidden] { display:none; }
   .panel { width:min(560px, calc(100vw - 32px)); max-height:calc(100vh - 32px); overflow:auto; background:#fffdf7; color:#2b2a28;
     border:2px solid #2b2a28; box-shadow:4px 4px 0 rgba(0,0,0,.35); padding:14px 16px; box-sizing:border-box; }
   .panel h2 { margin:0 0 10px; font-size:15px; }
   .panel .actions { display:flex; justify-content:flex-end; gap:8px; margin-top:12px; }
-  /* 待处理卡片（asks.js 生成） */
+  /* pending cards (built by asks.js) */
   #asks .card { border:2px solid #2b2a28; padding:10px 12px; margin-bottom:10px; background:#fff; }
   #asks .who { display:flex; gap:8px; align-items:baseline; margin-bottom:6px; }
   #asks .who .name { font-weight:700; }
@@ -60,7 +68,7 @@
   #asks .q h3 { margin:4px 0; font-size:14px; } #asks .q .hd { color:#8a867e; font-weight:400; font-size:12px; margin-right:6px; }
   #asks label.opt { display:block; cursor:pointer; padding:1px 0; } #asks label.opt small { color:#8a867e; margin-left:6px; }
   #asks .q input.other { display:block; width:100%; box-sizing:border-box; margin-top:4px; }
-  /* 启动框 */
+  /* launch dialog */
   #launch label { display:block; margin:8px 0 2px; font-size:12px; color:#6f6b64; }
   #launch input, #launch select { width:100%; box-sizing:border-box; font:inherit; color:#2b2a28; background:#fff; border:2px solid #2b2a28; padding:3px 6px; }
   #launch input[readonly] { background:#ece8df; }
@@ -75,10 +83,10 @@
   #launch .browser .pick { margin:6px; }
   #launch .recent { margin-top:4px; display:flex; flex-wrap:wrap; gap:4px; }
   #launch .recent span { font:11px ui-monospace, monospace; border:1px solid #b9b3a8; padding:0 5px; cursor:pointer; }
-  #launch pre { margin:10px 0 0; padding:6px 8px; background:#2b2a28; color:#f2efe8; font:12px/1.5 ui-monospace, monospace; white-space:pre-wrap; word-break:break-all; }
+  #launch pre { margin:10px 0 0; padding:6px 8px; background:#2b2a28; color:#f2efe8; font:12px/1.5 ui-monospace, monospace; white-space:pre-wrap; overflow-wrap:anywhere; }
   #launch .status { margin-top:8px; font-size:12px; white-space:pre-wrap; }
   #launch .status.err { color:#c0392b; }
-  /* 员工卡片、消息记录：右侧面板 */
+  /* employee card and message log: side panels */
   .side { position:fixed; right:12px; top:12px; bottom:12px; z-index:5; width:min(340px, calc(100vw - 24px)); overflow:auto; background:#fffdf7; color:#2b2a28;
     border:2px solid #2b2a28; box-shadow:4px 4px 0 rgba(0,0,0,.35); padding:10px 12px; box-sizing:border-box; }
   .side[hidden] { display:none; }
@@ -98,12 +106,12 @@
 <canvas id="office"></canvas>
 <div id="labels"></div>
 <div id="hud">
-  <h1>Symphony 办公室</h1>
-  <div class="stats" id="stats">还没有人</div>
+  <h1 data-i18n="office.title"></h1>
+  <div class="stats" id="stats" data-i18n="office.nobody"></div>
   <div class="btns">
     <button class="px alert" id="open-asks" hidden></button>
-    <button class="px" id="open-msgs">消息记录</button>
-    <button class="px" id="new-emp" hidden>+ 新员工</button>
+    <button class="px" id="open-msgs" data-i18n="office.messages"></button>
+    <button class="px" id="new-emp" data-i18n="office.newEmployee" hidden></button>
   </div>
   <div class="note" id="launch-note" hidden></div>
 </div>
@@ -111,75 +119,79 @@
 
 <div class="modal" id="asks-modal" hidden>
   <div class="panel">
-    <h2 id="asks-title">待处理</h2>
+    <h2 id="asks-title"></h2>
     <div id="asks"></div>
-    <div class="actions"><button class="px" id="asks-later">稍后再说</button></div>
+    <div class="actions"><button class="px" id="asks-later" data-i18n="asks.later"></button></div>
   </div>
 </div>
 
 <div class="modal" id="launch" hidden>
   <form class="panel" autocomplete="off">
-    <h2 class="title">新员工上班</h2>
-    <label>名字（军团身份，也是会话名 --name）</label>
-    <input name="name" placeholder="比如：前端小王" required>
-    <label>工作目录</label>
-    <div class="row"><input name="dir" placeholder="绝对路径" required><button type="button" class="px browse">浏览</button></div>
-    <div class="browser" hidden><div class="cur"></div><ul></ul><button type="button" class="px pick">用这个目录</button></div>
+    <h2 class="title"></h2>
+    <label data-i18n="launch.name"></label>
+    <input name="name" data-i18n-placeholder="launch.namePlaceholder" required>
+    <label data-i18n="launch.dir"></label>
+    <div class="row"><input name="dir" data-i18n-placeholder="launch.dirPlaceholder" required><button type="button" class="px browse" data-i18n="launch.browse"></button></div>
+    <div class="browser" hidden><div class="cur"></div><ul></ul><button type="button" class="px pick" data-i18n="launch.pick"></button></div>
     <div class="recent"></div>
     <div class="grid">
-      <div><label>模型（--model）</label><select name="model"></select></div>
-      <div><label>思考强度（--effort）</label><select name="effort"></select></div>
-      <div><label>权限模式（--permission-mode）</label><select name="permissionMode"></select></div>
-      <div><label>会话</label><select name="resume"></select></div>
+      <div><label data-i18n="launch.model"></label><select name="model"></select></div>
+      <div><label data-i18n="launch.effort"></label><select name="effort"></select></div>
+      <div><label data-i18n="launch.permissionMode"></label><select name="permissionMode"></select></div>
+      <div><label data-i18n="launch.resume"></label><select name="resume"></select></div>
     </div>
     <pre class="preview"></pre>
     <div class="status"></div>
-    <div class="actions"><button type="button" class="px cancel">取消</button><button type="submit" class="px primary go">上班</button></div>
+    <div class="actions"><button type="button" class="px cancel" data-i18n="common.cancel"></button><button type="submit" class="px primary go" data-i18n="launch.go"></button></div>
   </form>
 </div>
 
-<div class="side" id="card" hidden><span class="close">✕</span><h2></h2><dl></dl><div class="btns"></div><h3>最近消息</h3><div class="msgs"></div></div>
-<div class="side" id="msgs-panel" hidden><span class="close">✕</span><h2>消息记录</h2><div class="msgs"></div></div>
+<div class="side" id="card" hidden><span class="close">✕</span><h2></h2><dl></dl><div class="btns"></div><h3 data-i18n="card.recentMessages"></h3><div class="msgs"></div></div>
+<div class="side" id="msgs-panel" hidden><span class="close">✕</span><h2 data-i18n="office.messages"></h2><div class="msgs"></div></div>
 
 <script type="module">
+import { t, lang, errorText, fmtTime, applyI18n, langPicker } from '/i18n.js'
 import { esc, syncCards } from '/asks.js'
 
-// ================= 常量 =================
-const T = 16 // 一格 16 像素
+applyI18n()
+document.querySelector('#hud .btns').appendChild(langPicker())
+
+// ================= constants =================
+const T = 16 // one tile is 16 pixels
 const GREEN = '#2e9e5b', YELLOW = '#f2b705', RED = '#d64541', GRAY = '#a9a49b'
-// 状态三色：空闲绿，工作中黄，待审批/待回答红；下班灰
+// three state colors: idle green, working yellow, waiting for an approval or an answer red; off duty gray
 const STATE_COLOR = { idle:GREEN, thinking:YELLOW, tool:YELLOW, waiting:RED, ended:GRAY, done:GRAY }
-const STATE_TEXT = { idle:'空闲', thinking:'思考中', tool:'工作中', waiting:'待处理', ended:'下班', done:'完成' }
 const COLS = 6, COL_PITCH = 3 * T, ROW_PITCH = 4 * T, WALL_H = 3 * T, AISLE = 24, LABEL_ROOM = 2 * T + 10
 const CLAWD = '#d97757', CLAWD_SHADE = '#b9603f', EYE = '#2b1b14', MINI = '#e6a58d', MINI_SHADE = '#c98a72'
-const OFF = '#3b3e44' // 没人用的笔记本灯
+const OFF = '#3b3e44' // laptop light of an empty desk
 
 const rect = (g, x, y, w, h, c) => { g.fillStyle = c; g.fillRect(x, y, w, h) }
-const base = p => (p || '').split(/[\\/]/).filter(Boolean).pop() || p || '?' // Windows 路径是反斜杠
+const base = p => (p || '').split(/[\\/]/).filter(Boolean).pop() || p || '?' // Windows paths use backslashes
 const dot = state => `<span class="dot" style="background:${STATE_COLOR[state] ?? GRAY}"></span>`
 const hash = s => [...String(s)].reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 7) >>> 0
 
 let snapshot = { accounts:[], sessions:[], asks:[], messages:[], launches:[] }
-let launchOpts = null // /api/launch/options：能不能从页面启动、各个下拉选项
+let launchOpts = null // /api/launch/options: whether the page can start sessions, and the drop-down choices
 const sessionOf = acc => acc.session ? snapshot.sessions.find(s => s.id === acc.session) : null
 
-// 等的是什么：权限审批还是回答问题
+// what a session waits for: an approval or an answer
 function waitingText(sessionId) {
   const kinds = new Set(snapshot.asks.filter(a => a.session === sessionId).map(a => a.kind))
-  const parts = []
-  if (kinds.has('permission')) parts.push('待审批')
-  if (kinds.has('question')) parts.push('待回答')
-  return parts.join('、') || '待处理'
+  const approval = kinds.has('permission'), answer = kinds.has('question')
+  return t(approval && answer ? 'state.waitingBoth' : approval ? 'state.waitingApproval' : answer ? 'state.waitingAnswer' : 'state.waiting')
 }
 function statusText(s) {
-  if (!s || s.state === 'ended') return '下班'
+  if (!s || s.state === 'ended') return t('state.ended')
   if (s.state === 'waiting') return waitingText(s.id)
-  if (s.state === 'tool' && s.tool) return `工作中 · ${s.tool}`
-  return STATE_TEXT[s.state] ?? s.state
+  if (s.state === 'tool' && s.tool) return t('state.working', { tool:s.tool })
+  return t('state.' + s.state)
 }
+// where a session's terminal is: a tmux command as it is, or a sentence for the window kinds
+const attachText = a => a === 'window' ? t('attach.window') : a === 'console' ? t('attach.console') : (a || '')
 
-// ================= 小人：块头看模型，肌肉看思考强度 =================
-// 原型是终端横幅那只小家伙（▐▛███▜▌ / ▝▜█████▛▘ / ▘▘ ▝▝）：方身子、两道竖眼、两侧小手、四只脚。
+// ================= characters: size follows the model, muscles follow the effort =================
+// Modeled on the little fellow in the terminal banner (▐▛███▜▌ / ▝▜█████▛▘ / ▘▘ ▝▝): a square body,
+// two upright eyes, small hands on the sides, four feet.
 const MODEL_TIERS = [['haiku', 0], ['sonnet', 1], ['opus', 2], ['fable', 3]]
 const EFFORT_TIERS = { low:0, medium:1, high:2, xhigh:3, max:4 }
 function modelTier(model) {
@@ -198,7 +210,7 @@ function build(session) {
     size, muscle,
     bw:[10, 12, 14, 16][size], bh:[7, 8, 9, 10][size],
     armW:[1, 2, 2, 3, 3][muscle], armH:[2, 2, 3, 3, 4][muscle],
-    headband:muscle >= 4, // 拼到 max 的系上红头带
+    headband:muscle >= 4, // at max effort it wears a red headband
   }
 }
 const MODEL_NAME = ['Haiku', 'Sonnet', 'Opus', 'Fable']
@@ -206,11 +218,12 @@ const EFFORT_NAME = ['low', 'medium', 'high', 'xhigh', 'max']
 function buildText(s) {
   if (!s?.model) return ''
   const b = build(s)
-  return `${s.model}${s.effort ? ' · ' + s.effort : ''}（块头 ${MODEL_NAME[b.size]}，肌肉 ${EFFORT_NAME[b.muscle]}）`
+  return t('card.build', { model:s.model + (s.effort ? ' · ' + s.effort : ''), size:MODEL_NAME[b.size], muscle:EFFORT_NAME[b.muscle] })
 }
 
-// cx：身体中线；by：身体底边（脚的上沿）
-// pose: eyes 'open'|'down'|'closed'|'none'，armL/armR 上下偏移，raiseL 举左手，legs 是否画脚，step 迈哪只脚
+// cx: the body's center line; by: the body's bottom edge (the top of the feet)
+// pose: eyes 'open'|'down'|'closed'|'none'; armL/armR move the arms up or down; raiseL raises the left hand;
+// legs draws the feet; step is the foot stepping forward
 function drawClawd(g, cx, by, b, pose, body = CLAWD, shade = CLAWD_SHADE) {
   const left = cx - (b.bw >> 1), top = by - b.bh
   rect(g, left, top, b.bw, b.bh, body)
@@ -228,7 +241,7 @@ function drawClawd(g, cx, by, b, pose, body = CLAWD, shade = CLAWD_SHADE) {
   if (pose.raiseL) rect(g, left - b.armW, top - 4, b.armW, b.armH + 4, body)
   else rect(g, left - b.armW, armY + (pose.armL || 0), b.armW, b.armH, body)
   rect(g, left + b.bw, armY + (pose.armR || 0), b.armW, b.armH, body)
-  if (b.muscle >= 3) { // 二头肌
+  if (b.muscle >= 3) { // biceps
     if (!pose.raiseL) rect(g, left - b.armW - 1, armY + (pose.armL || 0), 1, b.armH - 1, body)
     rect(g, left + b.bw + b.armW, armY + (pose.armR || 0), 1, b.armH - 1, body)
   }
@@ -246,7 +259,7 @@ function drawMini(g, x, y, body, shade) {
   }))
 }
 
-// ---------- 空闲时的小动作 ----------
+// ---------- idle pastimes ----------
 function drawPhone(g, cx, by, t) {
   rect(g, cx + 1, by - 7, 4, 6, '#2b2a28')
   rect(g, cx + 2, by - 6, 2, 3, Math.floor(t / 700) % 2 ? '#9fd3f0' : '#c4e6f8')
@@ -272,7 +285,7 @@ function drawEnvelope(g, x, y) {
   rect(g, x + 4, y + 2, 1, 1, RED)
 }
 
-// ---------- 家具和摆设 ----------
+// ---------- furniture and decor ----------
 function drawChair(g, x, y) {
   rect(g, x + 9, y - 15, 14, 13, '#5d6169')
   rect(g, x + 9, y - 15, 14, 1, '#7a7f89')
@@ -281,7 +294,7 @@ function drawDesk(g, x, y, light) {
   rect(g, x, y, 32, 8, '#c9a477'); rect(g, x, y, 32, 1, '#dcbb90')
   rect(g, x, y + 8, 32, 6, '#a77d53'); rect(g, x, y + 13, 32, 1, '#87623f')
   rect(g, x + 1, y + 14, 2, 2, '#87623f'); rect(g, x + 29, y + 14, 2, 2, '#87623f')
-  // 笔记本：屏幕朝员工，背面朝我们，背面的小灯是状态色
+  // laptop: the screen faces the employee, the back faces us, and the light on the back shows the state color
   rect(g, x + 11, y, 10, 5, '#565a62'); rect(g, x + 11, y, 10, 1, '#6e737c')
   rect(g, x + 10, y + 5, 12, 1, '#3b3e44'); rect(g, x + 15, y + 2, 2, 2, light)
 }
@@ -325,14 +338,14 @@ function drawClock(g, x, y) {
   rect(g, x + 4, y + 2, 1, 3, '#2b2a28'); rect(g, x + 5, y + 4, 2, 1, '#2b2a28')
 }
 
-// ---------- 大公司的家当 ----------
+// ---------- the trappings of a big company ----------
 function drawTV(g, x, y) {
   rect(g, x, y, 48, 28, '#2b2a28'); rect(g, x + 2, y + 2, 44, 22, '#2d4b6b')
   rect(g, x + 6, y + 15, 4, 7, '#7cc4e8'); rect(g, x + 12, y + 11, 4, 11, YELLOW); rect(g, x + 18, y + 7, 4, 15, '#7ccf6b')
   rect(g, x + 26, y + 6, 16, 1, '#c4e6f8'); rect(g, x + 26, y + 9, 12, 1, '#c4e6f8'); rect(g, x + 26, y + 12, 14, 1, '#c4e6f8')
   rect(g, x + 20, y + 28, 8, 2, '#55534f')
 }
-function drawSeatTop(g, x, y, c) { rect(g, x, y, 10, 8, c); rect(g, x, y, 10, 2, '#7a7f89') } // 从上往下看的椅子
+function drawSeatTop(g, x, y, c) { rect(g, x, y, 10, 8, c); rect(g, x, y, 10, 2, '#7a7f89') } // a chair seen from above
 function drawMeetingTable(g, x, y, w, h) {
   for (let i = 0; i < 4; i++) { drawSeatTop(g, x + 10 + i * 26, y - 9, '#5d6169'); drawSeatTop(g, x + 10 + i * 26, y + h + 1, '#5d6169') }
   drawSeatTop(g, x - 11, y + 11, '#5d6169'); drawSeatTop(g, x + w + 1, y + 11, '#5d6169')
@@ -368,7 +381,7 @@ function drawVending(g, x, y) {
   for (let r = 0; r < 4; r++) for (let c = 0; c < 3; c++) rect(g, x + 4 + c * 4, y + 5 + r * 5, 2, 3, cans[(r + c) % cans.length])
   rect(g, x + 17, y + 6, 3, 6, '#d9d5cc'); rect(g, x + 4, y + 27, 9, 3, '#2b2a28')
 }
-function drawSofa(g, x, y, w, c, dark) { // 面朝北，靠背在下面
+function drawSofa(g, x, y, w, c, dark) { // facing north, backrest at the bottom
   rect(g, x - 3, y + 1, 3, 13, dark); rect(g, x + w, y + 1, 3, 13, dark)
   rect(g, x, y, w, 9, c); rect(g, x, y + 9, w, 5, dark)
   for (let cx = x + Math.floor(w / 3); cx < x + w - 2; cx += Math.floor(w / 3)) rect(g, cx, y + 1, 1, 7, dark)
@@ -391,9 +404,9 @@ function drawRoundTable(g, x, y) {
 }
 function drawReception(g, x, y) {
   rect(g, x, y, 76, 10, '#c9a477'); rect(g, x, y, 76, 1, '#dcbb90'); rect(g, x, y + 10, 76, 7, '#8a6747'); rect(g, x, y + 16, 76, 1, '#6e5138')
-  rect(g, x + 30, y + 11, 16, 4, '#d97757') // 前台正面的品牌色
-  rect(g, x + 10, y - 6, 12, 8, '#2b2a28'); rect(g, x + 11, y - 5, 10, 5, '#5d7da6') // 显示器
-  rect(g, x + 56, y + 3, 4, 3, '#c9a24e') // 服务铃
+  rect(g, x + 30, y + 11, 16, 4, '#d97757') // brand color on the front of the reception desk
+  rect(g, x + 10, y - 6, 12, 8, '#2b2a28'); rect(g, x + 11, y - 5, 10, 5, '#5d7da6') // monitor
+  rect(g, x + 56, y + 3, 4, 3, '#c9a24e') // service bell
 }
 function drawPrinter(g, x, y) {
   rect(g, x, y, 26, 20, '#d9d5cc'); rect(g, x, y, 26, 4, '#efece6'); rect(g, x + 3, y + 7, 9, 4, '#55534f')
@@ -417,28 +430,29 @@ function drawBigPlant(g, x, y) {
   rect(g, x + 14, y + 6, 4, 7, '#5f9150'); rect(g, x + 7, y + 4, 3, 3, '#86b873'); rect(g, x + 3, y + 12, 3, 2, '#86b873')
 }
 function drawExtinguisher(g, x, y) { rect(g, x, y, 5, 10, RED); rect(g, x + 1, y - 2, 3, 2, '#2b2a28'); rect(g, x, y + 3, 5, 1, '#fbfbf8') }
-// 桌上的小摆件，每张桌子按座位号固定一种，空桌也不显得光秃秃
+// one small item per desk, fixed by seat number, so empty desks don't look bare
 function drawClutter(g, x, y, seat) {
   switch (hash('seat' + seat) % 6) {
-    case 0: rect(g, x + 25, y + 1, 5, 4, '#b06a45'); rect(g, x + 24, y - 3, 7, 5, '#5f9150'); break // 小盆栽
-    case 1: rect(g, x + 4, y + 2, 4, 4, '#fbfbf8'); rect(g, x + 8, y + 3, 1, 2, '#fbfbf8'); break // 杯子
-    case 2: rect(g, x + 2, y + 1, 8, 6, '#fbfbf8'); rect(g, x + 3, y + 2, 6, 1, '#b9b3a8'); rect(g, x + 3, y + 4, 5, 1, '#b9b3a8'); break // 文件
-    case 3: rect(g, x + 25, y - 2, 6, 7, '#6e5138'); rect(g, x + 26, y - 1, 4, 4, '#9fd3f0'); break // 相框
-    case 4: rect(g, x + 26, y - 6, 1, 8, '#55534f'); rect(g, x + 24, y - 7, 5, 2, YELLOW); break // 台灯
+    case 0: rect(g, x + 25, y + 1, 5, 4, '#b06a45'); rect(g, x + 24, y - 3, 7, 5, '#5f9150'); break // small potted plant
+    case 1: rect(g, x + 4, y + 2, 4, 4, '#fbfbf8'); rect(g, x + 8, y + 3, 1, 2, '#fbfbf8'); break // mug
+    case 2: rect(g, x + 2, y + 1, 8, 6, '#fbfbf8'); rect(g, x + 3, y + 2, 6, 1, '#b9b3a8'); rect(g, x + 3, y + 4, 5, 1, '#b9b3a8'); break // papers
+    case 3: rect(g, x + 25, y - 2, 6, 7, '#6e5138'); rect(g, x + 26, y - 1, 4, 4, '#9fd3f0'); break // photo frame
+    case 4: rect(g, x + 26, y - 6, 1, 8, '#55534f'); rect(g, x + 24, y - 7, 5, 2, YELLOW); break // desk lamp
     default: break
   }
 }
 
-// ================= 布局：正规大公司（开放办公区 + 会议室 + 休息区 + 前台） =================
-// 工位按座位号固定：6 列一排，至少摆 3 排；人少桌子也摆满，人多了往下加排。
+// ================= layout: a proper big company (open office + meeting room + lounge + reception) =================
+// Desks are fixed by seat number: rows of 6, at least 3 rows; a small team still gets full rows of desks,
+// a big one gets more rows below.
 const MIN_ROWS = 3
-const WORK_X = 16                                // 开放办公区左边
-const RIGHT_X = WORK_X + COLS * COL_PITCH + 24  // 会议室、休息区那一侧的左边
+const WORK_X = 16                                // left edge of the open office
+const RIGHT_X = WORK_X + COLS * COL_PITCH + 24  // left edge of the meeting room and lounge side
 const RIGHT_W = 13 * T
 let W = 0, H = 0, rows = MIN_ROWS
 const door = { x:0, y:0 }
-const rooms = {} // 各区域的范围，摆家具和挂牌子用
-let addSeat = -1 // 带“+”的空座位，-1 表示没有
+const rooms = {} // each room's area, for furniture and signs
+let addSeat = -1 // the empty seat with the "+", -1 for none
 const bgCanvas = document.createElement('canvas')
 const buf = document.createElement('canvas')
 
@@ -475,22 +489,22 @@ function drawBackground() {
   bgCanvas.width = W; bgCanvas.height = H
   buf.width = W; buf.height = H
   const g = bgCanvas.getContext('2d')
-  // 地面：走廊浅色地砖，各区域各铺各的
+  // floors: light tiles in the corridors, each room its own
   for (let ty = 0; ty * T < H; ty++) for (let tx = 0; tx * T < W; tx++) rect(g, tx * T, ty * T, T, T, (tx + ty) % 2 ? '#e0dcd3' : '#dcd8ce')
   const { work, meeting, lounge, front } = rooms
-  rect(g, work.x, work.y, work.w, work.h, '#cdd4dc') // 办公区地毯
+  rect(g, work.x, work.y, work.w, work.h, '#cdd4dc') // office carpet
   for (let y = work.y; y < work.y + work.h; y += 4) rect(g, work.x, y, work.w, 1, '#c8cfd8')
   g.strokeStyle = '#a9b1bb'; g.lineWidth = 1; g.strokeRect(work.x + 0.5, work.y + 0.5, work.w - 1, work.h - 1)
-  for (let y = meeting.y; y < meeting.y + meeting.h; y += 6) { // 会议室木地板
+  for (let y = meeting.y; y < meeting.y + meeting.h; y += 6) { // meeting room parquet
     rect(g, meeting.x, y, meeting.w, 6, (y / 6) % 2 ? '#c49c6d' : '#bd9566'); rect(g, meeting.x, y + 5, meeting.w, 1, '#a9845a')
   }
   for (let y = lounge.y; y < lounge.y + lounge.h; y += 8) for (let x = lounge.x; x < lounge.x + lounge.w; x += 8) {
-    rect(g, x, y, 8, 8, ((x - lounge.x) / 8 + (y - lounge.y) / 8) % 2 ? '#ebe5d8' : '#e2dbcc') // 休息区小方砖
+    rect(g, x, y, 8, 8, ((x - lounge.x) / 8 + (y - lounge.y) / 8) % 2 ? '#ebe5d8' : '#e2dbcc') // lounge tiles
   }
-  rect(g, front.x, front.y, front.w, front.h, '#e8e4dc') // 前台大理石
+  rect(g, front.x, front.y, front.w, front.h, '#e8e4dc') // reception marble
   for (let x = front.x + 20; x < front.x + front.w; x += 37) rect(g, x, front.y, 1, front.h, '#ddd8ce')
 
-  // 后墙：窗户、招牌、挂画、时钟；会议室那段挂电视
+  // back wall: windows, the sign, paintings, a clock; a TV on the meeting room's stretch
   rect(g, 0, 0, W, WALL_H, '#ebe5d9'); rect(g, 0, 0, W, 3, '#8f8676')
   rect(g, 0, WALL_H - 4, W, 4, '#b9ad98'); rect(g, 0, WALL_H - 4, W, 1, '#cfc4b0')
   const signX = WORK_X + (COLS * COL_PITCH) / 2 - 50
@@ -501,14 +515,15 @@ function drawBackground() {
   drawClock(g, RIGHT_X - 15, 6)
   drawTV(g, meeting.x + meeting.w / 2 - 24, 10)
 
-  // 会议室：玻璃墙、长桌、十把椅子、两盆大绿植
+  // meeting room: glass walls, a long table, ten chairs, two big plants
   drawGlassV(g, RIGHT_X, WALL_H, meeting.h)
   drawMeetingTable(g, meeting.x + 48, meeting.y + 52, 112, 30)
   drawBigPlant(g, meeting.x + meeting.w - 22, meeting.y + 6)
   drawBigPlant(g, meeting.x + 8, meeting.y + meeting.h - 34)
   drawGlassH(g, RIGHT_X, meeting.y + meeting.h, meeting.w, RIGHT_X + 14, 26)
 
-  // 休息区：吧台（水槽、咖啡机、微波炉）、冰箱、售货机、沙发茶几、桌上足球、小圆桌、饮水机
+  // lounge: a counter (sink, coffee machine, microwave), a fridge, a vending machine, a sofa and coffee table,
+  // foosball, a small round table, a water cooler
   const lx = lounge.x, ly = lounge.y, lr = lounge.x + lounge.w
   drawCounter(g, lr - 22, ly + 4, 22, 74)
   drawSink(g, lr - 18, ly + 8); drawCoffeeMachine(g, lr - 17, ly + 26); drawMicrowave(g, lr - 18, ly + 48)
@@ -522,7 +537,8 @@ function drawBackground() {
   drawCooler(g, lx + 6, ly + lounge.h - 32)
   drawPlant(g, lr - 20, ly + lounge.h - 24)
 
-  // 前台：前台桌、访客沙发、打印机、文件柜、书架、门口两盆大绿植、灭火器
+  // reception: the desk, a visitors' sofa, a printer, filing cabinets, a bookshelf, two big plants by the door,
+  // a fire extinguisher
   const fx = front.x, fy = front.y
   drawBookshelf(g, fx + 4, fy + 4)
   drawReception(g, fx + 48, fy + 22)
@@ -532,7 +548,7 @@ function drawBackground() {
   drawCabinet(g, front.x + front.w - 44, fy + 4); drawCabinet(g, front.x + front.w - 28, fy + 4)
   drawExtinguisher(g, 6, WALL_H + 30)
 
-  // 侧墙、南墙，南墙留门
+  // side walls and the south wall, with a door in the south wall
   rect(g, 0, WALL_H, 4, H - WALL_H, '#b9ad98'); rect(g, W - 4, WALL_H, 4, H - WALL_H, '#b9ad98')
   const doorL = door.x - T, doorR = door.x + T
   rect(g, 0, H - 6, doorL, 6, '#b9ad98'); rect(g, doorR, H - 6, W - doorR, 6, '#b9ad98')
@@ -540,9 +556,9 @@ function drawBackground() {
   rect(g, doorL + 2, H - 10, doorR - doorL - 4, 6, '#9a8f7e')
 }
 
-// ================= 员工（一个账号一个） =================
-const emps = new Map() // account id -> 员工
-const SPEED = 48 // 像素/秒
+// ================= employees (one per account) =================
+const emps = new Map() // account id -> employee
+const SPEED = 48 // pixels per second
 
 function makeEmployee(acc) {
   const label = document.createElement('div')
@@ -554,7 +570,7 @@ function makeEmployee(acc) {
     blinkAt:performance.now() + 2000 + Math.random() * 4000, phase:hash(acc.id) % 1000 }
 }
 
-// 走廊路线：先横到自己那列桌子旁边的过道，再竖着走，最后横进座位
+// corridor route: across to the aisle beside one's column of desks, along it, then across into the seat
 const route = (from, to, laneX) => [{ x:laneX, y:from.y }, { x:laneX, y:to.y }, { x:to.x, y:to.y }]
 
 function updateEmployee(e, acc, walkIn) {
@@ -567,13 +583,15 @@ function updateEmployee(e, acc, walkIn) {
     else { e.x = e.seat.x; e.y = e.seat.y; e.path = [] }
     e.inside = true
   } else if (!online && was && e.inside) {
-    e.path = route(e, door, e.lane) // 下班走人
+    e.path = route(e, door, e.lane) // off duty: walk out
   }
   const state = online ? e.s.state : 'ended'
   e.label.style.borderLeftColor = STATE_COLOR[state] ?? GRAY
   e.label.className = 'emp-label' + (online ? '' : ' off')
   e.label.dataset.state = state
-  e.label.innerHTML = `<div class="nm">${esc(acc.name)}</div><div class="st">${dot(state)}${esc(statusText(online ? e.s : null))}</div>`
+  const status = statusText(online ? e.s : null)
+  e.label.innerHTML = `<div class="nm">${esc(acc.name)}</div><div class="st">${dot(state)}${esc(status)}</div>`
+  e.label.title = `${acc.name} · ${status}`
 }
 
 function dropEmployee(e) { e.label.remove(); e.bubble?.remove(); emps.delete(e.acc.id) }
@@ -585,13 +603,14 @@ function step(e, dt) {
   const move = SPEED * dt
   if (d <= move) { e.x = p.x; e.y = p.y; e.path.shift() }
   else { e.x += dx / d * move; e.y += dy / d * move }
-  e.facing = dy < -0.01 ? -1 : 1 // 往上走看到的是背影
+  e.facing = dy < -0.01 ? -1 : 1 // walking up, we see the back
   if (!e.path.length && !(e.s && e.s.state !== 'ended')) e.inside = false
   return true
 }
 
-// 空闲时干什么：刚闲下来玩手机或打游戏（每人偏好不同，半分钟换一次），闲久了就睡觉。
-// 闲了多久按 bridge 记的进入空闲的时间算，刷新页面不会把人吵醒。
+// What an idle employee does: phone or games at first (each has a preference, switching every half minute),
+// then sleep after a long while. Idle time counts from when the bridge saw the session go idle, so reloading
+// the page wakes nobody.
 function idleActivity(e) {
   const since = Date.parse(e.s?.stateSince || '') || Date.now()
   const idleFor = Date.now() - since
@@ -599,7 +618,7 @@ function idleActivity(e) {
   return ['phone', 'game'][(hash(e.acc.id) + Math.floor(idleFor / 30000)) % 2]
 }
 
-// ================= 画面 =================
+// ================= rendering =================
 const cv = document.getElementById('office'), ctx = cv.getContext('2d')
 let S = 1, offX = 0, offY = 0, dpr = 1
 
@@ -607,13 +626,13 @@ function resize() {
   dpr = devicePixelRatio || 1
   cv.width = Math.round(innerWidth * dpr); cv.height = Math.round(innerHeight * dpr)
   const fit = Math.min(cv.width / W, cv.height / H)
-  S = fit >= 2 ? Math.floor(fit) : fit // 尽量整数倍放大，像素才方正；屏幕太小时宁可小数倍也别缩成一团
+  S = fit >= 2 ? Math.floor(fit) : fit // scale by whole numbers when possible so pixels stay square; on small screens a fractional scale beats a tiny office
   offX = Math.round((cv.width - W * S) / 2); offY = Math.round((cv.height - H * S) / 2)
 }
 const toCss = (x, y) => [(offX + x * S) / dpr, (offY + y * S) / dpr]
 
-const flights = [] // 正在飞的信封 { from, to, t, toAcc }
-const mailAt = new Map() // account id -> 收到信的时间，头上亮一会儿
+const flights = [] // envelopes in flight { from, to, t, toAcc }
+const mailAt = new Map() // account id -> when mail arrived; it shows above the head for a while
 
 function frame(now) {
   const dt = Math.min((now - (frame.last || now)) / 1000, 0.1)
@@ -621,9 +640,9 @@ function frame(now) {
   const g = buf.getContext('2d')
   g.drawImage(bgCanvas, 0, 0)
 
-  const items = [] // 按脚下的 y 排序，近的盖住远的
+  const items = [] // sorted by the feet's y, so nearer things cover farther ones
   const taken = new Set(snapshot.accounts.map(a => a.seat))
-  for (let seat = 0; seat < rows * COLS; seat++) { // 没人的桌子也摆着
+  for (let seat = 0; seat < rows * COLS; seat++) { // empty desks are drawn too
     if (taken.has(seat)) continue
     const d = deskOf(seat)
     items.push({ y:d.y - 3, draw:() => drawChair(g, d.x, d.y) })
@@ -660,7 +679,7 @@ function frame(now) {
         else if (activity === 'sleep') {
           for (let i = 0; i < 3; i++) {
             const p = ((t / 900) + i / 3) % 1
-            drawZ(g, x + (b.bw >> 1) + 3 + Math.round(p * 6), top + 2 - Math.round(p * 10), `rgba(255,253,247,${(1 - p).toFixed(2)})`) // 从头的右边往上飘，别被名字牌挡住
+            drawZ(g, x + (b.bw >> 1) + 3 + Math.round(p * 6), top + 2 - Math.round(p * 10), `rgba(255,253,247,${(1 - p).toFixed(2)})`) // floating up from the right of the head, clear of the name tag
           }
         }
         if (seated && st === 'thinking') drawThinking(g, x, top, t)
@@ -669,7 +688,7 @@ function frame(now) {
         if (got && now - got < 4000) drawEnvelope(g, x - 4, top - 10 - (Math.floor(now / 300) % 2))
       } })
     }
-    // 子代理：桌子两边的过道里站着小号的
+    // subagents: small ones standing in the aisles beside the desk
     if (online) Object.values(e.s.agents || {}).slice(-4).forEach((a, i) => {
       const ax = e.desk.x + (i % 2 ? 35 : -13), ay = e.desk.y + 2 + Math.floor(i / 2) * 8
       const busy = a.state === 'tool' || a.state === 'thinking'
@@ -680,7 +699,7 @@ function frame(now) {
   }
   items.sort((a, b) => a.y - b.y).forEach(it => it.draw())
 
-  // 飞着的信封：从发件人头顶划一道弧到收件人头顶
+  // envelopes in flight: an arc from the sender's head to the recipient's
   for (let i = flights.length - 1; i >= 0; i--) {
     const f = flights[i]
     f.t += dt / 1.6
@@ -709,12 +728,13 @@ function placeLabels() {
     const h = headOf(e)
     const [lx, ly] = toCss(h.x, h.y - 2)
     e.label.style.left = lx + 'px'; e.label.style.top = ly + 'px'
+    e.label.style.maxWidth = Math.max(60, COL_PITCH * S / dpr - 6) + 'px'
     if (e.bubble) { e.bubble.style.left = lx + 'px'; e.bubble.style.top = ly + 'px' }
   }
   for (const [key, el] of Object.entries(roomEls)) {
     const r = rooms[key]
     if (!r) continue
-    // 办公区的牌子放左下角，左上角会被第一排的名字牌挡住
+    // the open office's sign goes bottom left; top left would be hidden by the first row's name tags
     const [x, y] = key === 'sign' ? toCss(WORK_X + (COLS * COL_PITCH) / 2 + 6, 22)
       : key === 'work' ? toCss(r.x + 3, r.y + r.h - 12) : toCss(r.x + 3, r.y + 3)
     el.style.left = x + 'px'; el.style.top = y + 'px'
@@ -727,18 +747,19 @@ function placeLabels() {
   }
 }
 
-// ================= 数据 =================
+// ================= data =================
 const logEl = document.getElementById('log')
 function log(text) {
   const d = document.createElement('div')
-  d.textContent = `${new Date().toLocaleTimeString()}  ${text}`
+  d.textContent = `${new Date().toLocaleTimeString(lang)}  ${text}`
   logEl.appendChild(d)
   while (logEl.children.length > 6) logEl.firstChild.remove()
 }
 
 const empBySession = id => [...emps.values()].find(e => e.s && e.s.id === id)
 
-// 会话间消息：信封从发件人飞到收件人，发件人头上冒气泡，同时进消息记录
+// messages between sessions: an envelope flies from sender to recipient, a bubble pops up over the sender,
+// and the message log gets it
 function showMessage(m) {
   const from = empBySession(m.from), to = empBySession(m.to)
   if (from && to) flights.push({ from:headOf(from), to:headOf(to), t:0, toAcc:to.acc.id })
@@ -747,7 +768,7 @@ function showMessage(m) {
   from.bubble?.remove()
   const el = document.createElement('div')
   el.className = 'bubble'
-  el.innerHTML = `<b>→ ${esc(m.toName || '?')}</b>：${esc(m.text.length > 60 ? m.text.slice(0, 60) + '…' : m.text)}`
+  el.innerHTML = `<b>→ ${esc(m.toName || '?')}</b>${esc(t('common.colon'))}${esc(m.text.length > 60 ? m.text.slice(0, 60) + '…' : m.text)}`
   document.getElementById('labels').appendChild(el)
   from.bubble = el
   setTimeout(() => { if (from.bubble === el) from.bubble = null; el.remove() }, 6000)
@@ -769,9 +790,9 @@ function applySnapshot(snap) {
   for (const m of snap.messages) {
     if (seenMessages.has(m.id)) continue
     seenMessages.add(m.id)
-    if (!first) { showMessage(m); log(`${m.fromName || '?'} → ${m.toName || '?'}：${m.text}`) }
+    if (!first) { showMessage(m); log(`${m.fromName || '?'} → ${m.toName || '?'}${t('common.colon')}${m.text}`) }
   }
-  // 新来的待处理事项：直接弹窗（正在填启动框时先不打扰，HUD 上有按钮）
+  // new pending asks open the popup right away (not while the launch dialog is open; the HUD has a button)
   const fresh = snap.asks.filter(a => !seenAsks.has(a.id))
   fresh.forEach(a => seenAsks.add(a.id))
   if (fresh.length && dlg.hidden) openAsks()
@@ -780,37 +801,39 @@ function applySnapshot(snap) {
 
   const online = snap.accounts.map(sessionOf).filter(s => s && s.state !== 'ended')
   const count = (...states) => online.filter(s => states.includes(s.state)).length
+  const stat = (state, key, n) => `${dot(state)}${esc(t(key, { n }))}`
   document.getElementById('stats').innerHTML = snap.accounts.length
-    ? `${dot('idle')}空闲 ${count('idle')}${dot('tool')}工作中 ${count('thinking', 'tool')}${dot('waiting')}待处理 ${count('waiting')}${dot('ended')}下班 ${snap.accounts.length - online.length}`
-    : '还没有人'
+    ? stat('idle', 'stats.idle', count('idle')) + stat('tool', 'stats.working', count('thinking', 'tool')) +
+      stat('waiting', 'stats.waiting', count('waiting')) + stat('ended', 'stats.offDuty', snap.accounts.length - online.length)
+    : esc(t('office.nobody'))
   if (cardFor) showCard(cardFor)
   if (!msgsPanel.hidden) renderMessages()
   watchLaunch()
 }
 
 function applyEvent(ev, name) {
-  const who = (name || ev.session.slice(0, 6)) + (ev.agentId ? ' / 子代理' : '')
+  const who = (name || ev.session.slice(0, 6)) + (ev.agentId ? ' / ' + t('common.subagent') : '')
   if (ev.kind === 'tool.start') log(`${who}  ${ev.tool}`)
-  else if (ev.kind === 'session.start') log(`${who}  上班`)
-  else if (ev.kind === 'session.end') log(`${who}  下班`)
+  else if (ev.kind === 'session.start') log(`${who}  ${t('log.onDuty')}`)
+  else if (ev.kind === 'session.end') log(`${who}  ${t('log.offDuty')}`)
 }
 
-// ================= 待处理弹窗 =================
+// ================= pending popup =================
 const asksModal = document.getElementById('asks-modal')
-let asksFilter = null // 只看某个会话的
+let asksFilter = null // show only this session's asks
 function askWho(a) {
   const acc = snapshot.accounts.find(x => x.id === a.account)
   return `<div class="who"><span class="name">${esc(acc?.name ?? a.session.slice(0, 6))}</span>
-    <span class="kind">${a.agentId ? '子代理 · ' : ''}${a.kind === 'question' ? '提问' : '权限审批'}</span></div>`
+    <span class="kind">${a.agentId ? esc(t('common.subagent')) + ' · ' : ''}${esc(t(a.kind === 'question' ? 'asks.question' : 'asks.permission'))}</span></div>`
 }
 function renderAsks() {
   let asks = snapshot.asks
   if (asksFilter && asks.some(a => a.session === asksFilter)) asks = asks.filter(a => a.session === asksFilter)
   syncCards(document.getElementById('asks'), asks, askWho)
-  document.getElementById('asks-title').textContent = `待处理（${snapshot.asks.length}）`
+  document.getElementById('asks-title').textContent = t('asks.title', { n:snapshot.asks.length })
   const btn = document.getElementById('open-asks')
   btn.hidden = !snapshot.asks.length
-  btn.textContent = `待处理 ${snapshot.asks.length}`
+  btn.textContent = t('asks.button', { n:snapshot.asks.length })
   if (!snapshot.asks.length) asksModal.hidden = true
 }
 function openAsks(session = null) { asksFilter = session; renderAsks(); if (snapshot.asks.length) asksModal.hidden = false }
@@ -818,20 +841,19 @@ document.getElementById('asks-later').onclick = () => { asksModal.hidden = true 
 document.getElementById('open-asks').onclick = () => openAsks()
 asksModal.addEventListener('click', ev => { if (ev.target === asksModal) asksModal.hidden = true })
 
-// ================= 消息记录 =================
+// ================= message log =================
 const msgsPanel = document.getElementById('msgs-panel')
-const fmtTime = t => new Date(t).toLocaleString()
 function msgHTML(m) {
   return `<div class="msg"><div class="meta">${fmtTime(m.time)} · <b>${esc(m.fromName || '?')}</b> → <b>${esc(m.toName || '?')}</b>
-    ${m.delivered ? '' : '<span class="lost">（没送到）</span>'}</div>${esc(m.text)}</div>`
+    ${m.delivered ? '' : `<span class="lost">${esc(t('msg.undelivered'))}</span>`}</div>${esc(m.text)}</div>`
 }
 function renderMessages() {
-  msgsPanel.querySelector('.msgs').innerHTML = [...snapshot.messages].reverse().map(msgHTML).join('') || '<div class="msg">还没有消息</div>'
+  msgsPanel.querySelector('.msgs').innerHTML = [...snapshot.messages].reverse().map(msgHTML).join('') || `<div class="msg">${esc(t('msg.none'))}</div>`
 }
 document.getElementById('open-msgs').onclick = () => { renderMessages(); msgsPanel.hidden = false }
 msgsPanel.querySelector('.close').onclick = () => { msgsPanel.hidden = true }
 
-// ================= 员工卡片 =================
+// ================= employee card =================
 const card = document.getElementById('card')
 let cardFor = null
 card.querySelector('.close').onclick = () => { card.hidden = true; cardFor = null }
@@ -849,25 +871,25 @@ function showCard(id) {
   cardFor = id
   const s = sessionOf(acc), online = !!s && s.state !== 'ended'
   card.querySelector('h2').textContent = acc.name
-  const rows = [['座位', `${acc.seat + 1} 号`], ['状态', statusText(online ? s : null)], ['模型', online ? buildText(s) : ''],
-    ['工具', online ? s.tool : ''], ['目录', s?.cwd || acc.last?.dir], ['最近指令', online ? s.prompt : ''], ['工具调用', online ? s.tools : ''],
-    ['子代理', online ? Object.keys(s.agents || {}).length || '' : ''], ['终端', online ? s.attach : ''],
-    ['Claude 登录', s?.login], ['会话', online ? s.id : '']]
+  const rows = [['seat', t('card.seatNo', { n:acc.seat + 1 })], ['state', statusText(online ? s : null)], ['model', online ? buildText(s) : ''],
+    ['tool', online ? s.tool : ''], ['dir', s?.cwd || acc.last?.dir], ['prompt', online ? s.prompt : ''], ['tools', online ? s.tools : ''],
+    ['subagents', online ? Object.keys(s.agents || {}).length || '' : ''], ['terminal', online ? attachText(s.attach) : ''],
+    ['login', s?.login], ['session', online ? s.id : '']]
   card.querySelector('dl').innerHTML = rows.filter(r => r[1] !== undefined && r[1] !== '' && r[1] !== null)
-    .map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join('')
+    .map(([k, v]) => `<dt>${esc(t('card.' + k))}</dt><dd>${esc(v)}</dd>`).join('')
   const btns = card.querySelector('.btns')
   btns.innerHTML = ''
   const add = (text, cls, fn) => { const b = document.createElement('button'); b.className = 'px ' + cls; b.textContent = text; b.onclick = fn; btns.appendChild(b) }
-  if (online && s.state === 'waiting') add('去处理', 'alert', () => openAsks(s.id))
-  if (!online && launchOpts?.enabled) add('上班', 'primary go-work', () => openLaunch(acc.id))
-  if (!online) add('删除这个员工', '', async () => {
-    if (!confirm(`删掉 ${acc.name}？座位会空出来。`)) return
+  if (online && s.state === 'waiting') add(t('card.handle'), 'alert', () => openAsks(s.id))
+  if (!online && launchOpts?.enabled) add(t('launch.go'), 'primary go-work', () => openLaunch(acc.id))
+  if (!online) add(t('card.delete'), '', async () => {
+    if (!confirm(t('card.deleteConfirm', { name:acc.name }))) return
     const r = await fetch(`/api/accounts/${acc.id}`, { method:'DELETE' })
-    if (!r.ok) alert('删不掉：' + (await r.text()))
+    if (!r.ok) alert(t('card.deleteFailed', { reason:errorText(await r.json().catch(() => null)) }))
     card.hidden = true; cardFor = null
   })
   const mine = snapshot.messages.filter(m => m.fromName === acc.name || m.toName === acc.name)
-  card.querySelector('.msgs').innerHTML = mine.slice(-10).reverse().map(msgHTML).join('') || '<div class="msg">没有</div>'
+  card.querySelector('.msgs').innerHTML = mine.slice(-10).reverse().map(msgHTML).join('') || `<div class="msg">${esc(t('card.noMessages'))}</div>`
   card.hidden = false
 }
 
@@ -882,37 +904,47 @@ cv.addEventListener('click', ev => {
   }
 })
 
-// ================= 从页面启动会话 =================
+// ================= starting sessions from the page =================
 const dlg = document.getElementById('launch'), form = dlg.querySelector('form')
 const field = name => form.elements[name]
-let pendingLaunch = null // 正在等上线的启动编号
-let launchAccount = null // 让哪个已有员工上班；null 表示新员工
+let pendingLaunch = null // the launch we're waiting to see online
+let launchAccount = null // the existing employee going back to work; null for a new one
 
 async function loadLaunchOptions() {
   try { launchOpts = await (await fetch('/api/launch/options')).json() } catch { launchOpts = null }
   document.getElementById('new-emp').hidden = !launchOpts?.enabled
-  // 开不了就把原因摆出来；缺 mod 的话给出装的命令，装好刷新页面就行
+  // when starting isn't possible, say why; for a missing mod show the install command (reload after installing)
   const note = document.getElementById('launch-note')
   note.hidden = !launchOpts || launchOpts.enabled
   if (!note.hidden) {
     const fix = launchOpts.mod?.fix
-    note.innerHTML = `页面启动会话没开：${esc(launchOpts.reason)}` + (fix ? `。装好后刷新页面：<code>${esc(fix)}</code>` : '')
+    note.innerHTML = esc(t(fix ? 'launch.offWithFix' : 'launch.off', { reason:launchOffReason() })) + (fix ? `<code>${esc(fix)}</code>` : '')
   }
   layout()
 }
 
+// why the page can't start sessions: the mod's problem, or no launcher at all
+const launchOffReason = () => launchOpts?.mod ? errorText(launchOpts.mod) : t('error.launch_disabled')
+
+// labels of the drop-downs, in this page's language; model names and effort levels stay as they are
+const optionLabel = {
+  model:o => o.value ? o.label : t('option.default'),
+  effort:o => o.value || t('option.default'),
+  permissionMode:o => o.value ? o.value + t('common.colon') + t('option.permission.' + o.value) : t('option.default'),
+  resume:o => t(o.value ? 'option.resume.' + o.value : 'option.resume.new'),
+}
 const fill = (select, options, value) => {
-  select.innerHTML = options.map(o => `<option value="${esc(o.value)}">${esc(o.label)}</option>`).join('')
+  select.innerHTML = options.map(o => `<option value="${esc(o.value)}">${esc(optionLabel[select.name](o))}</option>`).join('')
   select.value = value ?? ''
 }
 
 async function openLaunch(accountId) {
   await loadLaunchOptions()
-  if (!launchOpts?.enabled) return alert(launchOpts?.reason || '连不上 bridge')
+  if (!launchOpts?.enabled) return alert(launchOpts ? launchOffReason() : t('error.unreachable'))
   const acc = accountId ? snapshot.accounts.find(a => a.id === accountId) : null
   launchAccount = acc ? acc.id : null
   const last = acc?.last || {}
-  form.querySelector('.title').textContent = acc ? `让 ${acc.name} 上班` : '新员工上班'
+  form.querySelector('.title').textContent = acc ? t('launch.titleExisting', { name:acc.name }) : t('launch.titleNew')
   field('name').value = acc ? acc.name : ''
   field('name').readOnly = !!acc
   const recent = launchOpts.recentDirs || []
@@ -942,13 +974,13 @@ function setStatus(text, err) {
 }
 function request() {
   const r = { dir:field('dir').value.trim(), model:field('model').value, effort:field('effort').value,
-    permissionMode:field('permissionMode').value, resume:field('resume').value }
+    permissionMode:field('permissionMode').value, resume:field('resume').value, lang }
   if (launchAccount) r.account = launchAccount
   else r.name = field('name').value.trim()
   return r
 }
 
-// 命令预览：和 bridge 实际拼的参数一致（另外它会带上环境变量；开发模式还有 --plugin-dir）
+// command preview: the same arguments the bridge builds (it adds the environment variables, and --plugin-dir in development mode)
 function preview() {
   const r = request()
   const q = s => /^[\w\-./=:@]+$/.test(s) ? s : `'${s.replace(/'/g, `'\\''`)}'`
@@ -957,8 +989,8 @@ function preview() {
   if (r.effort) args.push('--effort', r.effort)
   if (r.permissionMode) args.push('--permission-mode', r.permissionMode)
   if (r.resume === 'continue') args.push('--continue')
-  const dev = launchOpts?.mod?.dev ? ' --plugin-dir（开发模式）、' : ''
-  form.querySelector('.preview').textContent = `cd ${q(r.dir || '?')}\n${args.join(' ')}\n# 示意：另外带上${dev}这个员工的 token 和 bridge 地址，开一个终端来跑`
+  const note = t(launchOpts?.mod?.dev ? 'launch.previewNoteDev' : 'launch.previewNote')
+  form.querySelector('.preview').textContent = `cd ${q(r.dir || '?')}\n${args.join(' ')}\n# ${note}`
 }
 
 async function browse(path) {
@@ -966,18 +998,18 @@ async function browse(path) {
   try {
     const res = await fetch('/api/dirs?path=' + encodeURIComponent(path || launchOpts.home))
     const data = await res.json()
-    if (!res.ok) throw new Error(data.error)
+    if (!res.ok) throw new Error(errorText(data))
     box.hidden = false
     box.dataset.path = data.path
     box.querySelector('.cur').textContent = data.path
-    // 路径都用 bridge 拼好的，页面不管 / 还是 \；到了最上层就列出各个盘符（Windows）
-    const up = data.parent ? [['⬆ 上一级', data.parent]] : (data.roots || []).filter(r => r !== data.path).map(r => ['💽 ' + r, r])
+    // the bridge builds the paths, so the page never deals with / or \; at the top it lists the drives (Windows)
+    const up = data.parent ? [['⬆ ' + t('launch.up'), data.parent]] : (data.roots || []).filter(r => r !== data.path).map(r => ['💽 ' + r, r])
     const items = up.concat((data.dirs || []).map(d => [d.name + '/', d.path]))
     const ul = box.querySelector('ul')
-    ul.innerHTML = items.map(([label]) => `<li>${esc(label)}</li>`).join('') || '<li style="color:#8a867e;cursor:default">（没有子目录）</li>'
+    ul.innerHTML = items.map(([label]) => `<li>${esc(label)}</li>`).join('') || `<li style="color:#8a867e;cursor:default">${esc(t('launch.noSubfolders'))}</li>`
     ul.querySelectorAll('li').forEach((li, i) => { if (items[i]) li.onclick = () => browse(items[i][1]) })
   } catch (err) {
-    setStatus('打不开这个目录：' + err.message, true)
+    setStatus(t('launch.browseFailed', { reason:err.message }), true)
   }
 }
 
@@ -996,43 +1028,43 @@ document.getElementById('new-emp').onclick = () => openLaunch(null)
 form.addEventListener('submit', async ev => {
   ev.preventDefault()
   const r = request()
-  if (!launchAccount && !r.name) return setStatus('名字要填', true)
+  if (!launchAccount && !r.name) return setStatus(t('launch.nameRequired'), true)
   form.querySelector('.go').disabled = true
-  setStatus('启动中…')
+  setStatus(t('launch.starting'))
   try {
     const res = await fetch('/api/launch', { method:'POST', headers:{ 'content-type':'application/json' }, body:JSON.stringify(r) })
     const data = await res.json()
-    if (!res.ok) throw new Error(data.error)
+    if (!res.ok) throw new Error(errorText(data) + (data.fix ? '\n' + data.fix : ''))
     pendingLaunch = data.id
     setStatus(launchOpts.trustHint
-      ? `已打开终端窗口，等它上线…\n第一次在这个目录启动的话，要在弹出的窗口里按一下“信任此目录”。`
-      : `启动中…（${data.attach}）`)
+      ? t('launch.waitingWindow')
+      : t('launch.startingIn', { where:attachText(data.attach) }))
     watchLaunch()
   } catch (err) {
-    setStatus('启动失败：' + err.message, true)
+    setStatus(t('launch.failed', { reason:err.message }), true)
     form.querySelector('.go').disabled = false
   }
 })
 
-// 盯着快照里的启动记录：上线了就关框，失败了就把原因摆出来
+// follows the launch in the snapshot: closes the dialog once it's online, shows the reason if it failed
 function watchLaunch() {
   if (!pendingLaunch) return
   const l = (snapshot.launches || []).find(x => x.id === pendingLaunch)
   if (!l) return
   if (l.status === 'online') {
-    log(`${l.name} 上班了（${l.attach}）`)
+    log(t('log.started', { name:l.name, where:attachText(l.attach) }))
     closeLaunch()
   } else if (l.status === 'failed') {
-    setStatus('启动失败：' + l.error, true)
+    setStatus(t('launch.failed', { reason:errorText({ code:l.errorCode, params:l.errorParams, error:l.error }) }), true)
     form.querySelector('.go').disabled = false
     pendingLaunch = null
   }
 }
 
-// ================= 启动 =================
-// 各区域的牌子，和公司招牌上的字（中文用网页字体画，比像素字清楚）
+// ================= start-up =================
+// room signs and the company sign's lettering, drawn with web fonts (clearer than pixel fonts in every script)
 const roomEls = {}
-for (const [key, text] of [['work', '开放办公区'], ['meeting', '会议室'], ['lounge', '休息区'], ['front', '前台'], ['sign', 'SYMPHONY']]) {
+for (const [key, text] of [['work', t('room.work')], ['meeting', t('room.meeting')], ['lounge', t('room.lounge')], ['front', t('room.front')], ['sign', 'SYMPHONY']]) {
   const el = document.createElement('div')
   el.className = key === 'sign' ? 'sign-text' : 'room-label'
   el.textContent = text
@@ -1043,7 +1075,7 @@ rooms.sign = {}
 const addBtn = document.createElement('button')
 addBtn.className = 'seat-add'
 addBtn.textContent = '+'
-addBtn.title = '新员工：在这个空座位上启动一个会话'
+addBtn.title = t('office.addSeatTitle')
 addBtn.hidden = true
 addBtn.addEventListener('click', () => openLaunch(null))
 document.getElementById('labels').appendChild(addBtn)

@@ -2,41 +2,40 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## 硬性规定
+Personal working rules (language, workflow) belong in `CLAUDE.local.md`, which is not checked in.
 
-1. 非必要情况下，用精炼的简体中文大白话。
-2. 没有完整的测试验收，不许提交，不许推送。
-3. 凡是涉及代码的改动，必须在本地新开 git branch + worktree 里做；得到用户确认后，才能在本地合并回 `dev`。
+## What this is
 
-## 项目是什么
+symphony puts a team of Claude Code sessions into a pixel-art office web page: permission requests and AskUserQuestion questions are handled in the page, and sessions show up as employees at their desks. It is built independently, without borrowing from other repositories.
 
-symphony：用 Claude Code 对标 grok bot 的试验仓库。独立开发，不参考其它仓库。
+## Code
 
-## 代码现状
+The bridge is Go (standard library only; the e2e tests also use chromedp), the mod is TypeScript (as Claude Code requires), the pages are plain JavaScript, and the office is Canvas 2D pixel art with no front-end libraries.
 
-bridge 用 Go（只用标准库，e2e 另用 chromedp），mod 是 TypeScript（Claude Code 规定），网页是原生 JS，办公室用 Canvas 2D 画像素图，不依赖任何前端库。
+- **Accounts**: an identity is a name + a token + a fixed seat, and an account serves one session at a time (a second session gets 409 and falls back to the terminal). Claude logins are not managed here; sessions may share one. Accounts live in the data folder's `accounts.json` (with tokens, mode 0600), messages in `messages.json`.
+- `mods/symphony-bridge/`: the Claude Code mod (function hooks, tested with Claude Code 2.1.314; the API is marked EARLY ACCESS, so run the e2e tests after upgrading Claude Code). It finds its account by `SYMPHONY_TOKEN` and does nothing in sessions without one (no bridge contact, no messages, no approval changes); `tool.check` hands permission requests to the bridge and `tool.call` intercepts AskUserQuestion; it reports session events, the session name, messages between sessions, the model and thinking effort (`turn.step`), and a heartbeat every 15 seconds. When the bridge is unreachable, rejects the token or the account is busy, it says so and falls back to the terminal. Its few messages are in `hooks/messages.ts` (10 languages, picked by `SYMPHONY_LANG`, then `LC_ALL` / `LC_MESSAGES` / `LANG`); unit tests are in `tests/`.
+- Installing the mod: the repository root's `.claude-plugin/marketplace.json` is a plugin marketplace named `symphony`; `claude plugin install symphony-bridge --marketplace <local repository path or feynmanzcys-bytes/symphony>` installs it at user scope, so every session loads it. With a local path as the marketplace, sessions read that folder directly (mod edits apply to the next session or after `/reload-plugins`); a GitHub install is a copy, so bump the version in `plugin.json` and run `claude plugin update`. Bump the version whenever the mod's behavior changes.
+- `internal/bridge/`: `hub.go` is the state hub (45 seconds without a heartbeat means off duty), `accounts.go` accounts and seats, `server.go` HTTP (long polling for the mod, SSE for the pages), `launch.go` starting sessions, `terminal*.go` how each platform opens a terminal, `errors.go` errors with codes.
+- Errors the page may show carry a code: the API answers `{error: <English>, code, params}` and the page translates `error.<code>`; a failed launch keeps `errorCode` / `errorParams` in the snapshot. Go error strings stay English.
+- `internal/i18n/`: language detection (`-lang`, `SYMPHONY_LANG`, `LC_ALL` / `LC_MESSAGES` / `LANG`) and the bridge's own translations (`locales/<lang>.json`: log lines and flag help).
+- Three platforms: Windows (a new console window runs claude directly, `terminal_windows.go`), macOS (Terminal.app by default, running a one-off script that deletes itself; `-terminal tmux` for tmux), Linux (tmux when installed, a graphical terminal otherwise). Only tmux can answer "trust this folder"; with a window backend the first start in a new folder needs a click. The data folder comes from `os.UserConfigDir()`: `~/.config/symphony`, `~/Library/Application Support/symphony`, `%AppData%\symphony` (on Windows mode 0600 has no effect; the user folder's permissions protect the tokens).
+- `web/`: `office.html` (`/`, the pixel office), `approve.html` (`/approve`, a simpler approval page), `asks.js` (the ask cards both share), `i18n.js` (language choice, `t()`, the language picker) and `locales/<lang>.json` (the pages' translations), all built into the bridge binary.
+- Translations: 10 languages (en, zh-CN, zh-TW, ja, ko, es, fr, de, pt-BR, ru), English is the fallback. Every catalog has the same keys as its `en.json` and the same `{placeholders}`, which `go test ./internal/i18n/` checks. User-visible text never sits in code: the pages use `t('key')` or `data-i18n`, the bridge's log lines use `i18n.T`, and the bridge sends codes to the page. Code comments are English.
+- The office: a proper company layout, with an open office (rows of 6 desks, at least 3 rows, full rows even for a small team, more rows as it grows), a glass meeting room, a lounge (counter, fridge, vending machine, sofa, foosball) and a reception; each account has a fixed desk; state colors are idle green, working yellow, waiting for an approval or answer red, off duty gray; idle employees play with their phones or games and sleep after 2 minutes; size follows the model (haiku < sonnet < opus < fable), muscles follow the effort (a red headband at max); messages between sessions get a flying envelope, a bubble and the message log; pending asks open a popup and are handled right there.
+- Starting sessions from the page: the "+" on an empty desk hires a new employee; "Start work" on an off-duty employee's card brings them back (last folder and options filled in, same seat). The bridge starts claude in a tmux session (`sym-<id>`) in that folder with the account's token, the bridge's address and the page's language (`SYMPHONY_LANG`); the mod is the installed one (`-mod` development mode adds `--plugin-dir`); the bridge answers "trust this folder" for new folders. The bridge checks the mod with `claude plugin list --json` (`Mod` in `launch.go`); without it, starting from the page is off and the page shows the install command (reload after installing, no bridge restart).
+- The bridge only accepts this machine's Host and refuses writes that other sites send through the browser (the launch endpoint runs commands on this machine). The pages have no login yet; don't bind to a non-local address.
+- `cmd/bridge`, `cmd/demo` (creates demo accounts and made-up activity). `e2e/`: end-to-end acceptance with real Claude sessions.
 
-- **账号**：军团里的身份 = 名字 + token + 固定座位，一个账号同一时间只给一个会话用（第二个会话 409，退回终端）。Claude 登录不管，所有会话可以共用。账号存在数据目录 `accounts.json`（含 token，权限 0600），消息记录存 `messages.json`。
-- `mods/symphony-bridge/`：Claude Code mod（function hooks，2.1.314 上验证过；API 标着 EARLY ACCESS，升级 Claude Code 要先跑 e2e）。凭 `SYMPHONY_TOKEN` 认账号，没带 token 的会话里什么都不做（不连 bridge、不弹提示、不碰审批）；`tool.check` 把权限审批转给 bridge，`tool.call` 拦 AskUserQuestion；上报会话事件、会话名、会话间消息、模型和思考强度（`turn.step`），每 15 秒一次心跳。bridge 不通、不认 token 或账号被占用，就弹个提示、退回终端原生交互。单测在 `tests/`。
-- 正式安装：仓库根目录的 `.claude-plugin/marketplace.json` 是插件市场（名字 `symphony`），`claude plugin install symphony-bridge --marketplace <本地仓库路径 或 feynmanzcys-bytes/symphony>`，装在用户级别，每个会话都加载。本地路径当市场时，会话直接读那个目录（改了 mod，下个会话或 `/reload-plugins` 就生效）；从 GitHub 装的是安装时的拷贝，要改 `plugin.json` 的版本号再 `claude plugin update`。改了 mod 的行为就升版本号。
-- `internal/bridge/`：`hub.go` 状态中枢（45 秒没心跳算下班）、`accounts.go` 账号和座位、`server.go` HTTP（长轮询给 mod，SSE 推给网页）、`launch.go` 起会话、`terminal*.go` 各平台怎么开终端。
-- 三端：Windows（新控制台窗口直接起 claude，`terminal_windows.go`）、macOS（默认 Terminal.app，跑一个先删掉自己的一次性脚本；`-terminal tmux` 可改用 tmux）、Linux（有 tmux 用 tmux，没有就开图形终端）。只有 tmux 能替人点“信任此目录”，弹窗口的后端第一次进新目录要人自己点。数据目录用 `os.UserConfigDir()`：`~/.config/symphony`、`~/Library/Application Support/symphony`、`%AppData%\symphony`（Windows 上文件权限 0600 不起作用，token 靠用户目录的权限保护）。
-- `web/`：`office.html`（`/`，像素办公室）、`approve.html`（`/approve`，备用审批台）、`asks.js`（两边共用的审批卡片），都编译进 bridge 二进制。
-- 办公室：正规大公司布局——开放办公区（6 列一排，至少 3 排，人少也摆满桌子，人多往下加排）、玻璃会议室、休息区（吧台、冰箱、售货机、沙发、桌上足球）、前台；每个账号一个固定工位；状态色空闲绿、工作中黄、待审批/待回答红、下班灰；空闲时玩手机/打游戏，闲 2 分钟睡觉；块头看模型（haiku < sonnet < opus < fable），肌肉看思考强度（max 系红头带）；会话间消息有飞信封 + 气泡 + 消息记录；待处理事项自动弹窗，直接在弹窗里处理。
-- 页面启动会话：空座位的“+”招新员工，下班员工的卡片上点“上班”（带出上次的目录和参数，坐回原座位）；bridge 在那个目录的 tmux（`sym-<编号>`）里起 claude，带上这个账号的 token 和 bridge 地址（mod 用装好的，`-mod` 开发模式才加 `--plugin-dir`）；新目录的“信任此目录”由 bridge 代点。bridge 用 `claude plugin list --json` 查 mod 装没装（`launch.go` 的 `Mod`），没装就关掉页面启动，页面左上角给出安装命令，装好刷新就行，不用重启 bridge。
-- bridge 只认本机 Host，并拒绝别的网站借浏览器发来的写请求（启动接口能在本机执行命令，要防跨站）。网页本身还没有登录，不要绑到非本机地址。
-- `cmd/bridge`、`cmd/demo`（建 demo 账号灌假数据）。`e2e/`：真起 Claude 会话的端到端验收。
+## Commands
 
-## 常用命令
+- Start the bridge (from the repository root): `go run ./cmd/bridge` (`-addr`, `-data`, `-claude`, `-terminal auto|tmux|window`, `-lang`; add `-web web` when editing pages to serve them from disk, so a reload shows changes; add `-mod mods/symphony-bridge` when editing the mod, so page-started sessions get your copy with `--plugin-dir`; without claude or a usable terminal, starting from the page is off)
+- Start a session by hand: `curl -X POST localhost:7788/api/accounts -d '{"name":"someone"}'` for a token, then `SYMPHONY_TOKEN=<token> claude --name someone --permission-mode manual` (install the mod first, or add `--plugin-dir mods/symphony-bridge` when editing it; in auto mode most actions don't ask, so approvals never reach the page)
+- Validate: `claude plugin validate .` (the marketplace) and `claude plugin validate mods/symphony-bridge`; mod unit tests: `claude plugin test mods/symphony-bridge`
+- Unit tests: `go test -race ./...`
+- Cross-compile check for the three platforms (after any Go change): `for os in windows darwin linux; do GOOS=$os go vet ./internal/... ./cmd/... && GOOS=$os go build -o /dev/null ./cmd/bridge; done`
+- End-to-end (starts real sessions and spends tokens, about a minute): `SYMPHONY_E2E=1 go test -tags e2e -v -count=1 -timeout 20m ./e2e/`, screenshots in `e2e/artifacts/`; needs `claude`, `tmux` and `chromium`; the e2e always uses the tmux backend, so it runs on Linux and on macOS with tmux, and skips on Windows. `TestOffice` gives sessions this repository's mod with `--plugin-dir`, or the installed one with `SYMPHONY_E2E_MOD=installed` (install it first); `TestInstall` walks through installing in a throwaway `CLAUDE_CONFIG_DIR` (no tokens, the real config stays untouched); `TestI18n` opens the pages in every language with made-up activity (no tokens; `SYMPHONY_E2E_LANGS=en,zh-CN` limits the languages).
+- See the office with made-up activity: start a second bridge (`-addr 127.0.0.1:7799 -data /tmp/x`), then `go run ./cmd/demo -base http://127.0.0.1:7799`
 
-- 起 bridge（在仓库根目录）：`go run ./cmd/bridge`（`-addr`、`-data`、`-claude`、`-terminal auto|tmux|window`；改页面时加 `-web web` 直接读磁盘，刷新就生效；改 mod 时加 `-mod mods/symphony-bridge`，页面起的会话用 `--plugin-dir` 带上手上这份，盖过装好的；缺 claude 或终端时页面启动关闭）
-- 命令行手动起会话：先 `curl -X POST localhost:7788/api/accounts -d '{"name":"某某"}'` 拿 token，再 `SYMPHONY_TOKEN=<token> claude --name 某某 --permission-mode manual`（mod 要先装好，改 mod 时加 `--plugin-dir mods/symphony-bridge`；auto 模式大部分不问人，审批到不了网页）
-- 校验：`claude plugin validate .`（插件市场）、`claude plugin validate mods/symphony-bridge`；mod 单测：`claude plugin test mods/symphony-bridge`
-- 单测：`go test -race ./...`
-- 三端交叉编译检查（改了 Go 代码都要跑）：`for os in windows darwin linux; do GOOS=$os go vet ./internal/... ./cmd/... && GOOS=$os go build -o /dev/null ./cmd/bridge; done`
-- 端到端（起真会话、花 token，约半分钟到一分钟）：`SYMPHONY_E2E=1 go test -tags e2e -v -count=1 -timeout 20m ./e2e/`，截图在 `e2e/artifacts/`；需要 `claude`、`tmux`、`chromium`；e2e 固定用 tmux 后端，只在 Linux / 装了 tmux 的 macOS 上跑，Windows 上会跳过。`TestLegion` 默认用 `--plugin-dir` 带仓库里的 mod，`SYMPHONY_E2E_MOD=installed` 改用装好的 mod（要先装）；`TestInstall` 在临时的 `CLAUDE_CONFIG_DIR` 里走一遍安装，不花 token、不碰本机配置
-- 假数据看办公室：另起一个 bridge（`-addr 127.0.0.1:7799 -data /tmp/x`），`go run ./cmd/demo -base http://127.0.0.1:7799`
+## Branches and commits
 
-## 分支
-
-`dev` 是开发主线，代码改动按硬性规定第 3 条走。
+`dev` is the development line. `main` is the default branch on GitHub, which `--marketplace feynmanzcys-bytes/symphony` reads. Commit messages are in English.

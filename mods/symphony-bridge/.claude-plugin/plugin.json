@@ -1,10 +1,10 @@
 {
   "name": "symphony-bridge",
-  "version": "0.2.0",
-  "description": "把 Claude Code 会话接进 symphony 军团：权限审批和 AskUserQuestion 转到办公室网页上处理，并上报会话状态。只对带着 SYMPHONY_TOKEN 启动的会话生效",
+  "version": "0.3.0",
+  "description": "Brings Claude Code sessions into the symphony office: permission requests and AskUserQuestion are handled in the office web page, and session activity is reported there. Only affects sessions started with SYMPHONY_TOKEN.",
   "author": { "name": "feynmanzcys-bytes", "url": "https://github.com/feynmanzcys-bytes" },
   "homepage": "https://github.com/feynmanzcys-bytes/symphony",
   "repository": "https://github.com/feynmanzcys-bytes/symphony",
   "license": "MIT",
-  "keywords": ["symphony", "multi-session", "approval", "dashboard"]
+  "keywords": ["symphony", "multi-session", "approval", "dashboard", "i18n"]
 }

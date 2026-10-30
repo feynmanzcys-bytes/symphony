@@ -7,7 +7,7 @@ import (
 	"syscall"
 )
 
-// newConsole 让 claude 在自己的新控制台窗口里跑（Windows 11 默认终端是 Windows Terminal 时会开在那里）。
+// newConsole runs claude in a new console window of its own (in Windows Terminal when that is the default terminal on Windows 11).
 func newConsole(cmd *exec.Cmd) {
 	const createNewConsole = 0x00000010
 	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: createNewConsole}

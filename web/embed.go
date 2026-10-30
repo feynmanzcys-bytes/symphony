@@ -1,7 +1,8 @@
-// Package web 打包审批台和办公室页面，bridge 二进制自带，不依赖运行目录。
+// Package web bundles the approval and office pages and their translations into the bridge binary,
+// so it doesn't depend on the folder it runs from.
 package web
 
 import "embed"
 
-//go:embed office.html approve.html asks.js
+//go:embed office.html approve.html asks.js i18n.js locales/*.json
 var FS embed.FS

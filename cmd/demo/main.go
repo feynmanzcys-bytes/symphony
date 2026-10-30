@@ -1,5 +1,5 @@
-// 往 bridge 灌假数据，看办公室效果：go run ./cmd/demo [-base http://127.0.0.1:7788] [-seconds 60]
-// 会建几个 demo 账号（已有同名的就跳过），用它们的 token 上报事件。
+// Fills a bridge with made-up activity to show off the office: go run ./cmd/demo [-base http://127.0.0.1:7788] [-seconds 60]
+// It creates a few demo accounts (skipping names that exist already) and reports events with their tokens.
 package main
 
 import (
@@ -10,7 +10,10 @@ import (
 	"log"
 	"math/rand/v2"
 	"net/http"
+	"os"
 	"time"
+
+	"github.com/feynmanzcys-bytes/symphony/internal/i18n"
 )
 
 var base string
@@ -42,22 +45,37 @@ func event(m member, kind string, extra map[string]any) {
 	post(m.token, "/api/event", body)
 }
 
+// errorText is the bridge's error in this language when the catalog knows its code, its English text otherwise.
+func errorText(res map[string]any) string {
+	if code, _ := res["code"].(string); code != "" && i18n.Has("error."+code) {
+		params := map[string]string{}
+		if p, ok := res["params"].(map[string]any); ok {
+			for k, v := range p {
+				params[k] = fmt.Sprint(v)
+			}
+		}
+		return i18n.TMap("error."+code, params)
+	}
+	return fmt.Sprint(res["error"])
+}
+
 func main() {
-	flag.StringVar(&base, "base", "http://127.0.0.1:7788", "bridge 地址")
-	seconds := flag.Float64("seconds", 0, "跑多久，0 表示一直跑")
+	i18n.SetLang(i18n.Detect(os.Getenv))
+	flag.StringVar(&base, "base", "http://127.0.0.1:7788", i18n.T("demo.flag.base"))
+	seconds := flag.Float64("seconds", 0, i18n.T("demo.flag.seconds"))
 	flag.Parse()
 
-	// 名字、模型、强度：块头和肌肉各不相同
+	// name, model, effort: every character has its own size and muscles; the names come from around the world
 	roster := [][3]string{
-		{"demo-小王", "haiku", "low"}, {"demo-老李", "sonnet", "medium"}, {"demo-阿珍", "sonnet", "high"},
-		{"demo-大刘", "opus", "high"}, {"demo-小美", "opus", "max"}, {"demo-老周", "fable", "max"},
+		{"demo-Alice", "haiku", "low"}, {"demo-小王", "sonnet", "medium"}, {"demo-Yuki", "sonnet", "high"},
+		{"demo-Carlos", "opus", "high"}, {"demo-Amélie", "opus", "max"}, {"demo-Олег", "fable", "max"},
 	}
 	var team []member
 	for _, r := range roster {
 		res := post("", "/api/accounts", map[string]string{"name": r[0]})
 		token, _ := res["token"].(string)
 		if token == "" {
-			log.Printf("%s 建不了（可能已经有了）：%v", r[0], res["error"])
+			log.Print(i18n.T("demo.create_failed", "name", r[0], "error", errorText(res)))
 			continue
 		}
 		m := member{id: fmt.Sprintf("demo-%06x", rand.IntN(1<<24)), name: r[0], token: token}
@@ -66,21 +84,21 @@ func main() {
 		event(m, "session.title", map[string]any{"title": r[0]})
 	}
 	if len(team) < 2 {
-		log.Fatal("demo 账号不够，先删掉旧的 demo 账号再跑")
+		log.Fatal(i18n.T("demo.not_enough"))
 	}
-	// 留一个待审批、一个待回答
+	// leave one permission and one question pending
 	post(team[1].token, "/api/ask", map[string]any{"session": team[1].id, "kind": "permission", "tool": "Bash", "input": map[string]any{"command": "rm -rf build"}})
 	post(team[0].token, "/api/ask", map[string]any{"session": team[0].id, "kind": "question", "questions": []map[string]any{{
-		"question": "首页用哪种布局？", "header": "布局", "multiSelect": false,
-		"options": []map[string]string{{"label": "单栏", "description": "一列"}, {"label": "双栏", "description": "左右两栏"}},
+		"question": "Which layout should the home page use?", "header": "Layout", "multiSelect": false,
+		"options": []map[string]string{{"label": "Single column", "description": "One column"}, {"label": "Two columns", "description": "Left and right"}},
 	}}})
 
 	tools := []string{"Bash", "Read", "Edit", "Grep", "Write", "WebFetch"}
-	lines := []string{"接口改好了，你那边联调一下", "今晚八点开会", "测试用例过了 12/13", "帮我看下这个报错", "设计稿更新了"}
+	lines := []string{"The API is ready, please try it on your side", "Meeting at 8 tonight", "12 of 13 test cases pass", "Could you look at this error?", "The design mockups are updated"}
 	end := time.Now().Add(time.Duration(*seconds * float64(time.Second)))
 	last := time.Now()
 	for *seconds == 0 || time.Now().Before(end) {
-		if time.Since(last) > 10*time.Second { // 心跳，免得被当成失联
+		if time.Since(last) > 10*time.Second { // heartbeats, so nobody counts as lost
 			for _, m := range team {
 				event(m, "heartbeat", nil)
 			}

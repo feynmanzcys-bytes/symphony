@@ -28,15 +28,16 @@ type testBridge struct {
 	URL      string
 	Hub      *bridge.Hub
 	Launcher *bridge.Launcher
-	// anon 数没带 token 打到 mod 接口上的请求：没带 SYMPHONY_TOKEN 的会话一个都不该发
+	// anon counts requests to the mod endpoints without a token: a session without SYMPHONY_TOKEN must send none
 	anon atomic.Int64
 
 	mu     sync.Mutex
 	events []bridge.Event
 }
 
-// startBridge 起一个进程内 bridge（随机端口、临时数据目录、能从页面启动会话），
-// 并记下推送出来的每条事件，方便断言。mod 为空时会话用 Claude Code 里装好的 mod，否则用 --plugin-dir 带上它。
+// startBridge starts a bridge in this process (a random port, a temporary data folder, starting sessions from the
+// page turned on) and records every event it pushes, for the assertions. With an empty mod, sessions use the mod
+// installed in Claude Code; otherwise they get mod with --plugin-dir.
 func startBridge(t *testing.T, mod string) *testBridge {
 	t.Helper()
 	hub := bridge.NewHub()
@@ -52,7 +53,7 @@ func startBridge(t *testing.T, mod string) *testBridge {
 		srv.ServeHTTP(w, r)
 	}))
 	b.URL = "http://" + ts.Listener.Addr().String()
-	// e2e 要用 tmux 盯终端、替人点“信任”，所以不管什么平台都固定用 tmux
+	// the e2e watches terminals and answers "trust" through tmux, so it uses tmux on every platform
 	b.Launcher = bridge.NewLauncher("claude", mod, b.URL, bridge.NewTmux())
 	srv.SetLauncher(b.Launcher)
 	ts.Start()
@@ -86,7 +87,7 @@ func (b *testBridge) hasEvent(match func(bridge.Event) bool) bool {
 	return false
 }
 
-// online 返回账号当前在线的会话，不在线返回 nil。
+// online returns the account's online session, or nil.
 func (b *testBridge) online(name string) *bridge.Session {
 	snap := b.Hub.Snapshot()
 	for _, a := range snap.Accounts {
@@ -120,7 +121,7 @@ func (b *testBridge) session(id string) *bridge.Session {
 	return nil
 }
 
-// ---------- 等待 ----------
+// ---------- waiting ----------
 
 func waitUntil(t *testing.T, timeout time.Duration, what string, cond func() bool, dump ...func() string) {
 	t.Helper()
@@ -135,10 +136,10 @@ func waitUntil(t *testing.T, timeout time.Duration, what string, cond func() boo
 	for _, d := range dump {
 		extra = append(extra, d())
 	}
-	t.Fatalf("等了 %s 还没等到：%s\n%s", timeout, what, strings.Join(extra, "\n----\n"))
+	t.Fatalf("still waiting after %s: %s\n%s", timeout, what, strings.Join(extra, "\n----\n"))
 }
 
-// ---------- tmux 里的 Claude Code ----------
+// ---------- Claude Code in tmux ----------
 
 type pane struct {
 	t    *testing.T
@@ -147,7 +148,7 @@ type pane struct {
 
 func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
 
-// startClaude 在 tmux 里起一个带 mod 的交互式 Claude Code，等它到输入框为止。
+// startClaude starts an interactive Claude Code with the mod in tmux and waits for its prompt.
 func startClaude(t *testing.T, name, dir string, env map[string]string, args ...string) *pane {
 	t.Helper()
 	cmd := []string{"env"}
@@ -162,12 +163,12 @@ func startClaude(t *testing.T, name, dir string, env map[string]string, args ...
 	}
 	out, err := exec.Command("tmux", "new-session", "-d", "-s", name, "-x", "200", "-y", "50", "-c", dir, strings.Join(quoted, " ")).CombinedOutput()
 	if err != nil {
-		t.Fatalf("tmux 起不来: %v %s", err, out)
+		t.Fatalf("tmux failed to start: %v %s", err, out)
 	}
 	p := &pane{t: t, name: name}
 	t.Cleanup(p.kill)
 
-	// 新目录会先问信不信任，选“信任”
+	// a new folder first asks whether to trust it: pick "trust"
 	deadline := time.Now().Add(60 * time.Second)
 	for time.Now().Before(deadline) {
 		screen := p.capture()
@@ -181,7 +182,7 @@ func startClaude(t *testing.T, name, dir string, env map[string]string, args ...
 		}
 		time.Sleep(500 * time.Millisecond)
 	}
-	t.Fatalf("%s 没等到输入框:\n%s", name, p.capture())
+	t.Fatalf("%s never showed its prompt:\n%s", name, p.capture())
 	return nil
 }
 
@@ -194,7 +195,7 @@ func (p *pane) key(k string) {
 	_ = exec.Command("tmux", "send-keys", "-t", p.name, k).Run()
 }
 
-// say 在输入框里打一段话并回车。
+// say types text into the prompt and presses Enter.
 func (p *pane) say(text string) {
 	_ = exec.Command("tmux", "send-keys", "-t", p.name, "-l", text).Run()
 	time.Sleep(300 * time.Millisecond)
@@ -203,15 +204,15 @@ func (p *pane) say(text string) {
 
 func (p *pane) kill() { _ = exec.Command("tmux", "kill-session", "-t", p.name).Run() }
 
-func (p *pane) dump() string { return fmt.Sprintf("[%s 屏幕]\n%s", p.name, p.capture()) }
+func (p *pane) dump() string { return fmt.Sprintf("[%s screen]\n%s", p.name, p.capture()) }
 
-// ---------- 浏览器 ----------
+// ---------- browser ----------
 
 func newBrowser(t *testing.T) context.Context {
 	t.Helper()
 	path, err := exec.LookPath("chromium")
 	if err != nil {
-		t.Skip("没有 chromium")
+		t.Skip("chromium not found")
 	}
 	opts := append(chromedp.DefaultExecAllocatorOptions[:],
 		chromedp.ExecPath(path),
@@ -224,40 +225,51 @@ func newBrowser(t *testing.T) context.Context {
 	ctx, cancel := chromedp.NewContext(alloc)
 	t.Cleanup(func() { cancel(); cancelAlloc() })
 	if err := chromedp.Do(ctx); err != nil {
-		t.Fatalf("chromium 起不来: %v", err)
+		t.Fatalf("chromium failed to start: %v", err)
 	}
 	return ctx
 }
 
-// tab 在同一个浏览器里开新标签页。
+// tab opens a new tab in the same browser.
 func tab(t *testing.T, browser context.Context, url string) context.Context {
 	t.Helper()
-	ctx, cancel := chromedp.NewContext(browser)
+	ctx, cancel := openTab(t, browser, url)
 	t.Cleanup(cancel)
-	if err := chromedp.Do(ctx, chromedp.Navigate(url)); err != nil {
-		t.Fatalf("打开 %s 失败: %v", url, err)
-	}
 	return ctx
 }
 
-// do 依次执行浏览器操作，超时或出错就让测试失败。
+// openTab opens url in a new tab; cancel closes it. Every page keeps an event stream open and the
+// browser allows six connections per host, so a test that opens many pages closes them as it goes.
+func openTab(t *testing.T, browser context.Context, url string) (context.Context, context.CancelFunc) {
+	t.Helper()
+	ctx, cancel := chromedp.NewContext(browser)
+	if err := chromedp.Do(ctx); err != nil { // creates the tab
+		cancel()
+		t.Fatalf("opening a tab failed: %v", err)
+	}
+	t.Cleanup(cancel)
+	do(t, ctx, 30*time.Second, chromedp.Navigate(url))
+	return ctx, cancel
+}
+
+// do runs browser actions in order and fails the test on an error or a timeout.
 func do(t *testing.T, ctx context.Context, timeout time.Duration, steps ...chromedp.Action[chromedp.Void]) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	if err := chromedp.Do(ctx, steps...); err != nil {
-		t.Fatalf("浏览器操作失败: %v", err)
+		t.Fatalf("browser action failed: %v", err)
 	}
 }
 
-// get 执行一个有返回值的浏览器操作。
+// get runs a browser action that returns a value.
 func get[T any](t *testing.T, ctx context.Context, timeout time.Duration, action chromedp.Action[T]) T {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	v, err := chromedp.Run(ctx, action)
 	if err != nil {
-		t.Fatalf("浏览器操作失败: %v", err)
+		t.Fatalf("browser action failed: %v", err)
 	}
 	return v
 }
@@ -272,5 +284,5 @@ func screenshot(t *testing.T, ctx context.Context, name string) {
 		t.Fatal(err)
 	}
 	abs, _ := filepath.Abs(path)
-	t.Logf("截图: %s", abs)
+	t.Logf("screenshot: %s", abs)
 }

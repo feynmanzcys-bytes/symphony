@@ -13,20 +13,24 @@ import (
 	"sync"
 	"time"
 	"unicode"
+
+	"github.com/feynmanzcys-bytes/symphony/internal/i18n"
 )
 
-// ModName 是 mod 在 Claude Code 里的插件名；GitHubMarket 是放着插件市场（.claude-plugin/marketplace.json）的仓库。
+// ModName is the mod's plugin name in Claude Code; GitHubMarket is the repository that holds the
+// plugin marketplace (.claude-plugin/marketplace.json).
 const (
 	ModName      = "symphony-bridge"
 	GitHubMarket = "feynmanzcys-bytes/symphony"
 )
 
-// 启动框里的下拉选项。空字符串表示不传这个参数，跟随 Claude Code 自己的设置。
+// The drop-downs of the launch dialog. An empty value leaves the flag out, so Claude Code's own
+// settings apply. The labels are English fallbacks; the page shows its own translations.
 var (
-	launchModels          = []Option{{"", "跟随设置"}, {"fable", "Fable"}, {"opus", "Opus"}, {"sonnet", "Sonnet"}, {"haiku", "Haiku"}}
-	launchEfforts         = []Option{{"", "跟随设置"}, {"low", "low"}, {"medium", "medium"}, {"high", "high"}, {"xhigh", "xhigh"}, {"max", "max"}}
-	launchPermissionModes = []Option{{"", "跟随设置"}, {"manual", "manual：每次都问"}, {"acceptEdits", "acceptEdits：改文件不问"}, {"auto", "auto：自动判断"}, {"plan", "plan：只做计划"}, {"dontAsk", "dontAsk：不问，不许的直接拒"}, {"bypassPermissions", "bypassPermissions：全部放行"}}
-	launchResumes         = []Option{{"", "新会话"}, {"continue", "继续这个目录上次的会话"}}
+	launchModels          = []Option{{"", "Default"}, {"fable", "Fable"}, {"opus", "Opus"}, {"sonnet", "Sonnet"}, {"haiku", "Haiku"}}
+	launchEfforts         = []Option{{"", "Default"}, {"low", "low"}, {"medium", "medium"}, {"high", "high"}, {"xhigh", "xhigh"}, {"max", "max"}}
+	launchPermissionModes = []Option{{"", "Default"}, {"manual", "manual: always ask"}, {"acceptEdits", "acceptEdits: file edits without asking"}, {"auto", "auto: decides for itself"}, {"plan", "plan: plan only"}, {"dontAsk", "dontAsk: never ask, deny what isn't allowed"}, {"bypassPermissions", "bypassPermissions: allow everything"}}
+	launchResumes         = []Option{{"", "New session"}, {"continue", "Continue the last session in this folder"}}
 )
 
 type Option struct {
@@ -38,8 +42,9 @@ func validOption(opts []Option, v string) bool {
 	return slices.ContainsFunc(opts, func(o Option) bool { return o.Value == v })
 }
 
-// LaunchRequest 是启动框提交的内容。Account 是已有账号的 id（让它上班）；
-// 不给就按 Name 新建账号。
+// LaunchRequest is what the launch dialog submits. Account is the id of an existing account to put
+// back to work; without it a new account named Name is created. Lang is the page's language, which
+// the session's mod uses for its messages.
 type LaunchRequest struct {
 	Account        string `json:"account,omitempty"`
 	Name           string `json:"name,omitempty"`
@@ -48,9 +53,10 @@ type LaunchRequest struct {
 	Effort         string `json:"effort"`
 	PermissionMode string `json:"permissionMode"`
 	Resume         string `json:"resume"`
+	Lang           string `json:"lang,omitempty"`
 }
 
-// Launch 是一次从页面发起的启动。
+// Launch is one start of a session from the page.
 const (
 	LaunchStarting = "starting"
 	LaunchOnline   = "online"
@@ -58,33 +64,39 @@ const (
 )
 
 type Launch struct {
-	ID      string    `json:"id"`
-	Attach  string    `json:"attach"` // 去哪儿找这个会话的终端（tmux attach 命令或“弹出的窗口”）
-	Name    string    `json:"name"`
-	Dir     string    `json:"dir"`
-	Account string    `json:"account"`
-	Model   string    `json:"model,omitempty"`
-	Effort  string    `json:"effort,omitempty"`
-	Command string    `json:"command"` // 给人看的完整命令
-	Status  string    `json:"status"`
-	Error   string    `json:"error,omitempty"`
-	Session string    `json:"session,omitempty"`
-	Time    time.Time `json:"time"`
+	ID      string `json:"id"`
+	Attach  string `json:"attach"` // where to find the session's terminal: a tmux command, AttachWindow or AttachConsole
+	Name    string `json:"name"`
+	Dir     string `json:"dir"`
+	Account string `json:"account"`
+	Model   string `json:"model,omitempty"`
+	Effort  string `json:"effort,omitempty"`
+	Command string `json:"command"` // the full command, for people to read
+	Status  string `json:"status"`
+	// Error is the English reason a launch failed; the page shows ErrorCode and ErrorParams in its own language.
+	Error       string            `json:"error,omitempty"`
+	ErrorCode   string            `json:"errorCode,omitempty"`
+	ErrorParams map[string]string `json:"errorParams,omitempty"`
+	Session     string            `json:"session,omitempty"`
+	Time        time.Time         `json:"time"`
 }
 
-// Launcher 在一个交互终端里拉起 Claude Code（终端怎么开看平台，见 Terminal），
-// 并带上 bridge 的环境变量。mod 平时用 Claude Code 里正式安装的那份（claude plugin install）。
+// Launcher starts Claude Code in an interactive terminal (how depends on the platform, see Terminal)
+// with the bridge's environment variables. The mod normally comes from Claude Code's own install
+// (claude plugin install).
 type Launcher struct {
-	Claude string // claude 可执行文件
-	// ModDir 是开发用的 mod 目录：给了就用 --plugin-dir 带上它，盖过已安装的同名插件，也不再检查装没装。
+	Claude string // the claude executable
+	// ModDir is a mod folder for development: when set, sessions get it with --plugin-dir, which
+	// overrides an installed copy, and the install is not checked.
 	ModDir string
-	// Market 是本地的插件市场（仓库根目录）。提示怎么装 mod 时优先用它，mod 和 bridge 就是同一份代码；没有就用 GitHub 上的。
+	// Market is a local plugin marketplace (the repository root). Install hints prefer it, so the mod
+	// and the bridge are the same code; without it they point at GitHub.
 	Market    string
-	BridgeURL string // 会话回连 bridge 的地址
+	BridgeURL string // the address sessions use to reach the bridge
 	Term      Terminal
-	// OnlineTimeout 是等会话上线的时间
+	// OnlineTimeout is how long to wait for a session to come online
 	OnlineTimeout time.Duration
-	// ListPlugins 跑 `claude plugin list --json`，测试里换成假的
+	// ListPlugins runs `claude plugin list --json`; tests swap in a fake
 	ListPlugins func(ctx context.Context) ([]byte, error)
 
 	modMu sync.Mutex
@@ -96,17 +108,25 @@ func NewLauncher(claude, modDir, bridgeURL string, term Terminal) *Launcher {
 	return &Launcher{Claude: claude, ModDir: modDir, BridgeURL: bridgeURL, Term: term, OnlineTimeout: 90 * time.Second}
 }
 
-// ModStatus 说的是起出来的会话能不能带上 mod；不能的话页面照着 Error 和 Fix 提示人。
+// ModStatus says whether started sessions will have the mod. When they won't, the page shows the
+// message for Code (Error is its English text) and Fix, a command that sorts it out.
 type ModStatus struct {
-	OK      bool   `json:"ok"`
-	Dev     bool   `json:"dev,omitempty"`     // 开发模式：用 -mod 给的目录
-	ID      string `json:"id,omitempty"`      // 装好的插件，比如 symphony-bridge@symphony
-	Version string `json:"version,omitempty"` // 装好的版本
-	Error   string `json:"error,omitempty"`
-	Fix     string `json:"fix,omitempty"` // 照着跑就能修好的命令
+	OK      bool              `json:"ok"`
+	Dev     bool              `json:"dev,omitempty"`     // development mode: the -mod folder
+	ID      string            `json:"id,omitempty"`      // the installed plugin, e.g. symphony-bridge@symphony
+	Version string            `json:"version,omitempty"` // the installed version
+	Error   string            `json:"error,omitempty"`
+	Code    string            `json:"code,omitempty"`
+	Params  map[string]string `json:"params,omitempty"`
+	Fix     string            `json:"fix,omitempty"`
 }
 
-// Mod 看 mod 装好没有。装好了的结果记一分钟；没装好就每次重新看，装完刷新页面就行，不用重启 bridge。
+func modProblem(err *Error, fix string) ModStatus {
+	return ModStatus{Error: err.Text, Code: err.Code, Params: err.Params, Fix: fix}
+}
+
+// Mod checks whether the mod is installed. A good answer is kept for a minute; a bad one is checked
+// again every time, so after installing, reloading the page is enough and the bridge needs no restart.
 func (l *Launcher) Mod(ctx context.Context) ModStatus {
 	if l.ModDir != "" {
 		return ModStatus{OK: true, Dev: true}
@@ -137,25 +157,27 @@ func (l *Launcher) checkMod(ctx context.Context) ModStatus {
 	}
 	out, err := list(ctx)
 	if ee := (*exec.ExitError)(nil); errors.As(err, &ee) && len(ee.Stderr) > 0 {
-		err = fmt.Errorf("%w：%s", err, lastLines(string(ee.Stderr), 2))
+		err = fmt.Errorf("%w: %s", err, lastLines(string(ee.Stderr), 2))
 	}
 	if err == nil {
 		err = json.Unmarshal(out, &plugins)
 	}
 	if err != nil {
-		return ModStatus{Error: "查不了 mod 装没装（claude plugin list --json）：" + err.Error()}
+		return modProblem(newError("mod_check_failed",
+			"can't check whether the mod is installed (claude plugin list --json): "+err.Error(), "detail", err.Error()), "")
 	}
-	st := ModStatus{Error: "还没装 " + ModName + " mod", Fix: l.installCommand()}
+	st := modProblem(newError("mod_not_installed", "the "+ModName+" mod is not installed"), l.installCommand())
 	for _, p := range plugins {
 		if !strings.HasPrefix(p.ID, ModName+"@") {
 			continue
 		}
 		switch {
 		case p.Scope == "project" || p.Scope == "local":
-			// 只在某个项目里生效，别的目录起的会话带不上
-			st = ModStatus{Error: "mod 只装在了某个项目里（" + p.Scope + "），要装在用户级别", Fix: l.installCommand()}
+			// it only works in one project; sessions started in other folders won't have it
+			st = modProblem(newError("mod_project_scope",
+				"the mod is only installed for one project ("+p.Scope+"); install it at user scope", "scope", p.Scope), l.installCommand())
 		case !p.Enabled:
-			st = ModStatus{Error: "mod 装了但没启用", Fix: "claude plugin enable " + p.ID}
+			st = modProblem(newError("mod_disabled", "the mod is installed but disabled"), "claude plugin enable "+p.ID)
 		default:
 			return ModStatus{OK: true, ID: p.ID, Version: p.Version}
 		}
@@ -171,7 +193,8 @@ func (l *Launcher) installCommand() string {
 	return "claude plugin install " + ModName + " --marketplace " + market
 }
 
-// quoteArg 给人照抄的命令里的一个参数：带空格之类的就加双引号（各家 shell 都认）。
+// quoteArg quotes one argument of a command people will copy: double quotes when it holds spaces
+// and the like (every common shell understands them).
 func quoteArg(s string) string {
 	if s != "" && !strings.ContainsAny(s, " \t\"'$`&|;<>()*?!#~") {
 		return s
@@ -179,9 +202,7 @@ func quoteArg(s string) string {
 	return `"` + strings.ReplaceAll(s, `"`, `\"`) + `"`
 }
 
-var errBadLaunch = errors.New("启动参数不对")
-
-// argv 拼出 claude 的参数（不经过 shell）。
+// argv builds claude's arguments (no shell involved).
 func (l *Launcher) argv(req LaunchRequest) []string {
 	args := []string{l.Claude}
 	if l.ModDir != "" {
@@ -212,29 +233,31 @@ func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
-// normalizeLaunch 校验启动请求；dir 必须是已存在的绝对路径目录，新账号要有名字。
+// normalizeLaunch checks a launch request: dir must be an existing absolute directory, and a new
+// account needs a name. An unsupported language is dropped.
 func normalizeLaunch(req LaunchRequest) (LaunchRequest, error) {
 	req.Account = strings.TrimSpace(req.Account)
 	req.Name = strings.TrimSpace(req.Name)
 	req.Dir = strings.TrimSpace(req.Dir)
+	req.Lang = i18n.Match(req.Lang)
 	if req.Account == "" && !validName(req.Name) {
-		return req, fmt.Errorf("%w：%v", errBadLaunch, ErrBadName)
+		return req, ErrBadName
 	}
 	if !filepath.IsAbs(req.Dir) {
-		return req, fmt.Errorf("%w：目录要写绝对路径", errBadLaunch)
+		return req, newError("launch_dir_not_absolute", "the folder must be an absolute path")
 	}
 	req.Dir = filepath.Clean(req.Dir)
 	if fi, err := os.Stat(req.Dir); err != nil || !fi.IsDir() {
-		return req, fmt.Errorf("%w：目录不存在：%s", errBadLaunch, req.Dir)
+		return req, newError("launch_dir_missing", "folder does not exist: "+req.Dir, "dir", req.Dir)
 	}
 	if !validOption(launchModels, req.Model) || !validOption(launchEfforts, req.Effort) ||
 		!validOption(launchPermissionModes, req.PermissionMode) || !validOption(launchResumes, req.Resume) {
-		return req, fmt.Errorf("%w：下拉选项不认识", errBadLaunch)
+		return req, newError("launch_bad_option", "unknown drop-down value")
 	}
 	return req, nil
 }
 
-// Start 开终端跑 claude。env 是要额外带上的环境变量。
+// Start opens a terminal that runs claude; env holds the extra environment variables.
 func (l *Launcher) Start(launch *Launch, req LaunchRequest, env map[string]string) error {
 	argv := l.argv(req)
 	shown := []string{"cd", shellQuote(req.Dir), "&&"}
@@ -268,17 +291,17 @@ func lastLines(s string, n int) string {
 	return strings.Join(lines, "\n")
 }
 
-// DirEntry 是目录浏览里的一项；path 由 bridge 拼好，页面不用管 / 还是 \。
+// DirEntry is one entry of the folder browser; the bridge builds path, so the page never deals with / or \.
 type DirEntry struct {
 	Name string `json:"name"`
 	Path string `json:"path"`
 }
 
-// ListDirs 列出 path 下的子目录（不含隐藏目录），给启动框的目录浏览用。
+// ListDirs lists the folders under path (hidden ones left out) for the launch dialog's folder browser.
 func ListDirs(path string) (dirs []DirEntry, parent string, err error) {
-	dirs = []DirEntry{} // 没有子目录时也要给页面一个空列表，不是 null
+	dirs = []DirEntry{} // an empty list, not null, when there are no subfolders
 	if !filepath.IsAbs(path) {
-		return nil, "", fmt.Errorf("要绝对路径")
+		return nil, "", newError("dirs_not_absolute", "need an absolute path")
 	}
 	path = filepath.Clean(path)
 	entries, err := os.ReadDir(path)
@@ -304,7 +327,7 @@ func ListDirs(path string) (dirs []DirEntry, parent string, err error) {
 	return dirs, parent, nil
 }
 
-// Roots 是可以浏览的最上层：Windows 上是各个盘符，别的系统只有 /。
+// Roots are the top levels the browser can reach: the drive letters on Windows, / elsewhere.
 func Roots(goos string) []string {
 	if goos != "windows" {
 		return []string{"/"}

@@ -17,12 +17,13 @@ import (
 	"github.com/feynmanzcys-bytes/symphony/internal/bridge"
 )
 
-// TestInstall 走一遍正式安装 mod 的路：在临时的 Claude Code 配置目录（CLAUDE_CONFIG_DIR）里，
-// 照着办公室页面给的命令，用本仓库当插件市场装 mod，看 bridge 和页面认不认。
-// 不起会话、不花 token，也不碰本机真正的 Claude Code 配置。
+// TestInstall walks the proper install of the mod: in a throwaway Claude Code config folder (CLAUDE_CONFIG_DIR)
+// it installs the mod with this repository as the plugin marketplace, as the office page tells you to, and
+// checks that the bridge and the page notice. No sessions, no tokens, and the machine's real Claude Code
+// config stays untouched.
 func TestInstall(t *testing.T) {
 	if _, err := exec.LookPath("claude"); err != nil {
-		t.Skip("缺 claude")
+		t.Skip("claude not found")
 	}
 	repo, _ := filepath.Abs("..")
 	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
@@ -40,44 +41,44 @@ func TestInstall(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	claude("plugin", "validate", repo) // 插件市场
+	claude("plugin", "validate", repo) // the marketplace
 	claude("plugin", "validate", filepath.Join(repo, "mods", "symphony-bridge"))
 
-	// 没装：bridge 说清楚怎么装，页面上也摆出来
+	// not installed: the bridge says how to install it, and so does the page
 	b := startBridge(t, "")
 	b.Launcher.Market = repo
 	ctx := context.Background()
 	m := b.Launcher.Mod(ctx)
 	if m.OK || m.Fix != "claude plugin install symphony-bridge --marketplace "+repo {
-		t.Fatalf("没装 mod 时应给出用本地仓库装的命令: %+v", m)
+		t.Fatalf("without the mod the bridge should offer the install command for the local repository: %+v", m)
 	}
 	office := tab(t, newBrowser(t), b.URL+"/")
 	var note string
-	waitUntil(t, 20*time.Second, "办公室提示怎么装 mod", func() bool {
+	waitUntil(t, 20*time.Second, "the office tells how to install the mod", func() bool {
 		note = get(t, office, 5*time.Second, chromedp.Evaluate[string](
 			`(n => n && !n.hidden ? n.textContent : '')(document.getElementById('launch-note'))`))
 		return strings.Contains(note, m.Fix)
 	}, func() string { return note })
 	if get(t, office, 5*time.Second, chromedp.Evaluate[bool](`document.getElementById('new-emp').hidden`)) != true {
-		t.Fatal("没装 mod 时不该有“+ 新员工”")
+		t.Fatal(`without the mod there should be no "+ New employee"`)
 	}
 	screenshot(t, office, "install-missing.png")
 
-	// 照着提示装上：bridge 不用重启，刷新页面就能招人
+	// install as told: no bridge restart, and after a reload the page can hire
 	claude("plugin", "install", "symphony-bridge", "--marketplace", repo)
 	if m = b.Launcher.Mod(ctx); !m.OK || m.ID != "symphony-bridge@symphony" || m.Version != manifest.Version {
-		t.Fatalf("装好后 bridge 应认出 symphony-bridge@symphony %s: %+v", manifest.Version, m)
+		t.Fatalf("once installed the bridge should see symphony-bridge@symphony %s: %+v", manifest.Version, m)
 	}
 	do(t, office, 10*time.Second, chromedp.Reload())
-	waitUntil(t, 20*time.Second, "刷新后能招人，提示消失", func() bool {
+	waitUntil(t, 20*time.Second, "after a reload the page can hire and the hint is gone", func() bool {
 		return get(t, office, 5*time.Second, chromedp.Evaluate[bool](
 			`!document.getElementById('new-emp').hidden && document.getElementById('launch-note').hidden`))
 	})
 	screenshot(t, office, "install-ok.png")
 
-	// 停用了也要说清楚（换个新的 Launcher，不用上面记住的结果）
+	// a disabled mod gets a clear hint too (a fresh Launcher, so the remembered answer above doesn't count)
 	claude("plugin", "disable", "symphony-bridge@symphony")
 	if m = bridge.NewLauncher("claude", "", b.URL, nil).Mod(ctx); m.OK || m.Fix != "claude plugin enable symphony-bridge@symphony" {
-		t.Fatalf("停用后应提示启用: %+v", m)
+		t.Fatalf("a disabled mod should get the enable command: %+v", m)
 	}
 }

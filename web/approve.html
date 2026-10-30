@@ -1,12 +1,18 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Symphony 审批台</title>
+<title data-i18n="approve.title">Symphony Approvals</title>
 <style>
   * { box-sizing: border-box; }
-  body { margin:0; background:#f7f6f3; color:#2b2a28; font:14px/1.5 system-ui, "PingFang SC", "Noto Sans CJK SC", sans-serif; }
+  body { margin:0; background:#f7f6f3; color:#2b2a28; font:14px/1.5 system-ui, sans-serif; }
+  /* CJK fonts per language, so each gets its own glyph forms */
+  body:lang(zh-CN) { font-family:system-ui, "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif; }
+  body:lang(zh-TW) { font-family:system-ui, "PingFang TC", "Microsoft JhengHei", "Noto Sans CJK TC", sans-serif; }
+  body:lang(ja) { font-family:system-ui, "Hiragino Sans", "Yu Gothic UI", "Noto Sans CJK JP", sans-serif; }
+  body:lang(ko) { font-family:system-ui, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans CJK KR", sans-serif; }
+  header select.lang { font:inherit; font-size:12px; border:1px solid #dcd8d0; border-radius:4px; background:#fff; color:#2b2a28; padding:2px 4px; }
   header { padding:14px 18px; border-bottom:1px solid #e2dfd8; display:flex; gap:12px; align-items:baseline; flex-wrap:wrap; background:#fff; }
   header h1 { font-size:15px; font-weight:600; margin:0; }
   #status, #filter { color:#8a867e; font-size:12px; }
@@ -32,38 +38,42 @@
 </head>
 <body>
 <header>
-  <h1>Symphony 审批台</h1><span id="status">连接中…</span><span id="filter"></span>
-  <nav><a href="/">办公室</a></nav>
+  <h1 data-i18n="approve.title"></h1><span id="status" data-i18n="approve.connecting"></span><span id="filter"></span>
+  <nav><a href="/" data-i18n="approve.office"></a></nav>
 </header>
-<main id="list"><div class="empty">暂无待处理事项</div></main>
+<main id="list"><div class="empty" data-i18n="approve.empty"></div></main>
 <script type="module">
+import { t, applyI18n, langPicker } from '/i18n.js'
 import { esc, syncCards } from '/asks.js'
+
+applyI18n()
+document.querySelector('header nav').before(langPicker())
 
 const list = document.getElementById('list')
 const statusEl = document.getElementById('status')
 const onlySession = new URLSearchParams(location.search).get('session')
 let sessions = new Map(), accounts = new Map()
 
-if (onlySession) document.getElementById('filter').innerHTML = `只看一个会话 · <a href="/approve">看全部</a>`
+if (onlySession) document.getElementById('filter').innerHTML = `${esc(t('approve.filtered'))} · <a href="/approve">${esc(t('approve.showAll'))}</a>`
 
 const who = a => {
   const name = accounts.get(a.account)?.name ?? sessions.get(a.session)?.title ?? a.session.slice(0, 6)
   return `<div class="who"><span class="name">${esc(name)}</span>
-    <span class="kind">${a.agentId ? '子代理 ' + esc(a.agentId.slice(0, 6)) + ' · ' : ''}${a.kind === 'question' ? '提问' : '权限审批'}</span></div>`
+    <span class="kind">${a.agentId ? esc(t('common.subagent')) + ' ' + esc(a.agentId.slice(0, 6)) + ' · ' : ''}${esc(t(a.kind === 'question' ? 'asks.question' : 'asks.permission'))}</span></div>`
 }
 
 function render(snap) {
   sessions = new Map(snap.sessions.map(s => [s.id, s]))
   accounts = new Map(snap.accounts.map(a => [a.id, a]))
   const asks = snap.asks.filter(a => !onlySession || a.session === onlySession)
-  syncCards(list, asks, who, '<div class="empty">暂无待处理事项</div>')
-  document.title = asks.length ? `(${asks.length}) Symphony 审批台` : 'Symphony 审批台'
+  syncCards(list, asks, who, `<div class="empty">${esc(t('approve.empty'))}</div>`)
+  document.title = asks.length ? t('approve.titleCount', { n: asks.length }) : t('approve.title')
 }
 
 fetch('/api/state').then(r => r.json()).then(render).catch(() => {})
 const es = new EventSource('/api/stream')
-es.onopen = () => statusEl.textContent = '已连接'
-es.onerror = () => statusEl.textContent = '断开，重连中…'
+es.onopen = () => statusEl.textContent = t('approve.connected')
+es.onerror = () => statusEl.textContent = t('approve.reconnecting')
 es.onmessage = m => {
   const msg = JSON.parse(m.data)
   if (msg.type === 'snapshot') render(msg)

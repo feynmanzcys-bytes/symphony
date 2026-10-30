@@ -35,3 +35,6 @@ go.work.sum
 # symphony
 e2e/artifacts/
 mods/*/tsconfig.json
+
+# personal Claude Code instructions, not shared
+CLAUDE.local.md

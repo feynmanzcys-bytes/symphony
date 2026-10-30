@@ -11,27 +11,34 @@ import (
 	"time"
 )
 
-// Terminal 是“开一个能交互的终端跑 claude”的办法，各平台不一样：
+// Terminal is a way to open an interactive terminal that runs claude; it differs per platform:
 //
-//	tmux     Linux（装了 tmux 时默认）、macOS 可选：后台起，bridge 能替人点“信任此目录”
-//	console  Windows：直接在新的控制台窗口里起 claude
-//	script   macOS 用 Terminal.app，Linux 没有 tmux 时用图形终端：写个一次性脚本让终端去跑
+//	tmux     Linux (the default when tmux is installed), optional on macOS: runs in the background,
+//	         and the bridge can answer "trust this folder" for the user
+//	console  Windows: starts claude directly in a new console window
+//	script   macOS Terminal.app, or a graphical terminal on Linux without tmux: the terminal runs a one-off script
 type Terminal interface {
 	Name() string
-	// Start 在 dir 里开一个终端跑 argv，env 是额外的环境变量。
+	// Start opens a terminal in dir that runs argv; env holds extra environment variables.
 	Start(l *Launch, dir string, env map[string]string, argv []string) error
-	// Watch 盯着刚开的终端，直到会话上线、进程退出或超时。
+	// Watch follows the new terminal until the session comes online, the process exits or time runs out.
 	Watch(hub *Hub, l *Launch, timeout time.Duration)
-	// Attach 告诉人去哪儿找这个会话的终端。
+	// Attach tells people where to find the session's terminal: a tmux command, or AttachWindow / AttachConsole.
 	Attach(launchID string) string
-	// TrustHint 为 true 时，新目录第一次启动要人在弹出的窗口里自己点“信任此目录”。
+	// TrustHint is true when the first start in a new folder needs a click on "trust this folder" in the window.
 	TrustHint() bool
 }
 
-// LookPath 找可执行文件，测试里换成假的。
+// Attach values that are not commands; the page shows them as a sentence in its own language.
+const (
+	AttachWindow  = "window"  // the terminal window that opened, titled with the employee's name
+	AttachConsole = "console" // the console window that opened, titled with the employee's name
+)
+
+// LookPath finds an executable; tests swap in a fake.
 type LookPath func(file string) (string, error)
 
-// PickTerminal 按平台和 -terminal 参数挑一个终端后端：auto | tmux | window。
+// PickTerminal picks a terminal backend for the platform and the -terminal flag: auto | tmux | window.
 func PickTerminal(goos, kind string, look LookPath) (Terminal, error) {
 	has := func(bin string) bool { _, err := look(bin); return err == nil }
 	if kind == "auto" {
@@ -43,7 +50,7 @@ func PickTerminal(goos, kind string, look LookPath) (Terminal, error) {
 	switch kind {
 	case "tmux":
 		if !has("tmux") {
-			return nil, errors.New("找不到 tmux")
+			return nil, newError("terminal_no_tmux", "tmux not found")
 		}
 		return NewTmux(), nil
 	case "window":
@@ -58,10 +65,10 @@ func PickTerminal(goos, kind string, look LookPath) (Terminal, error) {
 					return &scriptTerminal{opener: o}, nil
 				}
 			}
-			return nil, errors.New("没有 tmux，也找不到图形终端（x-terminal-emulator / gnome-terminal / konsole / xterm）")
+			return nil, newError("terminal_none", "no tmux and no graphical terminal found (x-terminal-emulator / gnome-terminal / konsole / xterm)")
 		}
 	}
-	return nil, fmt.Errorf("不认识的终端类型 %q（auto | tmux | window）", kind)
+	return nil, newError("terminal_unknown", fmt.Sprintf("unknown terminal type %q (auto | tmux | window)", kind), "kind", kind)
 }
 
 func sortedKeys(env map[string]string) []string {
@@ -73,8 +80,10 @@ func sortedKeys(env map[string]string) []string {
 	return keys
 }
 
-// waitOnline 等会话带着启动编号上线；exited 关闭表示进程已经退出（拿不到就传 nil）。
-func waitOnline(hub *Hub, l *Launch, timeout time.Duration, exited <-chan error, hint string) {
+// waitOnline waits for the session to come online with its launch id; a value on exited means the
+// process is gone (pass nil when that can't be known). timeoutCode names the error for running out
+// of time, which tells people where to look.
+func waitOnline(hub *Hub, l *Launch, timeout time.Duration, exited <-chan error, timeoutCode string) {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		if hub.launchStatus(l.ID) != LaunchStarting {
@@ -82,12 +91,15 @@ func waitOnline(hub *Hub, l *Launch, timeout time.Duration, exited <-chan error,
 		}
 		select {
 		case err := <-exited:
-			hub.failLaunch(l.ID, fmt.Sprintf("claude 还没上线就退出了（%v），看看参数对不对", err))
+			hub.failLaunch(l.ID, newError("launch_exited_early",
+				fmt.Sprintf("claude exited before it came online (%v); check the options", err), "detail", fmt.Sprint(err)))
 			return
 		case <-time.After(500 * time.Millisecond):
 		}
 	}
-	hub.failLaunch(l.ID, "等了 "+timeout.String()+" 没上线。"+hint)
+	hub.failLaunch(l.ID, newError(timeoutCode,
+		"not online after "+timeout.String()+"; the first start in a folder needs a click on \"trust this folder\" in the window that opened",
+		"timeout", timeout.String()))
 }
 
 // ---------- tmux ----------
@@ -108,7 +120,7 @@ func (t *tmuxTerminal) Attach(launchID string) string { return "tmux attach -t "
 
 func tmuxName(launchID string) string { return "sym-" + launchID }
 
-// tmuxArgs 拼 tmux new-session 的参数：命令直接跟在 -- 后面，不经过 shell。
+// tmuxArgs builds the arguments of tmux new-session: the command follows --, without a shell.
 func tmuxArgs(launchID, dir string, env map[string]string, argv []string) []string {
 	args := []string{"new-session", "-d", "-s", tmuxName(launchID), "-x", "200", "-y", "50", "-c", dir}
 	for _, k := range sortedKeys(env) {
@@ -119,12 +131,13 @@ func tmuxArgs(launchID, dir string, env map[string]string, argv []string) []stri
 
 func (t *tmuxTerminal) Start(l *Launch, dir string, env map[string]string, argv []string) error {
 	if out, err := t.run("tmux", tmuxArgs(l.ID, dir, env, argv)...); err != nil {
-		return fmt.Errorf("tmux 起不来：%v %s", err, strings.TrimSpace(string(out)))
+		detail := strings.TrimSpace(fmt.Sprintf("%v %s", err, out))
+		return newError("tmux_start_failed", "tmux failed to start: "+detail, "detail", detail)
 	}
 	return nil
 }
 
-// Watch：新目录先问“信不信任”就替用户点信任（目录是用户在页面上亲手选的）。
+// Watch answers "trust this folder" when a new folder asks (the user picked the folder in the page).
 func (t *tmuxTerminal) Watch(hub *Hub, l *Launch, timeout time.Duration) {
 	name := tmuxName(l.ID)
 	deadline := time.Now().Add(timeout)
@@ -135,7 +148,7 @@ func (t *tmuxTerminal) Watch(hub *Hub, l *Launch, timeout time.Duration) {
 		}
 		out, err := t.run("tmux", "capture-pane", "-p", "-t", name)
 		if err != nil {
-			hub.failLaunch(l.ID, "claude 进程退出了，看看参数对不对")
+			hub.failLaunch(l.ID, newError("launch_process_exited", "the claude process exited; check the options"))
 			return
 		}
 		if !trusted && strings.Contains(string(out), "trust this folder") {
@@ -147,27 +160,28 @@ func (t *tmuxTerminal) Watch(hub *Hub, l *Launch, timeout time.Duration) {
 		time.Sleep(500 * time.Millisecond)
 	}
 	out, _ := t.run("tmux", "capture-pane", "-p", "-t", name)
-	hub.failLaunch(l.ID, "等了 "+timeout.String()+" 没上线，终端最后几行：\n"+lastLines(string(out), 8))
+	screen := lastLines(string(out), 8)
+	hub.failLaunch(l.ID, newError("launch_timeout_tmux",
+		"not online after "+timeout.String()+"; last lines of the terminal:\n"+screen, "timeout", timeout.String(), "screen", screen))
 }
 
-// ---------- 一次性脚本 + 图形终端（macOS Terminal.app、Linux 图形终端） ----------
+// ---------- one-off script in a graphical terminal (macOS Terminal.app, Linux terminals) ----------
 
 type scriptTerminal struct {
-	opener []string // 打开终端的命令，脚本路径接在最后
-	// spawn 跑 opener，测试里换成假的
+	opener []string // the command that opens a terminal; the script path goes last
+	// spawn runs opener; tests swap in a fake
 	spawn func(argv []string) error
 }
 
-func (t *scriptTerminal) Name() string    { return "window:" + t.opener[0] }
-func (t *scriptTerminal) TrustHint() bool { return true }
-func (t *scriptTerminal) Attach(string) string {
-	return "弹出的终端窗口（标题是员工名字）"
-}
+func (t *scriptTerminal) Name() string         { return "window:" + t.opener[0] }
+func (t *scriptTerminal) TrustHint() bool      { return true }
+func (t *scriptTerminal) Attach(string) string { return AttachWindow }
 func (t *scriptTerminal) Watch(hub *Hub, l *Launch, timeout time.Duration) {
-	waitOnline(hub, l, timeout, nil, "看看弹出的终端窗口：第一次在这个目录启动要先点“信任此目录”。")
+	waitOnline(hub, l, timeout, nil, "launch_timeout_window")
 }
 
-// scriptBody 是交给终端跑的脚本：先删掉自己（里面有 token），再进目录、带上环境变量换成 claude。
+// scriptBody is the script the terminal runs: it deletes itself first (it holds the token), then
+// enters the folder and becomes claude with the environment variables.
 func scriptBody(dir string, env map[string]string, argv []string) string {
 	var b strings.Builder
 	b.WriteString("#!/bin/sh\nrm -f -- \"$0\"\ncd " + shellQuote(dir) + " || exit 1\nexec env")
@@ -203,26 +217,26 @@ func (t *scriptTerminal) Start(l *Launch, dir string, env map[string]string, arg
 	}
 	if err != nil {
 		_ = os.Remove(path)
-		return fmt.Errorf("打不开终端窗口（%s）：%w", t.opener[0], err)
+		return newError("window_open_failed", fmt.Sprintf("can't open a terminal window (%s): %v", t.opener[0], err),
+			"opener", t.opener[0], "detail", err.Error())
 	}
 	return nil
 }
 
-// ---------- Windows 控制台 ----------
+// ---------- Windows console ----------
 
 type consoleTerminal struct {
-	// start 起进程，测试里换成假的
+	// start starts the process; tests swap in a fake
 	start func(cmd *exec.Cmd) error
 	exits map[string]chan error
 }
 
-func (t *consoleTerminal) Name() string    { return "console" }
-func (t *consoleTerminal) TrustHint() bool { return true }
-func (t *consoleTerminal) Attach(string) string {
-	return "弹出的控制台窗口（标题是员工名字）"
-}
+func (t *consoleTerminal) Name() string         { return "console" }
+func (t *consoleTerminal) TrustHint() bool      { return true }
+func (t *consoleTerminal) Attach(string) string { return AttachConsole }
 
-// consoleCmd 直接起 claude（不经过 cmd.exe，名字里的中文和空格都不用转义），在新控制台窗口里跑。
+// consoleCmd starts claude directly (no cmd.exe, so non-ASCII names and spaces need no escaping)
+// in a new console window.
 func consoleCmd(dir string, env map[string]string, argv []string) *exec.Cmd {
 	cmd := exec.Command(argv[0], argv[1:]...)
 	cmd.Dir = dir
@@ -241,7 +255,8 @@ func (t *consoleTerminal) Start(l *Launch, dir string, env map[string]string, ar
 		start = (*exec.Cmd).Start
 	}
 	if err := start(cmd); err != nil {
-		return fmt.Errorf("起不来 %s：%w", filepath.Base(argv[0]), err)
+		program := filepath.Base(argv[0])
+		return newError("console_start_failed", fmt.Sprintf("can't start %s: %v", program, err), "program", program, "detail", err.Error())
 	}
 	exited := make(chan error, 1)
 	if t.exits == nil {
@@ -261,5 +276,5 @@ func (t *consoleTerminal) Start(l *Launch, dir string, env map[string]string, ar
 }
 
 func (t *consoleTerminal) Watch(hub *Hub, l *Launch, timeout time.Duration) {
-	waitOnline(hub, l, timeout, t.exits[l.ID], "看看弹出的控制台窗口：第一次在这个目录启动要先点“信任此目录”。")
+	waitOnline(hub, l, timeout, t.exits[l.ID], "launch_timeout_console")
 }

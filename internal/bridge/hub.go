@@ -1,11 +1,11 @@
-// Package bridge 是 symphony 的中枢：收 mod 上报的会话事件和待决事项，
-// 推给审批台和办公室页面。账号存文件，其余状态在内存里，一把锁管到底。
+// Package bridge is the hub of symphony: it takes the session events and pending asks the mod
+// reports and pushes them to the approval page and the office page. Accounts live in a file, the rest
+// in memory, all under one lock.
 package bridge
 
 import (
 	"crypto/rand"
 	"encoding/hex"
-	"errors"
 	"regexp"
 	"slices"
 	"sort"
@@ -14,17 +14,17 @@ import (
 	"time"
 )
 
-// 会话状态
+// session states
 const (
 	StateIdle     = "idle"
 	StateThinking = "thinking"
 	StateTool     = "tool"
 	StateWaiting  = "waiting"
 	StateEnded    = "ended"
-	StateDone     = "done" // 子代理跑完
+	StateDone     = "done" // a subagent finished
 )
 
-// Ask 状态
+// ask states
 const (
 	AskPending   = "pending"
 	AskDone      = "done"
@@ -33,18 +33,18 @@ const (
 
 const (
 	keepMessages = 300
-	// 结束的会话保留多久再撤掉（账号和座位一直都在）
+	// how long an ended session is kept (accounts and seats stay)
 	endedTTL = 10 * time.Minute
-	// 发出和收到的消息在这个时间内按内容配对
+	// a sent and a received message pair up by content within this window
 	pairWindow = time.Minute
-	// StaleAfter：这么久没收到会话的任何消息（mod 每 15 秒报一次心跳）就当它失联下班了
+	// StaleAfter: a session silent this long (the mod sends a heartbeat every 15 seconds) is lost and off duty
 	StaleAfter = 45 * time.Second
 )
 
 var (
-	ErrUnknownAsk   = errors.New("unknown ask")
-	ErrSettled      = errors.New("ask already settled")
-	ErrWrongAccount = errors.New("belongs to another account")
+	ErrUnknownAsk   = newError("ask_unknown", "unknown ask")
+	ErrSettled      = newError("ask_settled", "ask already settled")
+	ErrWrongAccount = newError("ask_wrong_account", "belongs to another account")
 )
 
 type Agent struct {
@@ -56,21 +56,21 @@ type Agent struct {
 type Session struct {
 	ID      string            `json:"id"`
 	Account string            `json:"account"`
-	Login   string            `json:"login,omitempty"` // mod 自报的 Claude 登录账号，只做展示
-	Title   string            `json:"title"`           // Claude 里的会话名（--name / /rename）
+	Login   string            `json:"login,omitempty"` // the Claude login the mod reports; for display only
+	Title   string            `json:"title"`           // the session name in Claude (--name / /rename)
 	Cwd     string            `json:"cwd"`
 	State   string            `json:"state"`
 	Tool    string            `json:"tool,omitempty"`
 	Prompt  string            `json:"prompt,omitempty"`
 	Agents  map[string]*Agent `json:"agents"`
 	Tools   int               `json:"tools"`
-	Model   string            `json:"model,omitempty"`  // 当前用的模型，决定小人的块头
-	Effort  string            `json:"effort,omitempty"` // 思考强度，决定小人的肌肉
-	Launch  string            `json:"launch,omitempty"` // 从页面启动的才有
-	Attach  string            `json:"attach,omitempty"` // 去哪儿找它的终端
+	Model   string            `json:"model,omitempty"`  // the model in use; sets the character's size
+	Effort  string            `json:"effort,omitempty"` // the thinking effort; sets the character's muscles
+	Launch  string            `json:"launch,omitempty"` // only for sessions started from the page
+	Attach  string            `json:"attach,omitempty"` // where to find its terminal
 	Started time.Time         `json:"started"`
 	Updated time.Time         `json:"updated"`
-	// StateSince 是进入当前状态的时间（页面靠它算闲了多久，闲久了小人就睡觉）
+	// StateSince is when the current state began (the page uses it to tell how long a session idles; long idlers fall asleep)
 	StateSince time.Time `json:"stateSince"`
 }
 
@@ -91,10 +91,10 @@ type Ask struct {
 	done chan struct{}
 }
 
-// Message 是会话之间的一条内部消息（SendMessage / agent team 邮箱）。
+// Message is one internal message between sessions (SendMessage / the agent team mailbox).
 type Message struct {
 	ID        string    `json:"id"`
-	From      string    `json:"from,omitempty"` // 发件会话 id，认不出来就空着
+	From      string    `json:"from,omitempty"` // the sender's session id; empty when unknown
 	FromName  string    `json:"fromName"`
 	To        string    `json:"to,omitempty"`
 	ToName    string    `json:"toName"`
@@ -106,14 +106,14 @@ type Message struct {
 	Time      time.Time `json:"time"`
 }
 
-// Event 是 mod 上报的一条事件，字段按 kind 取用。
+// Event is one event the mod reports; which fields matter depends on kind.
 type Event struct {
 	Session     string  `json:"session"`
 	Kind        string  `json:"kind"`
-	Login       string  `json:"login,omitempty"` // mod 自报的 Claude 登录账号
+	Login       string  `json:"login,omitempty"` // the Claude login the mod reports
 	Model       string  `json:"model,omitempty"`
 	Effort      string  `json:"effort,omitempty"`
-	Launch      string  `json:"launch,omitempty"` // 从页面启动时 bridge 给的编号
+	Launch      string  `json:"launch,omitempty"` // the id the bridge gave when the page started the session
 	Cwd         string  `json:"cwd,omitempty"`
 	Title       string  `json:"title,omitempty"`
 	Args        string  `json:"args,omitempty"`
@@ -141,18 +141,18 @@ type Snapshot struct {
 	Launches []*Launch     `json:"launches"`
 }
 
-// Hub 持有全部状态。
+// Hub holds all the state.
 type Hub struct {
 	mu       sync.Mutex
 	accounts map[string]*Account
-	dataDir  string // 账号和消息记录存在这里；空表示不落盘（测试用）
+	dataDir  string // accounts and the message log are stored here; empty means nothing goes to disk (tests)
 	sessions map[string]*Session
 	asks     map[string]*Ask
 	messages []*Message
 	launches map[string]*Launch
 	subs     map[chan any]struct{}
 	now      func() time.Time
-	// AttachHint 按启动编号说出去哪儿找会话的终端，由当前的终端后端提供
+	// AttachHint tells, by launch id, where to find a session's terminal; the current terminal backend provides it
 	AttachHint func(launchID string) string
 }
 
@@ -173,9 +173,9 @@ func newID() string {
 	return hex.EncodeToString(b)
 }
 
-// ---------- 订阅 ----------
+// ---------- subscriptions ----------
 
-// Subscribe 返回一个通道，先收到一份快照，之后每次变化都会收到事件和新快照。
+// Subscribe returns a channel that first gets a snapshot, then an event and a new snapshot on every change.
 func (h *Hub) Subscribe() (<-chan any, func()) {
 	ch := make(chan any, 64)
 	h.mu.Lock()
@@ -189,7 +189,8 @@ func (h *Hub) Subscribe() (<-chan any, func()) {
 	}
 }
 
-// broadcastLocked 推一条事件（可选）再推最新快照；订阅方跟不上就丢，它下次拿到快照就追上了。
+// broadcastLocked pushes an event (optional), then the latest snapshot; a subscriber that falls behind misses
+// messages and catches up with the next snapshot.
 func (h *Hub) broadcastLocked(extra any) {
 	snap := h.snapshotLocked()
 	for ch := range h.subs {
@@ -251,10 +252,10 @@ func (h *Hub) snapshotLocked() Snapshot {
 	return snap
 }
 
-// ---------- 会话 ----------
+// ---------- sessions ----------
 
-// sessionLocked 取会话，没有就建。一个账号同一时间只给一个会话用：
-// 账号上已有会话在线、而且没失联，新会话就被拒（ErrAccountBusy）。
+// sessionLocked returns the session, creating it if needed. An account serves one session at a time:
+// while it has a session online that isn't lost, a new one is refused (ErrAccountBusy).
 func (h *Hub) sessionLocked(id string, acc *Account) (s *Session, fresh bool, err error) {
 	s = h.sessions[id]
 	if s != nil && s.Account != acc.ID {
@@ -267,9 +268,9 @@ func (h *Hub) sessionLocked(id string, acc *Account) (s *Session, fresh bool, er
 		if h.now().Sub(other.Updated) < StaleAfter {
 			return nil, false, ErrAccountBusy
 		}
-		other.State, other.Tool = StateEnded, "" // 那个早就失联了，让位
+		other.State, other.Tool = StateEnded, "" // that one was lost long ago; make way
 	}
-	// 一个账号只留现在这一个会话的记录
+	// an account keeps the record of its current session only
 	for sid, old := range h.sessions {
 		if old.Account == acc.ID && sid != id {
 			delete(h.sessions, sid)
@@ -280,17 +281,17 @@ func (h *Hub) sessionLocked(id string, acc *Account) (s *Session, fresh bool, er
 		s = &Session{ID: id, Account: acc.ID, Agents: map[string]*Agent{}, Started: now}
 		h.sessions[id] = s
 	}
-	s.State, s.Updated, s.StateSince = StateIdle, now, now // 失联后又回来的，接着用
+	s.State, s.Updated, s.StateSince = StateIdle, now, now // lost and back again; carry on
 	return s, true, nil
 }
 
-// Apply 处理一条 mod 事件。acc 是按 token 认出来的账号。
+// Apply handles one mod event. acc is the account its token belongs to.
 func (h *Hub) Apply(ev Event, acc *Account) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
 	if ev.Kind == "session.end" {
-		// 不认识的会话说要下班（bridge 重启前就开着的），没必要为它新建一个
+		// an unknown session going off duty (it started before the bridge restarted); no need to create it
 		if s := h.sessions[ev.Session]; s == nil || s.Account != acc.ID || s.State == StateEnded {
 			return nil
 		}
@@ -308,19 +309,19 @@ func (h *Hub) Apply(ev Event, acc *Account) error {
 	if ev.Effort != "" {
 		s.Effort = ev.Effort
 	}
-	// mod 每条事件都带着目录和启动编号，bridge 重启后靠它们补回来
+	// every mod event carries the folder and the launch id, so a restarted bridge can restore them
 	if ev.Cwd != "" {
 		s.Cwd = ev.Cwd
 	}
 	if ev.Launch != "" && s.Launch == "" {
 		s.Launch = ev.Launch
 		if h.AttachHint != nil {
-			s.Attach = h.AttachHint(ev.Launch) // bridge 重启后启动记录没了，靠终端后端按编号推出来
+			s.Attach = h.AttachHint(ev.Launch) // the launch record is gone after a restart; the terminal backend derives it from the id
 		}
 		if l := h.launches[ev.Launch]; l != nil && l.Account == acc.ID {
 			s.Attach = l.Attach
 			l.Status, l.Session, l.Error = LaunchOnline, s.ID, ""
-			// 会话自己报模型和强度之前，先用启动时选的
+			// until the session reports its model and effort, use the ones picked at launch
 			if s.Model == "" {
 				s.Model = l.Model
 			}
@@ -331,7 +332,7 @@ func (h *Hub) Apply(ev Event, acc *Account) error {
 	}
 	s.Updated = h.now()
 	if ev.Kind == "heartbeat" && !fresh {
-		return nil // 心跳只续命，不用通知页面
+		return nil // a heartbeat only keeps the session alive; nothing to tell the page
 	}
 
 	before := s.State
@@ -357,7 +358,7 @@ func (h *Hub) Apply(ev Event, acc *Account) error {
 	case "session.end":
 		s.State, s.Tool = StateEnded, ""
 	case "session.title":
-		// 新会话的 SessionStart 不带名字，别把已知的名字清掉
+		// a new session's SessionStart carries no name; don't clear the known one
 		title := strings.TrimSpace(ev.Title)
 		if title == "" {
 			title = strings.TrimSpace(ev.Args)
@@ -398,14 +399,14 @@ func (h *Hub) Apply(ev Event, acc *Account) error {
 	return nil
 }
 
-// markStateLocked 在状态变了时记下变的时间。
+// markStateLocked records when the state changes.
 func (h *Hub) markStateLocked(s *Session, before string) {
 	if s.State != before {
 		s.StateSince = h.now()
 	}
 }
 
-// refreshWaitingLocked：有待决事项的会话标成 waiting，没了就退回 thinking。
+// refreshWaitingLocked marks a session with pending asks as waiting, and puts it back to thinking when none are left.
 func (h *Hub) refreshWaitingLocked(s *Session) {
 	if s.State == StateEnded {
 		return
@@ -421,7 +422,7 @@ func (h *Hub) refreshWaitingLocked(s *Session) {
 	}
 }
 
-// Reap 把太久没动静的会话标成下班（直接关掉终端时 mod 来不及说再见）。
+// Reap marks sessions silent for too long as off duty (closing the terminal leaves the mod no time to say goodbye).
 func (h *Hub) Reap() {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -437,7 +438,7 @@ func (h *Hub) Reap() {
 	}
 }
 
-// Prune 撤掉结束很久的会话和早已了结的事项，长时间跑的 bridge 不至于越积越多。
+// Prune drops long-ended sessions and long-settled asks, so a bridge that runs for days doesn't pile them up.
 func (h *Hub) Prune() {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -464,14 +465,14 @@ func (h *Hub) Prune() {
 	}
 }
 
-// ---------- 会话间消息 ----------
+// ---------- messages between sessions ----------
 
 var (
 	crossSession = regexp.MustCompile(`(?s)^\s*<cross-session-message\b([^>]*)>\s*(.*?)\s*(?:</cross-session-message>\s*)?$`)
 	fromName     = regexp.MustCompile(`\bfrom-name="([^"]*)"`)
 )
 
-// parseIncoming 从收到的正文里拆出发件人名字和消息本体。
+// parseIncoming splits a received text into the sender's name and the message itself.
 func parseIncoming(text string) (from, body string) {
 	if m := crossSession.FindStringSubmatch(text); m != nil {
 		if f := fromName.FindStringSubmatch(m[1]); f != nil {
@@ -482,7 +483,8 @@ func parseIncoming(text string) (from, body string) {
 	return "", strings.TrimSpace(text)
 }
 
-// sessionByNameLocked 按名字找在线的会话：先认 Claude 里的会话名，再认账号名，取最近活跃的。
+// sessionByNameLocked finds an online session by name: the session name in Claude first, then the
+// account name; the most recently active one wins.
 func (h *Hub) sessionByNameLocked(name string) *Session {
 	var best *Session
 	for _, s := range h.sessions {
@@ -499,7 +501,7 @@ func (h *Hub) sessionByNameLocked(name string) *Session {
 	return best
 }
 
-// nameLocked 是会话对外的名字：账号名，账号没了就用会话名。
+// nameLocked is the name a session goes by: the account name, or the session name once the account is gone.
 func (h *Hub) nameLocked(s *Session) string {
 	if a := h.accounts[s.Account]; a != nil {
 		return a.Name
@@ -513,8 +515,9 @@ func sameText(a, b string) bool {
 	return n > 0 && a[:n] == b[:n]
 }
 
-// findPairLocked 找对面那一半：收到时找已经记下的发出，发出时找已经记下的收到。
-// 两边先后不定（发件方的 hook 要等 next 返回才上报），所以按发件会话 + 内容 + 时间窗配。
+// findPairLocked finds the other half: for a receive the recorded send, for a send the recorded receive.
+// Either may come first (the sender's hook reports only after next returns), so they pair by sending
+// session + text + a time window.
 func (h *Hub) findPairLocked(from, text string, wantReceived bool) *Message {
 	cut := h.now().Add(-pairWindow)
 	for i := len(h.messages) - 1; i >= 0; i-- {
@@ -590,7 +593,7 @@ func (h *Hub) sendLocked(from *Session, ev Event) *Message {
 	return m
 }
 
-// ---------- 待决事项 ----------
+// ---------- pending asks ----------
 
 type AskRequest struct {
 	Session   string `json:"session"`
@@ -623,8 +626,9 @@ func (h *Hub) CreateAsk(req AskRequest, acc *Account) (string, error) {
 	return a.ID, nil
 }
 
-// Wait 挂起直到有结果、超时或请求断开，返回当时的状态。
-// account 为空表示不校验（只给测试和内部用）。mod 在等，说明会话还活着，顺手续命。
+// Wait blocks until there is an answer, time runs out or the request goes away, and returns the state then.
+// An empty account skips the check (tests and internal use only). A waiting mod means the session is alive,
+// so it also counts as a heartbeat.
 func (h *Hub) Wait(id, account string, timeout time.Duration, cancel <-chan struct{}) (string, map[string]any, error) {
 	h.mu.Lock()
 	a := h.asks[id]
@@ -654,7 +658,7 @@ func (h *Hub) Wait(id, account string, timeout time.Duration, cancel <-chan stru
 	return a.Status, a.Answer, nil
 }
 
-// Settle 给出结果（done）或撤销（cancelled）。account 为空表示网页端，不校验。
+// Settle answers an ask (done) or withdraws it (cancelled). An empty account means the page; no check.
 func (h *Hub) Settle(id, account, status string, answer map[string]any) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -679,7 +683,7 @@ func (h *Hub) Settle(id, account, status string, answer map[string]any) error {
 	return nil
 }
 
-// ---------- 页面启动 ----------
+// ---------- starts from the page ----------
 
 func (h *Hub) addLaunch(l *Launch) {
 	h.mu.Lock()
@@ -697,16 +701,16 @@ func (h *Hub) launchStatus(id string) string {
 	return ""
 }
 
-func (h *Hub) failLaunch(id, why string) {
+func (h *Hub) failLaunch(id string, why *Error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if l := h.launches[id]; l != nil && l.Status == LaunchStarting {
-		l.Status, l.Error = LaunchFailed, why
+		l.Status, l.Error, l.ErrorCode, l.ErrorParams = LaunchFailed, why.Text, why.Code, why.Params
 		h.broadcastLocked(map[string]any{"type": "launch", "id": id})
 	}
 }
 
-// recentDirs 是最近用过的工作目录，给启动框当快捷选项。
+// recentDirs are recently used folders, offered as shortcuts in the launch dialog.
 func (h *Hub) recentDirs(n int) []string {
 	h.mu.Lock()
 	defer h.mu.Unlock()

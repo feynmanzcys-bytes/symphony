@@ -14,9 +14,12 @@ import (
 )
 
 var testWeb = fstest.MapFS{
-	"office.html":  {Data: []byte("<html>office</html>")},
-	"approve.html": {Data: []byte("<html>approve</html>")},
-	"asks.js":      {Data: []byte("export const x = 1")},
+	"office.html":     {Data: []byte("<html>office</html>")},
+	"approve.html":    {Data: []byte("<html>approve</html>")},
+	"asks.js":         {Data: []byte("export const x = 1")},
+	"i18n.js":         {Data: []byte("export const t = key => key")},
+	"locales/en.json": {Data: []byte(`{"error.unknown": "something went wrong"}`)},
+	"locales/xx.json": {Data: []byte(`{}`)}, // not a supported language: the bridge must not serve it
 }
 
 type client struct {
@@ -34,7 +37,7 @@ func newBridge(t *testing.T) (*Server, string) {
 	return srv, ts.URL
 }
 
-// as 建一个账号，返回带着它 token 的客户端。
+// as creates an account and returns a client that carries its token.
 func as(t *testing.T, srv *Server, base, name string) (client, *Account) {
 	t.Helper()
 	acc, err := srv.Hub.CreateAccount(name)
@@ -81,6 +84,14 @@ func (c client) status(method, path string, body any) int {
 	return status
 }
 
+// failure sends a request that should fail and returns the status and the error code from the JSON body.
+func (c client) failure(method, path string, body any) (int, string) {
+	c.t.Helper()
+	status, out := c.do(method, path, body)
+	code, _ := out["code"].(string)
+	return status, code
+}
+
 func session(t *testing.T, srv *Server, id string) *Session {
 	t.Helper()
 	for _, s := range srv.Hub.Snapshot().Sessions {
@@ -88,7 +99,7 @@ func session(t *testing.T, srv *Server, id string) *Session {
 			return s
 		}
 	}
-	t.Fatalf("没有会话 %s", id)
+	t.Fatalf("no session %s", id)
 	return nil
 }
 
@@ -99,7 +110,7 @@ func view(t *testing.T, srv *Server, id string) AccountView {
 			return a
 		}
 	}
-	t.Fatalf("没有账号 %s", id)
+	t.Fatalf("no account %s", id)
 	return AccountView{}
 }
 
@@ -112,26 +123,26 @@ func TestEventsDriveSessionState(t *testing.T) {
 	c.ok("POST", "/api/event", Event{Session: "s1", Kind: "tool.start", Tool: "Bash"})
 	s := session(t, srv, "s1")
 	if s.State != StateTool || s.Tool != "Bash" || s.Cwd != "/w/a" || s.Login != "a@x.com" || s.Account != acc.ID || s.Model != "claude-opus-5-5" {
-		t.Fatalf("状态不对: %+v", s)
+		t.Fatalf("wrong state: %+v", s)
 	}
 	if view(t, srv, acc.ID).Session != "s1" {
-		t.Fatal("账号应显示在线会话")
+		t.Fatal("the account should show its online session")
 	}
 
 	c.ok("POST", "/api/event", Event{Session: "s1", Kind: "tool.start", Tool: "Read", AgentID: "ag1"})
 	if a := session(t, srv, "s1").Agents["ag1"]; a == nil || a.Tool != "Read" || a.State != StateTool {
-		t.Fatalf("子代理不对: %+v", a)
+		t.Fatalf("wrong subagent: %+v", a)
 	}
 	c.ok("POST", "/api/event", Event{Session: "s1", Kind: "turn.complete", AgentID: "ag1"})
 	c.ok("POST", "/api/event", Event{Session: "s1", Kind: "turn.complete"})
 	c.ok("POST", "/api/event", Event{Session: "s1", Kind: "session.model", Model: "claude-sonnet-5-5", Effort: "high"})
 	s = session(t, srv, "s1")
 	if s.State != StateIdle || s.Agents["ag1"].State != StateDone || s.Tools != 2 || s.Model != "claude-sonnet-5-5" || s.Effort != "high" {
-		t.Fatalf("回合结束后状态不对: %+v", s)
+		t.Fatalf("wrong state after the turn: %+v", s)
 	}
 	c.ok("POST", "/api/event", Event{Session: "s1", Kind: "session.end"})
 	if session(t, srv, "s1").State != StateEnded || view(t, srv, acc.ID).Session != "" {
-		t.Fatal("会话应已下班，账号不在线")
+		t.Fatal("the session should be off duty and the account offline")
 	}
 }
 
@@ -142,25 +153,25 @@ func TestStateSince(t *testing.T) {
 	srv.Hub.now = func() time.Time { return now }
 	c.ok("POST", "/api/event", Event{Session: "s1", Kind: "session.start"})
 	idleAt := session(t, srv, "s1").StateSince
-	// 心跳和不改状态的事件不动 StateSince（页面靠它算闲了多久）
+	// heartbeats and events that keep the state leave StateSince alone (the page uses it to tell how long a session idles)
 	now = now.Add(time.Minute)
 	c.ok("POST", "/api/event", Event{Session: "s1", Kind: "heartbeat"})
 	c.ok("POST", "/api/event", Event{Session: "s1", Kind: "session.title", Title: "x"})
 	if got := session(t, srv, "s1").StateSince; !got.Equal(idleAt) {
-		t.Fatalf("状态没变，StateSince 不该动: %v -> %v", idleAt, got)
+		t.Fatalf("the state didn't change, so StateSince shouldn't move: %v -> %v", idleAt, got)
 	}
-	// 推给页面的快照里也得是新时间（不能先推后改）
+	// the snapshot pushed to the page carries the new time too (no pushing before updating)
 	ch, stop := srv.Hub.Subscribe()
 	defer stop()
 	<-ch
 	c.ok("POST", "/api/event", Event{Session: "s1", Kind: "turn.start"})
 	if got := session(t, srv, "s1").StateSince; !got.Equal(now) {
-		t.Fatalf("状态变了，StateSince 应更新: %v", got)
+		t.Fatalf("the state changed, so StateSince should move: %v", got)
 	}
 	for msg := range ch {
 		if snap, ok := msg.(Snapshot); ok {
 			if !snap.Sessions[0].StateSince.Equal(now) {
-				t.Fatalf("推出去的快照里 StateSince 是旧的: %v", snap.Sessions[0].StateSince)
+				t.Fatalf("the pushed snapshot has a stale StateSince: %v", snap.Sessions[0].StateSince)
 			}
 			break
 		}
@@ -172,12 +183,12 @@ func TestTokenRequired(t *testing.T) {
 	anon := client{t: t, base: base}
 	bad := client{t: t, base: base, header: map[string]string{"authorization": "Bearer nope"}}
 	for _, c := range []client{anon, bad} {
-		if st := c.status("POST", "/api/event", Event{Session: "s1", Kind: "session.start"}); st != http.StatusUnauthorized {
-			t.Fatalf("没 token / 错 token 应 401，得到 %d", st)
+		if st, code := c.failure("POST", "/api/event", Event{Session: "s1", Kind: "session.start"}); st != http.StatusUnauthorized || code != "token_invalid" {
+			t.Fatalf("a missing or wrong token should get 401 token_invalid, got %d %q", st, code)
 		}
 	}
 	if n := len(srv.Hub.Snapshot().Sessions); n != 0 {
-		t.Fatalf("不该建会话: %d", n)
+		t.Fatalf("no session should be created, found %d", n)
 	}
 }
 
@@ -188,32 +199,32 @@ func TestOneSessionPerAccount(t *testing.T) {
 	srv.Hub.now = func() time.Time { return now }
 
 	c.ok("POST", "/api/event", Event{Session: "s1", Kind: "session.start"})
-	if st := c.status("POST", "/api/event", Event{Session: "s2", Kind: "session.start"}); st != http.StatusConflict {
-		t.Fatalf("同一账号第二个会话应 409，得到 %d", st)
+	if st, code := c.failure("POST", "/api/event", Event{Session: "s2", Kind: "session.start"}); st != http.StatusConflict || code != "account_busy" {
+		t.Fatalf("a second session on the same account should get 409 account_busy, got %d %q", st, code)
 	}
-	if st := c.status("POST", "/api/ask", AskRequest{Session: "s2", Kind: "permission"}); st != http.StatusConflict {
-		t.Fatalf("被拒的会话也不能挂审批，得到 %d", st)
+	if st, code := c.failure("POST", "/api/ask", AskRequest{Session: "s2", Kind: "permission"}); st != http.StatusConflict || code != "account_busy" {
+		t.Fatalf("the refused session can't post an ask either: want 409 account_busy, got %d %q", st, code)
 	}
-	// 心跳续命：没超时就还是占着
+	// heartbeats keep the account taken until the session goes stale
 	now = now.Add(StaleAfter - time.Second)
 	c.ok("POST", "/api/event", Event{Session: "s1", Kind: "heartbeat"})
 	now = now.Add(StaleAfter - time.Second)
-	if st := c.status("POST", "/api/event", Event{Session: "s2", Kind: "session.start"}); st != http.StatusConflict {
-		t.Fatalf("有心跳就不该让位，得到 %d", st)
+	if st, code := c.failure("POST", "/api/event", Event{Session: "s2", Kind: "session.start"}); st != http.StatusConflict || code != "account_busy" {
+		t.Fatalf("a session that sends heartbeats keeps the account: want 409 account_busy, got %d %q", st, code)
 	}
-	// 失联超时后，新会话可以接手，老的算下班
+	// once it is stale, a new session takes over and the old one is off duty
 	now = now.Add(2 * time.Second)
 	c.ok("POST", "/api/event", Event{Session: "s2", Kind: "session.start"})
 	if view(t, srv, acc.ID).Session != "s2" {
-		t.Fatal("账号应换成 s2")
+		t.Fatal("the account should now show s2")
 	}
 	if n := len(srv.Hub.Snapshot().Sessions); n != 1 {
-		t.Fatalf("一个账号只留一个会话记录，现在 %d 个", n)
+		t.Fatalf("an account keeps one session record, found %d", n)
 	}
-	// 别的账号不能动这个会话
+	// another account can't touch this session
 	other, _ := as(t, srv, base, "测试阿珍")
-	if st := other.status("POST", "/api/event", Event{Session: "s2", Kind: "turn.start"}); st != http.StatusForbidden {
-		t.Fatalf("跨账号写应 403，得到 %d", st)
+	if st, code := other.failure("POST", "/api/event", Event{Session: "s2", Kind: "turn.start"}); st != http.StatusForbidden || code != "ask_wrong_account" {
+		t.Fatalf("a write from another account should get 403 ask_wrong_account, got %d %q", st, code)
 	}
 }
 
@@ -227,17 +238,17 @@ func TestReapStaleSessions(t *testing.T) {
 	now = now.Add(StaleAfter - time.Second)
 	srv.Hub.Reap()
 	if session(t, srv, "s1").State == StateEnded {
-		t.Fatal("还没超时不该下班")
+		t.Fatal("not stale yet, so the session shouldn't be off duty")
 	}
 	now = now.Add(2 * time.Second)
 	srv.Hub.Reap()
 	if session(t, srv, "s1").State != StateEnded || view(t, srv, acc.ID).Session != "" {
-		t.Fatal("超时没动静应标成下班")
+		t.Fatal("a session silent past the timeout should be marked off duty")
 	}
-	// 失联的会话又回来了（比如电脑睡醒），接着用
+	// a lost session that comes back (say the computer wakes up) carries on
 	c.ok("POST", "/api/event", Event{Session: "s1", Kind: "heartbeat"})
 	if session(t, srv, "s1").State == StateEnded {
-		t.Fatal("回来的会话应重新上线")
+		t.Fatal("the returning session should be online again")
 	}
 }
 
@@ -255,38 +266,38 @@ func TestAccountsPersistAndSeats(t *testing.T) {
 		}
 		ids = append(ids, a.ID)
 		if a.Seat != len(ids)-1 {
-			t.Fatalf("%s 座位应为 %d，得到 %d", name, len(ids)-1, a.Seat)
+			t.Fatalf("%s should sit in seat %d, got %d", name, len(ids)-1, a.Seat)
 		}
 	}
 	if _, err := hub.CreateAccount("乙"); err != ErrNameTaken {
-		t.Fatalf("重名应拒绝: %v", err)
+		t.Fatalf("a duplicate name should be refused: %v", err)
 	}
 	if _, err := hub.CreateAccount(" "); err != ErrBadName {
-		t.Fatalf("空名字应拒绝: %v", err)
+		t.Fatalf("an empty name should be refused: %v", err)
 	}
 	if err := hub.DeleteAccount(ids[1]); err != nil {
 		t.Fatal(err)
 	}
 	ding, _ := hub.CreateAccount("丁")
 	if ding.Seat != 1 {
-		t.Fatalf("新账号应坐空出来的 1 号座位，得到 %d", ding.Seat)
+		t.Fatalf("the new account should take the freed seat 1, got %d", ding.Seat)
 	}
 
-	// 换一个 Hub 从同一目录读，账号、座位、token 都在
+	// a new Hub reading the same folder finds the accounts, seats and tokens
 	again := NewHub()
 	if err := again.Open(dir); err != nil {
 		t.Fatal(err)
 	}
 	if a := again.AccountByToken(ding.Token); a == nil || a.Name != "丁" || a.Seat != 1 {
-		t.Fatalf("重启后账号不对: %+v", a)
+		t.Fatalf("wrong account after the restart: %+v", a)
 	}
 	if n := len(again.Snapshot().Accounts); n != 3 {
-		t.Fatalf("应有 3 个账号，得到 %d", n)
+		t.Fatalf("want 3 accounts, got %d", n)
 	}
-	// 快照（会推给页面）里不能有 token
+	// the snapshot (pushed to the page) must not hold tokens
 	data, _ := json.Marshal(again.Snapshot())
 	if strings.Contains(string(data), ding.Token) {
-		t.Fatal("快照里露出了 token")
+		t.Fatal("the snapshot leaks a token")
 	}
 }
 
@@ -295,31 +306,33 @@ func TestAccountAPI(t *testing.T) {
 	c := client{t: t, base: base}
 	res := c.ok("POST", "/api/accounts", map[string]string{"name": "架构老张"})
 	if res["token"] == "" || res["seat"] != float64(0) {
-		t.Fatalf("建账号应返回 token 和座位: %v", res)
+		t.Fatalf("creating an account should return its token and seat: %v", res)
 	}
-	if st := c.status("POST", "/api/accounts", map[string]string{"name": "架构老张"}); st != http.StatusConflict {
-		t.Fatalf("重名应 409，得到 %d", st)
+	// an error body has the English text and the code the page translates
+	if st, body := c.do("POST", "/api/accounts", map[string]string{"name": "架构老张"}); st != http.StatusConflict ||
+		body["code"] != "account_name_taken" || body["error"] != ErrNameTaken.Text {
+		t.Fatalf("a duplicate name should get 409 account_name_taken, got %d %v", st, body)
 	}
 	id := res["id"].(string)
 	mod := client{t: t, base: base, header: map[string]string{"authorization": "Bearer " + res["token"].(string)}}
 	mod.ok("POST", "/api/event", Event{Session: "s1", Kind: "session.start"})
-	if st := c.status("DELETE", "/api/accounts/"+id, nil); st != http.StatusConflict {
-		t.Fatalf("在线的账号不能删，得到 %d", st)
+	if st, code := c.failure("DELETE", "/api/accounts/"+id, nil); st != http.StatusConflict || code != "account_busy" {
+		t.Fatalf("an online account can't be deleted: want 409 account_busy, got %d %q", st, code)
 	}
 	askID := mod.ok("POST", "/api/ask", AskRequest{Session: "s1", Kind: "question"})["id"].(string)
 	mod.ok("POST", "/api/event", Event{Session: "s1", Kind: "session.end"})
 	c.ok("DELETE", "/api/accounts/"+id, nil)
 	if n := len(srv.Hub.Snapshot().Asks); n != 0 {
-		t.Fatalf("删账号时它的待处理事项也该撤掉，还剩 %d 个", n)
+		t.Fatalf("deleting the account should cancel its pending asks, %d left", n)
 	}
 	if st, _, _ := srv.Hub.Wait(askID, "", time.Millisecond, nil); st != AskCancelled {
-		t.Fatalf("应为 cancelled: %s", st)
+		t.Fatalf("want cancelled, got %s", st)
 	}
 	if len(srv.Hub.Snapshot().Accounts) != 0 || len(srv.Hub.Snapshot().Sessions) != 0 {
-		t.Fatal("删账号后账号和会话都该没了")
+		t.Fatal("the account and its session should be gone after the delete")
 	}
-	if st := mod.status("POST", "/api/event", Event{Session: "s1", Kind: "turn.start"}); st != http.StatusUnauthorized {
-		t.Fatalf("删掉的账号 token 应失效，得到 %d", st)
+	if st, code := mod.failure("POST", "/api/event", Event{Session: "s1", Kind: "turn.start"}); st != http.StatusUnauthorized || code != "token_invalid" {
+		t.Fatalf("a deleted account's token should stop working: want 401 token_invalid, got %d %q", st, code)
 	}
 }
 
@@ -327,13 +340,13 @@ func TestSessionTitle(t *testing.T) {
 	srv, base := newBridge(t)
 	c, _ := as(t, srv, base, "前端小王")
 	c.ok("POST", "/api/event", Event{Session: "s1", Kind: "session.title", Title: "前端小王"})
-	c.ok("POST", "/api/event", Event{Session: "s1", Kind: "session.title"}) // 新会话的 SessionStart 不带名字
+	c.ok("POST", "/api/event", Event{Session: "s1", Kind: "session.title"}) // a new session's SessionStart carries no name
 	if got := session(t, srv, "s1").Title; got != "前端小王" {
-		t.Fatalf("名字被清掉了: %q", got)
+		t.Fatalf("the name was cleared: %q", got)
 	}
 	c.ok("POST", "/api/event", Event{Session: "s1", Kind: "session.title", Args: " 小王2号 "})
 	if got := session(t, srv, "s1").Title; got != "小王2号" {
-		t.Fatalf("/rename 没生效: %q", got)
+		t.Fatalf("/rename didn't take effect: %q", got)
 	}
 }
 
@@ -344,10 +357,10 @@ func TestAskWaitAnswer(t *testing.T) {
 
 	id := c.ok("POST", "/api/ask", AskRequest{Session: "s2", Kind: "permission", Tool: "Bash", Input: map[string]any{"command": "ls"}})["id"].(string)
 	if got := c.ok("GET", "/api/wait/"+id, nil)["status"]; got != AskPending {
-		t.Fatalf("应为 pending: %v", got)
+		t.Fatalf("want pending, got %v", got)
 	}
 	if len(srv.Hub.Snapshot().Asks) != 1 || session(t, srv, "s2").State != StateWaiting {
-		t.Fatal("应有一个待决事项且会话在等人")
+		t.Fatal("want one pending ask and the session waiting")
 	}
 
 	srv.WaitTimeout = 10 * time.Second
@@ -358,22 +371,22 @@ func TestAskWaitAnswer(t *testing.T) {
 	web.ok("POST", "/api/answer/"+id, map[string]any{"decision": "allow", "reason": "ok"})
 	res := <-got
 	if time.Since(start) > 2*time.Second {
-		t.Fatal("回答后没有及时唤醒")
+		t.Fatal("the answer didn't wake the waiter in time")
 	}
 	answer := res["answer"].(map[string]any)
 	if res["status"] != AskDone || answer["decision"] != "allow" || answer["reason"] != "ok" {
-		t.Fatalf("结果不对: %v", res)
+		t.Fatalf("wrong result: %v", res)
 	}
 	if len(srv.Hub.Snapshot().Asks) != 0 || session(t, srv, "s2").State == StateWaiting {
-		t.Fatal("回答后应清掉待决事项")
+		t.Fatal("the answer should clear the pending ask")
 	}
-	if st := web.status("POST", "/api/answer/"+id, map[string]any{}); st != http.StatusConflict {
-		t.Fatalf("重复回答应 409，得到 %d", st)
+	if st, code := web.failure("POST", "/api/answer/"+id, map[string]any{}); st != http.StatusConflict || code != "ask_settled" {
+		t.Fatalf("a second answer should get 409 ask_settled, got %d %q", st, code)
 	}
 	other, _ := as(t, srv, base, "b")
 	id2 := c.ok("POST", "/api/ask", AskRequest{Session: "s2", Kind: "question"})["id"].(string)
-	if st := other.status("GET", "/api/wait/"+id2, nil); st != http.StatusForbidden {
-		t.Fatalf("别的账号等这个事项应 403，得到 %d", st)
+	if st, code := other.failure("GET", "/api/wait/"+id2, nil); st != http.StatusForbidden || code != "ask_wrong_account" {
+		t.Fatalf("another account waiting on this ask should get 403 ask_wrong_account, got %d %q", st, code)
 	}
 }
 
@@ -383,24 +396,24 @@ func TestCancel(t *testing.T) {
 	id := c.ok("POST", "/api/ask", AskRequest{Session: "s3", Kind: "question", Questions: []any{}})["id"].(string)
 	c.ok("POST", "/api/cancel/"+id, nil)
 	if got := c.ok("GET", "/api/wait/"+id, nil)["status"]; got != AskCancelled {
-		t.Fatalf("应为 cancelled: %v", got)
+		t.Fatalf("want cancelled, got %v", got)
 	}
-	if st := c.status("POST", "/api/answer/"+id, map[string]any{}); st != http.StatusConflict {
-		t.Fatalf("撤销后回答应 409，得到 %d", st)
+	if st, code := c.failure("POST", "/api/answer/"+id, map[string]any{}); st != http.StatusConflict || code != "ask_settled" {
+		t.Fatalf("an answer after the cancel should get 409 ask_settled, got %d %q", st, code)
 	}
-	if st := c.status("GET", "/api/wait/nope", nil); st != http.StatusNotFound {
-		t.Fatalf("不存在的事项应 404，得到 %d", st)
+	if st, code := c.failure("GET", "/api/wait/nope", nil); st != http.StatusNotFound || code != "ask_unknown" {
+		t.Fatalf("an unknown ask should get 404 ask_unknown, got %d %q", st, code)
 	}
 }
 
 func TestParseIncoming(t *testing.T) {
 	from, body := parseIncoming("<cross-session-message from=\"uds:/run/user/1000/cc-socks/9126.sock\" from-name=\"xiaowang\" from-mode=\"prompting\">\n今晚八点开会。\n</cross-session-message>")
 	if from != "xiaowang" || body != "今晚八点开会。" {
-		t.Fatalf("解析不对: %q %q", from, body)
+		t.Fatalf("wrong parse: %q %q", from, body)
 	}
 	from, body = parseIncoming("  随便一段话 ")
 	if from != "" || body != "随便一段话" {
-		t.Fatalf("普通文本解析不对: %q %q", from, body)
+		t.Fatalf("wrong parse of plain text: %q %q", from, body)
 	}
 }
 
@@ -421,29 +434,29 @@ func TestMessagesPairEitherOrderAndPersist(t *testing.T) {
 		return "<cross-session-message from=\"uds:/x.sock\" from-name=\"xiaowang\" from-mode=\"prompting\">\n" + text + "\n</cross-session-message>"
 	}
 
-	// 实测顺序：收件方先报，发件方后报
+	// the order seen in practice: the receiver reports first, then the sender
 	b.ok("POST", "/api/event", Event{Session: "B", Kind: "message.receive", Text: wrap("今晚八点开会。"), Origin: map[string]any{"kind": "peer"}})
 	a.ok("POST", "/api/event", Event{Session: "A", Kind: "message.send", To: "laoli", Text: "今晚八点开会。", Origin: "model", Delivered: true})
-	// 反过来的顺序也要配上
+	// the other order pairs up too
 	a.ok("POST", "/api/event", Event{Session: "A", Kind: "message.send", To: "laoli", Text: "收到请回复", Delivered: true})
 	b.ok("POST", "/api/event", Event{Session: "B", Kind: "message.receive", Text: wrap("收到请回复")})
 
 	msgs := hub.Snapshot().Messages
 	if len(msgs) != 2 {
-		t.Fatalf("应配成 2 条消息，得到 %d: %+v", len(msgs), msgs)
+		t.Fatalf("want 2 paired messages, got %d: %+v", len(msgs), msgs)
 	}
 	for _, m := range msgs {
 		if m.From != "A" || m.To != "B" || m.FromName != "xiaowang" || m.ToName != "laoli" || !m.Delivered || !m.Received {
-			t.Fatalf("消息不对: %+v", m)
+			t.Fatalf("wrong message: %+v", m)
 		}
 	}
-	// 记录落盘，重启还在
+	// the log is on disk and survives a restart
 	again := NewHub()
 	if err := again.Open(dir); err != nil {
 		t.Fatal(err)
 	}
 	if n := len(again.Snapshot().Messages); n != 2 {
-		t.Fatalf("重启后应还有 2 条消息，得到 %d", n)
+		t.Fatalf("want 2 messages after the restart, got %d", n)
 	}
 }
 
@@ -460,7 +473,7 @@ func TestStreamStartsWithSnapshot(t *testing.T) {
 	r := bufio.NewReader(resp.Body)
 	line, err := r.ReadString('\n')
 	if err != nil || !strings.HasPrefix(line, `data: {"type":"snapshot"`) {
-		t.Fatalf("第一条应是快照: %q %v", line, err)
+		t.Fatalf("the first message should be a snapshot: %q %v", line, err)
 	}
 	c, _ := as(t, srv, base, "a")
 	go c.ok("POST", "/api/event", Event{Session: "s9", Kind: "session.start"})
@@ -480,13 +493,16 @@ func TestStreamStartsWithSnapshot(t *testing.T) {
 	select {
 	case <-got:
 	case <-time.After(3 * time.Second):
-		t.Fatal("事件没推过来")
+		t.Fatal("the event never arrived")
 	}
 }
 
 func TestPages(t *testing.T) {
 	_, base := newBridge(t)
-	for path, want := range map[string]string{"/": "text/html", "/approve": "text/html", "/asks.js": "text/javascript"} {
+	for path, want := range map[string]string{
+		"/": "text/html", "/approve": "text/html", "/asks.js": "text/javascript",
+		"/i18n.js": "text/javascript", "/locales/en.json": "application/json",
+	} {
 		resp, err := http.Get(base + path)
 		if err != nil {
 			t.Fatal(err)
@@ -494,6 +510,33 @@ func TestPages(t *testing.T) {
 		resp.Body.Close()
 		if resp.StatusCode != 200 || !strings.HasPrefix(resp.Header.Get("content-type"), want) {
 			t.Fatalf("%s: %d %s", path, resp.StatusCode, resp.Header.Get("content-type"))
+		}
+	}
+}
+
+// TestLocales checks that /locales/ serves the catalogs of the supported languages and nothing else.
+func TestLocales(t *testing.T) {
+	_, base := newBridge(t)
+	get := func(path string) (int, string) {
+		t.Helper()
+		resp, err := http.Get(base + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(resp.Body)
+		return resp.StatusCode, string(body)
+	}
+	if st, body := get("/locales/en.json"); st != 200 || body != string(testWeb["locales/en.json"].Data) {
+		t.Fatalf("/locales/en.json should serve the English catalog: %d %q", st, body)
+	}
+	for _, path := range []string{
+		"/locales/xx.json",                 // the file exists, but xx is not a supported language
+		"/locales/..%2Foffice.html",        // the encoded slash reaches the handler as ../office.html
+		"/locales/..%2F..%2Faccounts.json", // and here as ../../accounts.json
+	} {
+		if st, _ := get(path); st != http.StatusNotFound {
+			t.Errorf("%s: want 404, got %d", path, st)
 		}
 	}
 }
@@ -512,7 +555,7 @@ func TestPruneEndedSessions(t *testing.T) {
 	hub.Prune()
 	snap := hub.Snapshot()
 	if len(snap.Sessions) != 1 || snap.Sessions[0].ID != "live" || len(snap.Accounts) != 2 {
-		t.Fatalf("应只剩 live 会话，账号都在: %+v %+v", snap.Sessions, snap.Accounts)
+		t.Fatalf("want only the live session, and both accounts: %+v %+v", snap.Sessions, snap.Accounts)
 	}
 }
 
@@ -521,29 +564,29 @@ func TestUnknownSessionEndIgnored(t *testing.T) {
 	c, _ := as(t, srv, base, "a")
 	c.ok("POST", "/api/event", Event{Session: "ghost", Kind: "session.end"})
 	if n := len(srv.Hub.Snapshot().Sessions); n != 0 {
-		t.Fatalf("不认识的会话下班不该建会话，现在有 %d 个", n)
+		t.Fatalf("an unknown session going off duty shouldn't create a session, found %d", n)
 	}
 }
 
 func TestRecoverAfterRestart(t *testing.T) {
 	srv, base := newBridge(t)
 	c, _ := as(t, srv, base, "a")
-	// bridge 重启后第一条不是 session.start，也能补回目录和 tmux
+	// after a bridge restart the first event isn't session.start; the folder and the launch id still come back
 	c.ok("POST", "/api/event", Event{Session: "s1", Kind: "heartbeat", Cwd: "/w/a", Launch: "abc"})
 	if s := session(t, srv, "s1"); s.Cwd != "/w/a" || s.Launch != "abc" || s.State != StateIdle {
-		t.Fatalf("没补回来: %+v", s)
+		t.Fatalf("not restored: %+v", s)
 	}
-	// 开了页面启动时，按启动编号推回“去哪儿找终端”
+	// with page launches on, the launch id tells where to find the session's terminal
 	srv.SetLauncher(&Launcher{Term: &tmuxTerminal{}})
 	c2, _ := as(t, srv, base, "b")
 	c2.ok("POST", "/api/event", Event{Session: "s2", Kind: "heartbeat", Launch: "def"})
 	if s := session(t, srv, "s2"); s.Attach != "tmux attach -t sym-def" {
-		t.Fatalf("没推回 tmux 命令: %+v", s)
+		t.Fatalf("no tmux command derived from the launch id: %+v", s)
 	}
 	if dirs := srv.Hub.recentDirs(8); len(dirs) != 1 {
-		t.Fatalf("最近目录: %v", dirs)
+		t.Fatalf("recent folders: %v", dirs)
 	}
 	if dirs := NewHub().recentDirs(8); dirs == nil {
-		t.Fatal("没有最近目录时也要是空列表，不是 nil")
+		t.Fatal("with no recent folders the list should be empty, not nil")
 	}
 }

@@ -1,33 +1,37 @@
 import type { EngineInterface, Register } from 'claude-code'
+import { type Lang, matchLang, message } from './messages'
 
-// 环境变量：
-//   SYMPHONY_TOKEN    军团账号的 token：一个账号同时只给一个会话用，决定身份和座位
-//   SYMPHONY_BRIDGE   bridge 地址，默认本机 7788
-//   SYMPHONY_LAUNCH   从页面启动时 bridge 设的启动编号
-// mod 一般装在用户级别，每个 Claude Code 会话都会加载它，但只有带着 SYMPHONY_TOKEN 起的会话才归军团管；
-// 别的会话里它什么都不做：不连 bridge、不读登录信息、不弹提示、不碰审批。
-// bridge 不通、不认 token 或账号已被占用时，一律退回 Claude Code 自己的终端交互，不会卡死会话。
+// Environment variables:
+//   SYMPHONY_TOKEN    the office account's token: one account serves one session at a time and sets its identity and seat
+//   SYMPHONY_BRIDGE   the bridge's address, by default port 7788 on this machine
+//   SYMPHONY_LAUNCH   the launch id the bridge sets when the page starts a session
+//   SYMPHONY_LANG     the language of the mod's messages (the bridge passes the page's language); else LC_ALL / LC_MESSAGES / LANG
+// The mod is usually installed at user scope, so every Claude Code session loads it, but only sessions started
+// with SYMPHONY_TOKEN belong to the office. In any other session it does nothing: it doesn't contact the bridge,
+// read login details, show messages or touch approvals.
+// When the bridge is unreachable, rejects the token or the account is busy, everything falls back to Claude Code's
+// own terminal interaction; the session never hangs.
 const DEFAULT_BRIDGE = 'http://127.0.0.1:7788'
 
 type Answer =
   | { decision: 'allow' | 'deny'; reason?: string }
   | { answers: Record<string, string> }
 
-type Identity = { bridge: string; headers: Record<string, string>; login?: string }
+type Identity = { bridge: string; headers: Record<string, string>; login?: string; lang: Lang }
 
-// undefined：还没看过环境变量；null：没给 SYMPHONY_TOKEN，不是军团的会话
+// undefined: the environment hasn't been read yet; null: no SYMPHONY_TOKEN, not an office session
 let identity: Identity | null | undefined
 let sessionId: string | undefined
 let transcriptPath: string | undefined
-// 每条事件都带上目录和启动编号：bridge 重启后不用等下一次启动就能认回这个会话
+// every event carries the folder and the launch id, so a restarted bridge recognizes the session right away
 let sticky: { cwd?: string; launch?: string } = {}
-// 上次报给 bridge 的模型和强度，变了才再报
+// the model and effort last reported to the bridge; reported again only when they change
 let reported = { model: '', effort: '' }
 let heartbeat: { cancel: () => void } | undefined
-// 网页拒掉的调用。被拒的工具在 tool.call 里拿到的是一条报错结果，不是 { deny }，只能自己记着。
+// calls the web page denied. A denied tool reaches tool.call as an error result, not { deny }, so we remember them.
 const deniedByWeb = new Set<string>()
 
-// Claude 登录记录在 $CLAUDE_CONFIG_DIR/.claude.json，没设就在用户目录下（Windows 没有 HOME，用 USERPROFILE）。
+// The Claude login is in $CLAUDE_CONFIG_DIR/.claude.json, or in the home folder when that isn't set (Windows has no HOME; use USERPROFILE).
 async function loginEmail($: EngineInterface) {
   const dir =
     (await $.env.get('CLAUDE_CONFIG_DIR')) ?? (await $.env.get('HOME')) ?? (await $.env.get('USERPROFILE'))
@@ -41,6 +45,14 @@ async function loginEmail($: EngineInterface) {
   }
 }
 
+// sessionLang is SYMPHONY_LANG, else the POSIX locale (the first of LC_ALL, LC_MESSAGES and LANG that is set), else English.
+async function sessionLang($: EngineInterface): Promise<Lang> {
+  const own = matchLang(await $.env.get('SYMPHONY_LANG'))
+  if (own) return own
+  const posix = (await $.env.get('LC_ALL')) || (await $.env.get('LC_MESSAGES')) || (await $.env.get('LANG'))
+  return matchLang(posix) ?? 'en'
+}
+
 async function ident($: EngineInterface) {
   if (identity !== undefined) return identity
   const token = await $.env.get('SYMPHONY_TOKEN')
@@ -49,6 +61,7 @@ async function ident($: EngineInterface) {
     bridge: (await $.env.get('SYMPHONY_BRIDGE')) || DEFAULT_BRIDGE,
     headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
     login: await loginEmail($),
+    lang: await sessionLang($),
   }
   return identity
 }
@@ -57,7 +70,7 @@ async function sid($: EngineInterface) {
   return (sessionId ??= await $.session.id())
 }
 
-// 只在军团的会话里调用（emit、ask 先看过 ident）
+// only called for office sessions (emit and ask check ident first)
 async function call($: EngineInterface, path: string, body?: unknown) {
   const { bridge, headers } = (await ident($))!
   return $.http.fetch(`${bridge}${path}`, {
@@ -67,7 +80,7 @@ async function call($: EngineInterface, path: string, body?: unknown) {
   })
 }
 
-// 上报事件给办公室页面；失败就算了，不影响会话。
+// reports an event to the office page; a failure is ignored and never affects the session.
 async function emit($: EngineInterface, kind: string, data: object = {}) {
   if (!(await ident($))) return undefined
   try {
@@ -77,8 +90,8 @@ async function emit($: EngineInterface, kind: string, data: object = {}) {
   }
 }
 
-// 把一个待决事项挂到 bridge 上，长轮询等网页回复。
-// hook 的 10 秒预算只算自己的代码时间，$.http.fetch 在途不计，所以可以一直等。
+// puts a pending ask on the bridge and long-polls for the page's answer.
+// A hook's 10-second budget counts only its own code; time inside $.http.fetch doesn't count, so it can wait as long as needed.
 async function ask(
   $: EngineInterface,
   signal: AbortSignal,
@@ -95,7 +108,7 @@ async function ask(
     if (!id) return undefined
     while (!signal.aborted) {
       const waited = await call($, `/api/wait/${id}`)
-      // bridge 重启过，这件事丢了：重新挂上，接着等
+      // the bridge restarted and lost the ask: put it back and keep waiting
       if (waited.status === 404) {
         id = await create()
         if (!id) return undefined
@@ -109,12 +122,12 @@ async function ask(
   } catch {
     return undefined
   }
-  // 终端那边打断了（Esc 等），通知 bridge 撤掉卡片
+  // the terminal interrupted (Esc and the like): tell the bridge to withdraw the card
   if (id) await call($, `/api/cancel/${id}`, {}).catch(() => {})
   return undefined
 }
 
-// 模型和思考强度决定办公室里小人的块头，变了才报。
+// the model and thinking effort set the character's size in the office; reported only when they change.
 async function reportModel($: EngineInterface, model: string, effort?: string | number) {
   const level = typeof effort === 'number' ? String(effort) : (effort ?? '')
   if (model === reported.model && level === reported.effort) return
@@ -122,8 +135,9 @@ async function reportModel($: EngineInterface, model: string, effort?: string | 
   await emit($, 'session.model', { model, effort: level || undefined })
 }
 
-// /rename 不带参数时名字是自动起的，命令返回里没有，只能去 transcript 里找最后一条 custom-title。
-// 先直接读文件（各平台都行，上限 4 MiB）；太大读不了再用 grep（Windows 没有就算了，下次提交 prompt 时会补上）。
+// /rename without an argument makes up a name that the command's result doesn't include, so we look for the last
+// custom-title in the transcript. Read the file directly first (works everywhere, up to 4 MiB); if it's too big, use grep
+// (missing on Windows, in which case the next prompt submission catches up).
 async function titleFromTranscript($: EngineInterface) {
   if (!transcriptPath) return undefined
   let lines: string[]
@@ -149,15 +163,15 @@ export const register: Register = on => {
     const started = await next(e)
     const id = await ident($)
     if (!id) return started
-    // 从页面启动的会话带着 bridge 给的启动编号，bridge 靠它把会话和 tmux 对上
+    // sessions started from the page carry the bridge's launch id, which matches the session with its tmux window
     sticky = { cwd: e.cwd, launch: (await $.env.get('SYMPHONY_LAUNCH')) || undefined }
     const model = await $.session.model()
     reported = { model, effort: '' }
     const res = await emit($, 'session.start', { interactive: e.isInteractive, login: id.login, model })
-    if (!res) $.ui.toast(`symphony: 连不上 bridge（${id.bridge}），审批先走终端`)
-    else if (res.status === 401) $.ui.toast('symphony: bridge 不认这个 SYMPHONY_TOKEN，审批仍走终端')
-    else if (res.status === 409) $.ui.toast('symphony: 这个账号已经有会话在线，审批仍走终端')
-    // 心跳：bridge 45 秒收不到任何消息就当这个会话下班了（比如直接关了终端）
+    if (!res) $.ui.toast(message(id.lang, 'unreachable', { bridge: id.bridge }))
+    else if (res.status === 401) $.ui.toast(message(id.lang, 'badToken'))
+    else if (res.status === 409) $.ui.toast(message(id.lang, 'busy'))
+    // heartbeat: after 45 seconds without any message the bridge takes the session as off duty (say the terminal was closed)
     heartbeat?.cancel()
     heartbeat = $.clock.every(15_000, () => {
       void emit($, 'heartbeat')
@@ -165,14 +179,14 @@ export const register: Register = on => {
     return started
   })
 
-  // 每次请求模型时看一眼实际用的模型和强度（只看主会话的）
+  // on every model request, note the model and effort actually used (main session only)
   on('turn.step', async function* ($, e, next) {
     if (!('agentId' in e && e.agentId)) await reportModel($, e.model, e.effort)
     return yield* next(e)
   })
 
-  // 会话名（--name 或 /rename 起的名字）：启动/恢复时、每次提交 prompt 时都带着当前名字，
-  // /rename 本身再单独抓一次，改名立刻生效。
+  // the session name (from --name or /rename): sent at start or resume and with every prompt;
+  // /rename itself is caught too, so a new name shows right away.
   on('classic.SessionStart', async ($, e, next) => {
     transcriptPath = e.transcript_path
     await emit($, 'session.title', { title: e.session_title })
@@ -193,7 +207,7 @@ export const register: Register = on => {
     return ran
   })
 
-  // 会话间消息（SendMessage / agent team 邮箱）：发出和收到各报一次，bridge 负责配对。
+  // messages between sessions (SendMessage / the agent team mailbox): sending and receiving are reported once each; the bridge pairs them.
   on('session.send', async ($, e, next) => {
     const sent = await next(e)
     await emit($, 'message.send', {
@@ -240,7 +254,7 @@ export const register: Register = on => {
     return next(e)
   })
 
-  // 权限审批：引擎判定为 ask 时，改由网页决定。
+  // permissions: when the engine's verdict is ask, the web page decides instead.
   on('tool.check', async ($, e, next) => {
     const verdict = await next(e)
     if (verdict.decision !== 'ask' || e.tool_use_id === undefined) return verdict
@@ -260,12 +274,12 @@ export const register: Register = on => {
     if (answer.decision === 'deny') deniedByWeb.add(e.tool_use_id)
     return {
       decision: answer.decision,
-      reason: answer.reason || `symphony: 网页端${answer.decision === 'allow' ? '允许' : '拒绝'}`,
+      reason: answer.reason || message(identity?.lang ?? 'en', answer.decision === 'allow' ? 'allowed' : 'denied'),
     }
   })
 
-  // AskUserQuestion：不弹终端对话框，直接用网页上的回答作为工具结果。
-  // 其它工具只做事件上报。
+  // AskUserQuestion: no terminal dialog; the answer from the web page becomes the tool result.
+  // Other tools are only reported.
   on('tool.call', async ($, e, next) => {
     const call = { tool: e.tool, agentId: e.agentId }
     await emit($, 'tool.start', call)

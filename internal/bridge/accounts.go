@@ -14,32 +14,32 @@ import (
 	"unicode"
 )
 
-// Account 是军团里的一个身份：一个名字、一把 token、一个固定座位，一次只给一个会话用。
-// Claude 的登录不在这里管，所有会话可以共用同一个登录。
+// Account is one identity in the office: a name, a token and a fixed seat, used by one session at a time.
+// Claude logins are not managed here; all sessions may share one login.
 type Account struct {
 	ID      string    `json:"id"`
 	Name    string    `json:"name"`
 	Token   string    `json:"token"`
 	Seat    int       `json:"seat"`
 	Created time.Time `json:"created"`
-	// Last 是上次从页面启动时用的参数，下次“上班”直接带出来
+	// Last holds the options of the last start from the page, filled in again next time
 	Last *LaunchRequest `json:"last,omitempty"`
 }
 
-// AccountView 是账号在快照里的样子：不带 token。
+// AccountView is an account as the snapshot shows it: without the token.
 type AccountView struct {
 	ID      string         `json:"id"`
 	Name    string         `json:"name"`
 	Seat    int            `json:"seat"`
-	Session string         `json:"session,omitempty"` // 在线会话的 id，下班了就空着
+	Session string         `json:"session,omitempty"` // the online session's id; empty when off duty
 	Last    *LaunchRequest `json:"last,omitempty"`
 }
 
 var (
-	ErrUnknownAccount = errors.New("没有这个账号")
-	ErrNameTaken      = errors.New("这个名字已经有人用了")
-	ErrAccountBusy    = errors.New("这个账号已经有会话在线")
-	ErrBadName        = errors.New("名字要有，不超过 40 个字，不能有控制字符")
+	ErrUnknownAccount = newError("account_unknown", "no such account")
+	ErrNameTaken      = newError("account_name_taken", "that name is already taken")
+	ErrAccountBusy    = newError("account_busy", "this account already has a session online")
+	ErrBadName        = newError("account_bad_name", "a name needs 1 to 40 characters and no control characters")
 )
 
 func newToken() string {
@@ -52,7 +52,7 @@ func validName(name string) bool {
 	return name != "" && len([]rune(name)) <= 40 && strings.IndexFunc(name, unicode.IsControl) < 0
 }
 
-// loadAccounts 读账号文件；文件不存在就当没有账号。
+// loadAccounts reads the accounts file; a missing file means no accounts.
 func loadAccounts(path string) ([]*Account, error) {
 	if path == "" {
 		return nil, nil
@@ -71,7 +71,7 @@ func loadAccounts(path string) ([]*Account, error) {
 	return list, nil
 }
 
-// saveAccounts 原子写入（先写临时文件再改名），文件里有 token，只给自己读。
+// saveAccounts writes atomically (a temp file, then a rename); the file holds tokens, so only the owner may read it.
 func saveAccounts(path string, list []*Account) error {
 	if path == "" {
 		return nil
@@ -91,9 +91,9 @@ func saveAccounts(path string, list []*Account) error {
 	return os.Rename(tmp, path)
 }
 
-// ---------- Hub 上的账号操作 ----------
+// ---------- accounts on the Hub ----------
 
-// Open 指定数据目录，把账号（accounts.json）和消息记录（messages.json）读进来。
+// Open sets the data folder and reads the accounts (accounts.json) and the message log (messages.json).
 func (h *Hub) Open(dir string) error {
 	list, err := loadAccounts(filepath.Join(dir, "accounts.json"))
 	if err != nil {
@@ -126,7 +126,7 @@ func (h *Hub) saveLocked() error {
 	return saveAccounts(filepath.Join(h.dataDir, "accounts.json"), list)
 }
 
-// saveMessagesLocked 把消息记录落盘，bridge 重启后还能翻。
+// saveMessagesLocked writes the message log to disk, so it survives a bridge restart.
 func (h *Hub) saveMessagesLocked() {
 	if h.dataDir == "" {
 		return
@@ -141,7 +141,7 @@ func (h *Hub) saveMessagesLocked() {
 	}
 }
 
-// CreateAccount 建一个新账号，坐最小的空座位。名字不能重复（会话间发消息按名字找人）。
+// CreateAccount creates an account in the lowest free seat. Names are unique (sessions message each other by name).
 func (h *Hub) CreateAccount(name string) (*Account, error) {
 	name = strings.TrimSpace(name)
 	if !validName(name) {
@@ -171,7 +171,7 @@ func (h *Hub) CreateAccount(name string) (*Account, error) {
 	return &cp, nil
 }
 
-// DeleteAccount 删掉一个不在线的账号，座位空出来。
+// DeleteAccount deletes an account that is offline and frees its seat.
 func (h *Hub) DeleteAccount(id string) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -188,7 +188,7 @@ func (h *Hub) DeleteAccount(id string) error {
 			delete(h.sessions, sid)
 		}
 	}
-	// 失联会话留下的待处理事项一并撤掉，免得弹窗里挂着没主的卡片
+	// cancel what its lost sessions left pending, so the popup shows no orphaned cards
 	for _, ask := range h.asks {
 		if ask.Account == id && ask.Status == AskPending {
 			ask.Status = AskCancelled
@@ -203,7 +203,7 @@ func (h *Hub) DeleteAccount(id string) error {
 	return nil
 }
 
-// AccountByToken 按 token 找账号，找不到返回 nil。
+// AccountByToken finds an account by its token, or returns nil.
 func (h *Hub) AccountByToken(token string) *Account {
 	if token == "" {
 		return nil
@@ -219,7 +219,7 @@ func (h *Hub) AccountByToken(token string) *Account {
 	return nil
 }
 
-// Account 按 id 取账号（拷贝）。
+// Account returns a copy of the account with this id.
 func (h *Hub) Account(id string) *Account {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -240,7 +240,7 @@ func (h *Hub) setLast(id string, req LaunchRequest) {
 	}
 }
 
-// onlineLocked 返回账号当前在线的会话（没下班、也没失联）。
+// onlineLocked returns the account's online session (neither off duty nor lost).
 func (h *Hub) onlineLocked(account string) *Session {
 	for _, s := range h.sessions {
 		if s.Account == account && s.State != StateEnded {
@@ -250,7 +250,7 @@ func (h *Hub) onlineLocked(account string) *Session {
 	return nil
 }
 
-// Online 告诉调用方这个账号现在有没有会话在线。
+// Online reports whether the account has a session online now.
 func (h *Hub) Online(account string) bool {
 	h.mu.Lock()
 	defer h.mu.Unlock()

@@ -4,5 +4,5 @@ package bridge
 
 import "os/exec"
 
-// newConsole 只在 Windows 上有意义；别的平台用 tmux 或图形终端，不会走到 console 后端。
+// newConsole only matters on Windows; other platforms use tmux or a graphical terminal and never reach the console backend.
 func newConsole(*exec.Cmd) {}
