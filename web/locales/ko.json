@@ -45,7 +45,7 @@
   "idle.print": "프린터 옆",
   "idle.front": "안내 데스크 대신 보는 중",
 
-  "search.placeholder": "직원 찾기: 이름 또는 폴더",
+  "search.placeholder": "이름이나 폴더로 찾기",
   "search.title": "이름이나 폴더로 직원을 찾습니다(/ 키로 바로 이동). 하나를 고르면 그 직원을 클릭한 것과 같습니다: 카드가 열리고, 쉬는 중이면 자리로 돌아갑니다",
   "search.none": "찾는 직원이 없습니다",
 
@@ -53,13 +53,13 @@
   "stats.working": "작업 중 {n}",
   "stats.waiting": "대기 중 {n}",
   "stats.offDuty": "퇴근 {n}",
+  "stats.focusTitle": "클릭하면 이 직원들을 강조합니다. 한 번 더 클릭하면 해제합니다",
 
   "log.onDuty": "출근",
   "log.offDuty": "퇴근",
   "log.started": "{name} 님이 출근했습니다 ({where})",
 
   "asks.title": "대기 중({n})",
-  "asks.button": "대기 중 {n}",
   "asks.later": "나중에",
   "asks.question": "질문",
   "asks.permission": "권한 승인",

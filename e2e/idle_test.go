@@ -125,6 +125,22 @@ func TestIdle(t *testing.T) {
 	}
 	screenshot(t, office, "idle-wander.png")
 
+	// the idle chip in the HUD lights up the idle ones and dims alice, who works; a second click lets go
+	do(t, office, 10*time.Second, chromedp.Click(chromedp.CSS(`#stats .chip[data-group=idle]`)))
+	waitUntil(t, 10*time.Second, "the idle chip lights up the idle employees", func() bool {
+		all := tags()
+		for _, n := range idle {
+			if !strings.Contains(all[n].Classes, "match") {
+				return false
+			}
+		}
+		return strings.Contains(all["alice"].Classes, "dim") && strings.Contains(all["gina"].Classes, "dim")
+	}, show)
+	do(t, office, 10*time.Second, chromedp.Click(chromedp.CSS(`#stats .chip[data-group=idle]`)))
+	waitUntil(t, 10*time.Second, "a second click on the chip lights everyone again", func() bool {
+		return !strings.Contains(tags()["alice"].Classes, "dim")
+	}, show)
+
 	// ---------- 3. a click calls bob back: his card opens, he walks to his desk and stays there ----------
 	clickLabel(t, office, b.account("bob").ID)
 	do(t, office, 10*time.Second, chromedp.WaitVisible(chromedp.CSS(`#card`)))

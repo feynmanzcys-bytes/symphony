@@ -45,7 +45,7 @@
   "idle.print": "At the printer",
   "idle.front": "Minding reception",
 
-  "search.placeholder": "Find an employee: name or folder",
+  "search.placeholder": "Find by name or folder",
   "search.title": "Find an employee by name or folder (press / to jump here). Picking one is like clicking it: its card opens, and an idle one goes back to its desk",
   "search.none": "No one matches",
 
@@ -53,13 +53,13 @@
   "stats.working": "Working {n}",
   "stats.waiting": "Pending {n}",
   "stats.offDuty": "Off duty {n}",
+  "stats.focusTitle": "Click to light up these employees; click again to stop",
 
   "log.onDuty": "on duty",
   "log.offDuty": "off duty",
   "log.started": "{name} is at work ({where})",
 
   "asks.title": "Pending ({n})",
-  "asks.button": "Pending {n}",
   "asks.later": "Later",
   "asks.question": "Question",
   "asks.permission": "Permission",

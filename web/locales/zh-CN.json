@@ -45,7 +45,7 @@
   "idle.print": "在打印机旁",
   "idle.front": "替前台值班",
 
-  "search.placeholder": "找员工：名字或目录",
+  "search.placeholder": "按名字或目录找人",
   "search.title": "按名字或目录找员工（按 / 直接跳到这里）。选中一个就等于点它：打开名片，闲着的会回工位",
   "search.none": "没找到",
 
@@ -53,13 +53,13 @@
   "stats.working": "工作中 {n}",
   "stats.waiting": "待处理 {n}",
   "stats.offDuty": "下班 {n}",
+  "stats.focusTitle": "点一下把这些员工标出来，再点一下取消",
 
   "log.onDuty": "上班",
   "log.offDuty": "下班",
   "log.started": "{name} 上班了（{where}）",
 
   "asks.title": "待处理（{n}）",
-  "asks.button": "待处理 {n}",
   "asks.later": "稍后再说",
   "asks.question": "提问",
   "asks.permission": "权限审批",

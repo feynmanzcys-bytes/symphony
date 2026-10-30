@@ -104,7 +104,10 @@ func checkOffice(t *testing.T, b *testBridge, browser context.Context, lang stri
 	}
 	read()
 	screenshot(t, office, "i18n-"+lang+"-asks.png")
-	do(t, office, 10*time.Second, chromedp.Click(chromedp.CSS(`#asks-later`)), chromedp.Click(chromedp.CSS(`#open-msgs`)), chromedp.WaitVisible(chromedp.CSS(`#msgs-panel`)))
+	// "Later" closes the popup; the red pending chip in the HUD opens it again
+	do(t, office, 10*time.Second, chromedp.Click(chromedp.CSS(`#asks-later`)), chromedp.WaitNotVisible(chromedp.CSS(`#asks-modal`)),
+		chromedp.Click(chromedp.CSS(`#stats .chip.hot[data-group=waiting]`)), chromedp.WaitVisible(chromedp.CSS(`#asks-modal`)),
+		chromedp.Click(chromedp.CSS(`#asks-later`)), chromedp.Click(chromedp.CSS(`#open-msgs`)), chromedp.WaitVisible(chromedp.CSS(`#msgs-panel`)))
 	read()
 	do(t, office, 10*time.Second, chromedp.Click(chromedp.CSS(`#msgs-panel .close`)))
 	for _, name := range []string{"bob", "carol"} { // an online card and an offline one

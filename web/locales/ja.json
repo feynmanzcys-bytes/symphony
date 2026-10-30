@@ -45,7 +45,7 @@
   "idle.print": "プリンターのそば",
   "idle.front": "受付を代わりに担当",
 
-  "search.placeholder": "社員を探す：名前またはフォルダ",
+  "search.placeholder": "名前かフォルダで探す",
   "search.title": "名前かフォルダで社員を探します（/ でここに移動）。選ぶとその社員をクリックしたのと同じです：カードが開き、待機中なら席に戻ります",
   "search.none": "見つかりません",
 
@@ -53,13 +53,13 @@
   "stats.working": "作業中 {n}",
   "stats.waiting": "対応待ち {n}",
   "stats.offDuty": "退勤 {n}",
+  "stats.focusTitle": "クリックでこの社員たちを目立たせます。もう一度クリックで解除",
 
   "log.onDuty": "出勤",
   "log.offDuty": "退勤",
   "log.started": "{name} が出勤しました（{where}）",
 
   "asks.title": "対応待ち（{n}）",
-  "asks.button": "対応待ち {n}",
   "asks.later": "あとで",
   "asks.question": "質問",
   "asks.permission": "権限の承認",

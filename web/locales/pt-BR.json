@@ -45,7 +45,7 @@
   "idle.print": "Na impressora",
   "idle.front": "Cuidando da recepção",
 
-  "search.placeholder": "Encontrar funcionário: nome ou pasta",
+  "search.placeholder": "Buscar por nome ou pasta",
   "search.title": "Encontre um funcionário pelo nome ou pela pasta (tecle / para vir aqui). Escolher um é como clicar nele: o cartão abre e, se estiver livre, ele volta para a mesa",
   "search.none": "Ninguém encontrado",
 
@@ -53,13 +53,13 @@
   "stats.working": "Trabalhando {n}",
   "stats.waiting": "Pendente {n}",
   "stats.offDuty": "Fora do expediente {n}",
+  "stats.focusTitle": "Clique para destacar esses funcionários; clique de novo para desfazer",
 
   "log.onDuty": "trabalhando",
   "log.offDuty": "fora do expediente",
   "log.started": "{name} chegou ao trabalho ({where})",
 
   "asks.title": "Pendentes ({n})",
-  "asks.button": "Pendentes {n}",
   "asks.later": "Mais tarde",
   "asks.question": "Pergunta",
   "asks.permission": "Permissão",

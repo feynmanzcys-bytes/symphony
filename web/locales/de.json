@@ -45,7 +45,7 @@
   "idle.print": "Am Drucker",
   "idle.front": "Vertritt den Empfang",
 
-  "search.placeholder": "Mitarbeiter suchen: Name oder Ordner",
+  "search.placeholder": "Name oder Ordner suchen",
   "search.title": "Mitarbeiter nach Name oder Ordner suchen (mit / springst du hierher). Einen auszuwählen ist wie ein Klick auf ihn: Seine Karte öffnet sich, und wenn er frei ist, geht er an seinen Platz zurück",
   "search.none": "Niemand gefunden",
 
@@ -53,13 +53,13 @@
   "stats.working": "Arbeitet {n}",
   "stats.waiting": "Offen {n}",
   "stats.offDuty": "Feierabend {n}",
+  "stats.focusTitle": "Klicken, um diese Mitarbeiter hervorzuheben; ein zweiter Klick hebt es auf",
 
   "log.onDuty": "im Dienst",
   "log.offDuty": "Feierabend",
   "log.started": "{name} ist im Dienst ({where})",
 
   "asks.title": "Offene Punkte ({n})",
-  "asks.button": "Offen {n}",
   "asks.later": "Später",
   "asks.question": "Frage",
   "asks.permission": "Berechtigungsanfrage",

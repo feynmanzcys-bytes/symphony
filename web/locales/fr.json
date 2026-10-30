@@ -45,7 +45,7 @@
   "idle.print": "À l’imprimante",
   "idle.front": "Tient l’accueil",
 
-  "search.placeholder": "Chercher un employé : nom ou dossier",
+  "search.placeholder": "Chercher : nom ou dossier",
   "search.title": "Cherchez un employé par nom ou par dossier (touche / pour venir ici). En choisir un revient à cliquer dessus : sa fiche s’ouvre et, s’il est disponible, il retourne à son poste",
   "search.none": "Personne ne correspond",
 
@@ -53,13 +53,13 @@
   "stats.working": "Occupé {n}",
   "stats.waiting": "En attente {n}",
   "stats.offDuty": "Hors service {n}",
+  "stats.focusTitle": "Cliquez pour faire ressortir ces employés ; recliquez pour arrêter",
 
   "log.onDuty": "au travail",
   "log.offDuty": "hors service",
   "log.started": "{name} est au travail ({where})",
 
   "asks.title": "En attente ({n})",
-  "asks.button": "En attente {n}",
   "asks.later": "Plus tard",
   "asks.question": "Question",
   "asks.permission": "Autorisation",
