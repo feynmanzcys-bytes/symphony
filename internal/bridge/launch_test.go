@@ -364,8 +364,13 @@ func TestModStatus(t *testing.T) {
 		{"installed but disabled", `[{"id":"symphony-bridge@symphony","scope":"user","enabled":false}]`, nil, false, "mod_disabled", "claude plugin enable symphony-bridge@symphony", nil},
 		{"installed for one project only", `[{"id":"symphony-bridge@symphony","scope":"project","enabled":true}]`, nil, false, "mod_project_scope", github, map[string]string{"scope": "project"}},
 		{"installed (any marketplace counts)", `[{"id":"symphony-bridge@fork","version":"0.3.0","scope":"user","enabled":true}]`, nil, true, "", "", nil},
+		// read from a folder marketplace: sessions load the folder's version, not the one recorded at install
+		{"installed from a folder that moved on", `[{"id":"symphony-bridge@symphony","version":"0.2.0","folderVersion":"0.3.0","readFromFolder":"/src/symphony/mods/symphony-bridge","scope":"user","enabled":true}]`, nil, true, "", "", nil},
 	} {
 		m := (&Launcher{ListPlugins: (&fakePlugins{out: tc.out, err: tc.err}).list}).Mod(ctx)
+		if tc.ok && m.Version != "0.3.0" {
+			t.Errorf("%s: version %q, want 0.3.0", tc.name, m.Version)
+		}
 		// a problem keeps an English text for logs and API callers
 		if m.OK != tc.ok || m.Code != tc.code || m.Fix != tc.fix || (m.Error == "") != tc.ok {
 			t.Errorf("%s: %+v", tc.name, m)

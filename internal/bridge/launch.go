@@ -151,9 +151,12 @@ func (l *Launcher) checkMod(ctx context.Context) ModStatus {
 	}
 	var plugins []struct {
 		ID      string `json:"id"`
-		Version string `json:"version"`
-		Scope   string `json:"scope"`
-		Enabled bool   `json:"enabled"`
+		Version string `json:"version"` // the version recorded at install time
+		// FolderVersion is set when the plugin is read straight from a folder marketplace: the version
+		// sessions actually load, which moves on with the folder (git pull) while Version stays put
+		FolderVersion string `json:"folderVersion"`
+		Scope         string `json:"scope"`
+		Enabled       bool   `json:"enabled"`
 	}
 	out, err := list(ctx)
 	if ee := (*exec.ExitError)(nil); errors.As(err, &ee) && len(ee.Stderr) > 0 {
@@ -179,7 +182,11 @@ func (l *Launcher) checkMod(ctx context.Context) ModStatus {
 		case !p.Enabled:
 			st = modProblem(newError("mod_disabled", "the mod is installed but disabled"), "claude plugin enable "+p.ID)
 		default:
-			return ModStatus{OK: true, ID: p.ID, Version: p.Version}
+			version := p.Version
+			if p.FolderVersion != "" {
+				version = p.FolderVersion
+			}
+			return ModStatus{OK: true, ID: p.ID, Version: version}
 		}
 	}
 	return st
