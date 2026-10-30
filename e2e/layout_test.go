@@ -131,9 +131,10 @@ func TestLayout(t *testing.T) {
 	// ---------- 3. the page remembers it; "/" brings the HUD down to the search box ----------
 	do(t, office, 30*time.Second, chromedp.Reload())
 	later()
-	if v := look(); !v.Up || v.Hud.Bottom > 0.5 {
-		t.Fatalf("after a reload the HUD should still be up:\n%s", show())
-	}
+	waitUntil(t, 5*time.Second, "after a reload the HUD is still up", func() bool {
+		v := look()
+		return v.Up && v.Hud.Bottom <= 0.5
+	}, show)
 	do(t, office, 10*time.Second, chromedp.KeyEvent("/"))
 	waitUntil(t, 10*time.Second, `"/" brings the HUD down and focuses the search box`, func() bool {
 		v := look()

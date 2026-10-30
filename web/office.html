@@ -2080,7 +2080,11 @@ pixelsEl.querySelectorAll('button').forEach((b, i) => { // each a finer grid
   })
 })
 document.querySelector('#hud .prefs').prepend(pixelsEl)
-requestAnimationFrame(() => hud.classList.add('anim')) // it slides from now on, not when the page opens
+// It slides from now on, not when the page opens: the remembered position takes effect here, before the slide is
+// turned on. Without this, a browser that hadn't worked out the HUD's style yet would do so only in the next frame,
+// after the slide is on, and slide it up as the page opens.
+hud.getBoundingClientRect()
+requestAnimationFrame(() => hud.classList.add('anim'))
 const addBtn = document.createElement('button')
 addBtn.className = 'seat-add'
 addBtn.textContent = '+'
