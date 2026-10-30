@@ -12,6 +12,8 @@
   #hud h1 { margin:0; font-size:14px; font-weight:700; }
   #hud .stats { margin-top:2px; color:#c9c4ba; }
   #hud .btns { margin-top:6px; display:flex; gap:6px; flex-wrap:wrap; }
+  #hud .note { margin-top:6px; max-width:420px; color:#f0c674; line-height:1.5; }
+  #hud .note code { display:block; margin-top:2px; padding:2px 6px; background:#1f1e1c; color:#fffdf7; user-select:all; word-break:break-all; }
   #log { position:fixed; left:16px; bottom:12px; z-index:3; font:12px/1.6 ui-monospace, monospace; color:#a9a49b; max-width:min(560px, calc(100vw - 32px)); pointer-events:none; }
   #log div { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .dot { display:inline-block; width:8px; height:8px; margin-right:4px; vertical-align:0; }
@@ -103,6 +105,7 @@
     <button class="px" id="open-msgs">消息记录</button>
     <button class="px" id="new-emp" hidden>+ 新员工</button>
   </div>
+  <div class="note" id="launch-note" hidden></div>
 </div>
 <div id="log"></div>
 
@@ -888,6 +891,13 @@ let launchAccount = null // 让哪个已有员工上班；null 表示新员工
 async function loadLaunchOptions() {
   try { launchOpts = await (await fetch('/api/launch/options')).json() } catch { launchOpts = null }
   document.getElementById('new-emp').hidden = !launchOpts?.enabled
+  // 开不了就把原因摆出来；缺 mod 的话给出装的命令，装好刷新页面就行
+  const note = document.getElementById('launch-note')
+  note.hidden = !launchOpts || launchOpts.enabled
+  if (!note.hidden) {
+    const fix = launchOpts.mod?.fix
+    note.innerHTML = `页面启动会话没开：${esc(launchOpts.reason)}` + (fix ? `。装好后刷新页面：<code>${esc(fix)}</code>` : '')
+  }
   layout()
 }
 
@@ -898,7 +908,7 @@ const fill = (select, options, value) => {
 
 async function openLaunch(accountId) {
   await loadLaunchOptions()
-  if (!launchOpts?.enabled) return alert('这个 bridge 没开页面启动（缺 tmux、claude 或 mod 目录）')
+  if (!launchOpts?.enabled) return alert(launchOpts?.reason || '连不上 bridge')
   const acc = accountId ? snapshot.accounts.find(a => a.id === accountId) : null
   launchAccount = acc ? acc.id : null
   const last = acc?.last || {}
@@ -938,7 +948,7 @@ function request() {
   return r
 }
 
-// 命令预览：和 bridge 实际拼的参数一致（另外它会带上 --plugin-dir 和环境变量）
+// 命令预览：和 bridge 实际拼的参数一致（另外它会带上环境变量；开发模式还有 --plugin-dir）
 function preview() {
   const r = request()
   const q = s => /^[\w\-./=:@]+$/.test(s) ? s : `'${s.replace(/'/g, `'\\''`)}'`
@@ -947,7 +957,8 @@ function preview() {
   if (r.effort) args.push('--effort', r.effort)
   if (r.permissionMode) args.push('--permission-mode', r.permissionMode)
   if (r.resume === 'continue') args.push('--continue')
-  form.querySelector('.preview').textContent = `cd ${q(r.dir || '?')}\n${args.join(' ')}\n# 示意：另外带上 --plugin-dir、这个员工的 token 和 bridge 地址，开一个终端来跑`
+  const dev = launchOpts?.mod?.dev ? ' --plugin-dir（开发模式）、' : ''
+  form.querySelector('.preview').textContent = `cd ${q(r.dir || '?')}\n${args.join(' ')}\n# 示意：另外带上${dev}这个员工的 token 和 bridge 地址，开一个终端来跑`
 }
 
 async function browse(path) {

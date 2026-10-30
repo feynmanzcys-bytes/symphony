@@ -5,12 +5,14 @@ package e2e
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -23,15 +25,18 @@ import (
 // ---------- bridge ----------
 
 type testBridge struct {
-	URL string
-	Hub *bridge.Hub
+	URL      string
+	Hub      *bridge.Hub
+	Launcher *bridge.Launcher
+	// anon 数没带 token 打到 mod 接口上的请求：没带 SYMPHONY_TOKEN 的会话一个都不该发
+	anon atomic.Int64
 
 	mu     sync.Mutex
 	events []bridge.Event
 }
 
 // startBridge 起一个进程内 bridge（随机端口、临时数据目录、能从页面启动会话），
-// 并记下推送出来的每条事件，方便断言。
+// 并记下推送出来的每条事件，方便断言。mod 为空时会话用 Claude Code 里装好的 mod，否则用 --plugin-dir 带上它。
 func startBridge(t *testing.T, mod string) *testBridge {
 	t.Helper()
 	hub := bridge.NewHub()
@@ -39,13 +44,19 @@ func startBridge(t *testing.T, mod string) *testBridge {
 		t.Fatal(err)
 	}
 	srv := bridge.NewServer(hub, web.FS)
-	ts := httptest.NewUnstartedServer(srv)
-	url := "http://" + ts.Listener.Addr().String()
+	b := &testBridge{Hub: hub}
+	ts := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if isModAPI(r.URL.Path) && r.Header.Get("Authorization") == "" {
+			b.anon.Add(1)
+		}
+		srv.ServeHTTP(w, r)
+	}))
+	b.URL = "http://" + ts.Listener.Addr().String()
 	// e2e 要用 tmux 盯终端、替人点“信任”，所以不管什么平台都固定用 tmux
-	srv.SetLauncher(bridge.NewLauncher("claude", mod, url, bridge.NewTmux()))
+	b.Launcher = bridge.NewLauncher("claude", mod, b.URL, bridge.NewTmux())
+	srv.SetLauncher(b.Launcher)
 	ts.Start()
 	t.Cleanup(ts.Close)
-	b := &testBridge{URL: url, Hub: hub}
 	ch, stop := hub.Subscribe()
 	t.Cleanup(stop)
 	go func() {
@@ -58,6 +69,10 @@ func startBridge(t *testing.T, mod string) *testBridge {
 		}
 	}()
 	return b
+}
+
+func isModAPI(path string) bool {
+	return path == "/api/event" || path == "/api/ask" || strings.HasPrefix(path, "/api/wait/") || strings.HasPrefix(path, "/api/cancel/")
 }
 
 func (b *testBridge) hasEvent(match func(bridge.Event) bool) bool {

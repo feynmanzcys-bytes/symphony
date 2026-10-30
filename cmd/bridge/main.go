@@ -2,6 +2,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"io/fs"
 	"log"
@@ -21,7 +22,7 @@ func main() {
 	addr := flag.String("addr", "127.0.0.1:7788", "监听地址")
 	dataDir := flag.String("data", defaultDataDir(), "数据目录：账号（accounts.json，含 token）和消息记录（messages.json）")
 	webDir := flag.String("web", "", "开发用：直接读这个目录下的页面，改了刷新就生效；不给就用编译进来的")
-	modDir := flag.String("mod", "mods/symphony-bridge", "mod 目录，页面启动会话时用 --plugin-dir 带上")
+	modDir := flag.String("mod", "", "开发用：mod 目录。给了就用 --plugin-dir 带上它（盖过已安装的版本）；不给就用 Claude Code 里装好的 mod")
 	claude := flag.String("claude", "claude", "claude 可执行文件")
 	terminal := flag.String("terminal", "auto", "页面启动会话用什么终端：auto（Linux 有 tmux 用 tmux，其余弹窗口）| tmux | window")
 	flag.Parse()
@@ -70,15 +71,19 @@ func defaultDataDir() string {
 	return ".symphony"
 }
 
-// launcher 准备页面启动会话要用的东西；缺 claude、mod 目录或能用的终端就不开这个功能。
+// launcher 准备页面启动会话要用的东西；缺 claude 或能用的终端就不开这个功能。
+// mod 没装不关：页面上会提示怎么装，装好刷新就能用。
 func launcher(modDir, claude, terminal, bridgeURL string) *bridge.Launcher {
-	abs, err := filepath.Abs(modDir)
-	if err == nil {
-		_, err = os.Stat(filepath.Join(abs, ".claude-plugin", "plugin.json"))
-	}
-	if err != nil {
-		log.Printf("页面启动会话关闭：找不到 mod（-mod %s）", modDir)
-		return nil
+	var abs string
+	if modDir != "" {
+		var err error
+		if abs, err = filepath.Abs(modDir); err == nil {
+			_, err = os.Stat(filepath.Join(abs, ".claude-plugin", "plugin.json"))
+		}
+		if err != nil {
+			log.Printf("页面启动会话关闭：-mod %s 不是 mod 目录", modDir)
+			return nil
+		}
 	}
 	claudePath, err := exec.LookPath(claude)
 	if err != nil {
@@ -91,5 +96,22 @@ func launcher(modDir, claude, terminal, bridgeURL string) *bridge.Launcher {
 		return nil
 	}
 	log.Printf("页面启动会话：用 %s 开终端", term.Name())
-	return bridge.NewLauncher(claudePath, abs, bridgeURL, term)
+	l := bridge.NewLauncher(claudePath, abs, bridgeURL, term)
+	// 在仓库里跑的话，提示装 mod 时用本地仓库当插件市场
+	if wd, err := os.Getwd(); err == nil {
+		if _, err := os.Stat(filepath.Join(wd, ".claude-plugin", "marketplace.json")); err == nil {
+			l.Market = wd
+		}
+	}
+	switch m := l.Mod(context.Background()); {
+	case m.Dev:
+		log.Printf("mod：开发模式，会话用 --plugin-dir %s", abs)
+	case m.OK:
+		log.Printf("mod：已安装 %s %s", m.ID, m.Version)
+	case m.Fix != "":
+		log.Printf("mod：%s。页面启动会话要先装好：%s（装好不用重启 bridge）", m.Error, m.Fix)
+	default:
+		log.Printf("mod：%s", m.Error)
+	}
+	return l
 }

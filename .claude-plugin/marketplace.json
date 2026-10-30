@@ -1,0 +1,12 @@
+{
+  "name": "symphony",
+  "owner": { "name": "feynmanzcys-bytes", "url": "https://github.com/feynmanzcys-bytes" },
+  "description": "symphony 会话军团用的 Claude Code mod",
+  "plugins": [
+    {
+      "name": "symphony-bridge",
+      "source": "./mods/symphony-bridge",
+      "description": "权限审批和 AskUserQuestion 转到 symphony 办公室网页上处理，并上报会话状态"
+    }
+  ]
+}

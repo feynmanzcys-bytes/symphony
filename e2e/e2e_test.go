@@ -1,14 +1,17 @@
 //go:build e2e
 
-// 端到端验收：在 tmux 里起三个真的 Claude Code 会话，带 mod 连进程内 bridge，
-// 用无头 chromium 在审批台上点按钮，在办公室页面上检查渲染。会花真实 token，要显式打开：
+// 端到端验收：在 tmux 里起几个真的 Claude Code 会话，带 mod 连进程内 bridge，
+// 用无头 chromium 在办公室页面的弹窗里点按钮、检查渲染。会花真实 token，要显式打开：
 //
 //	SYMPHONY_E2E=1 go test -tags e2e -v -count=1 -timeout 20m ./e2e/
 //
 // 可选：SYMPHONY_E2E_MODEL（默认 sonnet）。截图留在 e2e/artifacts/。
+// mod 默认用本仓库里的（--plugin-dir，测的是手上这份代码）；
+// SYMPHONY_E2E_MOD=installed 时改用 Claude Code 里正式装好的 mod，会话不带 --plugin-dir。
 package e2e
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -79,6 +82,10 @@ func TestLegion(t *testing.T) {
 	}
 	repo, _ := filepath.Abs("..")
 	mod := filepath.Join(repo, "mods", "symphony-bridge")
+	installed := os.Getenv("SYMPHONY_E2E_MOD") == "installed"
+	if installed {
+		mod = ""
+	}
 	stamp := time.Now().Format("150405")
 	// 名字带上时间，免得和本机其它同名会话撞上（SendMessage 按名字找人）
 	nameA := "xiaowang-" + stamp // 用 --name 起名
@@ -87,15 +94,26 @@ func TestLegion(t *testing.T) {
 
 	b := startBridge(t, mod)
 	t.Logf("bridge: %s", b.URL)
+	if installed {
+		m := b.Launcher.Mod(context.Background())
+		if !m.OK {
+			t.Skipf("SYMPHONY_E2E_MOD=installed 要先装好 mod：%s %s", m.Error, m.Fix)
+		}
+		t.Logf("用装好的 mod：%s %s", m.ID, m.Version)
+	}
 	accA, err := b.Hub.CreateAccount(nameA)
 	if err != nil {
 		t.Fatal(err)
 	}
 	accB, _ := b.Hub.CreateAccount(nameB)
 
-	dirA, dirB, dirC := workDir(t, "a"), workDir(t, "b"), workDir(t, "c")
+	dirA, dirB, dirC, dirE := workDir(t, "a"), workDir(t, "b"), workDir(t, "c"), workDir(t, "e")
 	claudeArgs := func(extra ...string) []string {
-		return append([]string{"--model", model, "--permission-mode", "manual", "--plugin-dir", mod}, extra...)
+		args := []string{"--model", model, "--permission-mode", "manual"}
+		if mod != "" {
+			args = append(args, "--plugin-dir", mod)
+		}
+		return append(args, extra...)
 	}
 	env := func(token string) map[string]string {
 		return map[string]string{"SYMPHONY_BRIDGE": b.URL, "SYMPHONY_TOKEN": token}
@@ -128,6 +146,9 @@ func TestLegion(t *testing.T) {
 	if n := len(b.Hub.Snapshot().Sessions); n != 2 {
 		t.Fatalf("同一账号的第二个会话不该进来，现在 %d 个会话", n)
 	}
+	// E 没带 SYMPHONY_TOKEN：不是军团的会话，mod 在它那儿应该什么都不做
+	paneE := startClaude(t, "sym-e2e-"+stamp+"-e", dirE, map[string]string{"SYMPHONY_BRIDGE": b.URL}, claudeArgs("--name", "outsider-"+stamp)...)
+	dumpAll = func() string { return dumpAB() + "\n" + paneC.dump() + "\n" + paneE.dump() }
 
 	// ---------- 2. 办公室页面 ----------
 	browser := newBrowser(t)
@@ -159,6 +180,7 @@ func TestLegion(t *testing.T) {
 	paneA.say(`请先用 AskUserQuestion 工具问我一个问题："你喜欢哪个颜色？"，选项只有"红"和"蓝"两个。拿到回答后，用 Bash 执行 echo <我选的颜色> > answer.txt ，只执行这一条，然后告诉我结果。`)
 	paneB.say(`用 Bash 执行 touch denied.txt ，只执行这一条，被拒绝也不要换别的办法。`)
 	paneC.say(`用 Bash 执行 touch fallback.txt ，只执行这一条。`)
+	paneE.say(`用 Bash 执行 touch outsider.txt ，只执行这一条。`)
 
 	// ---------- 4. 在办公室的弹窗里处理 ----------
 	handled := map[string]bool{}
@@ -219,6 +241,23 @@ func TestLegion(t *testing.T) {
 	paneC.kill()
 	if exists(filepath.Join(dirC, "fallback.txt")) {
 		t.Fatal("C 的命令没人批，fallback.txt 不应存在")
+	}
+	waitUntil(t, 2*time.Minute, "E（没带 token）用终端原生审批框", func() bool {
+		return strings.Contains(paneE.capture(), "Do you want to proceed?")
+	}, paneE.dump)
+	screenE := paneE.capture()
+	paneE.key("Escape")
+	paneE.kill()
+	if n := b.anon.Load(); n != 0 {
+		t.Fatalf("没带 token 的会话不该连 bridge，收到 %d 个请求", n)
+	}
+	if strings.Contains(screenE, "symphony:") {
+		t.Fatalf("没带 token 的会话不该看到 symphony 的提示:\n%s", screenE)
+	}
+	for _, s := range b.Hub.Snapshot().Sessions {
+		if strings.HasPrefix(s.Title, "outsider-") {
+			t.Fatalf("没带 token 的会话不该进办公室: %+v", s)
+		}
 	}
 	for _, p := range []*pane{paneA, paneB} {
 		if strings.Contains(p.capture(), "Do you want to proceed?") {

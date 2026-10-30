@@ -1,6 +1,7 @@
 package bridge
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -228,6 +229,117 @@ func TestLaunchDisabled(t *testing.T) {
 	}
 	if st := c.status("POST", "/api/launch", LaunchRequest{Name: "a", Dir: t.TempDir()}); st != http.StatusNotImplemented {
 		t.Fatalf("应 501，得到 %d", st)
+	}
+}
+
+// fakePlugins 冒充 `claude plugin list --json`。
+type fakePlugins struct {
+	mu    sync.Mutex
+	out   string
+	err   error
+	calls int
+}
+
+func (f *fakePlugins) list(context.Context) ([]byte, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls++
+	return []byte(f.out), f.err
+}
+
+func (f *fakePlugins) set(out string) { f.mu.Lock(); f.out = out; f.mu.Unlock() }
+
+const installedMod = `[{"id":"cowork@synced","version":"1.0.0","scope":"synced","enabled":true},
+	{"id":"symphony-bridge@symphony","version":"0.2.0","scope":"user","enabled":true}]`
+
+func TestLaunchUsesInstalledMod(t *testing.T) {
+	srv := NewServer(NewHub(), testWeb)
+	tmux := &fakeTmux{}
+	plugins := &fakePlugins{out: `[]`}
+	srv.SetLauncher(&Launcher{Claude: "claude", Market: "/src/symphony", BridgeURL: "http://127.0.0.1:7788",
+		Term: &tmuxTerminal{run: tmux.run}, OnlineTimeout: 3 * time.Second, ListPlugins: plugins.list})
+	ts := httptest.NewServer(srv)
+	t.Cleanup(ts.Close)
+	c := client{t: t, base: ts.URL}
+	dir := t.TempDir()
+
+	// 没装：页面启动关着，告诉人怎么装；硬要启动也不行，不建账号、不起会话
+	opts := c.ok("GET", "/api/launch/options", nil)
+	mod, _ := opts["mod"].(map[string]any)
+	if opts["enabled"] != false || !strings.Contains(opts["reason"].(string), "还没装") ||
+		mod["fix"] != "claude plugin install symphony-bridge --marketplace /src/symphony" {
+		t.Fatalf("没装 mod 时应关掉页面启动，并给出装的命令: %v", opts)
+	}
+	if st := c.status("POST", "/api/launch", LaunchRequest{Name: "a", Dir: dir}); st != http.StatusPreconditionFailed {
+		t.Fatalf("没装 mod 时启动应 412，得到 %d", st)
+	}
+	if len(srv.Hub.Snapshot().Accounts) != 0 || tmux.last("new-session") != nil {
+		t.Fatal("没装 mod 时不该建账号，也不该起会话")
+	}
+
+	// 装好以后不用重启 bridge；会话不带 --plugin-dir，靠装好的 mod
+	plugins.set(installedMod)
+	opts = c.ok("GET", "/api/launch/options", nil)
+	if mod := opts["mod"].(map[string]any); opts["enabled"] != true || opts["reason"] != "" ||
+		mod["id"] != "symphony-bridge@symphony" || mod["version"] != "0.2.0" {
+		t.Fatalf("装好后应能启动: %v", opts)
+	}
+	res := c.ok("POST", "/api/launch", LaunchRequest{Name: "a", Dir: dir})
+	argv := tmux.last("new-session")
+	if cmd, want := argv[slices.Index(argv, "--")+1:], []string{"claude", "--name", "a"}; !slices.Equal(cmd, want) {
+		t.Fatalf("claude 参数不对:\n got %v\nwant %v", cmd, want)
+	}
+	if strings.Contains(res["command"].(string), "--plugin-dir") {
+		t.Fatalf("用装好的 mod 时不该带 --plugin-dir: %v", res["command"])
+	}
+}
+
+func TestModStatus(t *testing.T) {
+	ctx := context.Background()
+	github := "claude plugin install symphony-bridge --marketplace feynmanzcys-bytes/symphony"
+	for _, tc := range []struct {
+		name, out    string
+		err          error
+		ok           bool
+		errText, fix string
+	}{
+		{"claude 跑不了", "", errors.New("boom"), false, "查不了", ""},
+		{"输出不是 JSON", "oops", nil, false, "查不了", ""},
+		{"没装", `[{"id":"other@x","scope":"user","enabled":true}]`, nil, false, "还没装", github},
+		{"装了没启用", `[{"id":"symphony-bridge@symphony","scope":"user","enabled":false}]`, nil, false, "没启用", "claude plugin enable symphony-bridge@symphony"},
+		{"只装在项目里", `[{"id":"symphony-bridge@symphony","scope":"project","enabled":true}]`, nil, false, "用户级别", github},
+		{"装好了（别的市场也认）", `[{"id":"symphony-bridge@fork","version":"0.3.0","scope":"user","enabled":true}]`, nil, true, "", ""},
+	} {
+		m := (&Launcher{ListPlugins: (&fakePlugins{out: tc.out, err: tc.err}).list}).Mod(ctx)
+		if m.OK != tc.ok || !strings.Contains(m.Error, tc.errText) || m.Fix != tc.fix {
+			t.Errorf("%s: %+v", tc.name, m)
+		}
+	}
+
+	// 本地仓库的路径带空格时加引号
+	l := &Launcher{Market: "/My Code/symphony", ListPlugins: (&fakePlugins{out: `[]`}).list}
+	if fix := l.Mod(ctx).Fix; fix != `claude plugin install symphony-bridge --marketplace "/My Code/symphony"` {
+		t.Fatalf("安装命令不对: %s", fix)
+	}
+
+	// 开发模式（-mod）不查安装
+	f := &fakePlugins{err: errors.New("不该查")}
+	if m := (&Launcher{ModDir: "/mods/sb", ListPlugins: f.list}).Mod(ctx); !m.OK || !m.Dev || f.calls != 0 {
+		t.Fatalf("开发模式应直接可用: %+v（查了 %d 次）", m, f.calls)
+	}
+
+	// 没装好的每次都重新查（装完刷新就行）；装好了的记一会儿
+	f = &fakePlugins{out: `[]`}
+	l = &Launcher{ListPlugins: f.list}
+	l.Mod(ctx)
+	l.Mod(ctx)
+	f.set(installedMod)
+	if !l.Mod(ctx).OK {
+		t.Fatal("装好后应马上认出来")
+	}
+	l.Mod(ctx)
+	if f.calls != 3 {
+		t.Fatalf("应查 3 次，实际 %d 次", f.calls)
 	}
 }
 

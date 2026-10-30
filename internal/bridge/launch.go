@@ -1,14 +1,24 @@
 package bridge
 
 import (
+	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
+)
+
+// ModName 是 mod 在 Claude Code 里的插件名；GitHubMarket 是放着插件市场（.claude-plugin/marketplace.json）的仓库。
+const (
+	ModName      = "symphony-bridge"
+	GitHubMarket = "feynmanzcys-bytes/symphony"
 )
 
 // 启动框里的下拉选项。空字符串表示不传这个参数，跟随 Claude Code 自己的设置。
@@ -63,25 +73,121 @@ type Launch struct {
 }
 
 // Launcher 在一个交互终端里拉起 Claude Code（终端怎么开看平台，见 Terminal），
-// 并带上 mod 和 bridge 的环境变量。
+// 并带上 bridge 的环境变量。mod 平时用 Claude Code 里正式安装的那份（claude plugin install）。
 type Launcher struct {
-	Claude    string // claude 可执行文件
-	ModDir    string // mods/symphony-bridge 的绝对路径
+	Claude string // claude 可执行文件
+	// ModDir 是开发用的 mod 目录：给了就用 --plugin-dir 带上它，盖过已安装的同名插件，也不再检查装没装。
+	ModDir string
+	// Market 是本地的插件市场（仓库根目录）。提示怎么装 mod 时优先用它，mod 和 bridge 就是同一份代码；没有就用 GitHub 上的。
+	Market    string
 	BridgeURL string // 会话回连 bridge 的地址
 	Term      Terminal
 	// OnlineTimeout 是等会话上线的时间
 	OnlineTimeout time.Duration
+	// ListPlugins 跑 `claude plugin list --json`，测试里换成假的
+	ListPlugins func(ctx context.Context) ([]byte, error)
+
+	modMu sync.Mutex
+	mod   ModStatus
+	modAt time.Time
 }
 
 func NewLauncher(claude, modDir, bridgeURL string, term Terminal) *Launcher {
 	return &Launcher{Claude: claude, ModDir: modDir, BridgeURL: bridgeURL, Term: term, OnlineTimeout: 90 * time.Second}
 }
 
+// ModStatus 说的是起出来的会话能不能带上 mod；不能的话页面照着 Error 和 Fix 提示人。
+type ModStatus struct {
+	OK      bool   `json:"ok"`
+	Dev     bool   `json:"dev,omitempty"`     // 开发模式：用 -mod 给的目录
+	ID      string `json:"id,omitempty"`      // 装好的插件，比如 symphony-bridge@symphony
+	Version string `json:"version,omitempty"` // 装好的版本
+	Error   string `json:"error,omitempty"`
+	Fix     string `json:"fix,omitempty"` // 照着跑就能修好的命令
+}
+
+// Mod 看 mod 装好没有。装好了的结果记一分钟；没装好就每次重新看，装完刷新页面就行，不用重启 bridge。
+func (l *Launcher) Mod(ctx context.Context) ModStatus {
+	if l.ModDir != "" {
+		return ModStatus{OK: true, Dev: true}
+	}
+	l.modMu.Lock()
+	defer l.modMu.Unlock()
+	if l.mod.OK && time.Since(l.modAt) < time.Minute {
+		return l.mod
+	}
+	l.mod, l.modAt = l.checkMod(ctx), time.Now()
+	return l.mod
+}
+
+func (l *Launcher) checkMod(ctx context.Context) ModStatus {
+	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	list := l.ListPlugins
+	if list == nil {
+		list = func(ctx context.Context) ([]byte, error) {
+			return exec.CommandContext(ctx, l.Claude, "plugin", "list", "--json").Output()
+		}
+	}
+	var plugins []struct {
+		ID      string `json:"id"`
+		Version string `json:"version"`
+		Scope   string `json:"scope"`
+		Enabled bool   `json:"enabled"`
+	}
+	out, err := list(ctx)
+	if ee := (*exec.ExitError)(nil); errors.As(err, &ee) && len(ee.Stderr) > 0 {
+		err = fmt.Errorf("%w：%s", err, lastLines(string(ee.Stderr), 2))
+	}
+	if err == nil {
+		err = json.Unmarshal(out, &plugins)
+	}
+	if err != nil {
+		return ModStatus{Error: "查不了 mod 装没装（claude plugin list --json）：" + err.Error()}
+	}
+	st := ModStatus{Error: "还没装 " + ModName + " mod", Fix: l.installCommand()}
+	for _, p := range plugins {
+		if !strings.HasPrefix(p.ID, ModName+"@") {
+			continue
+		}
+		switch {
+		case p.Scope == "project" || p.Scope == "local":
+			// 只在某个项目里生效，别的目录起的会话带不上
+			st = ModStatus{Error: "mod 只装在了某个项目里（" + p.Scope + "），要装在用户级别", Fix: l.installCommand()}
+		case !p.Enabled:
+			st = ModStatus{Error: "mod 装了但没启用", Fix: "claude plugin enable " + p.ID}
+		default:
+			return ModStatus{OK: true, ID: p.ID, Version: p.Version}
+		}
+	}
+	return st
+}
+
+func (l *Launcher) installCommand() string {
+	market := GitHubMarket
+	if l.Market != "" {
+		market = quoteArg(l.Market)
+	}
+	return "claude plugin install " + ModName + " --marketplace " + market
+}
+
+// quoteArg 给人照抄的命令里的一个参数：带空格之类的就加双引号（各家 shell 都认）。
+func quoteArg(s string) string {
+	if s != "" && !strings.ContainsAny(s, " \t\"'$`&|;<>()*?!#~") {
+		return s
+	}
+	return `"` + strings.ReplaceAll(s, `"`, `\"`) + `"`
+}
+
 var errBadLaunch = errors.New("启动参数不对")
 
 // argv 拼出 claude 的参数（不经过 shell）。
 func (l *Launcher) argv(req LaunchRequest) []string {
-	args := []string{l.Claude, "--plugin-dir", l.ModDir, "--name", req.Name}
+	args := []string{l.Claude}
+	if l.ModDir != "" {
+		args = append(args, "--plugin-dir", l.ModDir)
+	}
+	args = append(args, "--name", req.Name)
 	if req.Model != "" {
 		args = append(args, "--model", req.Model)
 	}

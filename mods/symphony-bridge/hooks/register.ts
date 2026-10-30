@@ -1,9 +1,11 @@
 import type { EngineInterface, Register } from 'claude-code'
 
 // 环境变量：
-//   SYMPHONY_BRIDGE   bridge 地址，默认本机 7788
 //   SYMPHONY_TOKEN    军团账号的 token：一个账号同时只给一个会话用，决定身份和座位
+//   SYMPHONY_BRIDGE   bridge 地址，默认本机 7788
 //   SYMPHONY_LAUNCH   从页面启动时 bridge 设的启动编号
+// mod 一般装在用户级别，每个 Claude Code 会话都会加载它，但只有带着 SYMPHONY_TOKEN 起的会话才归军团管；
+// 别的会话里它什么都不做：不连 bridge、不读登录信息、不弹提示、不碰审批。
 // bridge 不通、不认 token 或账号已被占用时，一律退回 Claude Code 自己的终端交互，不会卡死会话。
 const DEFAULT_BRIDGE = 'http://127.0.0.1:7788'
 
@@ -13,7 +15,8 @@ type Answer =
 
 type Identity = { bridge: string; headers: Record<string, string>; login?: string }
 
-let identity: Identity | undefined
+// undefined：还没看过环境变量；null：没给 SYMPHONY_TOKEN，不是军团的会话
+let identity: Identity | null | undefined
 let sessionId: string | undefined
 let transcriptPath: string | undefined
 // 每条事件都带上目录和启动编号：bridge 重启后不用等下一次启动就能认回这个会话
@@ -39,12 +42,14 @@ async function loginEmail($: EngineInterface) {
 }
 
 async function ident($: EngineInterface) {
-  if (identity) return identity
-  const login = await loginEmail($)
+  if (identity !== undefined) return identity
   const token = await $.env.get('SYMPHONY_TOKEN')
-  const headers: Record<string, string> = { 'content-type': 'application/json' }
-  if (token) headers.authorization = `Bearer ${token}`
-  identity = { bridge: (await $.env.get('SYMPHONY_BRIDGE')) || DEFAULT_BRIDGE, headers, login }
+  if (!token) return (identity = null)
+  identity = {
+    bridge: (await $.env.get('SYMPHONY_BRIDGE')) || DEFAULT_BRIDGE,
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+    login: await loginEmail($),
+  }
   return identity
 }
 
@@ -52,8 +57,9 @@ async function sid($: EngineInterface) {
   return (sessionId ??= await $.session.id())
 }
 
+// 只在军团的会话里调用（emit、ask 先看过 ident）
 async function call($: EngineInterface, path: string, body?: unknown) {
-  const { bridge, headers } = await ident($)
+  const { bridge, headers } = (await ident($))!
   return $.http.fetch(`${bridge}${path}`, {
     method: body === undefined ? 'GET' : 'POST',
     headers,
@@ -63,6 +69,7 @@ async function call($: EngineInterface, path: string, body?: unknown) {
 
 // 上报事件给办公室页面；失败就算了，不影响会话。
 async function emit($: EngineInterface, kind: string, data: object = {}) {
+  if (!(await ident($))) return undefined
   try {
     return await call($, '/api/event', { session: await sid($), kind, ...sticky, ...data })
   } catch {
@@ -77,6 +84,7 @@ async function ask(
   signal: AbortSignal,
   payload: object,
 ): Promise<Answer | undefined> {
+  if (!(await ident($))) return undefined
   let id: string | undefined
   const create = async () => {
     const created = await call($, '/api/ask', { session: await sid($), ...payload })
@@ -139,14 +147,16 @@ async function titleFromTranscript($: EngineInterface) {
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const started = await next(e)
-    const { login } = await ident($)
+    const id = await ident($)
+    if (!id) return started
     // 从页面启动的会话带着 bridge 给的启动编号，bridge 靠它把会话和 tmux 对上
     sticky = { cwd: e.cwd, launch: (await $.env.get('SYMPHONY_LAUNCH')) || undefined }
     const model = await $.session.model()
     reported = { model, effort: '' }
-    const res = await emit($, 'session.start', { interactive: e.isInteractive, login, model })
-    if (res?.status === 401) $.ui.toast('symphony: 没有有效的军团账号（SYMPHONY_TOKEN），审批仍走终端')
-    else if (res?.status === 409) $.ui.toast('symphony: 这个账号已经有会话在线，审批仍走终端')
+    const res = await emit($, 'session.start', { interactive: e.isInteractive, login: id.login, model })
+    if (!res) $.ui.toast(`symphony: 连不上 bridge（${id.bridge}），审批先走终端`)
+    else if (res.status === 401) $.ui.toast('symphony: bridge 不认这个 SYMPHONY_TOKEN，审批仍走终端')
+    else if (res.status === 409) $.ui.toast('symphony: 这个账号已经有会话在线，审批仍走终端')
     // 心跳：bridge 45 秒收不到任何消息就当这个会话下班了（比如直接关了终端）
     heartbeat?.cancel()
     heartbeat = $.clock.every(15_000, () => {
@@ -177,6 +187,7 @@ export const register: Register = on => {
 
   on('command.run', { command: 'rename' }, async ($, e, next) => {
     const ran = await next(e)
+    if (!(await ident($))) return ran
     const title = e.args.trim() || (await titleFromTranscript($))
     await emit($, 'session.title', { title })
     return ran

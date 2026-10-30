@@ -285,11 +285,17 @@ func (s *Server) file(name string) http.HandlerFunc {
 func (s *Server) launchOptions(w http.ResponseWriter, r *http.Request) {
 	home, _ := os.UserHomeDir()
 	trustHint, terminal := false, ""
+	reason := "这个 bridge 没开页面启动（缺 claude 或能用的终端，看 bridge 启动时的日志）"
+	var mod *ModStatus
 	if s.Launcher != nil {
 		trustHint, terminal = s.Launcher.Term.TrustHint(), s.Launcher.Term.Name()
+		m := s.Launcher.Mod(r.Context())
+		mod, reason = &m, m.Error
 	}
 	writeJSON(w, 200, map[string]any{
-		"enabled":         s.Launcher != nil,
+		"enabled":         mod != nil && mod.OK,
+		"reason":          reason, // 开不了的原因
+		"mod":             mod,    // mod 装好没有；没装好时 fix 是装的命令
 		"terminal":        terminal,
 		"trustHint":       trustHint, // 新目录第一次启动要人在弹出的窗口里点“信任”
 		"models":          launchModels,
@@ -319,6 +325,15 @@ func (s *Server) dirs(w http.ResponseWriter, r *http.Request) {
 func (s *Server) launch(w http.ResponseWriter, r *http.Request) {
 	if s.Launcher == nil {
 		writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "这个 bridge 没开页面启动"})
+		return
+	}
+	// 没装 mod 的话起出来的会话进不了办公室，干脆不起
+	if mod := s.Launcher.Mod(r.Context()); !mod.OK {
+		msg := mod.Error
+		if mod.Fix != "" {
+			msg += "，先运行：" + mod.Fix
+		}
+		writeJSON(w, http.StatusPreconditionFailed, map[string]string{"error": msg})
 		return
 	}
 	var req LaunchRequest
