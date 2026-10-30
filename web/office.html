@@ -13,14 +13,19 @@
   body:lang(ko) { font-family:system-ui, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans CJK KR", sans-serif; }
   canvas#office { position:fixed; inset:0; width:100vw; height:100vh; image-rendering:pixelated; }
   #labels { position:fixed; inset:0; pointer-events:none; }
-  /* the HUD: a notice board in the office's own pixel style */
-  #hud { position:fixed; top:10px; left:10px; z-index:3; background:#fffdf7; color:#2b2a28; border:2px solid #2b2a28;
-    box-shadow:4px 4px 0 rgba(0,0,0,.35); padding:8px 10px 10px; }
-  #hud .top { display:flex; align-items:center; gap:8px; }
+  /* the HUD: a notice board in the office's own pixel style, pinned to the top in the middle; the tab under it slides it
+     up out of the way and back down */
+  #hud { position:fixed; top:0; left:50%; z-index:3; box-sizing:border-box; width:max-content; max-width:calc(100vw - 24px);
+    transform:translateX(-50%); background:#fffdf7; color:#2b2a28; border:2px solid #2b2a28; border-top:0;
+    box-shadow:4px 4px 0 rgba(0,0,0,.35); padding:8px 14px 10px; }
+  #hud.anim { transition:transform .2s ease-out; }
+  #hud.up { transform:translate(-50%, -100%); box-shadow:none; }
+  #hud .bar { display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:8px 18px; }
+  #hud .group { display:flex; align-items:center; gap:6px; }
   #hud .logo { width:30px; height:15px; flex:none; image-rendering:pixelated; }
-  #hud h1 { margin:0 8px 0 0; font-size:15px; font-weight:800; white-space:nowrap; }
+  #hud h1 { margin:0 0 0 2px; font-size:15px; font-weight:800; white-space:nowrap; }
   /* counts by state, as chips in the state colors; a click on one lights up those employees */
-  #hud .stats { margin-top:8px; display:flex; gap:6px; flex-wrap:wrap; color:#6f6b64; }
+  #hud .stats { display:flex; gap:6px; flex-wrap:wrap; color:#6f6b64; }
   #hud .chip { font:inherit; white-space:nowrap; font-size:12px; line-height:1.6; cursor:pointer; background:#fff; color:#2b2a28; border:2px solid #2b2a28;
     border-left:6px solid var(--c); padding:0 8px 0 6px; box-shadow:2px 2px 0 rgba(0,0,0,.25); }
   #hud .chip b { font-size:13px; }
@@ -28,14 +33,22 @@
   #hud .chip.on { background:#2b2a28; color:#fffdf7; box-shadow:none; transform:translate(2px, 2px); }
   #hud .chip.hot { background:#d64541; color:#fff; border-color:#7a1f1c; animation:nudge 1s steps(1) infinite; } /* asks wait for you */
   @keyframes nudge { 50% { background:#e8605c; } }
-  #hud .btns { margin-top:8px; display:flex; gap:6px; flex-wrap:wrap; }
   #hud select.lang { width:104px; font:inherit; font-size:12px; background:#fffdf7; color:#2b2a28; border:2px solid #2b2a28; padding:0 2px;
     cursor:pointer; box-shadow:2px 2px 0 rgba(0,0,0,.3); }
-  #hud .note { margin-top:8px; max-width:420px; padding:4px 8px; background:#fff3cf; border:2px solid #c9961a; color:#6b4a00; line-height:1.5; }
+  #hud .note { margin:8px auto 0; max-width:560px; padding:4px 8px; background:#fff3cf; border:2px solid #c9961a; color:#6b4a00; line-height:1.5; }
+  /* the tab under the HUD hides it and brings it back; while the HUD is away it shows how many asks wait */
+  #hud .tab { position:absolute; top:100%; left:50%; transform:translateX(-50%); display:flex; align-items:center; gap:5px; height:18px;
+    padding:0 12px; font:inherit; color:#2b2a28; background:#fffdf7; border:2px solid #2b2a28; border-top:0;
+    box-shadow:4px 4px 0 rgba(0,0,0,.35); cursor:pointer; }
+  #hud .tab:hover { background:#f2b705; }
+  #hud .tab .ico { margin:0; width:14px; height:8px; background-image:var(--ico-up); }
+  #hud.up .tab .ico { background-image:var(--ico-down); }
+  #hud .tab .badge { font:700 11px/14px ui-monospace, monospace; color:#fff; background:#d64541; padding:0 4px; }
+  #hud .tab .badge[hidden], #hud:not(.up) .tab .badge { display:none; }
   .ico { display:inline-block; vertical-align:-1px; margin-right:6px; background:no-repeat center / contain; image-rendering:pixelated; }
   .ico.mail { width:18px; height:12px; background-image:var(--ico-mail); }
   /* the search box, beside the title: matches show in a list below it, the rest of the office dims */
-  #hud .find { position:relative; flex:1; min-width:196px; margin-left:4px; }
+  #hud .find { position:relative; width:230px; }
   #find { width:100%; box-sizing:border-box; font:inherit; font-size:12px; color:#2b2a28; border:2px solid #2b2a28; padding:3px 26px;
     background:#fff var(--ico-find) no-repeat 7px center / 14px 14px; box-shadow:inset 2px 2px 0 rgba(0,0,0,.08); image-rendering:pixelated; }
   #find:focus { outline:none; border-color:#f2b705; }
@@ -50,7 +63,10 @@
   #find-list .hit small { color:#6f6b64; margin-left:8px; }
   #find-list .none { padding:2px 8px; color:#8a867e; }
   #hud .note code { display:block; margin-top:4px; padding:2px 6px; background:#2b2a28; color:#fffdf7; user-select:all; word-break:break-all; }
-  #log { position:fixed; left:16px; bottom:12px; z-index:3; font:12px/1.6 ui-monospace, monospace; color:#a9a49b; max-width:min(560px, calc(100vw - 32px)); pointer-events:none; }
+  /* the activity log, bottom left: on a dark backing, since the office fills the window behind it */
+  #log { position:fixed; left:12px; bottom:12px; z-index:3; font:12px/1.6 ui-monospace, monospace; color:#e9e5dc; max-width:min(560px, calc(100vw - 40px));
+    pointer-events:none; background:rgba(43,42,40,.8); padding:2px 8px; }
+  #log:empty { display:none; }
   #log div { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .dot { display:inline-block; width:8px; height:8px; margin-right:4px; vertical-align:0; }
   button.px { background:#fffdf7; color:#2b2a28; border:2px solid #2b2a28; padding:2px 10px; font:inherit; cursor:pointer; box-shadow:2px 2px 0 rgba(0,0,0,.3); }
@@ -72,6 +88,11 @@
   .emp-label.found { animation:found .4s steps(1) 8; }
   @keyframes found { 50% { background:#f2b705; } }
   .room-label { position:absolute; background:rgba(43,42,40,.82); color:#fffdf7; padding:0 6px; font-size:11px; line-height:1.6; letter-spacing:1px; white-space:nowrap; }
+  /* the small meeting rooms' nameplates, beside their doors, with a light that's green while the room is free */
+  .room-plate { position:absolute; transform:translateY(-50%); pointer-events:auto; cursor:default; box-sizing:border-box; background:#2b2a28; color:#f3e6bf;
+    border:2px solid #9a7b3c; padding:0 6px 0 5px; font-size:11px; font-weight:700; line-height:1.45; letter-spacing:1px; white-space:nowrap;
+    overflow:hidden; text-overflow:ellipsis; box-shadow:2px 2px 0 rgba(0,0,0,.3); } /* no wider than its room (placeLabels); the full name shows on hover */
+  .room-plate i { display:inline-block; width:6px; height:6px; margin-right:5px; vertical-align:1px; background:#2e9e5b; }
   .sign-text { position:absolute; transform:translate(-50%, -50%); color:#fffdf7; font:700 13px/1 ui-monospace, monospace; letter-spacing:3px; white-space:nowrap; }
   .seat-add { position:absolute; transform:translate(-50%, -50%); pointer-events:auto; cursor:pointer; width:22px; height:22px; padding:0;
     background:#fffdf7; color:#2b2a28; border:2px solid #2b2a28; font:700 16px/16px ui-monospace, monospace; box-shadow:2px 2px 0 rgba(0,0,0,.3); }
@@ -120,7 +141,7 @@
   #launch .status { margin-top:8px; font-size:12px; white-space:pre-wrap; }
   #launch .status.err { color:#c0392b; }
   /* employee card and message log: side panels */
-  .side { position:fixed; right:12px; top:12px; bottom:12px; z-index:5; width:min(340px, calc(100vw - 24px)); overflow:auto; background:#fffdf7; color:#2b2a28;
+  .side { position:fixed; right:12px; top:calc(var(--hud-h, 0px) + 12px); bottom:12px; z-index:5; width:min(340px, calc(100vw - 24px)); overflow:auto; background:#fffdf7; color:#2b2a28;
     border:2px solid #2b2a28; box-shadow:4px 4px 0 rgba(0,0,0,.35); padding:10px 12px; box-sizing:border-box; }
   .side[hidden] { display:none; }
   .side h2 { margin:0 0 6px; font-size:15px; }
@@ -139,14 +160,18 @@
 <canvas id="office"></canvas>
 <div id="labels"></div>
 <div id="hud">
-  <div class="top"><canvas class="logo" width="10" height="5"></canvas><h1 data-i18n="office.title"></h1>
-    <div class="find"><input id="find" type="search" autocomplete="off" spellcheck="false" data-i18n-placeholder="search.placeholder" data-i18n-title="search.title"><kbd class="key">/</kbd><div id="find-list" hidden></div></div></div>
-  <div class="stats" id="stats" data-i18n="office.nobody"></div>
-  <div class="btns">
-    <button class="px" id="open-msgs"><i class="ico mail"></i><span data-i18n="office.messages"></span></button>
-    <button class="px" id="new-emp" data-i18n="office.newEmployee" hidden></button>
+  <div class="bar">
+    <div class="group"><canvas class="logo" width="10" height="5"></canvas><h1 data-i18n="office.title"></h1></div>
+    <div class="find"><input id="find" type="search" autocomplete="off" spellcheck="false" data-i18n-placeholder="search.placeholder" data-i18n-title="search.title"><kbd class="key">/</kbd><div id="find-list" hidden></div></div>
+    <div class="stats" id="stats" data-i18n="office.nobody"></div>
+    <div class="group btns">
+      <button class="px" id="open-msgs"><i class="ico mail"></i><span data-i18n="office.messages"></span></button>
+      <button class="px" id="new-emp" data-i18n="office.newEmployee" hidden></button>
+    </div>
+    <div class="group prefs"></div>
   </div>
   <div class="note" id="launch-note" hidden></div>
+  <button class="tab" id="hud-tab"><i class="ico"></i><b class="badge" hidden></b></button>
 </div>
 <div id="log"></div>
 
@@ -187,14 +212,15 @@ import { t, lang, errorText, fmtTime, applyI18n, langPicker } from '/i18n.js'
 import { esc, syncCards } from '/asks.js'
 
 applyI18n()
-document.querySelector('#hud .btns').appendChild(langPicker())
+document.querySelector('#hud .prefs').appendChild(langPicker())
 
 // ================= constants =================
 const T = 16 // one tile is 16 pixels
 const GREEN = '#2e9e5b', YELLOW = '#f2b705', RED = '#d64541', GRAY = '#a9a49b'
 // three state colors: idle green, working yellow, waiting for an approval or an answer red; off duty gray
 const STATE_COLOR = { idle:GREEN, thinking:YELLOW, tool:YELLOW, waiting:RED, ended:GRAY, done:GRAY }
-const COLS = 6, COL_PITCH = 3 * T, ROW_PITCH = 4 * T, WALL_H = 3 * T, AISLE = 24, LABEL_ROOM = 2 * T + 10
+const COLS = 6, COL_PITCH = 3 * T, ROW_PITCH = 4 * T, WALL_H = 4 * T + 8, AISLE = 24, LABEL_ROOM = 2 * T + 10
+const DECOR = WALL_H - 48 // the back wall's windows and pictures hang below a plain band, where the HUD sits
 const CLAWD = '#d97757', CLAWD_SHADE = '#b9603f', EYE = '#2b1b14', MINI = '#e6a58d', MINI_SHADE = '#c98a72'
 const OFF = '#3b3e44' // laptop light of an empty desk
 
@@ -515,16 +541,27 @@ function drawFoosball(g, x, y) {
     for (let p = 0; p < 2; p++) rect(g, rx - 1, y + 7 + p * 9, 3, 3, i % 2 ? '#4a90d9' : RED)
   }
 }
+function drawBeanBag(g, x, y, c, dark) { // 14 x 10
+  rect(g, x + 2, y, 10, 2, c); rect(g, x, y + 2, 14, 6, c); rect(g, x + 1, y + 8, 12, 2, dark); rect(g, x + 3, y + 2, 4, 2, 'rgba(255,255,255,.35)')
+}
+function drawFloorLamp(g, x, y) { rect(g, x, y, 8, 6, '#f2e3b3'); rect(g, x, y + 5, 8, 1, '#c9b98a'); rect(g, x + 3, y + 6, 2, 18, '#55534f'); rect(g, x + 1, y + 24, 6, 2, '#55534f') }
 function drawRoundTable(g, x, y) {
   rect(g, x + 2, y, 12, 12, '#efece6'); rect(g, x, y + 2, 16, 8, '#efece6'); rect(g, x + 2, y + 11, 12, 1, '#c9c3b8')
   rect(g, x + 6, y + 4, 3, 3, '#5d7da6')
   for (const [sx, sy] of [[-7, 3], [19, 3], [5, 15]]) { rect(g, x + sx, y + sy, 6, 6, '#c27b55'); rect(g, x + sx, y + sy, 6, 1, '#d99a77') }
 }
-function drawReception(g, x, y) {
-  rect(g, x, y, 76, 10, '#c9a477'); rect(g, x, y, 76, 1, '#dcbb90'); rect(g, x, y + 10, 76, 7, '#8a6747'); rect(g, x, y + 16, 76, 1, '#6e5138')
-  rect(g, x + 30, y + 11, 16, 4, '#d97757') // brand color on the front of the reception desk
-  rect(g, x + 10, y - 6, 12, 8, '#2b2a28'); rect(g, x + 11, y - 5, 10, 5, '#5d7da6') // monitor
-  rect(g, x + 56, y + 3, 4, 3, '#c9a24e') // service bell
+// a lift in the back wall, its bottom on the floor: closed, or open on the car
+function drawLift(g, x, y, open) {
+  rect(g, x, y, 22, 34, '#8f949a'); rect(g, x + 1, y + 1, 20, 1, '#b9bec4')
+  rect(g, x + 7, y + 1, 8, 4, '#2b2a28'); rect(g, x + 9, y + 2, 4, 2, YELLOW) // the floor display
+  if (open) { rect(g, x + 2, y + 6, 18, 28, '#4a4d52'); rect(g, x + 4, y + 8, 14, 2, '#f2e3b3'); rect(g, x + 2, y + 6, 2, 28, '#c9cfd4'); rect(g, x + 18, y + 6, 2, 28, '#c9cfd4') }
+  else { rect(g, x + 2, y + 6, 18, 28, '#c9cfd4'); rect(g, x + 10, y + 6, 2, 28, '#9aa1a8'); rect(g, x + 3, y + 7, 6, 1, '#e3e7ea'); rect(g, x + 13, y + 7, 6, 1, '#e3e7ea') }
+}
+function drawLiftButtons(g, x, y) { rect(g, x, y, 4, 9, '#8f949a'); rect(g, x + 1, y + 1, 2, 2, '#e3e7ea'); rect(g, x + 1, y + 5, 2, 2, '#7ccf6b') }
+function drawExitSign(g, x, y) { // the stairs: a green sign with a running man
+  rect(g, x, y, 14, 8, '#2e9e5b'); rect(g, x + 1, y + 1, 12, 6, '#3fb46c')
+  rect(g, x + 5, y + 2, 2, 2, '#fbfbf8'); rect(g, x + 4, y + 4, 3, 1, '#fbfbf8'); rect(g, x + 3, y + 5, 1, 1, '#fbfbf8'); rect(g, x + 7, y + 5, 1, 1, '#fbfbf8')
+  rect(g, x + 9, y + 3, 3, 3, '#fbfbf8'); rect(g, x + 10, y + 4, 1, 1, '#3fb46c')
 }
 function drawPrinter(g, x, y) {
   rect(g, x, y, 26, 20, '#d9d5cc'); rect(g, x, y, 26, 4, '#efece6'); rect(g, x + 3, y + 7, 9, 4, '#55534f')
@@ -548,6 +585,55 @@ function drawBigPlant(g, x, y) {
   rect(g, x + 14, y + 6, 4, 7, '#5f9150'); rect(g, x + 7, y + 4, 3, 3, '#86b873'); rect(g, x + 3, y + 12, 3, 2, '#86b873')
 }
 function drawExtinguisher(g, x, y) { rect(g, x, y, 5, 10, RED); rect(g, x + 1, y - 2, 3, 2, '#2b2a28'); rect(g, x, y + 3, 5, 1, '#fbfbf8') }
+// ---------- small meeting rooms ----------
+// a glass wall like drawGlassH, with a doorway from gapX
+function drawGlassHDoor(g, x, y, w, gapX, gapW) {
+  drawGlassH(g, x, y, gapX - x); drawGlassH(g, gapX + gapW, y, x + w - gapX - gapW)
+  rect(g, gapX - 2, y - 1, 2, 12, '#7d8a94'); rect(g, gapX + gapW, y - 1, 2, 12, '#7d8a94')
+}
+function drawPartition(g, x, y, h) { rect(g, x, y, 4, h, '#b9ad98'); rect(g, x, y, 1, h, '#cfc4b0') }
+function drawWallH(g, x, y, w) { rect(g, x, y, w, 4, '#b9ad98'); rect(g, x, y, w, 1, '#cfc4b0') }
+function drawWallScreen(g, x, y) {
+  rect(g, x, y, 34, 22, '#2b2a28'); rect(g, x + 2, y + 2, 30, 16, '#2d4b6b')
+  rect(g, x + 5, y + 5, 12, 1, '#c4e6f8'); rect(g, x + 5, y + 8, 18, 1, '#c4e6f8'); rect(g, x + 5, y + 11, 9, 1, '#c4e6f8')
+  rect(g, x + 22, y + 10, 6, 6, '#7ccf6b'); rect(g, x + 14, y + 22, 6, 2, '#55534f')
+}
+// a table around (cx, cy) for 3 (round: a chair on the far side and one at each end), 4 or 5 (two chairs a side, the
+// fifth at the east end); far is -1 when the room's far wall is north of the table, 1 when it's south
+function drawRoomTable(g, cx, cy, seats, far) {
+  const chair = (x, y) => drawSeatTop(g, x, y, '#5d6169')
+  if (seats === 3) {
+    chair(cx - 5, far < 0 ? cy - 16 : cy + 8); chair(cx - 21, cy - 4); chair(cx + 11, cy - 4)
+    rect(g, cx - 7, cy - 7, 14, 14, '#8a6747'); rect(g, cx - 10, cy - 4, 20, 8, '#8a6747')
+    rect(g, cx - 7, cy - 7, 14, 2, '#a5815e'); rect(g, cx - 10, cy - 4, 3, 1, '#a5815e'); rect(g, cx + 7, cy - 4, 3, 1, '#a5815e')
+    rect(g, cx - 7, cy + 5, 14, 2, '#6e5138'); rect(g, cx - 10, cy + 3, 3, 1, '#6e5138'); rect(g, cx + 7, cy + 3, 3, 1, '#6e5138')
+    rect(g, cx - 3, cy - 2, 6, 4, '#fbfbf8') // papers
+    return
+  }
+  const w = seats === 4 ? 28 : 40, x = cx - (w >> 1), y = cy - 8
+  for (const f of [0.25, 0.75]) { const sx = Math.round(x + f * w) - 5; chair(sx, y - 9); chair(sx, y + 17) }
+  if (seats === 5) chair(x + w + 1, y + 4)
+  rect(g, x, y, w, 16, '#8a6747'); rect(g, x, y, w, 2, '#a5815e'); rect(g, x, y + 13, w, 3, '#6e5138')
+  rect(g, cx - 3, y + 5, 6, 4, '#3b3e44'); rect(g, cx - 1, y + 6, 2, 1, '#7ccf6b') // a conference phone
+  rect(g, x + 3, y + 4, 7, 5, '#fbfbf8') // papers
+}
+const SMALL_CARPETS = [['#c9d3c4', '#c2ccbd'], ['#d8cdbf', '#d1c5b6'], ['#c8cfdb', '#c1c8d5'], ['#d5c8d2', '#cec0cb']]
+// one small meeting room for 3 to 5: carpet, the table in the middle, a plant in a far corner, a whiteboard on the far
+// wall (the first row's hang on the back wall) or a screen on a low cabinet; the glass wall with the door faces the
+// hall, and the nameplate beside the door is a label (placeLabels)
+function drawSmallRoom(g, r) {
+  const [c1, c2] = SMALL_CARPETS[r.k % SMALL_CARPETS.length], cx = r.x + (r.w >> 1), cy = r.y + (r.h >> 1)
+  rect(g, r.x, r.y, r.w, r.h, c1)
+  for (let y = r.y + 2; y < r.y + r.h; y += 4) rect(g, r.x, y, r.w, 1, c2)
+  if (r.north && r.y !== WALL_H) { rect(g, cx - 14, r.y, 28, 5, '#b9b3a8'); rect(g, cx - 13, r.y, 26, 3, '#fbfbf8'); rect(g, cx - 10, r.y + 1, 9, 1, '#5d7da6') }
+  if (!r.north) { rect(g, cx - 12, r.y + r.h - 7, 24, 6, '#6e5138'); rect(g, cx - 10, r.y + r.h - 9, 20, 3, '#2b2a28') }
+  drawRoomTable(g, cx, cy, r.seats, r.north ? -1 : 1)
+  drawPlant(g, r.x + r.w - 20, r.north ? r.y + 4 : r.y + r.h - 24)
+  const door = smallDoor(r)
+  drawGlassHDoor(g, r.x, r.north ? r.y + r.h : r.y - GLASS, r.w, door.x, door.w)
+}
+// the doorway in a small room's glass wall, and where its nameplate goes
+const smallDoor = r => ({ x:r.x + 8, w:20, plateX:r.x + 32, plateY:(r.north ? r.y + r.h : r.y - GLASS) + GLASS / 2 })
 // one small item per desk, fixed by seat number, so empty desks don't look bare
 function drawClutter(g, x, y, seat) {
   switch (hash('seat' + seat) % 6) {
@@ -560,22 +646,47 @@ function drawClutter(g, x, y, seat) {
   }
 }
 
-// ================= layout: a proper big company (open office + meeting room + lounge + reception) =================
-// Desks are fixed by seat number: rows of 6, at least 3 rows; a small team still gets full rows of desks,
-// a big one gets more rows below.
+// ================= layout: one floor of a big company's building =================
+// The open office in the middle: rows of 6 desks, at least 3 rows (a small team still gets full rows of desks, a big one
+// more rows below), desks fixed by seat number. Left of it, small meeting rooms in rows on both sides of halls off the
+// corridor beside the office; right of it, the meeting room and the lounge. People come and go by the lifts in the back
+// wall; the printer and a bookshelf stand in the strip below the desks.
+// The building fills the window. The scale is the biggest at which the smallest building for the team fits (in whole
+// device pixels from 2 up, so pixels stay square). The room that leaves goes to more rows of desks (while a whole row
+// fits), to both sides equally (the office stays in the middle), so to more small meeting rooms and a wider meeting room
+// and lounge, and to a taller lounge, with a row of small meeting rooms below it at a time once it's tall.
 const MIN_ROWS = 3
-const WORK_X = 16                                // left edge of the open office
-const RIGHT_X = WORK_X + COLS * COL_PITCH + 24  // left edge of the meeting room and lounge side
-const RIGHT_W = 13 * T
+const OFFICE_W = COLS * COL_PITCH + 12           // the open office's carpet
+const WCOR = 24, ECOR = 18                        // the corridors beside it, west and east
+const RIGHT_MIN = 13 * T                          // the meeting room and the lounge at their narrowest
+const MEET_H = 9 * T, GLASS = 10, HALL = 24      // the meeting room; a glass wall; a hall between rows of small meeting rooms
+const LOUNGE_MIN = 9 * T, LOUNGE_MAX = 22 * T    // the lounge at its shortest, and as tall as it gets before rooms go below it
+const ROOM_W = 88, ROOM_H = 72, ROOMS_MAX = 8    // the smallest small meeting room; at most this many side by side
+const STRIP_MIN = 50                              // below the desks: the corridor, the printer and the bookshelf
+const officeBottom = rows => WALL_H + AISLE + LABEL_ROOM + (rows - 1) * ROW_PITCH + 24
 let W = 0, H = 0, rows = MIN_ROWS
-const door = { x:0, y:0 }
-const rooms = {} // each room's area, for furniture and signs
-let addSeat = -1 // the empty seat with the "+", -1 for none
+let workX = 0, rightX = 0, rowsY = 0 // where the desks' columns start, where their first row is; where the meeting room and the lounge start
+const door = { x:0, y:0 }  // where people come and go: in front of the lifts
+const rooms = {}           // each room's area, for furniture and signs
+let smalls = []            // the small meeting rooms: { x, y, w, h, north (door in the south wall), k (numbers them), seats }
+let halls = []             // the halls between their rows: { x0, x1, y }
+let walls = []             // walls between rows of rooms: { x0, x1, y }
+let addSeat = -1           // the empty seat with the "+", -1 for none
 const bgCanvas = document.createElement('canvas')
 const buf = document.createElement('canvas')
+const big = document.createElement('canvas') // the frame at a whole scale, for drawing it at a fractional one
 
 function deskOf(seat) {
-  return { x:WORK_X + (seat % COLS) * COL_PITCH + 8, y:WALL_H + AISLE + LABEL_ROOM + Math.floor(seat / COLS) * ROW_PITCH }
+  return { x:workX + (seat % COLS) * COL_PITCH + 8, y:rowsY + Math.floor(seat / COLS) * ROW_PITCH }
+}
+
+// a row of small meeting rooms side by side from x0 to x1, a wall between each two
+function roomRow(x0, x1, y, h, north) {
+  const span = x1 - x0 + 4, n = Math.max(1, Math.min(ROOMS_MAX, Math.floor(span / (ROOM_W + 4))))
+  return Array.from({ length:n }, (_, i) => {
+    const x = x0 + Math.round(i * span / n)
+    return { x, y, w:x0 + Math.round((i + 1) * span / n) - 4 - x, h, north }
+  })
 }
 
 function layout() {
@@ -583,19 +694,49 @@ function layout() {
   addSeat = -1
   if (launchOpts?.enabled) { addSeat = 0; while (taken.has(addSeat)) addSeat++ }
   const seats = Math.max(addSeat + 1, ...snapshot.accounts.map(a => a.seat + 1), 1)
-  rows = Math.max(MIN_ROWS, Math.ceil(seats / COLS))
-  const workBottom = deskOf((rows - 1) * COLS).y + 24
-  W = RIGHT_X + RIGHT_W + 8
-  H = Math.max(22 * T, workBottom + 5 * T)
-  door.x = WORK_X + (COLS * COL_PITCH) / 2; door.y = H - 12
-  const meetH = 9 * T
-  rooms.work = { x:WORK_X - 6, y:WALL_H + AISLE + 6, w:COLS * COL_PITCH + 12, h:workBottom - (WALL_H + AISLE + 6) }
-  rooms.meeting = { x:RIGHT_X, y:WALL_H, w:RIGHT_W, h:meetH }
-  rooms.lounge = { x:RIGHT_X, y:WALL_H + meetH + 10, w:RIGHT_W, h:H - 6 - (WALL_H + meetH + 10) }
-  rooms.front = { x:4, y:workBottom + 6, w:RIGHT_X - 8, h:H - 6 - (workBottom + 6) }
+  const team = Math.max(MIN_ROWS, Math.ceil(seats / COLS)), sideMin = ECOR + RIGHT_MIN + 4
+  fitScreen(OFFICE_W + 2 * sideMin, Math.max(officeBottom(team) + STRIP_MIN + 6, WALL_H + MEET_H + GLASS + LOUNGE_MIN + 6))
+  rows = Math.max(team, Math.floor((H - 6 - STRIP_MIN - officeBottom(1)) / ROW_PITCH) + 1)
+  const workBottom = H - 6 - STRIP_MIN, side = Math.floor((W - OFFICE_W) / 2)
+  workX = side + 6; rightX = side + OFFICE_W + ECOR
+  rowsY = WALL_H + AISLE + LABEL_ROOM + ((workBottom - officeBottom(rows)) >> 1) // what's left over above and below the rows
+  door.x = workX - 12; door.y = WALL_H + 10
+  rooms.work = { x:side, y:WALL_H + AISLE + 6, w:OFFICE_W, h:workBottom - (WALL_H + AISLE + 6) }
+  rooms.meeting = { x:rightX, y:WALL_H, w:W - 4 - rightX, h:MEET_H }
+  // the lounge; once it's tall, a row of small meeting rooms below it at a time, each along a hall off the corridor
+  const below = H - 6 - (WALL_H + MEET_H + GLASS), band = 4 + HALL + GLASS + ROOM_H
+  const more = below > LOUNGE_MAX ? Math.min(Math.ceil((below - LOUNGE_MAX) / band), Math.floor((below - LOUNGE_MIN) / band)) : 0
+  rooms.lounge = { x:rightX, y:WALL_H + MEET_H + GLASS, w:W - 4 - rightX, h:below - more * band }
+  smalls = []; halls = []; walls = []
+  for (let i = 0, y = rooms.lounge.y + rooms.lounge.h; i < more; i++, y += band) {
+    walls.push({ x0:rightX, x1:W - 4, y })
+    halls.push({ x0:rightX, x1:W - 4, y:y + 4 })
+    smalls.push(...roomRow(rightX + 4, W - 4, y + 4 + HALL + GLASS, ROOM_H, false))
+  }
+  // left of the office: as many rows of small meeting rooms as fit, two to a hall (doors on the hall); the last one
+  // takes what's left over
+  const x0 = 4, x1 = side - WCOR - 4, avail = H - 6 - WALL_H
+  const need = r => r * (ROOM_H + GLASS) + Math.ceil(r / 2) * (HALL + 4) - 4
+  let r = 1
+  while (need(r + 1) <= avail) r++
+  const h = Math.floor((avail - need(r) + r * ROOM_H) / r), left = []
+  for (let i = 0, y = WALL_H; i < r; i += 2) {
+    left.push(...roomRow(x0, x1, y, i + 1 === r ? H - 6 - HALL - GLASS - y : h, true))
+    y += left.at(-1).h + GLASS
+    halls.push({ x0, x1, y }); y += HALL
+    if (i + 1 < r) {
+      left.push(...roomRow(x0, x1, y + GLASS, i + 2 === r ? H - 6 - y - GLASS : h, false))
+      y += GLASS + left.at(-1).h
+      if (i + 2 < r) { walls.push({ x0, x1, y }); y += 4 }
+    }
+  }
+  smalls = [...left, ...smalls]
+  smalls.forEach((r, k) => { r.k = k; r.seats = 3 + rnd('seats/' + k) % 3 })
+  syncPlates()
   buildPlaces()
-  if (rows !== navRows) { // the graph changed under everyone's feet: put them straight where they're going
-    navRows = rows
+  const key = `${rows} ${W}x${H}`
+  if (key !== navKey) { // the graph changed under everyone's feet: put them straight where they're going
+    navKey = key
     for (const e of emps.values()) if (e.inside) e.fresh = true
   }
   for (const e of emps.values()) {
@@ -603,16 +744,28 @@ function layout() {
     e.desk = d
     e.seat = { x:d.x + 16, y:d.y - 2 }
   }
+  const [l] = toCss(rooms.work.x, 0), [rr] = toCss(rooms.work.x + rooms.work.w, 0)
+  cv.dataset.office = `${l.toFixed(1)},${rr.toFixed(1)}` // for the tests and the curious: the open office, left to right
   drawBackground()
-  resize()
+}
+
+// the scale and the building's size, for the smallest building minW x minH: the building fills the whole window
+function fitScreen(minW, minH) {
+  dpr = devicePixelRatio || 1
+  const cw = Math.round(innerWidth * dpr), ch = Math.round(innerHeight * dpr)
+  if (cv.width !== cw || cv.height !== ch) { cv.width = cw; cv.height = ch }
+  const fit = Math.min(cw / minW, ch / minH)
+  S = fit >= 2 ? Math.floor(fit) : fit // on small screens a fractional scale beats a tiny office
+  W = Math.ceil(cw / S); H = Math.ceil(ch / S)
+  offX = Math.round((cw - W * S) / 2); offY = Math.round((ch - H * S) / 2) // under a pixel of overhang, split between the sides
 }
 
 // ================= walkways and spots =================
-// Employees walk on a small graph: an aisle beside each column of desks, a corridor along the back wall and one
-// along the reception, the corridor between the office and the rooms on the right, and walkways in each room.
+// Employees walk on a small graph: an aisle beside each column of desks, a corridor along the back wall and one along
+// the strip below the desks, the corridors on both sides of the office, and walkways in the meeting room and the lounge.
 // A spot is a node where an idle employee spends a while: a chair, a sofa seat, a place to stand.
 const MEET_DOOR = 95 // the meeting room's doorway is in its glass wall on the corridor, this far down from its top
-let nav = { pts:[], adj:[], door:-1, seats:[] }, navRows = 0
+let nav = { pts:[], adj:[], door:-1, seats:[] }, navKey = ''
 const navCache = new Map() // target node -> the way there from every node
 const spots = new Map()    // id -> { id, x, y, node, room, face (1 front, -1 back), sit, nap }
 let geo = {}               // furniture that comes alive (TV, foosball, printer) or hides people (sofa backrests)
@@ -625,16 +778,16 @@ function buildPlaces() {
   const mark = (id, n, o) => spots.set(id, { id, x:pts[n].x, y:pts[n].y, node:n, face:1, sit:false, nap:false, ...o })
   const spot = (id, x, y, from, o) => { const n = node(x, y); link(n, from); mark(id, n, o) }
   spots.clear(); navCache.clear()
-  const { work, meeting, lounge, front } = rooms
-  const TOP = WALL_H + 14, BOT = work.y + work.h + 3, CX = (work.x + work.w + RIGHT_X) >> 1
-  const top = new Map(), bot = new Map(), side = new Map() // corridor nodes, by x (by y for the side corridor)
+  const { work, meeting, lounge } = rooms
+  const TOP = WALL_H + 14, BOT = work.y + work.h + 3, CX = (work.x + work.w + rightX) >> 1, WX = work.x - (WCOR >> 1)
+  const top = new Map(), bot = new Map(), side = new Map(), wing = new Map() // corridor nodes, by x (by y for the side ones)
   const at = (m, k, x, y) => m.get(k) ?? m.set(k, node(x, y)).get(k)
-  const onTop = x => at(top, x, x, TOP), onBot = x => at(bot, x, x, BOT), onSide = y => at(side, y, CX, y)
-  top.set(CX, onSide(TOP)); bot.set(CX, onSide(BOT))
+  const onTop = x => at(top, x, x, TOP), onBot = x => at(bot, x, x, BOT), onSide = y => at(side, y, CX, y), onWest = y => at(wing, y, WX, y)
+  top.set(CX, onSide(TOP)); bot.set(CX, onSide(BOT)); top.set(WX, onWest(TOP)); bot.set(WX, onWest(BOT))
 
-  // the open office: each column's aisle runs from the back corridor to the front one, past its desks, and a
-  // cross aisle between each two rows of desks joins the aisles to the corridor on the right, so the way to a
-  // desk in a middle row doesn't go round by the back wall or the reception; two windows on the back wall
+  // the open office: each column's aisle runs from the back corridor to the front one, past its desks, and a cross
+  // aisle between each two rows of desks joins the aisles to the corridors on both sides, so the way to a desk in a
+  // middle row doesn't go round by the back wall or the front; the lifts and two windows on the back wall
   const seats = [], cross = Array.from({ length:rows - 1 }, () => [])
   for (let c = 0; c < COLS; c++) {
     const ax = deskOf(c).x + 40, aisle = [onTop(ax)]
@@ -646,12 +799,17 @@ function buildPlaces() {
     }
     chain([...aisle, onBot(ax)])
   }
-  cross.forEach((ids, r) => chain([...ids, onSide(deskOf(r * COLS).y + 32)]))
-  spot('win0', WORK_X + 29, TOP - 4, onTop(WORK_X + 29), { room:'work', face:-1 })
-  spot('win1', WORK_X + COLS * COL_PITCH - 29, TOP - 4, onTop(WORK_X + COLS * COL_PITCH - 29), { room:'work', face:-1 })
+  cross.forEach((ids, r) => { const y = deskOf(r * COLS).y + 32; chain([onWest(y), ...ids, onSide(y)]) })
+  const lift = node(door.x, door.y); link(lift, onTop(door.x))
+  spot('win0', workX + 39, TOP - 4, onTop(workX + 39), { room:'work', face:-1 })
+  spot('win1', workX + 259, TOP - 4, onTop(workX + 259), { room:'work', face:-1 })
+  // the strip below the desks: the printer at its west end, the bookshelf at its east end
+  const printer = { x:workX + 4, y:H - 28 }, shelf = { x:workX + 246, y:H - 40 }
+  spot('print', printer.x + 13, printer.y - 6, onBot(printer.x + 13), { room:'work' })
+  spot('books', shelf.x + 16, shelf.y - 4, onBot(shelf.x + 16), { room:'work' })
 
   // meeting room: a walkway around the table, ten chairs to nap on, the door on the corridor
-  const tx = meeting.x + 48, ty = meeting.y + 52, tw = 112, th = 30, chairX = i => tx + 15 + i * 26
+  const tx = meeting.x + ((meeting.w - 112) >> 1), ty = meeting.y + 52, tw = 112, th = 30, chairX = i => tx + 15 + i * 26
   const mL = tx - 24, mR = tx + tw + 22, mT = ty - 16, mB = ty + th + 22, doorY = meeting.y + MEET_DOOR
   const tops = [0, 1, 2, 3].map(i => node(chairX(i), mT)), bottoms = [0, 1, 2, 3].map(i => node(chairX(i), mB))
   const TL = node(mL, mT), TR = node(mR, mT), BR = node(mR, mB), BL = node(mL, mB)
@@ -664,45 +822,32 @@ function buildPlaces() {
   spot('mr', tx + tw + 9, ty + 19, byRight, { room:'meeting', sit:true, nap:true })
 
   // lounge: a street across the middle, a loop around the foosball table (for tag), an aisle in front of the sofa
-  const lx = lounge.x, ly = lounge.y, lr = lx + lounge.w, lb = ly + lounge.h
+  const lx = lounge.x, ly = lounge.y, lr = lx + lounge.w, lb = ly + lounge.h, mx = lx + ((lounge.w - RIGHT_MIN) >> 1)
   const street = ly + 64, aisle = lb - 32, north = ly + 10
-  const fx = lx + 60, fy = ly + 22
+  const fx = mx + 60, fy = ly + 22
   const NW = node(fx - 12, north), NE = node(fx + 58, north), SE = node(fx + 58, street), SW = node(fx - 12, street)
   const fbN = node(fx + 17, north), fbS = node(fx + 29, street)
   chain([onSide(north), NW, fbN, NE, SE]); link(NW, SW)
-  const west = node(lx + 38, street), east = node(lx + 130, street), vend = node(lx + 143, street), cafe = node(lr - 31, street)
+  const west = node(mx + 38, street), east = node(mx + 130, street), vend = node(mx + 143, street), cafe = node(lr - 31, street)
   chain([onSide(street), west, SW, fbS, SE, east, vend, cafe])
-  const sofa = { x:lx + 46, y:lb - 27, w:68, c:'#4f7d8a', dark:'#3d6370' }, seatX = [11, 33, 56].map(dx => sofa.x + dx)
-  const coolA = node(lx + 28, aisle), westA = node(lx + 38, aisle), eastA = node(lx + 130, aisle), sofaA = seatX.map(x => node(x, aisle))
+  const sofa = { x:mx + 46, y:lb - 27, w:68, c:'#4f7d8a', dark:'#3d6370' }, seatX = [11, 33, 56].map(dx => sofa.x + dx)
+  const coolA = node(lx + 28, aisle), westA = node(mx + 38, aisle), eastA = node(mx + 130, aisle), sofaA = seatX.map(x => node(x, aisle))
   link(west, westA); link(east, eastA)
   chain([coolA, westA, ...sofaA, eastA])
   spot('fb0', fx + 17, fy - 2, fbN, { room:'lounge' })
   spot('fb1', fx + 29, street - 4, fbS, { room:'lounge', face:-1 })
   mark('tag0', NW, { room:'lounge' }); mark('tag1', SE, { room:'lounge' })
-  spot('vend', lx + 143, ly + 50, vend, { room:'lounge', face:-1 })
+  spot('vend', mx + 143, ly + 50, vend, { room:'lounge', face:-1 })
   spot('coffee', lr - 31, ly + 42, cafe, { room:'lounge' })
   seatX.forEach((x, i) => spot('ls' + i, x, lb - 17, sofaA[i], { room:'lounge', sit:true, nap:true, face:-1 }))
   spot('water', lx + 28, lb - 10, coolA, { room:'lounge' })
-  spot('rt0', lx + 142, lb - 52, east, { room:'lounge', sit:true })
-  spot('rt1', lx + 172, lb - 52, cafe, { room:'lounge', sit:true })
-
-  // reception: the bookshelf, the reception desk (someone may mind it), the visitors' sofa, the printer, the door
-  const fb = front.y + front.h, fr = front.x + front.w, raisle = fb - 30
-  const doorN = node(door.x, door.y); link(doorN, onBot(door.x))
-  const shelfA = node(front.x + 44, front.y + 46); link(shelfA, onBot(front.x + 44))
-  spot('books', front.x + 20, front.y + 46, shelfA, { room:'front' })
-  spot('front', front.x + 92, front.y + 21, onBot(front.x + 92), { room:'front', sit:true })
-  const rsofa = { x:door.x + 46, y:fb - 22, w:40, c:'#8a6f8a', dark:'#6e566e' }
-  const rA = node(rsofa.x + 20, raisle), r0 = node(rsofa.x + 9, raisle), r1 = node(rsofa.x + 31, raisle)
-  link(rA, onBot(rsofa.x + 20)); chain([r0, rA, r1])
-  spot('rs0', rsofa.x + 9, fb - 12, r0, { room:'front', sit:true, nap:true, face:-1 })
-  spot('rs1', rsofa.x + 31, fb - 12, r1, { room:'front', sit:true, nap:true, face:-1 })
-  spot('print', fr - 61, raisle, r1, { room:'front', face:-1 })
+  spot('rt0', mx + 142, lb - 52, east, { room:'lounge', sit:true })
+  spot('rt1', mx + 172, lb - 52, cafe, { room:'lounge', sit:true })
 
   const sorted = m => [...m].sort((a, b) => a[0] - b[0]).map(([, n]) => n)
-  chain(sorted(top)); chain(sorted(bot)); chain(sorted(side))
-  nav = { pts, adj, door:doorN, seats }
-  geo = { foos:{ x:fx, y:fy }, tv:{ x:lx + 62, y:lb - 72 }, sofa, rsofa, printer:{ x:fr - 74, y:front.y + 8 }, loop:[NW, NE, SE, SW] }
+  chain(sorted(top)); chain(sorted(bot)); chain(sorted(side)); chain(sorted(wing))
+  nav = { pts, adj, door:lift, seats }
+  geo = { foos:{ x:fx, y:fy }, tv:{ x:mx + 62, y:lb - 72 }, sofa, printer, shelf, loop:[NW, NE, SE, SW], loungeMid:mx }
 }
 
 // the shortest way to a node from every node: dist[n] is how far, next[n] the node to go to next
@@ -735,7 +880,7 @@ function drawBackground() {
   const g = bgCanvas.getContext('2d')
   // floors: light tiles in the corridors, each room its own
   for (let ty = 0; ty * T < H; ty++) for (let tx = 0; tx * T < W; tx++) rect(g, tx * T, ty * T, T, T, (tx + ty) % 2 ? '#e0dcd3' : '#dcd8ce')
-  const { work, meeting, lounge, front } = rooms
+  const { work, meeting, lounge } = rooms
   rect(g, work.x, work.y, work.w, work.h, '#cdd4dc') // office carpet
   for (let y = work.y; y < work.y + work.h; y += 4) rect(g, work.x, y, work.w, 1, '#c8cfd8')
   g.strokeStyle = '#a9b1bb'; g.lineWidth = 1; g.strokeRect(work.x + 0.5, work.y + 0.5, work.w - 1, work.h - 1)
@@ -745,63 +890,82 @@ function drawBackground() {
   for (let y = lounge.y; y < lounge.y + lounge.h; y += 8) for (let x = lounge.x; x < lounge.x + lounge.w; x += 8) {
     rect(g, x, y, 8, 8, ((x - lounge.x) / 8 + (y - lounge.y) / 8) % 2 ? '#ebe5d8' : '#e2dbcc') // lounge tiles
   }
-  rect(g, front.x, front.y, front.w, front.h, '#e8e4dc') // reception marble
-  for (let x = front.x + 20; x < front.x + front.w; x += 37) rect(g, x, front.y, 1, front.h, '#ddd8ce')
 
-  // back wall: windows, the sign, paintings, a clock; a TV on the meeting room's stretch
+  // back wall: a plain band with a molding on top, then the lifts, windows, the sign, paintings, a clock, the exit to the
+  // stairs; a TV on the meeting room's stretch, a whiteboard or a screen on each small meeting room's
   rect(g, 0, 0, W, WALL_H, '#ebe5d9'); rect(g, 0, 0, W, 3, '#8f8676')
+  rect(g, 0, DECOR - 6, W, 2, '#ddd5c6'); rect(g, 0, DECOR - 4, W, 1, '#f4efe6')
   rect(g, 0, WALL_H - 4, W, 4, '#b9ad98'); rect(g, 0, WALL_H - 4, W, 1, '#cfc4b0')
-  const signX = WORK_X + (COLS * COL_PITCH) / 2 - 50
-  drawSign(g, signX, 12)
-  drawWindow(g, WORK_X + 14, 10); drawWindow(g, WORK_X + COLS * COL_PITCH - 44, 10)
-  drawPainting(g, signX - 34, 13, 18, 22, ['#c6dfec', '#6f9a63', '#f2b705'])
-  drawPainting(g, signX + 116, 13, 18, 22, ['#f0d9c4', '#a65d4e', '#5d7da6'])
-  drawClock(g, RIGHT_X - 15, 6)
-  drawTV(g, meeting.x + meeting.w / 2 - 24, 10)
+  const signX = workX + (COLS * COL_PITCH) / 2 - 50
+  drawSign(g, signX, DECOR + 12)
+  drawLift(g, door.x - 25, WALL_H - 34, false); drawLift(g, door.x + 3, WALL_H - 34, false); drawLiftButtons(g, door.x - 2, WALL_H - 22)
+  drawWindow(g, workX + 24, DECOR + 10); drawWindow(g, workX + 244, DECOR + 10)
+  drawPainting(g, signX - 26, DECOR + 13, 18, 22, ['#c6dfec', '#6f9a63', '#f2b705'])
+  drawPainting(g, signX + 108, DECOR + 13, 18, 22, ['#f0d9c4', '#a65d4e', '#5d7da6'])
+  drawClock(g, workX + 280, DECOR + 10)
+  drawExitSign(g, rightX - 16, WALL_H - 26)
+  drawTV(g, meeting.x + meeting.w / 2 - 24, DECOR + 10)
+  smalls.filter(r => r.north && r.y === WALL_H).forEach((r, i) => { // and windows beside it in a wide room
+    const mid = r.x + (r.w >> 1)
+    if (i % 2) drawWallScreen(g, mid - 17, DECOR + 12); else drawWhiteboard(g, mid - 21, DECOR + 11)
+    if (r.w >= 176) { drawWindow(g, r.x + 10, DECOR + 10); drawWindow(g, r.x + r.w - 40, DECOR + 10) }
+  })
 
   // meeting room: glass walls (the door faces the corridor), a long table, ten chairs, two big plants
-  drawGlassV(g, RIGHT_X, WALL_H, meeting.h, meeting.y + MEET_DOOR - 13, 26)
-  drawMeetingTable(g, meeting.x + 48, meeting.y + 52, 112, 30)
+  drawGlassV(g, rightX, WALL_H, meeting.h, meeting.y + MEET_DOOR - 13, 26)
+  drawMeetingTable(g, meeting.x + ((meeting.w - 112) >> 1), meeting.y + 52, 112, 30)
   drawBigPlant(g, meeting.x + meeting.w - 22, meeting.y + 6)
   drawBigPlant(g, meeting.x + 8, meeting.y + meeting.h - 34)
-  drawGlassH(g, RIGHT_X, meeting.y + meeting.h, meeting.w)
+  drawGlassH(g, rightX, meeting.y + meeting.h, meeting.w)
+
+  // small meeting rooms along the halls, walls between them and between their rows; the left ones' wall on the corridor
+  // opens onto each hall; a plant at each hall's closed end
+  smalls.forEach(r => drawSmallRoom(g, r))
+  for (const r of smalls) drawPartition(g, r.x - 4, r.north ? r.y : r.y - GLASS, r.h + GLASS)
+  for (const w of walls) drawWallH(g, w.x0, w.y, w.x1 - w.x0)
+  const wingX = work.x - WCOR - 4, openings = halls.filter(h => h.x1 === wingX).map(h => h.y).sort((a, b) => a - b)
+  let wy = WALL_H
+  for (const y of [...openings, H - 6]) { if (y > wy) drawPartition(g, wingX, wy, y - wy); wy = y + HALL }
+  for (const h of halls) drawPlant(g, h.x1 === wingX ? h.x0 + 2 : h.x1 - 18, h.y + 2)
 
   // lounge: a counter (sink, coffee machine, microwave), a fridge, a vending machine, foosball, a TV in front of
   // the sofa, a small round table, a water cooler
-  const lx = lounge.x, ly = lounge.y, lr = lounge.x + lounge.w, lb = ly + lounge.h, { sofa, rsofa } = geo
+  const lx = lounge.x, ly = lounge.y, lr = lounge.x + lounge.w, lb = ly + lounge.h, { sofa, printer, shelf, loungeMid:mx } = geo
   drawCounter(g, lr - 22, ly + 4, 22, 74)
   drawSink(g, lr - 18, ly + 8); drawCoffeeMachine(g, lr - 17, ly + 26); drawMicrowave(g, lr - 18, ly + 48)
   drawFridge(g, lr - 21, ly + 82)
-  drawVending(g, lx + 132, ly + 6)
+  drawVending(g, mx + 132, ly + 6)
   drawFoosball(g, geo.foos.x, geo.foos.y)
-  drawRug(g, lx + 34, lb - 52, 92, 46, '#c98b6b', '#d9a184')
+  drawRug(g, mx + 34, lb - 52, 92, 46, '#c98b6b', '#d9a184')
   drawLoungeTV(g, geo.tv.x, geo.tv.y)
   drawSofa(g, sofa.x, sofa.y, sofa.w, sofa.c, sofa.dark)
-  drawRoundTable(g, lx + 148, lb - 62)
+  drawRoundTable(g, mx + 148, lb - 62)
   drawCooler(g, lx + 6, lb - 32)
   drawPlant(g, lr - 20, lb - 24)
+  const gap = (lb - 76) - (ly + 74) // a tall lounge gets bean bags between the street and the TV, clear of the walkways
+  if (gap >= 36) {
+    const my = ly + 74 + (gap >> 1)
+    drawRug(g, mx + 56, my - 14, 60, 28, '#9cb8a8', '#b3cbbd')
+    drawBeanBag(g, mx + 60, my - 8, '#f2b705', '#c99a04'); drawBeanBag(g, mx + 79, my - 12, '#4a90d9', '#3a73ad'); drawBeanBag(g, mx + 98, my - 8, '#d64541', '#a83330')
+    drawFloorLamp(g, mx + 116, my - 22)
+  }
 
-  // reception: the desk, a visitors' sofa, a printer, filing cabinets, a bookshelf, two big plants by the door,
-  // a fire extinguisher
-  const fx = front.x, fy = front.y
-  drawBookshelf(g, fx + 4, fy + 4)
-  drawReception(g, fx + 52, fy + 22)
-  drawBigPlant(g, door.x - 34, fy + front.h - 34); drawBigPlant(g, door.x + 16, fy + front.h - 34)
-  drawSofa(g, rsofa.x, rsofa.y, rsofa.w, rsofa.c, rsofa.dark)
-  drawPrinter(g, geo.printer.x, geo.printer.y)
-  drawCabinet(g, front.x + front.w - 44, fy + 4); drawCabinet(g, front.x + front.w - 28, fy + 4)
-  drawExtinguisher(g, 6, WALL_H + 30)
+  // the strip below the desks: the printer and two filing cabinets, the bookshelf, plants at the corridors' ends, and a
+  // fire extinguisher by the lifts
+  drawPrinter(g, printer.x, printer.y); drawCabinet(g, printer.x + 32, H - 32); drawCabinet(g, printer.x + 48, H - 32)
+  drawBookshelf(g, shelf.x, shelf.y); drawPlant(g, shelf.x - 20, H - 26)
+  drawBigPlant(g, work.x - WCOR + 3, H - 36); drawBigPlant(g, work.x + work.w + 1, H - 36)
+  drawExtinguisher(g, workX + 16, WALL_H - 10)
 
-  // side walls and the south wall, with a door in the south wall
+  // side walls and the south wall
   rect(g, 0, WALL_H, 4, H - WALL_H, '#b9ad98'); rect(g, W - 4, WALL_H, 4, H - WALL_H, '#b9ad98')
-  const doorL = door.x - T, doorR = door.x + T
-  rect(g, 0, H - 6, doorL, 6, '#b9ad98'); rect(g, doorR, H - 6, W - doorR, 6, '#b9ad98')
-  rect(g, 0, H - 6, doorL, 1, '#cfc4b0'); rect(g, doorR, H - 6, W - doorR, 1, '#cfc4b0')
-  rect(g, doorL + 2, H - 10, doorR - doorL - 4, 6, '#9a8f7e')
+  rect(g, 0, H - 6, W, 6, '#b9ad98'); rect(g, 0, H - 6, W, 1, '#cfc4b0')
 }
 
 // ================= employees (one per account) =================
 const emps = new Map() // account id -> employee
+const lift = { at:-1e9, no:0 } // when a lift last opened for someone, and which of the two
+const liftRide = () => { lift.at = performance.now(); lift.no++ }
 const WALK = 48, HURRY = 90, TAG_RUN = 70, TAG_CHASE = 84 // pixels per second
 
 function makeEmployee(acc) {
@@ -822,7 +986,7 @@ function updateEmployee(e, acc, walkIn) {
   e.s = sessionOf(acc)
   const online = isOnline(e)
   if (online && !was && !e.inside) { // on duty: in through the door, or straight to its spot when the page opens
-    if (walkIn) { e.x = door.x; e.y = door.y; e.node = nav.door; e.path = []; e.goal = null }
+    if (walkIn) { e.x = door.x; e.y = door.y; e.node = nav.door; e.path = []; e.goal = null; liftRide() }
     else e.fresh = true
     e.inside = true
   } // off duty: the planner walks it out
@@ -840,17 +1004,17 @@ function dropEmployee(e) { e.label.remove(); e.bubble?.remove(); emps.delete(e.a
 
 // ================= idle life =================
 // An idle employee stays at its desk a while (the next prompt may be on its way), then wanders off: TV on the
-// lounge sofa, coffee, the vending machine, the water cooler, a window, the bookshelf, the printer, minding
-// reception, or with a colleague foosball, tag or a chat at the round table. After a while it naps (most hide in
+// lounge sofa, coffee, the vending machine, the water cooler, a window, the bookshelf, the printer, or with a
+// colleague foosball, tag or a chat at the round table. After a while it naps (most hide in
 // the meeting room) and now and then wakes up for another round. It all counts from when the bridge saw the
 // session go idle, so reloading the page wakes nobody. Work or a pending ask sends it back to its desk; so does a
 // click, and then it stays there until its next turn.
 const SETTLE = 20000, FIRST_NAP = 150000, NAP = 240000, WAKE = 90000, SLOT = 30000, PAIR_SLOT = 40000
-const SOLO = [['tv', 4], ['coffee', 2], ['vending', 2], ['water', 2], ['window', 2], ['books', 2], ['print', 1], ['front', 2], ['desk', 1]]
+const SOLO = [['tv', 4], ['coffee', 2], ['vending', 2], ['water', 2], ['window', 2], ['books', 2], ['print', 2], ['desk', 1]]
 const SOLO_SPOTS = { tv:['ls0', 'ls1', 'ls2'], coffee:['coffee'], vending:['vend'], water:['water'], window:['win0', 'win1'],
-  books:['books'], print:['print'], front:['front'] }
+  books:['books'], print:['print'] }
 const PAIR_SPOTS = { foosball:['fb0', 'fb1'], chase:['tag0', 'tag1'], chat:['rt0', 'rt1'] }
-const NAP_SPOTS = [['mt0', 'mt1', 'mt2', 'mt3', 'mb0', 'mb1', 'mb2', 'mb3', 'ml', 'mr'], ['ls0', 'ls1', 'ls2'], ['rs0', 'rs1']]
+const NAP_SPOTS = [['mt0', 'mt1', 'mt2', 'mt3', 'mb0', 'mb1', 'mb2', 'mb3', 'ml', 'mr'], ['ls0', 'ls1', 'ls2']]
 
 // a well-mixed hash for the choices (similar strings get similar numbers from hash())
 function rnd(s) {
@@ -934,11 +1098,11 @@ function planLife(at) {
     }
   }
   // nappers keep their spot for the whole nap (whoever fell asleep first chose first): most like the meeting
-  // room, some a sofa, some their own desk
+  // room, some the lounge sofa, some their own desk
   naps.sort((a, b) => a[1] - b[1] || (a[0].acc.id < b[0].acc.id ? -1 : 1))
   for (const [e] of naps) {
     const h = rnd(e.acc.id + '/bed'), k = h % 20
-    const order = k < 11 ? [0, 1, 2] : k < 14 ? [1, 0, 2] : k < 17 ? [2, 0, 1] : []
+    const order = k < 13 ? [0, 1] : k < 17 ? [1, 0] : []
     const s = order.map(i => free(NAP_SPOTS[i], h)).find(Boolean)
     if (s) claim(e, 'nap', s); else plan.set(e, { act:'nap', spot:desk(e) })
   }
@@ -1009,7 +1173,7 @@ function move(e, dt, now) {
     if (d <= left) { e.x = p.x; e.y = p.y; e.node = p.n; e.path.shift(); left -= d }
     else { e.x += dx / d * left; e.y += dy / d * left; left = 0 }
   }
-  if (!e.path.length) { e.arrived = now; if (e.goal?.id === 'out') e.inside = false }
+  if (!e.path.length) { e.arrived = now; if (e.goal?.id === 'out') { e.inside = false; liftRide() } }
   return true
 }
 
@@ -1077,13 +1241,6 @@ const stateLine = e => { const doing = doingText(e); return statusText(isOnline(
 const cv = document.getElementById('office'), ctx = cv.getContext('2d')
 let S = 1, offX = 0, offY = 0, dpr = 1
 
-function resize() {
-  dpr = devicePixelRatio || 1
-  cv.width = Math.round(innerWidth * dpr); cv.height = Math.round(innerHeight * dpr)
-  const fit = Math.min(cv.width / W, cv.height / H)
-  S = fit >= 2 ? Math.floor(fit) : fit // scale by whole numbers when possible so pixels stay square; on small screens a fractional scale beats a tiny office
-  offX = Math.round((cv.width - W * S) / 2); offY = Math.round((cv.height - H * S) / 2)
-}
 const toCss = (x, y) => [(offX + x * S) / dpr, (offY + y * S) / dpr]
 
 const flights = [] // envelopes in flight { from, to, t, toAcc }
@@ -1127,11 +1284,12 @@ function frame(now) {
     })
   }
   // furniture that comes alive while it's used, the sofa backrests over whoever sits there, and a tag's burst
-  const { tv, foos, printer, sofa, rsofa } = geo
+  const { tv, foos, printer, sofa } = geo
   if (watching) items.push({ y:tv.y + 19, draw:() => drawTVShow(g, tv.x, tv.y, now) })
   if (using.has('fb0') && using.has('fb1')) items.push({ y:foos.y + 13, draw:() => drawFoosBall(g, foos.x, foos.y, now) })
   if (using.has('print')) items.push({ y:printer.y + 21, draw:() => drawPaper(g, printer.x, printer.y, now) })
-  for (const s of [sofa, rsofa]) items.push({ y:s.y + 24, draw:() => drawSofaBack(g, s) })
+  items.push({ y:sofa.y + 24, draw:() => drawSofaBack(g, sofa) })
+  if (now - lift.at < 1600) items.push({ y:WALL_H - 1, draw:() => drawLift(g, door.x + (lift.no % 2 ? 3 : -25), WALL_H - 34, true) })
   for (const { pow } of tagGames.values()) {
     if (pow && now - pow.at < 500) items.push({ y:Infinity, draw:() => drawPow(g, Math.round(pow.x), Math.round(pow.y), (now - pow.at) / 500) })
   }
@@ -1147,10 +1305,19 @@ function frame(now) {
     if (f.t >= 1) { flights.splice(i, 1); mailAt.set(f.toAcc, now) }
   }
 
-  ctx.imageSmoothingEnabled = false
   ctx.fillStyle = '#2f2e2b'
   ctx.fillRect(0, 0, cv.width, cv.height)
-  ctx.drawImage(buf, 0, 0, W, H, offX, offY, W * S, H * S)
+  if (S === Math.floor(S)) {
+    ctx.imageSmoothingEnabled = false
+    ctx.drawImage(buf, 0, 0, W, H, offX, offY, W * S, H * S)
+  } else { // up by whole pixels first, then smoothly down, so all pixels come out the same size
+    const k = Math.ceil(S), bg = big.getContext('2d')
+    if (big.width !== W * k || big.height !== H * k) { big.width = W * k; big.height = H * k }
+    bg.imageSmoothingEnabled = false
+    bg.drawImage(buf, 0, 0, W * k, H * k)
+    ctx.imageSmoothingEnabled = true
+    ctx.drawImage(big, 0, 0, W * k, H * k, offX, offY, W * S, H * S)
+  }
   placeLabels(now)
   if (!findList.hidden && now - (frame.listed || 0) > 500) { frame.listed = now; renderFind() } // what they're doing changes
   refreshCardLine()
@@ -1208,10 +1375,6 @@ function employeeItem(g, e, now, at) {
       case 'books':
         if (!blink) pose.eyes = 'down'
         extra = () => drawBook(g, x, y, b)
-        break
-      case 'front':
-        if (!blink && Math.floor(t / 2500) % 2) pose.eyes = 'down'
-        pose.raiseL = Math.floor(t / 500) % 14 === 0 // waves at the door
         break
       case 'foosball':
         pose.armL = Math.floor(t / 110) % 2; pose.armR = 1 - Math.floor(t / 130) % 2
@@ -1296,10 +1459,15 @@ function placeLabels(now) {
     const r = rooms[key]
     if (!r) continue
     // the open office's sign goes bottom left; top left would be hidden by the first row's name tags
-    const [x, y] = key === 'sign' ? toCss(WORK_X + (COLS * COL_PITCH) / 2 + 6, 22)
+    const [x, y] = key === 'sign' ? toCss(workX + (COLS * COL_PITCH) / 2 + 6, DECOR + 22)
       : key === 'work' ? toCss(r.x + 3, r.y + r.h - 12) : toCss(r.x + 3, r.y + 3)
     el.style.left = x + 'px'; el.style.top = y + 'px'
   }
+  smalls.forEach((r, i) => {
+    const d = smallDoor(r), [x, y] = toCss(d.plateX, d.plateY), maxW = Math.max(40, (r.x + r.w - 4 - d.plateX) * S / dpr) + 'px'
+    plates[i].style.left = x + 'px'; plates[i].style.top = y + 'px'
+    if (plates[i].style.maxWidth !== maxW) plates[i].style.maxWidth = maxW
+  })
   addBtn.hidden = addSeat < 0
   if (addSeat >= 0) {
     const d = deskOf(addSeat)
@@ -1365,6 +1533,7 @@ addEventListener('keydown', ev => { // "/" jumps to the search box; Esc lets go 
   if (ev.key !== '/' || ev.ctrlKey || ev.metaKey || ev.altKey || !asksModal.hidden || !dlg.hidden) return
   if (/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName)) return
   ev.preventDefault()
+  if (hud.classList.contains('up')) setHud(false)
   findEl.focus()
 })
 
@@ -1374,7 +1543,9 @@ const numbered = (key, n) => t(key, { n:'\u0001' }).split('\u0001').map(esc).joi
 const CHIPS = [['idle', 'idle', 'stats.idle'], ['busy', 'tool', 'stats.working'], ['waiting', 'waiting', 'stats.waiting'], ['off', 'ended', 'stats.offDuty']]
 // While asks wait for you, the pending chip turns red and opens them.
 function renderStats() {
-  const el = document.getElementById('stats')
+  const el = document.getElementById('stats'), badge = hudTab.querySelector('.badge')
+  badge.hidden = !snapshot.asks.length
+  badge.textContent = snapshot.asks.length
   if (!snapshot.accounts.length) { chipOn = null; el.textContent = t('office.nobody'); return }
   const n = { idle:0, busy:0, waiting:0, off:0 }
   for (const e of emps.values()) n[groupOf(e)]++
@@ -1391,6 +1562,41 @@ document.getElementById('stats').addEventListener('click', ev => {
   chipOn = chipOn === chip.dataset.group ? null : chip.dataset.group
   renderStats()
 })
+
+// ================= the HUD's tab =================
+// The HUD slides up out of the way and back down; the page remembers which, and the side panels start below it.
+const hud = document.getElementById('hud'), hudTab = document.getElementById('hud-tab'), HUD_STORE = 'symphony.hud'
+function setHud(up, remember = true) {
+  hud.classList.toggle('up', up)
+  hudTab.title = t(up ? 'hud.show' : 'hud.hide')
+  hudTab.setAttribute('aria-expanded', String(!up))
+  if (remember) try { localStorage.setItem(HUD_STORE, up ? 'up' : 'down') } catch {}
+  hudRoom()
+}
+const hudRoom = () => document.documentElement.style.setProperty('--hud-h', (hud.classList.contains('up') ? 0 : hud.offsetHeight) + 'px')
+hudTab.addEventListener('click', () => setHud(!hud.classList.contains('up')))
+new ResizeObserver(hudRoom).observe(hud)
+
+// ================= small meeting rooms' nameplates =================
+// The rooms are for meetings in a later version; for now each nameplate shows the room's name and a green light: free.
+const plates = []
+function syncPlates() {
+  while (plates.length > smalls.length) plates.pop().remove()
+  while (plates.length < smalls.length) {
+    const el = document.createElement('div')
+    el.className = 'room-plate'
+    document.getElementById('labels').appendChild(el)
+    plates.push(el)
+  }
+  smalls.forEach((r, i) => {
+    const name = t('room.small.' + (r.k % 24 + 1)) + (r.k < 24 ? '' : ' ' + ['II', 'III', 'IV'][Math.min(2, Math.floor(r.k / 24) - 1)])
+    if (plates[i].dataset.name !== name || plates[i].dataset.seats !== String(r.seats)) {
+      plates[i].dataset.name = name; plates[i].dataset.seats = r.seats
+      plates[i].innerHTML = `<i></i>${esc(name)}`
+      plates[i].title = `${name} · ${t('room.seats', { n:r.seats })} · ${t('room.free')}`
+    }
+  })
+}
 
 // ================= data =================
 const logEl = document.getElementById('log')
@@ -1711,7 +1917,7 @@ function watchLaunch() {
 // ================= start-up =================
 // room signs and the company sign's lettering, drawn with web fonts (clearer than pixel fonts in every script)
 const roomEls = {}
-for (const [key, text] of [['work', t('room.work')], ['meeting', t('room.meeting')], ['lounge', t('room.lounge')], ['front', t('room.front')], ['sign', 'SYMPHONY']]) {
+for (const [key, text] of [['work', t('room.work')], ['meeting', t('room.meeting')], ['lounge', t('room.lounge')], ['sign', 'SYMPHONY']]) {
   const el = document.createElement('div')
   el.className = key === 'sign' ? 'sign-text' : 'room-label'
   el.textContent = text
@@ -1727,6 +1933,12 @@ document.documentElement.style.setProperty('--ico-find', pixelArt(7, 7, g => MAG
   if (c !== '.') rect(g, x, y, 1, 1, c === 'X' ? '#2b2a28' : '#9fd3f0')
 }))))
 document.documentElement.style.setProperty('--ico-mail', pixelArt(9, 6, g => drawEnvelope(g, 0, 0)))
+const CHEVRON = ['...X...', '..XXX..', '.XX.XX.', 'XX...XX']
+const chevron = rows => pixelArt(7, 4, g => rows.forEach((row, y) => [...row].forEach((c, x) => { if (c === 'X') rect(g, x, y, 1, 1, '#2b2a28') })))
+document.documentElement.style.setProperty('--ico-up', chevron(CHEVRON))
+document.documentElement.style.setProperty('--ico-down', chevron([...CHEVRON].reverse()))
+setHud((() => { try { return localStorage.getItem(HUD_STORE) === 'up' } catch { return false } })(), false)
+requestAnimationFrame(() => hud.classList.add('anim')) // it slides from now on, not when the page opens
 const addBtn = document.createElement('button')
 addBtn.className = 'seat-add'
 addBtn.textContent = '+'

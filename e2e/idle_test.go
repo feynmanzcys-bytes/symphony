@@ -108,7 +108,7 @@ func TestIdle(t *testing.T) {
 	}, show)
 
 	// the walkways: from every spot, the way to every desk is little longer than going straight across and then
-	// down (desks in a middle row once had to be reached round by the back wall or the reception)
+	// down (desks in a middle row once had to be reached round by the back wall or the front)
 	type route struct {
 		From string  `json:"from"`
 		Seat int     `json:"seat"`
