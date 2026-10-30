@@ -210,3 +210,46 @@ func TestLayout(t *testing.T) {
 		t.Errorf("the page threw: %v", errs)
 	}
 }
+
+// TestAsksPopup checks with made-up asks (no tokens) that the pending popup hangs from the top: a new ask goes in
+// below the others, so the card someone is about to click stays where it is. (Centered, the popup grew both ways,
+// and a click meant for one card could land on the next one's buttons.)
+func TestAsksPopup(t *testing.T) {
+	requireBrowser(t)
+	repo, _ := filepath.Abs("..")
+	b := startBridge(t, filepath.Join(repo, "mods", "symphony-bridge"))
+	alice, _ := b.Hub.CreateAccount("alice")
+	bob, _ := b.Hub.CreateAccount("bob")
+	b.post(t, alice.Token, "/api/event", map[string]any{"session": "s-alice", "kind": "session.start", "cwd": "/work/alice"})
+	b.post(t, bob.Token, "/api/event", map[string]any{"session": "s-bob", "kind": "session.start", "cwd": "/work/bob"})
+	b.post(t, alice.Token, "/api/ask", map[string]any{"session": "s-alice", "kind": "permission", "tool": "Bash", "input": map[string]any{"command": "ls"}})
+
+	browser := newBrowser(t)
+	office := tab(t, browser, b.URL+"/?lang=en")
+	type box struct{ Top, Bottom float64 }
+	cards := func() []box {
+		var boxes []box
+		data := get(t, office, 5*time.Second, chromedp.Evaluate[string](`JSON.stringify([...document.querySelectorAll('#asks-modal:not([hidden]) #asks .card')]
+			.map(c => c.getBoundingClientRect()).map(r => ({ Top: r.top, Bottom: r.bottom })))`))
+		if err := json.Unmarshal([]byte(data), &boxes); err != nil {
+			t.Fatal(err)
+		}
+		return boxes
+	}
+	waitUntil(t, 20*time.Second, "the popup opens with alice's ask", func() bool { return len(cards()) == 1 })
+	first := cards()[0]
+
+	b.post(t, bob.Token, "/api/ask", map[string]any{"session": "s-bob", "kind": "question", "questions": []map[string]any{{
+		"question": "Which color do you like?", "header": "Color",
+		"options": []map[string]any{{"label": "Red", "description": "warm"}, {"label": "Blue", "description": "cool"}},
+	}}})
+	var now []box
+	waitUntil(t, 10*time.Second, "bob's question joins the popup", func() bool { now = cards(); return len(now) == 2 })
+	screenshot(t, office, "asks-popup.png")
+	if now[0] != first {
+		t.Fatalf("alice's card moved when bob's question came in: from %+v to %+v", first, now[0])
+	}
+	if now[1].Top < now[0].Bottom {
+		t.Fatalf("bob's card should go in below alice's: %+v", now)
+	}
+}

@@ -190,6 +190,24 @@ func TestOffice(t *testing.T) {
 	// ---------- 4. handled in the office's popup ----------
 	handled := map[string]bool{}
 	var answeredQuestion, deniedB, allowedA bool
+	// press clicks a card's button like a person, and counts it once the answer has reached the bridge and the card
+	// has left the popup: only then do the cards stop moving for the next click. A click that went nowhere is tried
+	// again, a few times.
+	press := func(id, button string) {
+		t.Helper()
+		gone := func() bool {
+			return !b.pending(id) && get(t, office, 5*time.Second, chromedp.Evaluate[bool](fmt.Sprintf(`!document.querySelector('#asks .card[data-id="%s"]')`, id)))
+		}
+		for try := 1; ; try++ {
+			do(t, office, 10*time.Second, chromedp.Click(chromedp.CSS(button)))
+			if eventually(5*time.Second, gone) {
+				return
+			}
+			if try == 3 || !b.pending(id) {
+				t.Fatalf("%s was clicked %d times, but ask %s is still in the popup (pending in the bridge: %v)", button, try, id, b.pending(id))
+			}
+		}
+	}
 	waitUntil(t, 4*time.Minute, "the popup handles A's question, B's denial and A's permission", func() bool {
 		for _, a := range b.Hub.Snapshot().Asks {
 			if handled[a.ID] {
@@ -206,15 +224,14 @@ func TestOffice(t *testing.T) {
 				if !picked {
 					t.Fatalf("no Blue option in the question:\n%s", get(t, office, 5*time.Second, chromedp.Evaluate[string](fmt.Sprintf(`document.querySelector('%s').innerText`, card))))
 				}
-				do(t, office, 10*time.Second, chromedp.Click(chromedp.CSS(card+` .submit`)))
+				press(a.ID, card+` .submit`)
 				answeredQuestion = true
 			case a.Session == sidB && a.Kind == "permission" && a.Tool == "Bash":
-				do(t, office, 10*time.Second,
-					chromedp.SetValue(chromedp.CSS(card+` .reason`), "denied in the page: the e2e test of the deny path"),
-					chromedp.Click(chromedp.CSS(card+` .deny`)))
+				do(t, office, 10*time.Second, chromedp.SetValue(chromedp.CSS(card+` .reason`), "denied in the page: the e2e test of the deny path"))
+				press(a.ID, card+` .deny`)
 				deniedB = true
 			case a.Session == sidA && a.Kind == "permission" && a.Tool == "Bash":
-				do(t, office, 10*time.Second, chromedp.Click(chromedp.CSS(card+` .allow`)))
+				press(a.ID, card+` .allow`)
 				allowedA = true
 			default:
 				t.Fatalf("unexpected pending ask: %+v", a)

@@ -115,6 +115,10 @@
     border:2px solid #2b2a28; box-shadow:4px 4px 0 rgba(0,0,0,.35); padding:14px 16px; box-sizing:border-box; }
   .panel h2 { margin:0 0 10px; font-size:15px; }
   .panel .actions { display:flex; justify-content:flex-end; gap:8px; margin-top:12px; }
+  /* the pending popup hangs from the top: a new card goes in below the others, so the one being clicked never moves
+     (centered, the popup grew both ways and a click could land on the next card's buttons) */
+  #asks-modal { align-items:flex-start; padding-top:max(16px, 8vh); box-sizing:border-box; }
+  #asks-modal .panel { max-height:calc(100vh - max(16px, 8vh) - 16px); }
   /* pending cards (built by asks.js) */
   #asks .card { border:2px solid #2b2a28; padding:10px 12px; margin-bottom:10px; background:#fff; }
   #asks .who { display:flex; gap:8px; align-items:baseline; margin-bottom:6px; }

@@ -140,7 +140,29 @@ func (b *testBridge) session(id string) *bridge.Session {
 	return nil
 }
 
+// pending says whether the ask still waits for an answer.
+func (b *testBridge) pending(id string) bool {
+	for _, a := range b.Hub.Snapshot().Asks {
+		if a.ID == id {
+			return true
+		}
+	}
+	return false
+}
+
 // ---------- waiting ----------
+
+// eventually polls cond until it holds or the time is up, and says which.
+func eventually(timeout time.Duration, cond func() bool) bool {
+	deadline := time.Now().Add(timeout)
+	for !cond() {
+		if time.Now().After(deadline) {
+			return false
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	return true
+}
 
 func waitUntil(t *testing.T, timeout time.Duration, what string, cond func() bool, dump ...func() string) {
 	t.Helper()
