@@ -13,6 +13,12 @@
 
   "hud.hide": "Hide the panel",
   "hud.show": "Show the panel",
+  "pixels.label": "Pixels",
+  "pixels.title": "Pixel size: the same office, drawn in finer pixels and more detail at each step",
+  "pixels.1": "Standard",
+  "pixels.2": "Fine",
+  "pixels.3": "Finer",
+  "pixels.4": "Finest",
 
   "room.work": "Open office",
   "room.meeting": "Meeting room",

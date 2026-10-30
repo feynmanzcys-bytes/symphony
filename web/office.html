@@ -33,6 +33,14 @@
   #hud .chip.on { background:#2b2a28; color:#fffdf7; box-shadow:none; transform:translate(2px, 2px); }
   #hud .chip.hot { background:#d64541; color:#fff; border-color:#7a1f1c; animation:nudge 1s steps(1) infinite; } /* asks wait for you */
   @keyframes nudge { 50% { background:#e8605c; } }
+  /* the pixel size: four steps from the standard drawing to the finest, each button a finer grid */
+  #hud .pixels .lbl { font-size:12px; color:#6f6b64; white-space:nowrap; }
+  #hud .steps { display:flex; border:2px solid #2b2a28; box-shadow:2px 2px 0 rgba(0,0,0,.3); }
+  #hud .steps button { width:24px; height:18px; padding:0; border:0; border-left:2px solid #2b2a28; cursor:pointer;
+    background:#fffdf7 no-repeat center / 12px 12px; image-rendering:pixelated; }
+  #hud .steps button:first-child { border-left:0; }
+  #hud .steps button:hover { background-color:#f2efe8; }
+  #hud .steps button.on { background-color:#f2b705; }
   #hud select.lang { width:104px; font:inherit; font-size:12px; background:#fffdf7; color:#2b2a28; border:2px solid #2b2a28; padding:0 2px;
     cursor:pointer; box-shadow:2px 2px 0 rgba(0,0,0,.3); }
   #hud .note { margin:8px auto 0; max-width:560px; padding:4px 8px; background:#fff3cf; border:2px solid #c9961a; color:#6b4a00; line-height:1.5; }
@@ -224,7 +232,33 @@ const DECOR = WALL_H - 48 // the back wall's windows and pictures hang below a p
 const CLAWD = '#d97757', CLAWD_SHADE = '#b9603f', EYE = '#2b1b14', MINI = '#e6a58d', MINI_SHADE = '#c98a72'
 const OFF = '#3b3e44' // laptop light of an empty desk
 
-const rect = (g, x, y, w, h, c) => { g.fillStyle = c; g.fillRect(x, y, w, h) }
+// Drawing the office at a finer pixel size, a line a pixel of the office thick (a highlight, an edge, a seam) comes out
+// as thin as the screen shows: hair, in pixels of the office (0 while drawing anything else, or at the standard size)
+let hair = 0
+const rect = (g, x, y, w, h, c) => {
+  g.fillStyle = c
+  if (hair) { if (h === 1 && w >= 4) h = hair; else if (w === 1 && h >= 4) w = hair }
+  g.fillRect(x, y, w, h)
+}
+const solid = (g, x, y, w, h, c) => { g.fillStyle = c; g.fillRect(x, y, w, h) } // never thinner: a body, an arm, a ring
+// The finer steps' touches, a hair their pixel: a soft shadow on the floor below a thing (w wide from x, its bottom edge
+// at y), a box with its corners cut, a run of dots (a reflection), a weave of dots over a floor.
+function ground(g, x, y, w) {
+  if (detail < 2 || !hair) return
+  solid(g, x + 1, y, w - 2, 2 * hair, 'rgba(43,42,40,.16)'); solid(g, x + 2, y + 2 * hair, w - 4, 2 * hair, 'rgba(43,42,40,.07)')
+}
+function box(g, x, y, w, h, c) {
+  if (detail < 2 || !hair || w < 3 || h < 3) return rect(g, x, y, w, h, c)
+  solid(g, x + hair, y, w - 2 * hair, h, c); solid(g, x, y + hair, w, h - 2 * hair, c)
+}
+function dots(g, x, y, n, dx, dy, c) { for (let i = 0; i < n; i++) solid(g, x + i * dx, y + i * dy, hair, hair, c) }
+function weave(g, x, y, w, h, c) {
+  const p = document.createElement('canvas'), q = p.getContext('2d')
+  p.width = p.height = 4; q.fillStyle = c; q.fillRect(0, 0, 1, 1); q.fillRect(2, 2, 1, 1)
+  const pat = g.createPattern(p, 'repeat')
+  pat.setTransform(new DOMMatrix([hair, 0, 0, hair, 0, 0]))
+  g.fillStyle = pat; g.fillRect(x, y, w, h)
+}
 const base = p => (p || '').split(/[\\/]/).filter(Boolean).pop() || p || '?' // Windows paths use backslashes
 const dot = state => `<span class="dot" style="background:${STATE_COLOR[state] ?? GRAY}"></span>`
 const hash = s => [...String(s)].reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 7) >>> 0
@@ -285,29 +319,33 @@ function buildText(s) {
 // legs draws the feet; step is the foot stepping forward
 function drawClawd(g, cx, by, b, pose, body = CLAWD, shade = CLAWD_SHADE) {
   const left = cx - (b.bw >> 1), top = by - b.bh
-  rect(g, left, top, b.bw, b.bh, body)
+  solid(g, left, top, b.bw, b.bh, body)
   rect(g, left + b.bw - 1, top + 1, 1, b.bh - 1, shade)
   rect(g, left, by - 1, b.bw, 1, shade)
+  if (detail >= 2 && hair) solid(g, left, top, b.bw - 1, hair, 'rgba(255,255,255,.25)') // light on its head
   const ex1 = left + 2, ex2 = left + b.bw - 3
-  if (pose.eyes === 'open') { rect(g, ex1, top + 2, 1, 2, EYE); rect(g, ex2, top + 2, 1, 2, EYE) }
-  else if (pose.eyes === 'down') { rect(g, ex1, top + 3, 1, 2, EYE); rect(g, ex2, top + 3, 1, 2, EYE) }
-  else if (pose.eyes === 'closed') { rect(g, ex1 - 1, top + 3, 2, 1, EYE); rect(g, ex2, top + 3, 2, 1, EYE) }
+  if (pose.eyes === 'open') {
+    solid(g, ex1, top + 2, 1, 2, EYE); solid(g, ex2, top + 2, 1, 2, EYE)
+    if (detail && hair && hair < 1) { solid(g, ex1, top + 2, hair, hair, '#fffdf7'); solid(g, ex2, top + 2, hair, hair, '#fffdf7') } // a glint
+  }
+  else if (pose.eyes === 'down') { solid(g, ex1, top + 3, 1, 2, EYE); solid(g, ex2, top + 3, 1, 2, EYE) }
+  else if (pose.eyes === 'closed') { solid(g, ex1 - 1, top + 3, 2, 1, EYE); solid(g, ex2, top + 3, 2, 1, EYE) }
   if (b.headband) {
-    rect(g, left, top + 1, b.bw, 1, RED)
-    rect(g, left + b.bw, top + 1, 2, 1, RED); rect(g, left + b.bw + 1, top + 2, 2, 1, RED)
+    solid(g, left, top + 1, b.bw, 1, RED)
+    solid(g, left + b.bw, top + 1, 2, 1, RED); solid(g, left + b.bw + 1, top + 2, 2, 1, RED)
   }
   const armY = top + Math.floor(b.bh / 2) - 1
-  if (pose.raiseL) rect(g, left - b.armW, top - 4, b.armW, b.armH + 4, body)
-  else rect(g, left - b.armW, armY + (pose.armL || 0), b.armW, b.armH, body)
-  if (pose.raiseR) rect(g, left + b.bw, top - 4, b.armW, b.armH + 4, body)
-  else rect(g, left + b.bw, armY + (pose.armR || 0), b.armW, b.armH, body)
+  if (pose.raiseL) solid(g, left - b.armW, top - 4, b.armW, b.armH + 4, body)
+  else solid(g, left - b.armW, armY + (pose.armL || 0), b.armW, b.armH, body)
+  if (pose.raiseR) solid(g, left + b.bw, top - 4, b.armW, b.armH + 4, body)
+  else solid(g, left + b.bw, armY + (pose.armR || 0), b.armW, b.armH, body)
   if (b.muscle >= 3) { // biceps
-    if (!pose.raiseL) rect(g, left - b.armW - 1, armY + (pose.armL || 0), 1, b.armH - 1, body)
-    if (!pose.raiseR) rect(g, left + b.bw + b.armW, armY + (pose.armR || 0), 1, b.armH - 1, body)
+    if (!pose.raiseL) solid(g, left - b.armW - 1, armY + (pose.armL || 0), 1, b.armH - 1, body)
+    if (!pose.raiseR) solid(g, left + b.bw + b.armW, armY + (pose.armR || 0), 1, b.armH - 1, body)
   }
   if (pose.legs) {
     const xs = [left + 1, left + 3, left + b.bw - 4, left + b.bw - 2]
-    xs.forEach((x, i) => rect(g, x, by - (pose.step === (i < 2 ? 0 : 1) ? 1 : 0), 1, 2, body))
+    xs.forEach((x, i) => solid(g, x, by - (pose.step === (i < 2 ? 0 : 1) ? 1 : 0), 1, 2, body))
   }
 }
 
@@ -388,35 +426,49 @@ function drawPow(g, x, y, p) {
 // a blinking ring around the feet of an employee the search found
 function drawRing(g, x, y, b, t) {
   const c = Math.floor(t / 250) % 2 ? YELLOW : '#fffdf7', hw = (b.bw >> 1) + b.armW + 3
-  rect(g, x - hw + 2, y - 1, 2 * hw - 4, 1, c); rect(g, x - hw + 2, y + 3, 2 * hw - 4, 1, c)
-  rect(g, x - hw, y, 2, 3, c); rect(g, x + hw - 2, y, 2, 3, c)
+  solid(g, x - hw + 2, y - 1, 2 * hw - 4, 1, c); solid(g, x - hw + 2, y + 3, 2 * hw - 4, 1, c)
+  solid(g, x - hw, y, 2, 3, c); solid(g, x + hw - 2, y, 2, 3, c)
 }
 
 // ---------- furniture and decor ----------
 function drawChair(g, x, y) {
   rect(g, x + 9, y - 15, 14, 13, '#5d6169')
   rect(g, x + 9, y - 15, 14, 1, '#7a7f89')
+  if (detail >= 3 && hair) rect(g, x + 11, y - 8, 10, 1, '#666b74') // a seam in the backrest
+  if (detail >= 2 && hair) { solid(g, x + 9, y - 15, hair, hair, '#cdd4dc'); solid(g, x + 23 - hair, y - 15, hair, hair, '#cdd4dc') }
 }
 function drawDesk(g, x, y, light) {
   rect(g, x, y, 32, 8, '#c9a477'); rect(g, x, y, 32, 1, '#dcbb90')
   rect(g, x, y + 8, 32, 6, '#a77d53'); rect(g, x, y + 13, 32, 1, '#87623f')
   rect(g, x + 1, y + 14, 2, 2, '#87623f'); rect(g, x + 29, y + 14, 2, 2, '#87623f')
+  if (detail >= 3 && hair) { // wood grain, a drawer
+    rect(g, x + 2, y + 3, 7, 1, '#bf9a6c'); rect(g, x + 22, y + 5, 8, 1, '#bf9a6c'); rect(g, x + 4, y + 6, 5, 1, '#d4b083')
+    rect(g, x + 13, y + 10, 6, 1, '#87623f')
+  }
+  if (detail >= 2 && hair) { // rounded corners, on the carpet
+    for (const [cx, cy] of [[x, y], [x + 32 - hair, y], [x, y + 14 - hair], [x + 32 - hair, y + 14 - hair]]) solid(g, cx, cy, hair, hair, '#cdd4dc')
+  }
   // laptop: the screen faces the employee, the back faces us, and the light on the back shows the state color
   rect(g, x + 11, y, 10, 5, '#565a62'); rect(g, x + 11, y, 10, 1, '#6e737c')
   rect(g, x + 10, y + 5, 12, 1, '#3b3e44'); rect(g, x + 15, y + 2, 2, 2, light)
+  if (detail >= 3 && hair) dots(g, x + 12, y + 4, 4, 2 * hair, -hair, '#6e737c') // a glint on the lid
+  ground(g, x, y + 16, 32)
 }
 function drawPlant(g, x, y) {
   rect(g, x + 3, y + 12, 10, 2, '#c27b55'); rect(g, x + 4, y + 14, 8, 6, '#b06a45'); rect(g, x + 4, y + 19, 8, 1, '#8e5336')
   rect(g, x + 2, y + 4, 12, 8, '#5f9150'); rect(g, x + 4, y + 1, 8, 4, '#6fa35d')
   rect(g, x + 1, y + 7, 3, 3, '#4f7d42'); rect(g, x + 12, y + 6, 3, 4, '#4f7d42'); rect(g, x + 6, y + 2, 2, 2, '#86b873')
+  if (detail >= 3 && hair) { dots(g, x + 4, y + 6, 3, hair, hair, '#9fd08a'); dots(g, x + 10, y + 4, 3, hair, hair, '#9fd08a'); dots(g, x + 7, y + 9, 2, hair, hair, '#9fd08a') }
+  ground(g, x + 4, y + 20, 8)
 }
 function drawCooler(g, x, y) {
   rect(g, x + 2, y, 8, 9, '#9cc7e0'); rect(g, x + 3, y + 1, 2, 6, '#c3e0ef')
   rect(g, x, y + 9, 12, 19, '#e9e6df'); rect(g, x, y + 9, 12, 1, '#c9c3b8'); rect(g, x + 11, y + 10, 1, 18, '#c9c3b8')
   rect(g, x + 5, y + 13, 2, 2, '#5a8bb5'); rect(g, x + 2, y + 22, 8, 1, '#c9c3b8')
+  ground(g, x, y + 28, 12)
 }
 function drawBookshelf(g, x, y) {
-  rect(g, x, y, 32, 32, '#8a6747'); rect(g, x + 2, y + 2, 28, 28, '#6e5138')
+  box(g, x, y, 32, 32, '#8a6747'); rect(g, x + 2, y + 2, 28, 28, '#6e5138')
   const books = ['#a65d4e', '#5d7da6', '#6f9a63', '#c9a24e', '#8a6fa6', '#b5ada0']
   for (let shelf = 0; shelf < 3; shelf++) {
     const sy = y + 3 + shelf * 9
@@ -425,17 +477,23 @@ function drawBookshelf(g, x, y) {
       const w = 2 + ((k * 7) % 3), h = 6 + ((k * 5) % 2)
       if (bx + w > x + 29) break
       rect(g, bx, sy + (7 - h), w, h, books[k % books.length])
+      if (detail >= 3 && hair) { solid(g, bx, sy + (7 - h) + 1, w, hair, 'rgba(255,255,255,.3)'); solid(g, bx, sy + 5, w, hair, 'rgba(0,0,0,.18)') } // bands on the spine
       bx += w + 1; k++
     }
     rect(g, x + 2, sy + 7, 28, 2, '#8a6747')
   }
+  ground(g, x, y + 32, 32)
 }
 function drawWindow(g, x, y) {
-  rect(g, x, y, 30, 22, '#8f8676'); rect(g, x + 2, y + 2, 12, 18, '#c6dfec'); rect(g, x + 16, y + 2, 12, 18, '#c6dfec')
+  box(g, x, y, 30, 22, '#8f8676'); rect(g, x + 2, y + 2, 12, 18, '#c6dfec'); rect(g, x + 16, y + 2, 12, 18, '#c6dfec')
   rect(g, x + 4, y + 4, 2, 6, '#e6f2f8'); rect(g, x + 18, y + 4, 2, 6, '#e6f2f8'); rect(g, x - 1, y + 22, 32, 2, '#b1a792')
+  if (detail >= 3 && hair) { // the sky lighter at the top, a reflection across each pane
+    rect(g, x + 2, y + 2, 12, 1, '#d9ebf4'); rect(g, x + 16, y + 2, 12, 1, '#d9ebf4')
+    dots(g, x + 3, y + 18, 9, hair, -hair, '#eef6fa'); dots(g, x + 17, y + 18, 9, hair, -hair, '#eef6fa')
+  }
 }
 function drawWhiteboard(g, x, y) {
-  rect(g, x, y, 42, 24, '#b9b3a8'); rect(g, x + 2, y + 2, 38, 19, '#fbfbf8')
+  box(g, x, y, 42, 24, '#b9b3a8'); rect(g, x + 2, y + 2, 38, 19, '#fbfbf8')
   rect(g, x + 5, y + 6, 18, 1, '#5d7da6'); rect(g, x + 5, y + 10, 26, 1, '#5d7da6'); rect(g, x + 5, y + 14, 12, 1, '#a65d4e')
   rect(g, x + 4, y + 21, 34, 2, '#9b958a')
 }
@@ -447,16 +505,18 @@ function drawClock(g, x, y) {
 
 // ---------- the trappings of a big company ----------
 function drawTV(g, x, y) {
-  rect(g, x, y, 48, 28, '#2b2a28'); rect(g, x + 2, y + 2, 44, 22, '#2d4b6b')
+  box(g, x, y, 48, 28, '#2b2a28'); rect(g, x + 2, y + 2, 44, 22, '#2d4b6b')
   rect(g, x + 6, y + 15, 4, 7, '#7cc4e8'); rect(g, x + 12, y + 11, 4, 11, YELLOW); rect(g, x + 18, y + 7, 4, 15, '#7ccf6b')
   rect(g, x + 26, y + 6, 16, 1, '#c4e6f8'); rect(g, x + 26, y + 9, 12, 1, '#c4e6f8'); rect(g, x + 26, y + 12, 14, 1, '#c4e6f8')
   rect(g, x + 20, y + 28, 8, 2, '#55534f')
 }
 function drawSeatTop(g, x, y, c) { rect(g, x, y, 10, 8, c); rect(g, x, y, 10, 2, '#7a7f89') } // a chair seen from above
 function drawMeetingTable(g, x, y, w, h) {
+  ground(g, x, y + h, w)
   for (let i = 0; i < 4; i++) { drawSeatTop(g, x + 10 + i * 26, y - 9, '#5d6169'); drawSeatTop(g, x + 10 + i * 26, y + h + 1, '#5d6169') }
   drawSeatTop(g, x - 11, y + 11, '#5d6169'); drawSeatTop(g, x + w + 1, y + 11, '#5d6169')
-  rect(g, x, y, w, h, '#8a6747'); rect(g, x, y, w, 2, '#a5815e'); rect(g, x, y + h - 3, w, 3, '#6e5138')
+  box(g, x, y, w, h, '#8a6747'); rect(g, x, y, w, 2, '#a5815e'); rect(g, x, y + h - 3, w, 3, '#6e5138')
+  if (detail >= 3 && hair) { rect(g, x + 30, y + 5, 16, 1, '#7b5b3d'); rect(g, x + 66, y + 9, 22, 1, '#7b5b3d'); rect(g, x + 8, y + 20, 14, 1, '#7b5b3d') } // grain
   rect(g, x + 14, y + 8, 12, 9, '#fbfbf8'); rect(g, x + 50, y + 10, 10, 6, '#565a62'); rect(g, x + 84, y + 9, 4, 4, '#fbfbf8')
 }
 function drawGlassV(g, x, y, h, gapY, gapH) { // with a doorway from gapY down
@@ -469,6 +529,7 @@ function drawGlassH(g, x, y, w) {
   rect(g, x, y, w, 10, '#d7e8f1'); rect(g, x, y, w, 1, '#7d8a94'); rect(g, x, y + 9, w, 1, '#7d8a94')
   for (let mx = x; mx < x + w; mx += 24) rect(g, mx, y, 1, 10, '#7d8a94')
   rect(g, x + 3, y + 2, 6, 1, '#f2f8fb')
+  if (detail >= 3 && hair) for (let mx = x + 8; mx + 8 < x + w; mx += 48) dots(g, mx, y + 8, 6, hair, -hair, '#f2f8fb') // reflections
 }
 function drawCounter(g, x, y, w, h) {
   rect(g, x, y, w, h, '#d6d1c7'); rect(g, x, y, 2, h, '#b9b3a8'); rect(g, x + w - 1, y, 1, h, '#a9a49b')
@@ -480,19 +541,24 @@ function drawCoffeeMachine(g, x, y) {
 }
 function drawMicrowave(g, x, y) { rect(g, x, y, 14, 10, '#b9b3a8'); rect(g, x + 2, y + 2, 8, 6, '#2b2a28'); rect(g, x + 11, y + 3, 2, 4, '#55534f') }
 function drawFridge(g, x, y) {
-  rect(g, x, y, 20, 32, '#f1efe9'); rect(g, x, y, 20, 1, '#c9c3b8'); rect(g, x + 19, y, 1, 32, '#c9c3b8')
+  box(g, x, y, 20, 32, '#f1efe9'); rect(g, x, y, 20, 1, '#c9c3b8'); rect(g, x + 19, y, 1, 32, '#c9c3b8')
   rect(g, x, y + 12, 20, 1, '#c9c3b8'); rect(g, x + 2, y + 4, 1, 6, '#9b958a'); rect(g, x + 2, y + 16, 1, 10, '#9b958a')
+  ground(g, x, y + 32, 20)
 }
 function drawVending(g, x, y) {
-  rect(g, x, y, 22, 32, '#b5372e'); rect(g, x + 2, y + 3, 13, 22, '#2b2a28')
+  box(g, x, y, 22, 32, '#b5372e'); rect(g, x + 2, y + 3, 13, 22, '#2b2a28')
   const cans = ['#f2b705', '#4a90d9', '#7ccf6b', '#fbfbf8', RED]
   for (let r = 0; r < 4; r++) for (let c = 0; c < 3; c++) rect(g, x + 4 + c * 4, y + 5 + r * 5, 2, 3, cans[(r + c) % cans.length])
   rect(g, x + 17, y + 6, 3, 6, '#d9d5cc'); rect(g, x + 4, y + 27, 9, 3, '#2b2a28')
+  if (detail >= 3 && hair) dots(g, x + 3, y + 23, 10, hair, -2 * hair, 'rgba(255,255,255,.3)') // a reflection on the glass
+  ground(g, x, y + 32, 22)
 }
 function drawSofa(g, x, y, w, c, dark) { // facing north, backrest at the bottom
   rect(g, x - 3, y + 1, 3, 13, dark); rect(g, x + w, y + 1, 3, 13, dark)
   rect(g, x, y, w, 9, c); rect(g, x, y + 9, w, 5, dark)
   for (let cx = x + Math.floor(w / 3); cx < x + w - 2; cx += Math.floor(w / 3)) rect(g, cx, y + 1, 1, 7, dark)
+  if (detail >= 3 && hair) solid(g, x, y + hair, w, hair, 'rgba(255,255,255,.22)') // light on the cushions
+  ground(g, x - 3, y + 14, w + 6)
 }
 // the backrest again, over whoever sits on the sofa: they face away from us, so it hides their lower half
 function drawSofaBack(g, s) { rect(g, s.x, s.y + 9, s.w, 5, s.dark) }
@@ -501,7 +567,8 @@ function drawLoungeTV(g, x, y) { // on a low cabinet, the screen facing the sofa
   rect(g, x - 4, y + 20, 44, 6, '#6e5138'); rect(g, x - 4, y + 20, 44, 1, '#8a6747')
   rect(g, x + 2, y + 23, 14, 1, '#55402c'); rect(g, x + 20, y + 23, 14, 1, '#55402c')
   rect(g, x + 15, y + 18, 6, 2, '#2b2a28')
-  rect(g, x, y, 36, 19, '#2b2a28'); rect(g, x + 2, y + 2, 32, 15, '#1f2a33'); rect(g, x + 4, y + 3, 6, 1, '#34475a')
+  box(g, x, y, 36, 19, '#2b2a28'); rect(g, x + 2, y + 2, 32, 15, '#1f2a33'); rect(g, x + 4, y + 3, 6, 1, '#34475a')
+  ground(g, x - 4, y + 26, 44)
 }
 // what's on while someone watches: football, the countryside, a cartoon; the screen is 32x15 at x+2, y+2
 function drawTVShow(g, x, y, t) {
@@ -533,7 +600,9 @@ function drawFoosBall(g, x, y, t) {
 // a sheet coming out of the printer, x, y is the printer's top left
 function drawPaper(g, x, y, t) { rect(g, x + 6, y + 14, 14, 3 + (Math.floor(t / 300) % 6), '#fbfbf8') }
 function drawFoosball(g, x, y) {
-  rect(g, x, y, 46, 26, '#6e5138'); rect(g, x + 3, y + 3, 40, 20, '#4f9a52')
+  ground(g, x, y + 26, 46)
+  box(g, x, y, 46, 26, '#6e5138'); rect(g, x + 3, y + 3, 40, 20, '#4f9a52')
+  if (detail >= 3 && hair) for (let sx = x + 3; sx < x + 43; sx += 5) solid(g, sx, y + 3, hair, 20, '#55a058') // the pitch's stripes
   rect(g, x + 22, y + 3, 1, 20, '#e9f3e6'); rect(g, x + 3, y + 10, 2, 6, '#e9f3e6'); rect(g, x + 41, y + 10, 2, 6, '#e9f3e6')
   for (let i = 0; i < 6; i++) {
     const rx = x + 7 + i * 6.5 | 0
@@ -542,10 +611,12 @@ function drawFoosball(g, x, y) {
   }
 }
 function drawBeanBag(g, x, y, c, dark) { // 14 x 10
+  ground(g, x, y + 10, 14)
   rect(g, x + 2, y, 10, 2, c); rect(g, x, y + 2, 14, 6, c); rect(g, x + 1, y + 8, 12, 2, dark); rect(g, x + 3, y + 2, 4, 2, 'rgba(255,255,255,.35)')
 }
 function drawFloorLamp(g, x, y) { rect(g, x, y, 8, 6, '#f2e3b3'); rect(g, x, y + 5, 8, 1, '#c9b98a'); rect(g, x + 3, y + 6, 2, 18, '#55534f'); rect(g, x + 1, y + 24, 6, 2, '#55534f') }
 function drawRoundTable(g, x, y) {
+  ground(g, x, y + 12, 16)
   rect(g, x + 2, y, 12, 12, '#efece6'); rect(g, x, y + 2, 16, 8, '#efece6'); rect(g, x + 2, y + 11, 12, 1, '#c9c3b8')
   rect(g, x + 6, y + 4, 3, 3, '#5d7da6')
   for (const [sx, sy] of [[-7, 3], [19, 3], [5, 15]]) { rect(g, x + sx, y + sy, 6, 6, '#c27b55'); rect(g, x + sx, y + sy, 6, 1, '#d99a77') }
@@ -564,25 +635,30 @@ function drawExitSign(g, x, y) { // the stairs: a green sign with a running man
   rect(g, x + 9, y + 3, 3, 3, '#fbfbf8'); rect(g, x + 10, y + 4, 1, 1, '#3fb46c')
 }
 function drawPrinter(g, x, y) {
-  rect(g, x, y, 26, 20, '#d9d5cc'); rect(g, x, y, 26, 4, '#efece6'); rect(g, x + 3, y + 7, 9, 4, '#55534f')
+  box(g, x, y, 26, 20, '#d9d5cc'); rect(g, x, y, 26, 4, '#efece6'); rect(g, x + 3, y + 7, 9, 4, '#55534f')
   rect(g, x + 16, y + 7, 2, 2, GREEN); rect(g, x + 6, y + 14, 14, 3, '#fbfbf8')
+  if (detail >= 3 && hair) dots(g, x + 19, y + 8, 3, 2 * hair, 0, '#9b958a') // buttons
+  ground(g, x, y + 20, 26)
 }
 function drawCabinet(g, x, y) {
-  rect(g, x, y, 14, 26, '#9da3a8'); rect(g, x + 13, y, 1, 26, '#7d8389')
+  box(g, x, y, 14, 26, '#9da3a8'); rect(g, x + 13, y, 1, 26, '#7d8389')
   for (let d = 0; d < 3; d++) { rect(g, x + 1, y + 8 + d * 8, 12, 1, '#7d8389'); rect(g, x + 5, y + 3 + d * 8, 4, 1, '#55534f') }
+  ground(g, x, y + 26, 14)
 }
 function drawPainting(g, x, y, w, h, colors) {
-  rect(g, x, y, w, h, '#6e5138'); rect(g, x + 2, y + 2, w - 4, h - 4, colors[0])
+  box(g, x, y, w, h, '#6e5138'); rect(g, x + 2, y + 2, w - 4, h - 4, colors[0])
   rect(g, x + 2, y + h - 8, w - 4, 6, colors[1]); rect(g, x + w - 8, y + 4, 3, 3, colors[2])
 }
 function drawSign(g, x, y) {
-  rect(g, x, y, 100, 20, '#2b2a28'); rect(g, x + 1, y + 1, 98, 1, '#55534f')
+  box(g, x, y, 100, 20, '#2b2a28'); rect(g, x + 1, y + 1, 98, 1, '#55534f')
   drawMini(g, x + 6, y + 8, CLAWD, CLAWD_SHADE)
 }
 function drawBigPlant(g, x, y) {
   rect(g, x + 4, y + 20, 10, 10, '#d9d5cc'); rect(g, x + 4, y + 20, 10, 2, '#efece6')
   rect(g, x + 2, y + 2, 14, 18, '#4f7d42'); rect(g, x + 5, y - 3, 8, 8, '#5f9150'); rect(g, x, y + 8, 4, 6, '#5f9150')
   rect(g, x + 14, y + 6, 4, 7, '#5f9150'); rect(g, x + 7, y + 4, 3, 3, '#86b873'); rect(g, x + 3, y + 12, 3, 2, '#86b873')
+  if (detail >= 3 && hair) { dots(g, x + 4, y + 6, 4, hair, hair, '#9fd08a'); dots(g, x + 11, y + 10, 4, hair, hair, '#9fd08a'); dots(g, x + 7, y - 1, 3, hair, hair, '#9fd08a') }
+  ground(g, x + 4, y + 30, 10)
 }
 function drawExtinguisher(g, x, y) { rect(g, x, y, 5, 10, RED); rect(g, x + 1, y - 2, 3, 2, '#2b2a28'); rect(g, x, y + 3, 5, 1, '#fbfbf8') }
 // ---------- small meeting rooms ----------
@@ -594,7 +670,7 @@ function drawGlassHDoor(g, x, y, w, gapX, gapW) {
 function drawPartition(g, x, y, h) { rect(g, x, y, 4, h, '#b9ad98'); rect(g, x, y, 1, h, '#cfc4b0') }
 function drawWallH(g, x, y, w) { rect(g, x, y, w, 4, '#b9ad98'); rect(g, x, y, w, 1, '#cfc4b0') }
 function drawWallScreen(g, x, y) {
-  rect(g, x, y, 34, 22, '#2b2a28'); rect(g, x + 2, y + 2, 30, 16, '#2d4b6b')
+  box(g, x, y, 34, 22, '#2b2a28'); rect(g, x + 2, y + 2, 30, 16, '#2d4b6b')
   rect(g, x + 5, y + 5, 12, 1, '#c4e6f8'); rect(g, x + 5, y + 8, 18, 1, '#c4e6f8'); rect(g, x + 5, y + 11, 9, 1, '#c4e6f8')
   rect(g, x + 22, y + 10, 6, 6, '#7ccf6b'); rect(g, x + 14, y + 22, 6, 2, '#55534f')
 }
@@ -611,9 +687,10 @@ function drawRoomTable(g, cx, cy, seats, far) {
     return
   }
   const w = seats === 4 ? 28 : 40, x = cx - (w >> 1), y = cy - 8
+  ground(g, x, y + 16, w)
   for (const f of [0.25, 0.75]) { const sx = Math.round(x + f * w) - 5; chair(sx, y - 9); chair(sx, y + 17) }
   if (seats === 5) chair(x + w + 1, y + 4)
-  rect(g, x, y, w, 16, '#8a6747'); rect(g, x, y, w, 2, '#a5815e'); rect(g, x, y + 13, w, 3, '#6e5138')
+  box(g, x, y, w, 16, '#8a6747'); rect(g, x, y, w, 2, '#a5815e'); rect(g, x, y + 13, w, 3, '#6e5138')
   rect(g, cx - 3, y + 5, 6, 4, '#3b3e44'); rect(g, cx - 1, y + 6, 2, 1, '#7ccf6b') // a conference phone
   rect(g, x + 3, y + 4, 7, 5, '#fbfbf8') // papers
 }
@@ -625,6 +702,7 @@ function drawSmallRoom(g, r) {
   const [c1, c2] = SMALL_CARPETS[r.k % SMALL_CARPETS.length], cx = r.x + (r.w >> 1), cy = r.y + (r.h >> 1)
   rect(g, r.x, r.y, r.w, r.h, c1)
   for (let y = r.y + 2; y < r.y + r.h; y += 4) rect(g, r.x, y, r.w, 1, c2)
+  if (detail >= 3 && hair) weave(g, r.x, r.y, r.w, r.h, c2)
   if (r.north && r.y !== WALL_H) { rect(g, cx - 14, r.y, 28, 5, '#b9b3a8'); rect(g, cx - 13, r.y, 26, 3, '#fbfbf8'); rect(g, cx - 10, r.y + 1, 9, 1, '#5d7da6') }
   if (!r.north) { rect(g, cx - 12, r.y + r.h - 7, 24, 6, '#6e5138'); rect(g, cx - 10, r.y + r.h - 9, 20, 3, '#2b2a28') }
   drawRoomTable(g, cx, cy, r.seats, r.north ? -1 : 1)
@@ -757,6 +835,12 @@ function fitScreen(minW, minH) {
   const fit = Math.min(cw / minW, ch / minH)
   S = fit >= 2 ? Math.floor(fit) : fit // on small screens a fractional scale beats a tiny office
   W = Math.ceil(cw / S); H = Math.ceil(ch / S)
+  // the pixel size: the same building, drawn with D pixels to a pixel of the office. The standard size draws one; the
+  // finer steps draw as many as the screen has (at most 5, and a whole share of them, so the drawing goes onto the screen
+  // without resampling), each step with more detail; their hairlines are at least a pixel of the screen thick
+  D = detail ? [5, 4, 3, 2].find(d => S >= 2 && S % d === 0) ?? 2 : 1
+  hair = 0; drawHair = detail ? Math.max(1, Math.round(D / S)) / D : 0
+  cv.dataset.detail = String(D) // for the tests and the curious
   offX = Math.round((cw - W * S) / 2); offY = Math.round((ch - H * S) / 2) // under a pixel of overhang, split between the sides
 }
 
@@ -875,20 +959,28 @@ window.__routes = () => [...spots.values()].flatMap(s => nav.seats.map((n, seat)
   walk:Math.round(towards(n).dist[s.node]), dx:Math.round(Math.abs(nav.pts[n].x - s.x)), dy:Math.round(Math.abs(nav.pts[n].y - s.y)) })))
 
 function drawBackground() {
-  bgCanvas.width = W; bgCanvas.height = H
-  buf.width = W; buf.height = H
+  bgCanvas.width = W * D; bgCanvas.height = H * D
+  buf.width = W * D; buf.height = H * D
   const g = bgCanvas.getContext('2d')
+  g.setTransform(D, 0, 0, D, 0, 0)
+  hair = drawHair
   // floors: light tiles in the corridors, each room its own
-  for (let ty = 0; ty * T < H; ty++) for (let tx = 0; tx * T < W; tx++) rect(g, tx * T, ty * T, T, T, (tx + ty) % 2 ? '#e0dcd3' : '#dcd8ce')
+  for (let ty = 0; ty * T < H; ty++) for (let tx = 0; tx * T < W; tx++) {
+    rect(g, tx * T, ty * T, T, T, (tx + ty) % 2 ? '#e0dcd3' : '#dcd8ce')
+    if (detail >= 3 && hair) { solid(g, tx * T, ty * T, T, hair, '#e7e4dd'); solid(g, tx * T, ty * T, hair, T, '#e7e4dd') } // the joints
+  }
   const { work, meeting, lounge } = rooms
   rect(g, work.x, work.y, work.w, work.h, '#cdd4dc') // office carpet
   for (let y = work.y; y < work.y + work.h; y += 4) rect(g, work.x, y, work.w, 1, '#c8cfd8')
+  if (detail >= 3 && hair) weave(g, work.x, work.y, work.w, work.h, '#c3cad3')
   g.strokeStyle = '#a9b1bb'; g.lineWidth = 1; g.strokeRect(work.x + 0.5, work.y + 0.5, work.w - 1, work.h - 1)
   for (let y = meeting.y; y < meeting.y + meeting.h; y += 6) { // meeting room parquet
     rect(g, meeting.x, y, meeting.w, 6, (y / 6) % 2 ? '#c49c6d' : '#bd9566'); rect(g, meeting.x, y + 5, meeting.w, 1, '#a9845a')
+    if (detail >= 3 && hair) for (let x = meeting.x + (y * 7) % 40; x < meeting.x + meeting.w; x += 40) rect(g, x, y, 1, 5, '#a9845a') // the planks' ends
   }
   for (let y = lounge.y; y < lounge.y + lounge.h; y += 8) for (let x = lounge.x; x < lounge.x + lounge.w; x += 8) {
     rect(g, x, y, 8, 8, ((x - lounge.x) / 8 + (y - lounge.y) / 8) % 2 ? '#ebe5d8' : '#e2dbcc') // lounge tiles
+    if (detail >= 3 && hair) { solid(g, x, y, 8, hair, '#f3eee4'); solid(g, x, y, hair, 8, '#f3eee4') }
   }
 
   // back wall: a plain band with a molding on top, then the lifts, windows, the sign, paintings, a clock, the exit to the
@@ -896,6 +988,7 @@ function drawBackground() {
   rect(g, 0, 0, W, WALL_H, '#ebe5d9'); rect(g, 0, 0, W, 3, '#8f8676')
   rect(g, 0, DECOR - 6, W, 2, '#ddd5c6'); rect(g, 0, DECOR - 4, W, 1, '#f4efe6')
   rect(g, 0, WALL_H - 4, W, 4, '#b9ad98'); rect(g, 0, WALL_H - 4, W, 1, '#cfc4b0')
+  if (detail >= 3 && hair) for (let x = 12; x < W; x += 24) solid(g, x, DECOR - 2, hair, WALL_H - 2 - DECOR, '#e2dbcd') // panels
   const signX = workX + (COLS * COL_PITCH) / 2 - 50
   drawSign(g, signX, DECOR + 12)
   drawLift(g, door.x - 25, WALL_H - 34, false); drawLift(g, door.x + 3, WALL_H - 34, false); drawLiftButtons(g, door.x - 2, WALL_H - 22)
@@ -960,6 +1053,7 @@ function drawBackground() {
   // side walls and the south wall
   rect(g, 0, WALL_H, 4, H - WALL_H, '#b9ad98'); rect(g, W - 4, WALL_H, 4, H - WALL_H, '#b9ad98')
   rect(g, 0, H - 6, W, 6, '#b9ad98'); rect(g, 0, H - 6, W, 1, '#cfc4b0')
+  hair = 0
 }
 
 // ================= employees (one per account) =================
@@ -1239,7 +1333,7 @@ const stateLine = e => { const doing = doingText(e); return statusText(isOnline(
 
 // ================= rendering =================
 const cv = document.getElementById('office'), ctx = cv.getContext('2d')
-let S = 1, offX = 0, offY = 0, dpr = 1
+let S = 1, offX = 0, offY = 0, dpr = 1, D = 1, drawHair = 0 // D: the drawing's pixels to a pixel of the office
 
 const toCss = (x, y) => [(offX + x * S) / dpr, (offY + y * S) / dpr]
 
@@ -1252,7 +1346,10 @@ function frame(now) {
   frame.last = now
   const at = Date.now()
   const g = buf.getContext('2d')
+  g.setTransform(1, 0, 0, 1, 0, 0)
   g.drawImage(bgCanvas, 0, 0)
+  g.setTransform(D, 0, 0, D, 0, 0)
+  hair = drawHair
   lifeTick(at, now, dt)
 
   const items = [] // sorted by the feet's y, so nearer things cover farther ones
@@ -1305,18 +1402,23 @@ function frame(now) {
     if (f.t >= 1) { flights.splice(i, 1); mailAt.set(f.toAcc, now) }
   }
 
+  hair = 0
   ctx.fillStyle = '#2f2e2b'
   ctx.fillRect(0, 0, cv.width, cv.height)
-  if (S === Math.floor(S)) {
+  const bw = W * D, bh = H * D, k = S / D // screen pixels to a pixel of the drawing
+  if (k === Math.floor(k)) {
     ctx.imageSmoothingEnabled = false
-    ctx.drawImage(buf, 0, 0, W, H, offX, offY, W * S, H * S)
-  } else { // up by whole pixels first, then smoothly down, so all pixels come out the same size
-    const k = Math.ceil(S), bg = big.getContext('2d')
-    if (big.width !== W * k || big.height !== H * k) { big.width = W * k; big.height = H * k }
+    ctx.drawImage(buf, 0, 0, bw, bh, offX, offY, W * S, H * S)
+  } else if (k > 1) { // up by whole pixels first, then smoothly the rest of the way, so all pixels come out the same size
+    const n = D === 1 ? Math.ceil(k) : Math.floor(k), bg = big.getContext('2d') // a drawing at D is big already
+    if (big.width !== bw * n || big.height !== bh * n) { big.width = bw * n; big.height = bh * n }
     bg.imageSmoothingEnabled = false
-    bg.drawImage(buf, 0, 0, W * k, H * k)
+    bg.drawImage(buf, 0, 0, bw * n, bh * n)
     ctx.imageSmoothingEnabled = true
-    ctx.drawImage(big, 0, 0, W * k, H * k, offX, offY, W * S, H * S)
+    ctx.drawImage(big, 0, 0, bw * n, bh * n, offX, offY, W * S, H * S)
+  } else { // finer than the screen: smoothly down
+    ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high'
+    ctx.drawImage(buf, 0, 0, bw, bh, offX, offY, W * S, H * S)
   }
   placeLabels(now)
   if (!findList.hidden && now - (frame.listed || 0) > 500) { frame.listed = now; renderFind() } // what they're doing changes
@@ -1332,8 +1434,8 @@ function employeeItem(g, e, now, at) {
   const act = e.there ? w.act : null, pastime = e.atDesk && st === 'idle' ? deskPastime(e, at) : null
   const blink = now > e.blinkAt && now < e.blinkAt + 140
   if (now > e.blinkAt + 140) e.blinkAt = now + 2500 + Math.random() * 4000
-  const x = Math.round(e.x)
-  let y = Math.round(e.y), face = e.there ? spot.face : e.facing, extra = null
+  const x = Math.round(e.x * D) / D // at a finer pixel size, people move by finer steps
+  let y = Math.round(e.y * D) / D, face = e.there ? spot.face : e.facing, extra = null
   const pose = { eyes:blink ? 'closed' : 'open', legs:!(e.there && spot.sit), step:-1, armL:0, armR:0 }
   const sip = Math.floor(t / 3000) % 3 === 0 // now and then a sip
   if (e.tag) {
@@ -1394,6 +1496,7 @@ function employeeItem(g, e, now, at) {
   const dim = filtering() && !picked(e), ring = (filtering() && !dim) || now - (e.foundAt ?? -1e9) < 4000
   return { y:y + 10, draw:() => {
     if (dim) g.globalAlpha = 0.3
+    if (detail && pose.legs && hair) solid(g, x - (b.bw >> 1) - 1, y + 1, b.bw + 2, 2 * hair, 'rgba(43,42,40,.18)') // a shadow
     if (ring) drawRing(g, x, y, b, now)
     drawClawd(g, x, y, b, pose, body, shade)
     const top = y - b.bh
@@ -1576,6 +1679,34 @@ function setHud(up, remember = true) {
 const hudRoom = () => document.documentElement.style.setProperty('--hud-h', (hud.classList.contains('up') ? 0 : hud.offsetHeight) + 'px')
 hudTab.addEventListener('click', () => setHud(!hud.classList.contains('up')))
 new ResizeObserver(hudRoom).observe(hud)
+
+// ================= pixel size =================
+// Four steps from the standard drawing to the finest: the same building, drawn with finer pixels and more detail (see
+// fitScreen). The page remembers the step.
+const DETAIL_STEPS = 4, DETAIL_STORE = 'symphony.pixels'
+let detail = (() => {
+  try { const n = Number(localStorage.getItem(DETAIL_STORE)); return Number.isInteger(n) && n >= 0 && n < DETAIL_STEPS ? n : 0 } catch { return 0 }
+})()
+const pixelsEl = document.createElement('div')
+pixelsEl.className = 'group pixels'
+pixelsEl.title = t('pixels.title')
+pixelsEl.innerHTML = `<span class="lbl">${esc(t('pixels.label'))}</span><div class="steps">` +
+  Array.from({ length:DETAIL_STEPS }, (_, i) => `<button data-level="${i}" title="${esc(t('pixels.' + (i + 1)))}"></button>`).join('') + '</div>'
+function setDetail(level) {
+  detail = level
+  try { localStorage.setItem(DETAIL_STORE, String(level)) } catch {}
+  markDetail()
+  layout()
+}
+const markDetail = () => pixelsEl.querySelectorAll('button').forEach((b, i) => {
+  b.classList.toggle('on', i === detail)
+  b.setAttribute('aria-pressed', String(i === detail))
+})
+pixelsEl.addEventListener('click', ev => {
+  const b = ev.target.closest('button[data-level]')
+  if (b) setDetail(Number(b.dataset.level))
+})
+markDetail()
 
 // ================= small meeting rooms' nameplates =================
 // The rooms are for meetings in a later version; for now each nameplate shows the room's name and a green light: free.
@@ -1938,6 +2069,13 @@ const chevron = rows => pixelArt(7, 4, g => rows.forEach((row, y) => [...row].fo
 document.documentElement.style.setProperty('--ico-up', chevron(CHEVRON))
 document.documentElement.style.setProperty('--ico-down', chevron([...CHEVRON].reverse()))
 setHud((() => { try { return localStorage.getItem(HUD_STORE) === 'up' } catch { return false } })(), false)
+pixelsEl.querySelectorAll('button').forEach((b, i) => { // each a finer grid
+  const cell = [6, 4, 3, 2][i]
+  b.style.backgroundImage = pixelArt(12, 12, g => {
+    for (let y = 0; y < 12; y++) for (let x = 0; x < 12; x++) rect(g, x, y, 1, 1, (((x / cell) | 0) + ((y / cell) | 0)) % 2 ? '#d6d1c6' : '#2b2a28')
+  })
+})
+document.querySelector('#hud .prefs').prepend(pixelsEl)
 requestAnimationFrame(() => hud.classList.add('anim')) // it slides from now on, not when the page opens
 const addBtn = document.createElement('button')
 addBtn.className = 'seat-add'

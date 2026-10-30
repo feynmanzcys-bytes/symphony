@@ -128,7 +128,7 @@ func TestWebKeysInUse(t *testing.T) {
 	if err := json.Unmarshal(data, &en); err != nil {
 		t.Fatal(err)
 	}
-	literal := regexp.MustCompile("['\"`]((?:common|office|hud|room|state|idle|search|stats|log|asks|msg|card|attach|launch|option|approve|error)\\.[A-Za-z0-9_.]*[A-Za-z0-9_])['\"`]")
+	literal := regexp.MustCompile("['\"`]((?:common|office|hud|pixels|room|state|idle|search|stats|log|asks|msg|card|attach|launch|option|approve|error)\\.[A-Za-z0-9_.]*[A-Za-z0-9_])['\"`]")
 	attr := regexp.MustCompile(`data-i18n(?:-placeholder|-title)?="([^"]+)"`)
 	used := 0
 	for _, name := range []string{"office.html", "approve.html", "asks.js", "i18n.js"} {

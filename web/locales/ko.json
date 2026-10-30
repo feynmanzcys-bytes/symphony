@@ -13,6 +13,12 @@
 
   "hud.hide": "패널 숨기기",
   "hud.show": "패널 보이기",
+  "pixels.label": "픽셀",
+  "pixels.title": "픽셀 크기: 같은 사무실을 단계마다 더 작은 픽셀과 더 많은 디테일로 그립니다",
+  "pixels.1": "표준",
+  "pixels.2": "세밀",
+  "pixels.3": "더 세밀",
+  "pixels.4": "가장 세밀",
 
   "room.work": "업무 공간",
   "room.meeting": "회의실",

@@ -13,6 +13,12 @@
 
   "hud.hide": "Ocultar o painel",
   "hud.show": "Mostrar o painel",
+  "pixels.label": "Pixels",
+  "pixels.title": "Tamanho do pixel: o mesmo escritório, desenhado a cada nível com pixels mais finos e mais detalhes",
+  "pixels.1": "Padrão",
+  "pixels.2": "Fino",
+  "pixels.3": "Mais fino",
+  "pixels.4": "O mais fino",
 
   "room.work": "Área de trabalho",
   "room.meeting": "Sala de reunião",

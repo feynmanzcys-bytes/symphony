@@ -18,7 +18,8 @@ import (
 // fills the whole window with the open office in the middle, and the room left over goes to small meeting rooms for 3 to
 // 5, on the office's left (in a tall window some go below the lounge too), whose nameplates show; the HUD sits at the
 // top in the middle, its tab slides it up out of the way (showing the pending asks while it's up) and back down, the
-// page remembers which, and the side panels start below it.
+// page remembers which, and the side panels start below it. Each finer step of the pixel size draws the same building in
+// finer pixels and more detail, and the page remembers the step.
 func TestLayout(t *testing.T) {
 	requireBrowser(t)
 	repo, _ := filepath.Abs("..")
@@ -152,6 +153,55 @@ func TestLayout(t *testing.T) {
 	waitUntil(t, 10*time.Second, "the HUD is up again", func() bool { return look().Hud.Bottom <= 0.5 }, show)
 	do(t, office, 10*time.Second, chromedp.Click(chromedp.CSS(`#hud-tab`)))
 	waitUntil(t, 10*time.Second, "the tab brings the HUD back down", func() bool { v := look(); return !v.Up && v.Hud.Top == 0 }, show)
+
+	// ---------- 5. the pixel size: the same building, drawn finer at each step; the page remembers the step ----------
+	type drawing struct {
+		Detail int    `json:"detail"` // the drawing's pixels to a pixel of the office
+		Office string `json:"office"` // where the open office is
+		Rooms  int    `json:"rooms"`  // how many small meeting rooms there are
+		On     int    `json:"on"`     // the step that's pressed
+	}
+	drawn := func() drawing {
+		var d drawing
+		data := get(t, office, 5*time.Second, chromedp.Evaluate[string](`JSON.stringify({ detail:Number(document.getElementById('office').dataset.detail),
+			office:document.getElementById('office').dataset.office, rooms:document.querySelectorAll('.room-plate').length,
+			on:[...document.querySelectorAll('#hud .steps button')].findIndex(b => b.getAttribute('aria-pressed') === 'true') })`))
+		if err := json.Unmarshal([]byte(data), &d); err != nil {
+			t.Fatal(err)
+		}
+		return d
+	}
+	step := func(level int) {
+		do(t, office, 10*time.Second, chromedp.Click(chromedp.CSS(fmt.Sprintf(`#hud .steps button[data-level="%d"]`, level))))
+	}
+	base := drawn()
+	if base.Detail != 1 || base.On != 0 {
+		t.Fatalf("the office should start at the standard pixel size: %+v", base)
+	}
+	last := base.Detail
+	for level := 1; level < 4; level++ {
+		step(level)
+		waitUntil(t, 10*time.Second, fmt.Sprintf("pixel size step %d: the same building, drawn at least as fine, the window still filled", level+1), func() bool {
+			d := drawn()
+			return d.On == level && d.Detail >= 2 && d.Detail >= last && d.Office == base.Office && d.Rooms == base.Rooms && look().Painted
+		}, func() string { return fmt.Sprintf("%+v (at the standard size %+v)", drawn(), base) })
+		last = drawn().Detail
+		screenshot(t, office, fmt.Sprintf("layout-pixels-%d.png", level+1))
+	}
+	// on a screen with twice the pixels, the finer steps draw three to a pixel of the office (the scale there is 3)
+	do(t, office, 10*time.Second, chromedp.EmulateViewport(1280, 800, chromedp.EmulateScale(2)))
+	waitUntil(t, 10*time.Second, "at 2x the finest step draws as many pixels as the screen has", func() bool {
+		return drawn().Detail == 3 && look().Painted
+	}, func() string { return fmt.Sprintf("%+v", drawn()) })
+	screenshot(t, office, "layout-pixels-4@2x.png")
+	do(t, office, 10*time.Second, chromedp.EmulateViewport(1400, 860))
+	do(t, office, 30*time.Second, chromedp.Reload())
+	later()
+	if d := drawn(); d.On != 3 || d.Detail != last {
+		t.Fatalf("after a reload the pixel size should stay at the finest step: %+v", d)
+	}
+	step(0)
+	waitUntil(t, 10*time.Second, "back to the standard pixel size", func() bool { d := drawn(); return d.On == 0 && d.Detail == 1 })
 
 	if miss := get(t, office, 5*time.Second, chromedp.Evaluate[[]string](`window.__i18nMissing`)); len(miss) > 0 {
 		t.Errorf("the office asked for keys its catalog lacks: %v", miss)

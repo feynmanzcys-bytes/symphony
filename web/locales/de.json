@@ -13,6 +13,12 @@
 
   "hud.hide": "Leiste ausblenden",
   "hud.show": "Leiste einblenden",
+  "pixels.label": "Pixel",
+  "pixels.title": "Pixelgröße: dasselbe Büro, mit jeder Stufe in feineren Pixeln und mit mehr Details gezeichnet",
+  "pixels.1": "Standard",
+  "pixels.2": "Fein",
+  "pixels.3": "Feiner",
+  "pixels.4": "Am feinsten",
 
   "room.work": "Großraumbüro",
   "room.meeting": "Meetingraum",

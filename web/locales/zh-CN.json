@@ -13,6 +13,12 @@
 
   "hud.hide": "收起面板",
   "hud.show": "展开面板",
+  "pixels.label": "像素",
+  "pixels.title": "像素大小：楼不变，每往细一档，画得更细、细节更多",
+  "pixels.1": "标准",
+  "pixels.2": "精细",
+  "pixels.3": "更精细",
+  "pixels.4": "最精细",
 
   "room.work": "开放办公区",
   "room.meeting": "会议室",

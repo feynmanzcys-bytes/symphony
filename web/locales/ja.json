@@ -13,6 +13,12 @@
 
   "hud.hide": "パネルを隠す",
   "hud.show": "パネルを表示",
+  "pixels.label": "ピクセル",
+  "pixels.title": "ピクセルの大きさ：同じオフィスを、段階ごとにより細かいピクセルと細部で描きます",
+  "pixels.1": "標準",
+  "pixels.2": "細かい",
+  "pixels.3": "より細かい",
+  "pixels.4": "最も細かい",
 
   "room.work": "執務エリア",
   "room.meeting": "会議室",
