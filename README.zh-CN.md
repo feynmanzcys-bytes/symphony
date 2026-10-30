@@ -94,7 +94,10 @@ bridge 一启动就会在浏览器里打开办公室 <http://127.0.0.1:7788/>（
 | `-mod` | 空 | 开发用：用 `--plugin-dir` 带上这个目录里的 mod，盖过装好的版本 |
 | `-web` | 空 | 开发用：直接读这个目录里的页面，改了刷新就生效 |
 | `-open` | `true` | bridge 启动后在浏览器里打开办公室；`-addr` 上已经有 bridge 在跑的话，只打开它的办公室 |
+| `-autostart` | — | `on`：以后每次登录都自动启动 bridge（带上一起给的参数），并且马上启动；`off`：取消 |
 | `-version` | — | 显示版本号后退出 |
+
+**随登录启动**：`symphony -autostart on` 让 bridge 以后每次登录都自动启动（一起给的参数也会带上，比如 `-addr`），并且马上启动；`symphony -autostart off` 取消。Linux 上是 systemd 用户服务（日志用 `journalctl --user -u symphony` 看），macOS 上是 launchd 代理（日志在 `~/Library/Logs/symphony.log`），Windows 上是注册表 Run 键里的一项（bridge 跑在一个控制台窗口里，关掉窗口它就停到下次登录）。这要用 symphony 程序本身，`go run` 不行。
 
 ### 3. 开会话
 

@@ -94,7 +94,10 @@ O escritório abre no seu navegador em <http://127.0.0.1:7788/> (`-open=false` d
 | `-mod` | vazio | Para desenvolvimento: passa às sessões o mod desta pasta com `--plugin-dir`, no lugar da cópia instalada |
 | `-web` | vazio | Para desenvolvimento: serve as páginas desta pasta, e as alterações aparecem ao recarregar |
 | `-open` | `true` | Abre o escritório no navegador quando o bridge sobe; se já houver um bridge em `-addr`, só abre o escritório dele |
+| `-autostart` | — | `on`: inicia o bridge sempre que você entra no sistema, com as demais opções dadas, e já o inicia agora; `off`: desfaz isso |
 | `-version` | — | Mostra a versão e sai |
+
+**Iniciar ao entrar no sistema**: `symphony -autostart on` faz o bridge iniciar sempre que você entra no sistema, com as opções passadas junto (por exemplo `-addr`), e já o inicia agora; `symphony -autostart off` desfaz isso. No Linux é um serviço de usuário do systemd (`journalctl --user -u symphony` mostra o log), no macOS um agente do launchd (log em `~/Library/Logs/symphony.log`) e no Windows um valor na chave Run do registro (o bridge roda numa janela de console; fechá-la encerra o bridge até a próxima entrada no sistema). É preciso o próprio programa symphony, não o `go run`.
 
 ### 3. Inicie sessões
 

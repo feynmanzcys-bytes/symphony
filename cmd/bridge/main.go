@@ -1,4 +1,5 @@
-// symphony bridge: go run ./cmd/bridge [-addr 127.0.0.1:7788] [-data folder] [-web web] [-lang en] [-open=false] [-version]
+// symphony bridge: go run ./cmd/bridge [-addr 127.0.0.1:7788] [-data folder] [-web web] [-lang en] [-open=false]
+// [-autostart on|off] [-version]
 // Releases ship it as the symphony program (.github/release.sh).
 package main
 
@@ -20,6 +21,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/feynmanzcys-bytes/symphony/internal/autostart"
 	"github.com/feynmanzcys-bytes/symphony/internal/bridge"
 	"github.com/feynmanzcys-bytes/symphony/internal/i18n"
 	"github.com/feynmanzcys-bytes/symphony/web"
@@ -54,6 +56,7 @@ func main() {
 	terminal := flag.String("terminal", "auto", i18n.T("flag.terminal"))
 	flag.String("lang", i18n.Lang(), i18n.T("flag.lang", "langs", strings.Join(i18n.Langs, ", ")))
 	open := flag.Bool("open", true, i18n.T("flag.open"))
+	auto := flag.String("autostart", "", i18n.T("flag.autostart"))
 	showVersion := flag.Bool("version", false, i18n.T("flag.version"))
 	flag.Parse()
 	if *showVersion {
@@ -70,6 +73,12 @@ func main() {
 		host = "127.0.0.1"
 	}
 	base := "http://" + net.JoinHostPort(host, port)
+	if *auto != "" {
+		set := map[string]string{}
+		flag.Visit(func(f *flag.Flag) { set[f.Name] = f.Value.String() })
+		setAutostart(*auto, autostartArgs(set, *dataDir), base, *open)
+		return
+	}
 	// The address first: when a bridge already answers there (symphony started a second time, say with a
 	// double-click), there is nothing to start, so show its office and stop.
 	ln, err := net.Listen("tcp", *addr)
@@ -130,6 +139,85 @@ func bridgeAt(base string) bool {
 		Type string `json:"type"`
 	}
 	return res.StatusCode == http.StatusOK && json.NewDecoder(res.Body).Decode(&state) == nil && state.Type == "snapshot"
+}
+
+// waitBridge waits for a bridge to answer at base, and says whether one did in time.
+func waitBridge(base string, timeout time.Duration) bool {
+	for deadline := time.Now().Add(timeout); !bridgeAt(base); time.Sleep(200 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			return false
+		}
+	}
+	return true
+}
+
+// autostartArgs are the flags of this command line that the bridge started at login gets too, with folders made
+// absolute (it starts in another folder), and always the data folder, so it finds the same accounts.
+func autostartArgs(set map[string]string, dataDir string) []string {
+	abs := func(p string) string {
+		if a, err := filepath.Abs(p); err == nil {
+			return a
+		}
+		return p
+	}
+	args := []string{"-data=" + abs(dataDir)}
+	for _, name := range []string{"addr", "web", "mod", "claude", "terminal", "lang"} {
+		v, ok := set[name]
+		if !ok {
+			continue
+		}
+		if name == "web" || name == "mod" || (name == "claude" && strings.ContainsAny(v, `/\`)) {
+			v = abs(v)
+		}
+		args = append(args, "-"+name+"="+v)
+	}
+	return args
+}
+
+// setAutostart turns starting the bridge at login on or off. On, it also starts the bridge now, waits for it and
+// opens its office.
+func setAutostart(mode string, args []string, base string, open bool) {
+	sys := autostart.Default("symphony")
+	switch mode {
+	case "on":
+		exe, err := os.Executable()
+		if err == nil {
+			exe, err = filepath.EvalSymlinks(exe)
+		}
+		if err != nil {
+			log.Fatal(i18n.T("log.autostart_failed", "reason", err.Error()))
+		}
+		// go run builds into a temporary folder that's gone afterwards
+		if strings.Contains(filepath.ToSlash(exe), "/go-build") {
+			log.Fatal(i18n.T("log.autostart_go_run"))
+		}
+		where, err := sys.Enable(autostart.Entry{Exe: exe, Args: args, Path: os.Getenv("PATH")})
+		if err != nil {
+			log.Fatal(i18n.T("log.autostart_failed", "reason", err.Error()))
+		}
+		if !waitBridge(base, 15*time.Second) {
+			log.Print(i18n.T("log.autostart_slow", "where", where, "url", base+"/"))
+			return
+		}
+		log.Print(i18n.T("log.autostart_on", "where", where, "url", base+"/"))
+		if open {
+			openBrowser(base + "/")
+		}
+	case "off":
+		where, err := sys.Disable()
+		switch {
+		case err != nil:
+			log.Fatal(i18n.T("log.autostart_failed", "reason", err.Error()))
+		case where == "":
+			log.Print(i18n.T("log.autostart_none"))
+		case runtime.GOOS == "windows":
+			log.Print(i18n.T("log.autostart_off_window"))
+		default:
+			log.Print(i18n.T("log.autostart_off"))
+		}
+	default:
+		log.Fatal(i18n.T("log.autostart_mode", "mode", mode))
+	}
 }
 
 // openBrowser shows url in the default browser. Without one (no graphical session) the address in the log has to do.

@@ -144,3 +144,46 @@ func waitFor(t *testing.T, timeout time.Duration, what string, cond func() bool)
 		time.Sleep(100 * time.Millisecond)
 	}
 }
+
+func TestAutostartArgs(t *testing.T) {
+	wd, _ := os.Getwd()
+	got := autostartArgs(map[string]string{"addr": "127.0.0.1:7790", "web": "web", "claude": "claude", "lang": "ja", "open": "false"}, "data")
+	want := []string{"-data=" + filepath.Join(wd, "data"), "-addr=127.0.0.1:7790", "-web=" + filepath.Join(wd, "web"), "-claude=claude", "-lang=ja"}
+	if !slices.Equal(got, want) {
+		t.Errorf("got %q, want %q", got, want)
+	}
+	got = autostartArgs(map[string]string{"claude": "./bin/claude", "mod": "/mods/x"}, "/data")
+	if want := []string{"-data=/data", "-mod=/mods/x", "-claude=" + filepath.Join(wd, "bin", "claude")}; !slices.Equal(got, want) {
+		t.Errorf("a claude with a folder should become absolute: got %q, want %q", got, want)
+	}
+}
+
+// TestAutostartRefuses checks the two mistakes -autostart turns down before touching anything: a go run build, which
+// is deleted afterwards, and a mode other than on or off.
+func TestAutostartRefuses(t *testing.T) {
+	gobin, err := exec.LookPath("go")
+	if err != nil {
+		t.Skip("needs the go command")
+	}
+	// were anything written anyway, it would land here, not in the real config
+	home := t.TempDir()
+	env := append(os.Environ(), "SYMPHONY_LANG=en", "HOME="+home, "XDG_CONFIG_HOME="+filepath.Join(home, ".config"))
+	for _, c := range []struct {
+		cmd  *exec.Cmd
+		want string
+	}{
+		{exec.Command(gobin, "run", ".", "-autostart", "on"), "-autostart needs the symphony program itself, not go run"},
+		{exec.Command(buildBridge(t), "-autostart", "maybe"), "-autostart takes on or off, not maybe"},
+	} {
+		c.cmd.Env = env
+		out, err := c.cmd.CombinedOutput()
+		if err == nil || !strings.Contains(string(out), c.want) {
+			t.Errorf("%q: want a failure saying %q, got %v:\n%s", c.cmd.Args, c.want, err, out)
+		}
+	}
+	for _, dir := range []string{filepath.Join(home, ".config", "systemd"), filepath.Join(home, "Library")} {
+		if _, err := os.Stat(dir); err == nil {
+			t.Errorf("a refused -autostart wrote %s", dir)
+		}
+	}
+}

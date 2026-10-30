@@ -94,7 +94,10 @@ Le bureau s’ouvre dans votre navigateur à l’adresse <http://127.0.0.1:7788/
 | `-mod` | vide | Pour le développement : donne aux sessions le mod de ce dossier avec `--plugin-dir`, à la place de la copie installée |
 | `-web` | vide | Pour le développement : sert les pages depuis ce dossier, pour voir les modifications après un rechargement |
 | `-open` | `true` | Ouvre le bureau dans le navigateur une fois le bridge démarré ; si un bridge tourne déjà sur `-addr`, ouvre simplement son bureau |
+| `-autostart` | — | `on` : démarre le bridge à chaque ouverture de session, avec les autres options données, et le démarre tout de suite ; `off` : annule cela |
 | `-version` | — | Affiche la version et quitte |
+
+**Le lancer à l’ouverture de session** : `symphony -autostart on` fait démarrer le bridge à chaque ouverture de session, avec les options données en même temps (par exemple `-addr`), et le démarre tout de suite ; `symphony -autostart off` annule cela. Sous Linux, c’est un service utilisateur systemd (`journalctl --user -u symphony` affiche son journal), sous macOS un agent launchd (journal dans `~/Library/Logs/symphony.log`), sous Windows une valeur sous la clé Run du registre (le bridge tourne dans une fenêtre de console ; la fermer l’arrête jusqu’à la prochaine ouverture de session). Il faut le programme symphony lui-même, pas `go run`.
 
 ### 3. Démarrer des sessions
 

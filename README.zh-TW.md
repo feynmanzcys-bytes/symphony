@@ -94,7 +94,10 @@ bridge 一啟動就會在瀏覽器開啟辦公室 <http://127.0.0.1:7788/>（不
 | `-mod` | 空白 | 開發用：透過 `--plugin-dir` 讓工作階段載入這個資料夾裡的 mod，覆蓋已安裝的版本 |
 | `-web` | 空白 | 開發用：直接從這個資料夾提供頁面，修改後重新整理就會生效 |
 | `-open` | `true` | bridge 啟動後在瀏覽器開啟辦公室；如果 `-addr` 上已有 bridge 在執行，就只開啟它的辦公室 |
+| `-autostart` | — | `on`：之後每次登入都自動啟動 bridge（帶上一起給的參數），並且立刻啟動；`off`：取消 |
 | `-version` | — | 顯示版本號後結束 |
+
+**隨登入啟動**：`symphony -autostart on` 讓 bridge 之後每次登入都自動啟動（一起給的參數也會帶上，例如 `-addr`），並且立刻啟動；`symphony -autostart off` 取消。Linux 上是 systemd 使用者服務（用 `journalctl --user -u symphony` 查看紀錄），macOS 上是 launchd 代理程式（紀錄在 `~/Library/Logs/symphony.log`），Windows 上是登錄檔 Run 機碼裡的一個值（bridge 在主控台視窗裡執行，關掉視窗它就會停止，直到下次登入）。這需要 symphony 程式本身，`go run` 不行。
 
 ### 3. 啟動工作階段
 

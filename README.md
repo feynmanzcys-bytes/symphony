@@ -94,7 +94,10 @@ The office opens in your browser at <http://127.0.0.1:7788/> (`-open=false` turn
 | `-mod` | empty | For development: give sessions this folder's mod with `--plugin-dir`, overriding the installed copy |
 | `-web` | empty | For development: serve the pages from this folder, so edits show after a reload |
 | `-open` | `true` | Open the office in the browser once the bridge is up; when a bridge already runs at `-addr`, just open its office |
+| `-autostart` | — | `on`: start the bridge whenever you log in, with the other flags given, and start it now; `off`: undo that |
 | `-version` | — | Print the version and exit |
+
+**Start it when you log in**: `symphony -autostart on` makes the bridge start whenever you log in, with the flags you give alongside (say `-addr`), and starts it right away; `symphony -autostart off` undoes that. On Linux it's a systemd user service (`journalctl --user -u symphony` shows its log), on macOS a launchd agent (logging to `~/Library/Logs/symphony.log`), on Windows a value under the registry's Run key (the bridge runs in a console window; closing it stops the bridge until the next login). It needs the symphony program itself, not `go run`.
 
 ### 3. Start sessions
 
