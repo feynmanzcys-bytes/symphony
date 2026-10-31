@@ -131,7 +131,7 @@ Quand rien ne répond à l’adresse du bridge sur cette machine, la session dé
 | Système | Terminal des sessions démarrées depuis la page | Tests |
 | --- | --- | --- |
 | Linux | tmux s’il est installé, sinon un terminal graphique | Tests de bout en bout complets |
-| macOS | Terminal.app par défaut ; `-terminal tmux` pour tmux | Compilation croisée et tests unitaires ; `-autostart` testé aussi de bout en bout |
+| macOS | Terminal.app par défaut ; `-terminal tmux` pour tmux | Compilation croisée et tests unitaires uniquement |
 | Windows | Une nouvelle fenêtre de console | Compilation croisée et tests unitaires uniquement |
 
 Seul tmux peut choisir « faire confiance à ce dossier » à votre place. Avec une fenêtre de terminal, la première session dans un nouveau dossier demande un clic dans cette fenêtre.

@@ -131,7 +131,7 @@ SYMPHONY_TOKEN=<token> claude --name frontend-alice --permission-mode manual
 | 시스템 | 페이지에서 시작한 세션의 터미널 | 테스트 범위 |
 | --- | --- | --- |
 | Linux | tmux가 있으면 tmux, 없으면 그래픽 터미널 | 엔드투엔드 테스트 전체 |
-| macOS | 기본은 Terminal.app, `-terminal tmux`로 tmux 사용 | 크로스 컴파일과 단위 테스트, `-autostart`는 엔드투엔드 테스트까지 |
+| macOS | 기본은 Terminal.app, `-terminal tmux`로 tmux 사용 | 크로스 컴파일과 단위 테스트만 |
 | Windows | 새 콘솔 창 | 크로스 컴파일과 단위 테스트만 |
 
 "이 폴더 신뢰"를 대신 눌러 줄 수 있는 것은 tmux뿐입니다. 터미널 창을 쓰는 경우, 새 폴더에서 여는 첫 세션은 그 창에서 한 번 직접 눌러 줘야 합니다.

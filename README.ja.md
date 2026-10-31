@@ -131,7 +131,7 @@ SYMPHONY_TOKEN=<token> claude --name frontend-alice --permission-mode manual
 | OS | ページから起動したセッションのターミナル | テスト状況 |
 | --- | --- | --- |
 | Linux | tmux があれば tmux、なければグラフィカルなターミナル | エンドツーエンドテストまで実施 |
-| macOS | デフォルトは Terminal.app。`-terminal tmux` で tmux を使用 | クロスコンパイルと単体テスト。`-autostart` はエンドツーエンドテストも実施 |
+| macOS | デフォルトは Terminal.app。`-terminal tmux` で tmux を使用 | クロスコンパイルと単体テストのみ |
 | Windows | 新しいコンソールウィンドウ | クロスコンパイルと単体テストのみ |
 
 「このフォルダを信頼する」にあなたの代わりに答えられるのは、tmux だけです。ターミナルウィンドウの場合、新しいフォルダで最初にセッションを起動するときは、そのウィンドウで 1 回クリックする必要があります。

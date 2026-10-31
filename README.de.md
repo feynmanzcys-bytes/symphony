@@ -131,7 +131,7 @@ Antwortet unter der Adresse der Bridge auf diesem Rechner nichts, startet die Si
 | System | Terminal für über die Seite gestartete Sitzungen | Getestet |
 | --- | --- | --- |
 | Linux | tmux, falls installiert, sonst ein grafisches Terminal | Vollständige End-to-End-Tests |
-| macOS | Standardmäßig Terminal.app; `-terminal tmux` für tmux | Cross-Kompilierung und Unit-Tests; `-autostart` auch End-to-End getestet |
+| macOS | Standardmäßig Terminal.app; `-terminal tmux` für tmux | Nur Cross-Kompilierung und Unit-Tests |
 | Windows | Ein neues Konsolenfenster | Nur Cross-Kompilierung und Unit-Tests |
 
 Nur tmux kann „trust this folder“ für dich bestätigen. Bei einem Terminalfenster musst du für die erste Sitzung in einem neuen Ordner einmal in diesem Fenster klicken.

@@ -131,7 +131,7 @@ SYMPHONY_TOKEN=<token> claude --name 前端小王 --permission-mode manual
 | 系统 | 页面开会话用的终端 | 验证情况 |
 | --- | --- | --- |
 | Linux | 有 tmux 用 tmux，没有就开图形终端 | 跑过完整的端到端测试 |
-| macOS | 默认 Terminal.app，`-terminal tmux` 改用 tmux | 交叉编译和单测；`-autostart` 跑过端到端测试 |
+| macOS | 默认 Terminal.app，`-terminal tmux` 改用 tmux | 只做了交叉编译和单测 |
 | Windows | 新开一个控制台窗口 | 只做了交叉编译和单测 |
 
 只有 tmux 能替你点“信任此目录”。弹窗口的话，第一次在新目录开会话，要你自己在窗口里点一下。

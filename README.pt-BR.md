@@ -131,7 +131,7 @@ Quando nada responde no endereço do bridge nesta máquina, a sessão inicia o b
 | Sistema | Terminal das sessões iniciadas pela página | Testes |
 | --- | --- | --- |
 | Linux | tmux, se estiver instalado; senão, um terminal gráfico | Testes de ponta a ponta completos |
-| macOS | Terminal.app por padrão; `-terminal tmux` para usar o tmux | Compilação cruzada e testes unitários; `-autostart` testado também de ponta a ponta |
+| macOS | Terminal.app por padrão; `-terminal tmux` para usar o tmux | Só compilação cruzada e testes unitários |
 | Windows | Uma nova janela de console | Só compilação cruzada e testes unitários |
 
 Só o tmux consegue confirmar por você que a pasta é confiável ("trust this folder"). Com uma janela de terminal, a primeira sessão numa pasta nova precisa de um clique seu nessa janela.

@@ -131,7 +131,7 @@ SYMPHONY_TOKEN=<token> claude --name frontend-alice --permission-mode manual
 | 系統 | 從頁面啟動的工作階段使用的終端機 | 測試情況 |
 | --- | --- | --- |
 | Linux | 有裝 tmux 就用 tmux，否則用圖形介面的終端機 | 完整的端對端測試 |
-| macOS | 預設用 Terminal.app；`-terminal tmux` 可改用 tmux | 交叉編譯和單元測試；`-autostart` 做過端對端測試 |
+| macOS | 預設用 Terminal.app；`-terminal tmux` 可改用 tmux | 只做過交叉編譯和單元測試 |
 | Windows | 新開一個主控台視窗 | 只做過交叉編譯和單元測試 |
 
 只有 tmux 能替你回答「信任此資料夾」。如果用的是終端機視窗，在新資料夾裡啟動第一個工作階段時，需要你在那個視窗裡按一下。
