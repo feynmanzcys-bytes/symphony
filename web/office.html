@@ -291,6 +291,47 @@
   #taskwin .where { flex:1; min-width:0; color:#6f6b64; font:12px ui-monospace, monospace; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   #taskwin .chip { flex:none; font-size:11px; padding:0 6px; border:1px solid #d6d1c6; background:#f6f3ec; white-space:nowrap; }
   #taskwin .st { flex:none; color:#6f6b64; font-size:12px; white-space:nowrap; max-width:220px; overflow:hidden; text-overflow:ellipsis; }
+  /* the task chat: the members' messages to each other (purple, as everywhere on the page) and yours (dark, on the right) */
+  #taskwin .tchat { margin-top:12px; }
+  #taskwin .tchat h3 { margin:0 0 4px; font-size:13px; }
+  #taskwin .tlist { display:flex; flex-direction:column; gap:8px; min-height:64px; max-height:35vh; overflow:auto; padding:8px; background:#f6f3ec; border:2px solid #2b2a28; }
+  #taskwin .tlist .empty { margin:auto; color:#8a867e; font-size:12px; text-align:center; }
+  #taskwin .tmsg { flex:none; display:flex; align-items:flex-start; gap:6px; max-width:88%; align-self:flex-start; }
+  #taskwin .tmsg.me { flex-direction:row-reverse; align-self:flex-end; }
+  #taskwin .tmsg .av { flex:none; width:48px; height:24px; margin-top:4px; background-size:100% 100%; image-rendering:pixelated; }
+  #taskwin .tmsg .bub { min-width:0; padding:4px 10px 6px; background:#7b4dc9; color:#fff; border:2px solid #4a2a86; box-shadow:2px 2px 0 rgba(0,0,0,.3); font-size:13px; line-height:1.5; }
+  #taskwin .tmsg.me .bub { background:#2b2a28; border-color:#2b2a28; color:#fffdf7; }
+  #taskwin .tmsg .hd { display:flex; gap:8px; align-items:baseline; font-size:12px; }
+  #taskwin .tmsg .hd time { font-size:10px; opacity:.75; }
+  #taskwin .tmsg .body { white-space:pre-wrap; overflow-wrap:anywhere; }
+  #taskwin .tmsg .body .to { color:#ffe08a; }
+  #taskwin .tmsg.me .body .to { color:#f2b705; }
+  #taskwin .tmsg .body code { background:rgba(255,255,255,.18); padding:0 3px; font:12px ui-monospace, monospace; }
+  #taskwin .tmsg .body pre { background:rgba(0,0,0,.3); padding:6px 8px; margin:4px 0; font:12px/1.5 ui-monospace, monospace; overflow:auto; white-space:pre; }
+  #taskwin .tsay { display:flex; gap:8px; align-items:flex-end; margin-top:6px; }
+  #taskwin .tbox { position:relative; flex:1; min-width:0; display:flex; }
+  #taskwin .tsay textarea { flex:1; resize:none; font:inherit; color:#2b2a28; background:#fff; border:2px solid #2b2a28; padding:5px 8px; box-sizing:border-box; }
+  #taskwin .tsay textarea:focus { outline:none; border-color:#f2b705; }
+  #taskwin .tsay textarea:disabled { background:#ece8df; }
+  #taskwin .tstatus { margin-top:4px; font-size:12px; color:#c0392b; white-space:pre-wrap; overflow-wrap:anywhere; }
+  #taskwin .tstatus:empty { display:none; }
+  /* the mention picker: the task's members, over the input while an @ is being typed (like the search box's list) */
+  #taskwin .tpick { position:absolute; z-index:2; left:0; bottom:calc(100% + 4px); min-width:240px; max-width:380px; background:#fffdf7; color:#2b2a28;
+    border:2px solid #2b2a28; box-shadow:4px 4px 0 rgba(0,0,0,.35); }
+  #taskwin .tpick[hidden] { display:none; }
+  #taskwin .tpick .hit { padding:2px 8px; cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:13px; }
+  #taskwin .tpick .hit.on { background:#f2b705; }
+  #taskwin .tpick .hit small { color:#6f6b64; margin-left:8px; }
+  #taskwin .mrow.open { background:#fff3c4; box-shadow:inset 4px 0 0 #f2b705; }
+  /* a member's window docks to the right of the task window: the two side by side, centered as a pair, the task's chat
+     as tall as the member's (on a narrow screen the member's window opens over the task window instead) */
+  #taskwin.with-chat { padding:0 16px; }
+  #taskwin.with-chat > .panel { flex:0 1 720px; width:auto; min-width:0; height:min(90vh, 960px); display:flex; flex-direction:column; }
+  #taskwin.with-chat .tchat { flex:1; min-height:120px; display:flex; flex-direction:column; }
+  #taskwin.with-chat .tlist { flex:1; max-height:none; }
+  #chat.docked:not([hidden]) { display:contents; }
+  #chat.docked .panel.chat { flex:0 1 640px; width:auto; min-width:0; margin-left:-2px; }
+  #chat.stacked { z-index:11; }
   /* the message log: a side panel */
   .side { position:fixed; right:12px; top:calc(var(--hud-h, 0px) + 12px); bottom:12px; z-index:5; width:min(340px, calc(100vw - 24px)); overflow:auto; background:#fffdf7; color:#2b2a28;
     border:2px solid #2b2a28; box-shadow:4px 4px 0 rgba(0,0,0,.35); padding:10px 12px; box-sizing:border-box; }
@@ -396,6 +437,15 @@
     <div class="mode" data-i18n="task.flat" hidden></div>
     <div class="err" hidden></div>
     <div class="members"></div>
+    <div class="tchat">
+      <h3 data-i18n="task.chat"></h3>
+      <div class="tlist"></div>
+      <form class="tsay" autocomplete="off">
+        <div class="tbox"><textarea rows="1"></textarea><div class="tpick" hidden></div></div>
+        <button type="submit" class="px primary" data-i18n="chat.send"></button>
+      </form>
+      <div class="tstatus"></div>
+    </div>
     <div class="actions"></div>
   </div>
 </div>
@@ -1424,7 +1474,7 @@ function settleFigure(f) {
   f.label.remove(); f.bubble?.remove(); figs.delete(f.key)
   if (e) updateEmployee(e, e.acc, false, awayInTasks().get(e.acc.id))
 }
-function onFigureClick(f) { if (f) openChat(f.acc.id, f.s.id) }
+function onFigureClick(f) { if (f) openTaskWin(f.task.id) } // a member's window opens from its task's window
 
 // ================= idle life =================
 // An idle employee stays at its desk a while (the next prompt may be on its way), then wanders off: TV on the
@@ -2036,7 +2086,7 @@ function pickFound(h) {
   if (!h) return
   if (h.task) return openTaskWin(h.task.id)
   h.e.foundAt = performance.now()
-  if (h.e.member) onFigureClick(h.e); else onEmployeeClick(h.e.acc.id)
+  if (h.e.member) openMember(h.e.task, h.e.member); else onEmployeeClick(h.e.acc.id)
 }
 findEl.addEventListener('input', () => { findSel = 0; renderFind() })
 findEl.addEventListener('focus', renderFind)
@@ -2056,8 +2106,8 @@ findList.addEventListener('mousedown', ev => { // mousedown, so the box keeps it
 })
 addEventListener('keydown', ev => { // "/" jumps to the search box; Esc lets go of a state chip
   if (ev.key === 'Escape' && chipOn) { chipOn = null; renderStats() }
-  if (ev.key === 'Escape' && !chatEl.hidden && !dock.classList.contains('asking')) closeChat()
-  if (ev.key === 'Escape' && !taskWin.hidden) closeTaskWin()
+  if (ev.key === 'Escape' && !chatEl.hidden) { if (!dock.classList.contains('asking')) closeChat() } // the member's first, then its task
+  else if (ev.key === 'Escape' && !taskWin.hidden) closeTaskWin()
   if (ev.key === 'Escape' && !taskDlg.hidden) closeTask()
   if (ev.key !== '/' || ev.ctrlKey || ev.metaKey || ev.altKey || !chatEl.hidden || !dlg.hidden || !taskDlg.hidden || !taskWin.hidden) return
   if (/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName)) return
@@ -2246,8 +2296,12 @@ function takeMessages(list) {
 function noteMessage(m) {
   if (seenMessages.has(m.id)) return
   seenMessages.add(m.id)
-  if (!first) { showMessage(m); log(`${m.fromName || '?'} → ${m.toName || '?'}${t('common.colon')}${m.text}`) }
+  if (!first) { showMessage(m); log(`${msgFrom(m)} → ${msgTo(m)}${t('common.colon')}${m.text}`) }
 }
+// the names a message goes by; one you sent from a task's chat has no sender, and none to send to when it went to everyone
+const fromYou = m => m.origin === 'page' && !m.fromName
+const msgFrom = m => m.fromName || (fromYou(m) ? t('task.you') : '?')
+const msgTo = m => m.toName || (fromYou(m) && m.task ? t('task.chatAll') : '?')
 function applyMessage(m) {
   const list = snapshot.messages, i = list.findIndex(x => x.id === m.id)
   if (i >= 0) list[i] = m
@@ -2255,12 +2309,13 @@ function applyMessage(m) {
   messagesVersion++
   noteMessage(m)
   if (!msgsPanel.hidden) renderMessages()
+  if (taskWinFor) renderTaskWin()
 }
 let catchingUp = false
 function catchUpMessages() {
   if (catchingUp) return
   catchingUp = true
-  fetch('/api/state').then(r => r.json()).then(s => { if (Array.isArray(s.messages)) { takeMessages(s.messages); if (!msgsPanel.hidden) renderMessages() } })
+  fetch('/api/state').then(r => r.json()).then(s => { if (Array.isArray(s.messages)) { takeMessages(s.messages); if (!msgsPanel.hidden) renderMessages(); if (taskWinFor) renderTaskWin() } })
     .catch(() => {}).finally(() => { catchingUp = false })
 }
 
@@ -2311,13 +2366,18 @@ function askWho(a) {
 }
 function openAsks(session = null) {
   const a = snapshot.asks.find(x => !session || x.session === session) || snapshot.asks[0]
-  if (a) openChat(a.account, sessionById(a.session)?.task ? a.session : null) // a task session's ask: that session's window
+  if (!a) return
+  // a task session's ask: its member's window, beside the task window
+  const task = taskById(sessionById(a.session)?.task) ?? snapshot.tasks.find(k => k.members.some(m => m.session === a.session))
+  const member = task?.members.find(m => m.session === a.session)
+  if (member) openMember(task, member)
+  else openChat(a.account)
 }
 
 // ================= message log =================
 const msgsPanel = document.getElementById('msgs-panel')
 function msgHTML(m) {
-  return `<div class="msg"><div class="meta">${fmtTime(m.time)} · <b>${esc(m.fromName || '?')}</b> → <b>${esc(m.toName || '?')}</b>
+  return `<div class="msg"><div class="meta">${fmtTime(m.time)} · <b>${esc(msgFrom(m))}</b> → <b>${esc(msgTo(m))}</b>
     ${m.delivered ? '' : `<span class="lost">${esc(t('msg.undelivered'))}</span>`}</div>${esc(m.text)}</div>`
 }
 // The panel shows the log newest first and is kept up to date in place: a new message is one element put in, an
@@ -2362,7 +2422,32 @@ const chatShown = { meta:'', btns:'', asks:'' }
 chatEl.querySelector('.close').onclick = closeChat
 chatEl.addEventListener('click', ev => { if (ev.target === chatEl) closeChat() })
 chatEl.querySelector('.meta').addEventListener('click', ev => { const el = ev.target.closest('[data-task]'); if (el) openTaskWin(el.dataset.task) })
-function closeChat() { chatEl.hidden = true; chatFor = null }
+function closeChat() {
+  chatEl.hidden = true; chatFor = null
+  if (!chatTask) return
+  chatTask = null
+  placeChat()
+  if (taskWinFor) renderTaskWin() // its row lets go, and the task window slides back to the middle
+}
+// A task member's window belongs to its task's window: docked to its right, the two centered as a pair, or over it
+// where the screen is too narrow for both. The element moves into the task window for that and back when it's alone.
+let chatTask = null // the task whose window the member's window goes with; null: a window of its own
+const chatHome = document.createComment('chat')
+chatEl.before(chatHome)
+const DOCK_MIN = 1250 // narrower than this, the member's window opens over the task window
+function placeChat() {
+  const docked = !!chatTask && innerWidth >= DOCK_MIN
+  if (docked ? chatEl.parentElement !== taskWin : chatHome.nextSibling !== chatEl) (docked ? taskWin.append(chatEl) : chatHome.after(chatEl))
+  chatEl.classList.toggle('docked', docked)
+  chatEl.classList.toggle('stacked', !!chatTask && !docked)
+  taskWin.classList.toggle('with-chat', docked && !chatEl.hidden)
+}
+// the one way to a task member's window: the task window, with the member's beside it
+function openMember(task, m) {
+  if (!m?.session) return openTaskWin(task.id)
+  if (taskWinFor !== task.id || taskWin.hidden) openTaskWin(task.id)
+  openChat(m.account, m.session, task.id)
+}
 
 // a click on an employee opens its window, and an idle one goes back to its desk and waits there for its next turn
 function onEmployeeClick(id) {
@@ -2374,11 +2459,13 @@ function onEmployeeClick(id) {
   }
   openChat(id)
 }
-// sid: a task session to show; without one the window shows the desk session
-function openChat(id, sid = null) {
-  chatSid = sid
-  closeTaskWin()
+// sid: a task session to show; without one the window shows the desk session. task: the task window it goes with
+// (openMember); without one it's a window of its own, and the task window closes
+function openChat(id, sid = null, task = null) {
+  if (!task) closeTaskWin()
+  chatSid = sid; chatTask = task
   showChat(id)
+  if (task) renderTaskWin()
   if (!chatEl.hidden && dock.classList.contains('asking')) dock.querySelector('#asks input, #asks button')?.focus()
   else if (!chatEl.hidden && !sayBox.disabled) sayBox.focus()
 }
@@ -2415,7 +2502,7 @@ function showChat(id) {
     const add = (text, cls, fn, title) => { const b = document.createElement('button'); b.className = 'px ' + cls; b.textContent = text; b.onclick = fn; if (title) b.title = title; btns.appendChild(b) }
     if (online && s.launch) add(t('chat.terminal'), 'terminal', () => openTerminal(s), t('chat.terminalTitle'))
     if (busy) add(t('chat.stop'), 'stop', () => post(`/api/abort/${s.id}`, {}), t('chat.stopTitle'))
-    if (away && member?.session) add(t('task.openMember', { name:member.name }), 'primary to-task', () => openChat(acc.id, member.session),
+    if (away && member?.session) add(t('task.openMember', { name:member.name }), 'primary to-task', () => openMember(away, member),
       t('task.openMemberTitle', { id:away.id, room:taskRoom(away) }))
     if (!online && !chatSid && launchOpts?.enabled) add(t('launch.go'), (away ? '' : 'primary ') + 'go-work', () => openLaunch(acc.id))
     if (!online && !chatSid && !away) add(t('card.delete'), '', async () => {
@@ -2449,6 +2536,7 @@ function showChat(id) {
   off.hidden = online
   if (off.textContent !== offText) off.textContent = offText
   chatEl.hidden = false
+  placeChat()
 }
 // the status line follows what the employee (or the member) is doing
 function refreshChatLine() {
@@ -2913,15 +3001,16 @@ taskForm.addEventListener('submit', async ev => {
 
 // the task window; until the snapshot has a task just started, it shows what the bridge answered
 const taskWin = document.getElementById('taskwin')
-let taskWinFor = null, taskWinData = null, taskWinShown = { members:'', btns:'' }
+let taskWinFor = null, taskWinData = null, taskWinShown = {}
 taskWin.querySelector('.close').onclick = closeTaskWin
 taskWin.addEventListener('click', ev => { if (ev.target === taskWin) closeTaskWin() })
 function openTaskWin(id, data = null) {
-  taskWinFor = id; taskWinData = data; taskWinShown = { members:'', btns:'' }
-  closeChat()
+  if (id !== taskChatFor) { taskChatFor = id; tBox.value = ''; tStatus.textContent = '' } // a draft stays with its task
+  taskWinFor = id; taskWinData = data; taskWinShown = { grow:true }
+  if (chatTask !== id) closeChat() // a member's window of this task stays beside it
   renderTaskWin()
 }
-function closeTaskWin() { taskWin.hidden = true; taskWinFor = null }
+function closeTaskWin() { taskWin.hidden = true; taskWinFor = null; closePick(); if (chatTask) closeChat() }
 const TASK_COLOR = { running:YELLOW, ending:YELLOW, failed:RED }
 function renderTaskWin() {
   if (!taskWinFor) return
@@ -2942,7 +3031,8 @@ function renderTaskWin() {
   const rows = task.members.map((m, i) => {
     const s = sessionById(m.session), online = !!s && s.state !== 'ended', state = !online ? 'ended' : asking(m.session) ? 'waiting' : s.state
     const runs = [s?.model || m.model, s?.effort || m.effort].filter(Boolean).join(' · ')
-    return `<div class="mrow${m.session ? '' : ' wait'}" data-i="${i}">${dot(state)}<b>${esc(m.name)}</b>` +
+    const open = m.session && chatTask === task.id && chatSid === m.session && !chatEl.hidden // its window is beside this one
+    return `<div class="mrow${m.session ? '' : ' wait'}${open ? ' open' : ''}" data-i="${i}">${dot(state)}<b>${esc(m.name)}</b>` +
       (task.leader && m.account === task.leader ? `<span class="badge lead">${esc(t('task.lead'))}</span>` : '') +
       (m.advisor ? `<span class="badge adv" title="${esc(t('task.advisorTitle'))}">${esc(t('task.advisor'))}</span>` : '') +
       `<span class="where" title="${esc([m.dir, m.worktree].filter(Boolean).join('\n'))}">${esc(base(m.dir))} · ${esc(m.branch || '')}</span>` +
@@ -2950,6 +3040,7 @@ function renderTaskWin() {
       `<span class="st">${esc(!m.session ? t('task.memberStarting') : online ? statusText(s) : t('task.memberEnded'))}</span></div>`
   }).join('')
   if (rows !== taskWinShown.members) { taskWinShown.members = rows; taskWin.querySelector('.members').innerHTML = rows }
+  const stick = renderTaskChat(task)
   const btnKey = task.id + '|' + task.status
   if (btnKey !== taskWinShown.btns) {
     taskWinShown.btns = btnKey
@@ -2964,10 +3055,145 @@ function renderTaskWin() {
     }, t('task.dismissTitle'))
   }
   taskWin.hidden = false
+  if (taskWinShown.grow) { taskWinShown.grow = false; growTaskBox() }
+  if (stick) tList.scrollTop = tList.scrollHeight // once it shows: a hidden list has no height to scroll
 }
+
+// The task chat: the messages between the task's members and yours to them, oldest first, each with its sender's
+// figure. "@bob-T1 …" goes to that member only, anything else to every member online; the bridge sends them on.
+const tList = taskWin.querySelector('.tlist'), tPick = taskWin.querySelector('.tpick'), tSay = taskWin.querySelector('.tsay')
+const tBox = tSay.querySelector('textarea'), tStatus = taskWin.querySelector('.tstatus')
+let taskChatFor = null // the task the input's draft and status line belong to
+let taskChatStick = false // you just sent: follow the list down when it comes back, wherever it was scrolled
+const avatars = new Map() // what a figure is drawn from -> its picture, a CSS url()
+function avatar(key, draw) {
+  let a = avatars.get(key)
+  if (!a) { const was = hair; hair = 0; a = pixelArt(24, 12, draw); hair = was; avatars.set(key, a) }
+  return a
+}
+// a member as it looks in the office: its size from the model, its arms from the effort, an advisor's visitor badge
+function memberAvatar(m) {
+  const s = m && sessionById(m.session), b = build(s?.model ? s : m)
+  return avatar(`${b.size}|${b.muscle}|${!!m?.advisor}`, g => {
+    drawClawd(g, 12, 10, b, { eyes:'open', legs:true })
+    if (m?.advisor) solid(g, 13, 6, 2, 2, '#fbfbf8')
+  })
+}
+// you: a person in a dark suit with a yellow tie
+const YOU = ['...HHHHHH...', '...FFFFFF...', '...FEFFEF...', '...FFFFFF...', '....FFFF....', '.XXXXWWXXXX.', 'XXXXXYYXXXXX', 'XXXXXYYXXXXX']
+const YOU_COLOR = { H:'#2b2a28', F:'#f0c8a0', E:EYE, X:'#2b2a28', W:'#fffdf7', Y:YELLOW }
+const youAvatar = () => avatar('you', g => YOU.forEach((row, y) => [...row].forEach((c, x) => { if (c !== '.') rect(g, 6 + x, 3 + y, 1, 1, YOU_COLOR[c]) })))
+function taskMsgHTML(task, m) {
+  const me = fromYou(m), who = me ? null : task.members.find(x => (x.session && x.session === m.from) || x.name === m.fromName)
+  const names = m.toNames?.length ? m.toNames : m.toName ? [m.toName] : [] // one or several members, or everyone
+  const to = names.length ? `<b class="to">${esc(names.map(n => '@' + n).join(' '))}</b> ` : ''
+  return `<div class="tmsg${me ? ' me' : ''}"><span class="av" style="background-image:${me ? youAvatar() : memberAvatar(who)}"></span>` +
+    `<div class="bub"><div class="hd"><b>${esc(msgFrom(m))}</b><time>${esc(new Date(m.time).toLocaleTimeString(lang))}</time></div>` +
+    `<div class="body">${to}${richText(m.text)}</div></div></div>`
+}
+// redrawn when the message log or the members' figures change; says whether the list should be scrolled to its end
+function renderTaskChat(task) {
+  let stick = false
+  const figures = task.members.map(m => { const s = sessionById(m.session); return `${m.name}|${m.session}|${s?.model}|${s?.effort}` }).join(',')
+  const key = `${task.id}|${messagesVersion}|${figures}`
+  if (key !== taskWinShown.chat) {
+    taskWinShown.chat = key
+    const list = snapshot.messages.filter(m => m.task === task.id)
+    const html = list.length ? list.map(m => taskMsgHTML(task, m)).join('') : `<div class="empty">${esc(t('task.chatEmpty'))}</div>`
+    if (html !== taskWinShown.chatHTML) {
+      // it follows new messages down unless you scrolled up to read; it opens at the end
+      stick = !taskWinShown.chatHTML || taskChatStick || tList.scrollTop + tList.clientHeight >= tList.scrollHeight - 40
+      const top = tList.scrollTop
+      taskWinShown.chatHTML = html
+      tList.innerHTML = html
+      tList.scrollTop = top
+      if (stick) taskChatStick = false
+    }
+  }
+  const running = task.status === 'running'
+  if (!running) closePick()
+  tBox.disabled = !running
+  tSay.querySelector('button').disabled = !running
+  const ph = running ? t('task.chatPlaceholder', { name:task.members[0]?.name || '' }) : t('task.chatOff')
+  if (tBox.placeholder !== ph) { tBox.placeholder = ph; taskWinShown.grow = true }
+  return stick
+}
+// as tall as what's in it, the placeholder too (up to a few lines, then it scrolls); a hidden one has no height to take
+function growTaskBox() {
+  if (taskWin.hidden) { taskWinShown.grow = true; return }
+  tBox.style.height = ''
+  tBox.style.height = Math.min(tBox.scrollHeight + 4, 140) + 'px'
+}
+// The mention picker: an @ typed opens a list of the task's members over the input, narrowed by what follows it;
+// arrows move, Enter or Tab (or a click) puts in "@name ", Esc, a space or no match closes it until the next @
+let pick = null // { at, q, sel }: where the @ being typed is, what follows it, the highlighted name
+let pickShut = -1 // the @ Esc closed the picker for
+function pickNames() {
+  const task = taskById(taskWinFor) ?? taskWinData
+  const q = pick ? lower(pick.q) : ''
+  return (task?.members ?? []).filter(m => lower(m.name).startsWith(q))
+}
+function closePick() { pick = null; tPick.hidden = true }
+function updatePick() {
+  const before = tBox.value.slice(0, tBox.selectionStart), hit = tBox.selectionStart === tBox.selectionEnd && /(?:^|\s)@([^\s@]*)$/.exec(before)
+  if (!hit || tBox.disabled) { pickShut = -1; return closePick() }
+  const at = before.length - hit[1].length - 1
+  if (at === pickShut) return closePick()
+  pick = { at, q:hit[1], sel:pick?.at === at ? pick.sel : 0 }
+  const names = pickNames()
+  if (!names.length) return closePick()
+  pick.sel = Math.max(0, Math.min(pick.sel, names.length - 1))
+  tPick.innerHTML = names.map((m, i) => {
+    const s = sessionById(m.session), online = !!s && s.state !== 'ended'
+    return `<div class="hit${i === pick.sel ? ' on' : ''}" data-name="${esc(m.name)}">${dot(online ? s.state : 'ended')}<b>${esc(m.name)}</b>` +
+      `<small>${esc(!m.session ? t('task.memberStarting') : online ? statusText(s) : t('task.memberEnded'))}</small></div>`
+  }).join('')
+  tPick.hidden = false
+}
+function putPick(name) {
+  const end = tBox.selectionStart, at = pick.at
+  tBox.setRangeText('@' + name + ' ', at, end, 'end')
+  closePick(); growTaskBox()
+}
+tPick.addEventListener('mousedown', ev => { // mousedown, so the box keeps its focus
+  const row = ev.target.closest('.hit')
+  if (!row || !pick) return
+  ev.preventDefault()
+  putPick(row.dataset.name)
+})
+tBox.addEventListener('input', () => { growTaskBox(); updatePick() })
+tBox.addEventListener('click', updatePick)
+tBox.addEventListener('blur', closePick)
+tBox.addEventListener('keydown', ev => {
+  if (pick && !ev.isComposing) {
+    const names = pickNames()
+    if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
+      pick.sel = (pick.sel + (ev.key === 'ArrowDown' ? 1 : names.length - 1)) % names.length
+      tPick.querySelectorAll('.hit').forEach((h, i) => h.classList.toggle('on', i === pick.sel))
+    } else if ((ev.key === 'Enter' || ev.key === 'Tab') && names[pick.sel]) putPick(names[pick.sel].name)
+    else if (ev.key === 'Escape') { pickShut = pick.at; closePick(); ev.stopPropagation() } // the picker only, not the window
+    else return
+    ev.preventDefault()
+    return
+  }
+  if (ev.key === 'Enter' && !ev.shiftKey && !ev.isComposing) { ev.preventDefault(); tSay.requestSubmit() }
+})
+tSay.addEventListener('submit', async ev => {
+  ev.preventDefault()
+  const id = taskWinFor, text = tBox.value.trim()
+  if (!id || !text) return
+  tBox.value = ''; growTaskBox(); closePick()
+  tStatus.textContent = ''
+  taskChatStick = true
+  const r = await fetch(`/api/tasks/${id}/say`, { method:'POST', headers:{ 'content-type':'application/json' }, body:JSON.stringify({ text }) }).catch(() => null)
+  if (r?.ok || id !== taskChatFor) return
+  taskChatStick = false
+  if (!tBox.value) { tBox.value = text; growTaskBox() } // back in the box, to fix and send again
+  tStatus.textContent = errorText(r ? await r.json().catch(() => null) : null)
+})
 taskWin.querySelector('.members').addEventListener('click', ev => {
   const row = ev.target.closest('.mrow'), task = taskById(taskWinFor) ?? taskWinData, m = row && task?.members[row.dataset.i]
-  if (m?.session) openChat(m.account, m.session)
+  if (m?.session) openMember(task, m)
 })
 
 // the activity log's lines for tasks: started, ended, failed (one dismissed just goes)
@@ -3046,7 +3272,7 @@ let resizing = false
 addEventListener('resize', () => { // one layout per frame, however many events a drag sends
   if (resizing) return
   resizing = true
-  requestAnimationFrame(() => { resizing = false; layout() })
+  requestAnimationFrame(() => { resizing = false; layout(); placeChat() })
 })
 requestAnimationFrame(frame)
 </script>

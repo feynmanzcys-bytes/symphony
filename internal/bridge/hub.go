@@ -109,9 +109,11 @@ type Message struct {
 	FromName  string    `json:"fromName"`
 	To        string    `json:"to,omitempty"`
 	ToName    string    `json:"toName"`
+	ToNames   []string  `json:"toNames,omitempty"` // the task chat's mentioned members, when the page sent it to some
 	Text      string    `json:"text"`
 	Origin    string    `json:"origin,omitempty"`
 	AgentID   string    `json:"agentId,omitempty"`
+	Task      string    `json:"task,omitempty"` // the task it belongs to: the sender's, else the receiver's; empty between desks
 	Delivered bool      `json:"delivered"`
 	Received  bool      `json:"received"`
 	Time      time.Time `json:"time"`
@@ -672,6 +674,18 @@ func (h *Hub) findPairLocked(from, text string, wantReceived bool) *Message {
 	return nil
 }
 
+// messageTask is the task a message between two sessions belongs to: the sender's, else the receiver's (either may be
+// unknown).
+func messageTask(from, to *Session) string {
+	if from != nil && from.Task != "" {
+		return from.Task
+	}
+	if to != nil {
+		return to.Task
+	}
+	return ""
+}
+
 func (h *Hub) pushMessageLocked(m *Message) {
 	h.messages = append(h.messages, m)
 	if len(h.messages) > keepMessages {
@@ -701,12 +715,13 @@ func (h *Hub) receiveLocked(to *Session, ev Event) *Message {
 		fromID = from.ID
 		if m := h.findPairLocked(fromID, body, false); m != nil {
 			m.To, m.ToName, m.Received = to.ID, h.nameLocked(to), true
+			m.Task = messageTask(from, to)
 			return m
 		}
 	}
 	m := &Message{
 		ID: newID(), From: fromID, FromName: name, To: to.ID, ToName: h.nameLocked(to),
-		Text: body, Origin: originKind(ev.Origin), AgentID: ev.AgentID,
+		Text: body, Origin: originKind(ev.Origin), AgentID: ev.AgentID, Task: messageTask(from, to),
 		Received: true, Delivered: true, Time: h.now(),
 	}
 	if from != nil {
@@ -719,14 +734,16 @@ func (h *Hub) receiveLocked(to *Session, ev Event) *Message {
 func (h *Hub) sendLocked(from *Session, ev Event) *Message {
 	if m := h.findPairLocked(from.ID, ev.Text, true); m != nil {
 		m.Delivered = ev.Delivered
+		m.Task = messageTask(from, h.sessions[m.To])
 		return m
 	}
+	to := h.sessionByNameLocked(ev.To)
 	m := &Message{
 		ID: newID(), From: from.ID, FromName: h.nameLocked(from), ToName: ev.To,
-		Text: strings.TrimSpace(ev.Text), Origin: originKind(ev.Origin), AgentID: ev.AgentID,
+		Text: strings.TrimSpace(ev.Text), Origin: originKind(ev.Origin), AgentID: ev.AgentID, Task: messageTask(from, to),
 		Delivered: ev.Delivered, Time: h.now(),
 	}
-	if to := h.sessionByNameLocked(ev.To); to != nil {
+	if to != nil {
 		m.To, m.ToName = to.ID, h.nameLocked(to)
 	}
 	h.pushMessageLocked(m)

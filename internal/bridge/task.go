@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"github.com/feynmanzcys-bytes/symphony/internal/i18n"
 )
@@ -457,6 +458,109 @@ func (h *Hub) stopTaskSessionsLocked(id string) {
 			h.chatSettledLocked(a)
 		}
 	}
+}
+
+// ---------- the task chat ----------
+
+// splitMentions takes the leading "@name"s off text (separated by whitespace, a ":" or "," right after each dropped):
+// the names in the order given, repeats left out, and the rest. Text that doesn't start with one gives no names.
+func splitMentions(text string) (names []string, rest string) {
+	rest = text
+	for strings.HasPrefix(rest, "@") {
+		end := strings.IndexFunc(rest, unicode.IsSpace)
+		if end < 0 {
+			end = len(rest)
+		}
+		name := rest[1:end]
+		for _, p := range []string{":", ",", "：", "，"} {
+			name = strings.TrimSuffix(name, p)
+		}
+		if name == "" {
+			break
+		}
+		if !slices.Contains(names, name) {
+			names = append(names, name)
+		}
+		rest = strings.TrimSpace(rest[end:])
+	}
+	return names, rest
+}
+
+// SayTask sends what the person wrote in a task's chat: "@<member name> ..." (one or more) to those members' sessions
+// that are online, anything else to every member online. Each gets it as its next prompt from the page, as the
+// employee window's input does, and the message log keeps one message for it (from the page, no sender).
+func (h *Hub) SayTask(id, text string) (*Message, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	t := h.taskLocked(id)
+	if t == nil || t.starting {
+		return nil, ErrTaskUnknown
+	}
+	if t.Status != TaskRunning {
+		return nil, ErrTaskEnded
+	}
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return nil, newError("say_empty", "nothing to send")
+	}
+	m := &Message{ID: newID(), Text: text, Origin: "page", Task: id, Delivered: true, Received: true, Time: h.now()}
+	var targets []*Session
+	if names, rest := splitMentions(text); len(names) > 0 {
+		var members []*Member
+		for _, name := range names {
+			i := slices.IndexFunc(t.Members, func(mb *Member) bool { return mb.Name == name })
+			if i < 0 {
+				return nil, newError("task_say_unknown_member", "no member named "+name+" in this task", "name", name)
+			}
+			members = append(members, t.Members[i])
+		}
+		if rest == "" {
+			return nil, newError("say_empty", "nothing to send")
+		}
+		for _, mb := range members {
+			if s := h.onlineTaskLocked(mb.Account, id); s != nil {
+				targets = append(targets, s)
+			}
+		}
+		if len(targets) == 0 {
+			return nil, ErrSessionOffline
+		}
+		if len(names) == 1 {
+			m.To = targets[0].ID
+		}
+		m.ToName, m.ToNames, m.Text = strings.Join(names, " "), names, rest
+	} else {
+		for _, mb := range t.Members {
+			if s := h.onlineTaskLocked(mb.Account, id); s != nil {
+				targets = append(targets, s)
+			}
+		}
+		if len(targets) == 0 {
+			return nil, ErrSessionOffline
+		}
+	}
+	for _, s := range targets {
+		h.sayLocked(s.ID, m.Text, "page")
+	}
+	h.pushMessageLocked(m)
+	h.saveMessagesLocked()
+	h.broadcastLocked(map[string]any{"type": "message", "message": m})
+	cp := *m
+	return &cp, nil
+}
+
+// TaskChat is the message log's messages of a task.
+func (h *Hub) TaskChat(id string) []*Message {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	list := []*Message{}
+	for _, m := range h.messages {
+		if m.Task == id {
+			cp := *m
+			list = append(list, &cp)
+		}
+	}
+	return list
 }
 
 // ---------- ending a task ----------

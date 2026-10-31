@@ -82,6 +82,8 @@ func NewServer(hub *Hub, web fs.FS) *Server {
 	s.mux.HandleFunc("POST /api/tasks", s.createTask)
 	s.mux.HandleFunc("POST /api/tasks/{id}/end", s.endTask)
 	s.mux.HandleFunc("DELETE /api/tasks/{id}", s.forgetTask)
+	s.mux.HandleFunc("POST /api/tasks/{id}/say", s.sayTask)
+	s.mux.HandleFunc("GET /api/tasks/{id}/chat", s.taskChat)
 	return s
 }
 

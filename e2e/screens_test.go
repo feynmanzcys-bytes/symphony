@@ -19,6 +19,7 @@ import (
 	"github.com/chromedp/cdproto/cdp"
 	"github.com/chromedp/cdproto/page"
 	"github.com/chromedp/chromedp"
+	"github.com/chromedp/chromedp/kb"
 
 	"github.com/feynmanzcys-bytes/symphony/internal/bridge"
 )
@@ -28,9 +29,10 @@ import (
 // team in every state, three tasks in the small meeting rooms (one of 3 members, seated; one of 5 in a room for 3, two
 // of them standing; one failed on a merge conflict) and walks every screen: the office at every pixel size and at a
 // small and a big window, the nameplates, the task dialog in each of its states, the task window running, flat and
-// failed, the employee window of a member, of a desk employee and of one away in a task, the HUD with the search box,
-// the message and activity logs, the launch dialog and the /approve page; the task screens again in zh-CN and ja. The
-// screenshots go to e2e/artifacts/screens/. It fails on a page error, a key a catalog lacks, or a raw key on screen.
+// failed, the task chat (the members' messages, yours, the mention picker, a refusal), the employee window of a member
+// (docked to its task window), of a desk employee and of one away in a task, the HUD with the search box, the message
+// and activity logs, the launch dialog and the /approve page; the task screens again in zh-CN and ja. The screenshots
+// go to e2e/artifacts/screens/. It fails on a page error, a key a catalog lacks, or a raw key on screen.
 func TestScreens(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("the fake claude is a shell script")
@@ -343,6 +345,83 @@ func TestScreens(t *testing.T) {
 	})
 	p.shot("taskwin-running")
 	p.check()
+
+	// ---------- T2's chat: the members' messages, yours to one of them and to everyone, a mention, a name not in it ----------
+	waitUntil(t, 10*time.Second, "T2's chat shows the members' three messages", func() bool {
+		return p.is(`document.querySelectorAll('#taskwin .tmsg:not(.me)').length === 3`)
+	}, func() string { return p.js(`document.querySelector('#taskwin .tlist').innerText`) })
+	say := func(text string) string { // the answer's status, sent as the window's input sends it
+		body, _ := json.Marshal(map[string]string{"text": text})
+		return get(t, en, 20*time.Second, chromedp.Evaluate[string](fmt.Sprintf(
+			`fetch('/api/tasks/%s/say', { method:'POST', headers:{ 'content-type':'application/json' }, body:%q }).then(r => String(r.status))`, t2.ID, body), chromedp.EvalAwaitPromise))
+	}
+	if st := say("@" + daveT2 + " Yes, cover the Windows build too, briefly"); st == "404" {
+		t.Log("POST /api/tasks/{id}/say isn't there yet: the chat shows the members' messages only")
+	} else {
+		if st != "200" {
+			t.Errorf("sending to %s from the task chat answered %s", daveT2, st)
+		}
+		if st := say("Commit before you tell bob it's done, please"); st != "200" {
+			t.Errorf("sending to everyone from the task chat answered %s", st)
+		}
+		waitUntil(t, 10*time.Second, "T2's chat shows your two messages, one to dave and one to everyone", func() bool {
+			return p.is(fmt.Sprintf(`(r => r.length === 2 && r[0].querySelector('.to')?.textContent === '@%s' && !r[1].querySelector('.to'))([...document.querySelectorAll('#taskwin .tmsg.me')])`, daveT2))
+		}, func() string { return p.js(`document.querySelector('#taskwin .tlist').innerText`) })
+	}
+	p.run(`document.querySelector('#taskwin .tchat').scrollIntoView({ block:'end' })`)
+	p.shot("taskwin-chat")
+	p.check()
+	// the mention picker: "@" lists the members, ArrowDown and Enter pick the second, "@r" and Tab add rev, and Enter
+	// (the picker shut) sends to both
+	box := `#taskwin .tsay textarea`
+	draft := func() string { return p.js(`document.querySelector('#taskwin .tsay textarea').value`) }
+	// keys the input handles itself go in as keydown events: a key sent through the browser would still type its
+	// character after the handler stopped it (Enter: a new line)
+	press := func(key string) {
+		p.run(fmt.Sprintf(`document.querySelector('#taskwin .tsay textarea').dispatchEvent(new KeyboardEvent('keydown', { key:%q, bubbles:true, cancelable:true }))`, key))
+	}
+	do(t, en, 10*time.Second, chromedp.SendKeys(chromedp.CSS(box), "@"))
+	waitUntil(t, 5*time.Second, "an @ opens the picker with T2's three members", func() bool {
+		return p.is(`!document.querySelector('#taskwin .tpick').hidden && document.querySelectorAll('#taskwin .tpick .hit').length === 3`)
+	})
+	p.shot("taskwin-mention")
+	p.check()
+	press("ArrowDown")
+	press("Enter")
+	if got := draft(); got != "@"+daveT2+" " || !p.is(`document.querySelector('#taskwin .tpick').hidden`) {
+		t.Errorf("ArrowDown and Enter in the picker should put in %q and close it, the input holds %q", "@"+daveT2+" ", got)
+	}
+	do(t, en, 10*time.Second, chromedp.SendKeys(chromedp.CSS(box), "@R"))
+	if n := p.js(`[...document.querySelectorAll('#taskwin .tpick:not([hidden]) .hit')].map(h => h.dataset.name).join()`); n != revT2 {
+		t.Errorf("@R should narrow the picker to %s, it lists %q", revT2, n)
+	}
+	press("Tab")
+	do(t, en, 10*time.Second, chromedp.SendKeys(chromedp.CSS(box), "please look at the Makefile"))
+	if got, want := draft(), "@"+daveT2+" @"+revT2+" please look at the Makefile"; got != want {
+		t.Errorf("Tab should put in the narrowed name: the input holds %q, want %q", got, want)
+	}
+	p.shot("taskwin-chat-mention")
+	press("Enter")
+	waitUntil(t, 10*time.Second, "the message to dave and rev shows with both names", func() bool {
+		return p.is(fmt.Sprintf(`[...document.querySelectorAll('#taskwin .tmsg.me .to')].some(e => e.textContent === '@%s @%s') && document.querySelector('#taskwin .tsay textarea').value === ''`, daveT2, revT2))
+	}, func() string {
+		return p.js(`document.querySelector('#taskwin .tlist').innerText + ' | ' + document.querySelector('#taskwin .tstatus').textContent`)
+	})
+	// Esc closes the picker, not the window
+	do(t, en, 10*time.Second, chromedp.SendKeys(chromedp.CSS(box), "@"))
+	press("Escape")
+	if !p.is(`document.querySelector('#taskwin .tpick').hidden && !document.getElementById('taskwin').hidden`) {
+		t.Error("Esc in the picker should close the picker and leave the task window open")
+	}
+	p.run(`(b => { b.value = ''; b.dispatchEvent(new Event('input')) })(document.querySelector('#taskwin .tsay textarea'))`)
+	p.run(`(b => { b.value = '@nobody-T9 hello'; b.closest('form').requestSubmit() })(document.querySelector('#taskwin .tsay textarea'))`)
+	waitUntil(t, 10*time.Second, "the task chat says why it couldn't send, and keeps the draft", func() bool {
+		return p.is(`document.querySelector('#taskwin .tstatus').textContent.length > 0 && document.querySelector('#taskwin .tsay textarea').value === '@nobody-T9 hello'`)
+	})
+	p.shot("taskwin-chat-error")
+	p.check()
+	p.run(`(b => { b.value = ''; b.dispatchEvent(new Event('input')) })(document.querySelector('#taskwin .tsay textarea'))`)
+
 	p.openPlate(roomT3)
 	waitUntil(t, 10*time.Second, "T3's window shows five members and no lead", func() bool {
 		return p.is(`document.querySelectorAll('#taskwin .mrow').length === 5 && !document.querySelector('#taskwin .mode').hidden`)
@@ -355,25 +434,49 @@ func TestScreens(t *testing.T) {
 	p.shot("taskwin-failed")
 	p.check()
 
-	// ---------- employee windows: a member's (from the task window), a desk employee's, one away in a task ----------
-	p.openPlate(roomT2)
+	// ---------- employee windows: a member's (docked to its task window), a desk employee's, one away in a task ----------
+	// a member's figure opens its task's window, not its own
+	p.run(`document.getElementById('taskwin').hidden || document.querySelector('#taskwin .close').click()`)
+	p.run(fmt.Sprintf(`document.querySelector('.emp-label.member[data-session="t-%s"]').click()`, bobT2))
+	waitUntil(t, 10*time.Second, "a click on bob-T2's tag opens T2's window and no chat", func() bool {
+		return p.is(fmt.Sprintf(`!document.getElementById('taskwin').hidden && document.querySelector('#taskwin h2').textContent.startsWith(%q) && document.getElementById('chat').hidden`, t2.ID+" "))
+	})
 	p.run(fmt.Sprintf(`[...document.querySelectorAll('#taskwin .mrow')].find(r => r.querySelector('b').textContent === %q).click()`, bobT2))
-	waitUntil(t, 10*time.Second, "bob's task session's window shows the kickoff and the task chip", func() bool {
+	waitUntil(t, 10*time.Second, "bob's task session's window docks beside the task window, with the kickoff and the task chip", func() bool {
 		return p.is(fmt.Sprintf(`!document.getElementById('chat').hidden && document.querySelector('#chat h2').textContent === %q && !!document.querySelector('#chat .flow .it.user .from') && !!document.querySelector('#chat .meta [data-task]')`, bobT2))
 	})
+	time.Sleep(300 * time.Millisecond)
+	// side by side: the chat's left edge on the task window's right one, the pair centered, bob's row lit
+	if !p.is(fmt.Sprintf(`(() => {
+		const a = document.querySelector('#taskwin > .panel').getBoundingClientRect(), b = document.querySelector('#chat .panel').getBoundingClientRect()
+		const open = document.querySelector('#taskwin .mrow.open b')
+		return document.getElementById('chat').classList.contains('docked') && document.getElementById('taskwin').classList.contains('with-chat') &&
+			Math.abs(b.left - a.right) <= 3 && Math.abs((a.left + b.right) / 2 - innerWidth / 2) <= 3 && open?.textContent === %q
+	})()`, bobT2)) {
+		t.Errorf("bob-T2's window should dock to the right of T2's, the pair centered: %s", p.js(`JSON.stringify([document.querySelector('#taskwin > .panel').getBoundingClientRect(), document.querySelector('#chat .panel').getBoundingClientRect(), innerWidth])`))
+	}
+	p.shot("taskwin-member-docked")
 	p.shot("chat-member")
 	p.run(`document.querySelector('#chat .flow').scrollTop = 0`)
 	p.shot("chat-member-top")
 	p.check()
+	// its ✕ closes it alone: the task window slides back to the middle
 	p.run(`document.querySelector('#chat .close').click()`)
-	p.openPlate(roomT2)
-	p.run(fmt.Sprintf(`[...document.querySelectorAll('#taskwin .mrow')].find(r => r.querySelector('b').textContent === %q).click()`, daveT2))
-	waitUntil(t, 10*time.Second, "dave's task session's window shows its question", func() bool {
-		return p.is(`!document.getElementById('chat').hidden && document.querySelectorAll('#asks .card, #asks > *').length > 0`)
+	if !p.is(`!document.getElementById('taskwin').hidden && !document.getElementById('taskwin').classList.contains('with-chat') && !document.querySelector('#taskwin .mrow.open')`) {
+		t.Error("closing the docked window should leave the task window open, alone")
+	}
+	p.run(`document.querySelector('#taskwin .close').click()`)
+	// the search box takes a member to its window the same way: dave-T2's, its question over the input
+	do(t, en, 10*time.Second, chromedp.SendKeys(chromedp.CSS(`#find`), daveT2), chromedp.SendKeys(chromedp.CSS(`#find`), kb.Enter))
+	waitUntil(t, 10*time.Second, "dave's task session's window docks beside T2's and shows its question", func() bool {
+		return p.is(`!document.getElementById('chat').hidden && document.getElementById('chat').classList.contains('docked') && !document.getElementById('taskwin').hidden && document.querySelectorAll('#asks .card, #asks > *').length > 0`)
 	})
 	time.Sleep(time.Second) // the dock's rise
 	p.shot("chat-member-ask")
-	p.run(`document.querySelector('#chat .close').click()`)
+	p.run(`document.querySelector('#taskwin .close').click()`)
+	if !p.is(`document.getElementById('chat').hidden && document.getElementById('taskwin').hidden`) {
+		t.Error("closing the task window should close the member's window docked to it")
+	}
 	clickLabel(t, en, accountID("alice"))
 	waitUntil(t, 10*time.Second, "alice's desk window opens", func() bool {
 		return p.is(`!document.getElementById('chat').hidden && document.querySelector('#chat h2').textContent === 'alice'`)
@@ -430,6 +533,14 @@ func TestScreens(t *testing.T) {
 		p.shot(fmt.Sprintf("office-%dx%d", size[0], size[1]))
 		p.openPlate(roomT2)
 		p.shot(fmt.Sprintf("taskwin-running-%dx%d", size[0], size[1]))
+		// a member's window: docked where there is room for both, over the task window where there isn't
+		p.run(fmt.Sprintf(`[...document.querySelectorAll('#taskwin .mrow')].find(r => r.querySelector('b').textContent === %q).click()`, bobT2))
+		docked := size[0] >= 1250
+		waitUntil(t, 10*time.Second, fmt.Sprintf("bob-T2's window opens (docked: %v)", docked), func() bool {
+			return p.is(fmt.Sprintf(`!document.getElementById('chat').hidden && document.getElementById('chat').classList.contains('docked') === %v && document.getElementById('chat').classList.contains('stacked') === %v`, docked, !docked))
+		})
+		p.shot(fmt.Sprintf("taskwin-member-%dx%d", size[0], size[1]))
+		p.run(`document.querySelector('#chat .close').click()`)
 		p.run(`document.querySelector('#taskwin .close').click()`)
 		p.dialogOpen(roomFree)
 		p.tick("bob")
@@ -475,6 +586,8 @@ func TestScreens(t *testing.T) {
 		q.openPlate(roomT2)
 		q.shot("taskwin-running")
 		q.check()
+		q.run(`document.querySelector('#taskwin .tchat').scrollIntoView({ block:'end' })`)
+		q.shot("taskwin-chat")
 		q.openPlate(roomT3)
 		q.shot("taskwin-flat")
 		q.openPlate(roomT1)
@@ -487,7 +600,7 @@ func TestScreens(t *testing.T) {
 		})
 		q.shot("chat-member")
 		q.check()
-		q.run(`document.querySelector('#chat .close').click()`)
+		q.run(`document.querySelector('#taskwin .close').click()`)
 		q.clip("#hud", 12, 2, "hud-pending")
 		q.done()
 		closeTab()

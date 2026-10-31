@@ -79,6 +79,25 @@ func (s *Server) forgetTask(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{})
 }
 
+func (s *Server) sayTask(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Text string `json:"text"`
+	}
+	if !decode(w, r, &req) {
+		return
+	}
+	m, err := s.Hub.SayTask(r.PathValue("id"), req.Text)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, 200, m)
+}
+
+func (s *Server) taskChat(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, 200, map[string]any{"messages": s.Hub.TaskChat(r.PathValue("id"))})
+}
+
 // startTask makes a task: it checks the request, makes the advisors' accounts, readies git for every member (a
 // worktree on a branch of its own) and starts the members' sessions, which come online in the background as
 // launches do. Whatever fails undoes what was done before it, and no session starts before git is ready for all.

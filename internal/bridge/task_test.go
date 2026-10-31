@@ -843,3 +843,144 @@ func TestTaskSessionStartsAgain(t *testing.T) {
 		t.Fatalf("alice's session should be taken for her task session: %+v", s)
 	}
 }
+
+// TestTaskChat: messages between a task's members belong to the task, desk to desk to none; the task chat's input
+// reaches one member with "@name", or every member online, and the message log keeps one message for it.
+func TestTaskChat(t *testing.T) {
+	e := newTaskEnv(t, "")
+	plain := e.folder(t, "plain")
+	bob, bobAcc := as(t, e.srv, e.base, "bob")
+	alice, aliceAcc := as(t, e.srv, e.base, "alice")
+	e.srv.Hub.setLast(bobAcc.ID, LaunchRequest{Dir: plain})
+	e.srv.Hub.setLast(aliceAcc.ID, LaunchRequest{Dir: plain})
+	task := asTask(t, e.page.ok("POST", "/api/tasks", TaskRequest{Room: 1, Title: "t", Leader: true,
+		Members: []TaskMemberRequest{{Account: bobAcc.ID}, {Account: aliceAcc.ID}}}))
+	b, a := task.Members[0], task.Members[1]
+	bob.ok("POST", "/api/event", Event{Session: "b", Kind: "session.start", Launch: b.Launch, Task: task.ID})
+	alice.ok("POST", "/api/event", Event{Session: "a", Kind: "session.start", Launch: a.Launch, Task: task.ID})
+	bob.ok("POST", "/api/event", Event{Session: "bd", Kind: "session.start"})
+	alice.ok("POST", "/api/event", Event{Session: "ad", Kind: "session.start"})
+	wrap := func(from, text string) string {
+		return "<cross-session-message from=\"uds:/x.sock\" from-name=\"" + from + "\" from-mode=\"prompting\">\n" + text + "\n</cross-session-message>"
+	}
+	// a pair between the members, sent first; a pair between the desks, received first
+	bob.ok("POST", "/api/event", Event{Session: "b", Kind: "message.send", To: a.Name, Text: "take the tests", Delivered: true})
+	alice.ok("POST", "/api/event", Event{Session: "a", Kind: "message.receive", Text: wrap(b.Name, "take the tests")})
+	alice.ok("POST", "/api/event", Event{Session: "ad", Kind: "message.receive", Text: wrap("bob", "lunch?")})
+	bob.ok("POST", "/api/event", Event{Session: "bd", Kind: "message.send", To: "alice", Text: "lunch?", Delivered: true})
+	msgs := e.srv.Hub.Snapshot().Messages
+	if len(msgs) != 2 || msgs[0].Task != task.ID || msgs[0].From != "b" || msgs[0].To != "a" || !msgs[0].Received ||
+		msgs[1].Task != "" || msgs[1].From != "bd" || msgs[1].To != "ad" {
+		t.Fatalf("the members' message belongs to the task, the desks' to none: %+v %+v", msgs[0], msgs[1])
+	}
+
+	// drain the kickoffs
+	inbox := func(c client, session string) []string {
+		var says []string
+		for _, it := range c.ok("GET", "/api/inbox?session="+session, nil)["items"].([]any) {
+			if it := it.(map[string]any); it["kind"] == "say" {
+				says = append(says, it["text"].(string))
+			}
+		}
+		return says
+	}
+	inbox(bob, "b")
+	inbox(alice, "a")
+	ch, stop := e.srv.Hub.Subscribe()
+	defer stop()
+
+	say := "/api/tasks/" + task.ID + "/say"
+	m := e.page.ok("POST", say, map[string]any{"text": "  @" + a.Name + ": hello  "})
+	if m["text"] != "hello" || m["to"] != "a" || m["toName"] != a.Name || m["task"] != task.ID || m["origin"] != "page" ||
+		m["from"] != nil || m["fromName"] != "" || m["delivered"] != true || m["received"] != true || !slices.Equal(m["toNames"].([]any), []any{a.Name}) {
+		t.Fatalf("say to a member: %v", m)
+	}
+	if got := inbox(alice, "a"); !slices.Equal(got, []string{"hello"}) {
+		t.Fatalf("alice should get hello: %v", got)
+	}
+	if got := e.srv.Hub.Chat("a"); got[len(got)-1].Kind != ChatUser || got[len(got)-1].Text != "hello" || got[len(got)-1].Origin != "page" {
+		t.Fatalf("alice's chat should show the prompt: %+v", got[len(got)-1])
+	}
+	waitFor(t, "the message event", func() bool {
+		for {
+			select {
+			case p := <-ch:
+				if ev, ok := p.Value.(map[string]any); ok && ev["type"] == "message" && ev["message"].(*Message).ID == m["id"] {
+					return true
+				}
+			default:
+				return false
+			}
+		}
+	})
+
+	m = e.page.ok("POST", say, map[string]any{"text": "status, everyone"})
+	if m["text"] != "status, everyone" || m["to"] != nil || m["toName"] != "" || m["task"] != task.ID {
+		t.Fatalf("say to everyone: %v", m)
+	}
+	if got := inbox(bob, "b"); !slices.Equal(got, []string{"status, everyone"}) {
+		t.Fatalf("bob should get the broadcast: %v", got)
+	}
+	if got := inbox(alice, "a"); !slices.Equal(got, []string{"status, everyone"}) {
+		t.Fatalf("alice should get the broadcast: %v", got)
+	}
+	if m["toNames"] != nil {
+		t.Fatalf("a broadcast names nobody: %v", m)
+	}
+	// several mentions, one repeated: each named member once, in the order given
+	m = e.page.ok("POST", say, map[string]any{"text": "@" + b.Name + ", @" + a.Name + "： @" + b.Name + " please sync"})
+	if m["text"] != "please sync" || m["to"] != nil || m["toName"] != b.Name+" "+a.Name || !slices.Equal(m["toNames"].([]any), []any{b.Name, a.Name}) {
+		t.Fatalf("say to several: %v", m)
+	}
+	if got := inbox(bob, "b"); !slices.Equal(got, []string{"please sync"}) {
+		t.Fatalf("bob should get it once: %v", got)
+	}
+	if got := inbox(alice, "a"); !slices.Equal(got, []string{"please sync"}) {
+		t.Fatalf("alice should get it: %v", got)
+	}
+	msgs = e.srv.Hub.Snapshot().Messages
+	if len(msgs) != 5 || msgs[2].ToName != a.Name || msgs[3].Text != "status, everyone" || msgs[4].Text != "please sync" {
+		t.Fatalf("the log should keep one message per say: %+v", msgs)
+	}
+	if got := e.page.ok("GET", "/api/tasks/"+task.ID+"/chat", nil)["messages"].([]any); len(got) != 4 {
+		t.Fatalf("the task's chat has the pair and the two says: %v", got)
+	}
+
+	// what goes wrong
+	if st, out := e.page.do("POST", say, map[string]any{"text": "@" + a.Name + " @carol-" + task.ID + " @dave hi"}); st != http.StatusBadRequest ||
+		out["code"] != "task_say_unknown_member" || out["params"].(map[string]any)["name"] != "carol-"+task.ID {
+		t.Fatalf("unknown member: %d %v", st, out)
+	}
+	for _, text := range []string{"   ", "@" + a.Name + ","} {
+		if st, code := e.page.failure("POST", say, map[string]any{"text": text}); st != http.StatusBadRequest || code != "say_empty" {
+			t.Fatalf("empty %q: %d %s", text, st, code)
+		}
+	}
+	if st, code := e.page.failure("POST", "/api/tasks/T999/say", map[string]any{"text": "hi"}); st != http.StatusNotFound || code != "task_unknown" {
+		t.Fatalf("unknown task: %d %s", st, code)
+	}
+	cross := client{t: t, base: e.base, header: map[string]string{"origin": "http://evil.example"}}
+	if st := cross.status("POST", say, map[string]any{"text": "hi"}); st != http.StatusForbidden {
+		t.Fatalf("a cross-site say: %d", st)
+	}
+	alice.ok("POST", "/api/event", Event{Session: "a", Kind: "session.end"})
+	if st, code := e.page.failure("POST", say, map[string]any{"text": "@" + a.Name + " hi"}); st != http.StatusConflict || code != "session_offline" {
+		t.Fatalf("an offline member: %d %s", st, code)
+	}
+	e.page.ok("POST", say, map[string]any{"text": "just bob"})
+	if got := inbox(bob, "b"); !slices.Equal(got, []string{"just bob"}) {
+		t.Fatalf("bob alone should get it: %v", got)
+	}
+	m = e.page.ok("POST", say, map[string]any{"text": "@" + a.Name + " @" + b.Name + " bob again"})
+	if got := inbox(bob, "b"); !slices.Equal(got, []string{"bob again"}) || m["toName"] != a.Name+" "+b.Name {
+		t.Fatalf("of the members named, the online one gets it, and the message names both: %v %v", got, m)
+	}
+	bob.ok("POST", "/api/event", Event{Session: "b", Kind: "session.end"})
+	if st, code := e.page.failure("POST", say, map[string]any{"text": "anyone?"}); st != http.StatusConflict || code != "session_offline" {
+		t.Fatalf("nobody online: %d %s", st, code)
+	}
+	e.page.ok("POST", "/api/tasks/"+task.ID+"/end", nil)
+	if st, code := e.page.failure("POST", say, map[string]any{"text": "hi"}); st != http.StatusConflict || code != "task_ended" {
+		t.Fatalf("an ended task: %d %s", st, code)
+	}
+}
