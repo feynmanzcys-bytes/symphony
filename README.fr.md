@@ -2,17 +2,18 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md) | [繁體中文](README.zh-TW.md) | [日本語](README.ja.md) | [한국어](README.ko.md) | [Español](README.es.md) | **Français** | [Deutsch](README.de.md) | [Português (Brasil)](README.pt-BR.md) | [Русский](README.ru.md)
 
-Réunissez une équipe de sessions Claude Code dans un bureau en pixel art : voyez d’un coup d’œil qui travaille et qui vous attend, et traitez en un clic, dans une fenêtre de la page web, les demandes d’autorisation et les questions AskUserQuestion.
+Réunissez une équipe de sessions Claude Code dans un bureau en pixel art : voyez d’un coup d’œil qui travaille et qui vous attend, parlez à chacun dans sa propre fenêtre, et traitez-y en un clic les demandes d’autorisation et les questions AskUserQuestion.
 
 ![Le bureau](docs/office.png)
 
 ## Fonctionnalités
 
-- **Approbations dans le navigateur** : les demandes d’autorisation (exécuter des commandes, modifier des fichiers) et les questions AskUserQuestion arrivent dans la page web. Si le bridge ne tourne pas ou ne connaît pas le compte, la session revient au terminal comme d’habitude et ne reste jamais bloquée.
+- **Chaque session comme une discussion** : cliquez sur un employé et sa fenêtre s’ouvre au milieu de la page : en haut qui il est, en dessous la session sous forme de discussion : les instructions, la réflexion du modèle (repliée, « Réflexion… » en orange tant qu’elle dure), ses réponses au fil de l’eau, les appels d’outils, et les messages des autres sessions en violet. Écrivez en bas et le texte arrive à la session comme votre instruction ; le bouton Arrêter l’interrompt.
+- **Approbations dans le navigateur** : les demandes d’autorisation (exécuter des commandes, modifier des fichiers) et les questions AskUserQuestion remontent sous forme de cartes par-dessus la zone de saisie de la fenêtre de cet employé, et le compteur rouge de la barre du haut vous y amène. Si le bridge ne tourne pas ou ne connaît pas le compte, la session revient au terminal comme d’habitude et ne reste jamais bloquée.
 - **Un bureau en pixel art** : chaque session est un employé à un poste fixe. Vert : disponible ; jaune : occupé ; rouge : attend votre autorisation ou votre réponse ; gris : hors service. Les employés désœuvrés traînent d’abord à leur poste avec leur téléphone ou leurs jeux, puis partent se promener : télé sur le canapé de l’espace détente, baby-foot, partie de chat, discussion à la table ronde, café, coup d’œil par la fenêtre ; au bout d’un moment, ils font la sieste, souvent cachés dans la salle de réunion. La taille du personnage dépend du modèle, et ses muscles de l’effort de réflexion. Le bureau est un étage de l’immeuble d’une grande entreprise et remplit la fenêtre : l’open space au centre, de petites salles de réunion de 3 à 5 places avec leur plaque à gauche, la salle de réunion et l’espace détente à droite, et des ascenseurs pour arriver et repartir. La barre du haut règle aussi la taille des pixels, en quatre crans : le même bureau, dessiné avec des pixels plus fins et plus de détails à chaque cran.
 - **Retrouver quelqu’un et le rappeler** : cliquez sur un employé disponible et il retourne à son poste (il y reste jusqu’à sa prochaine tâche) ; le champ de recherche de la barre du haut trouve les employés par nom ou par dossier (touche `/` pour y aller), et un clic sur un compteur à côté (disponible, occupé, en attente, hors service) fait ressortir tous les employés dans cet état. L’onglet sous la barre la range vers le haut et la fait redescendre.
 - **Messages entre sessions** : quand des sessions s’envoient des messages (SendMessage), une enveloppe traverse le bureau, et le journal des messages les conserve.
-- **Démarrer des sessions depuis la page** : cliquez sur le « + » d’un poste libre pour embaucher un nouvel employé, puis choisissez le dossier, le modèle, l’effort de réflexion et le mode d’autorisation ; cliquez sur « Au travail ! » dans la fiche d’un employé hors service pour le faire revenir à son poste.
+- **Démarrer des sessions depuis la page, sans qu’aucune fenêtre ne s’ouvre** : cliquez sur le « + » d’un poste libre pour embaucher un nouvel employé, puis choisissez le dossier, le modèle, l’effort de réflexion et le mode d’autorisation (un nouvel employé démarre avec tout autorisé, Opus et le maximum de réflexion) ; cliquez sur « Au travail ! » dans la fenêtre d’un employé hors service pour le faire revenir à son poste. La session tourne sur un terminal à elle, à l’intérieur du bridge : rien ne s’ouvre et rien ne vous prend le focus ; « Ouvrir le terminal » dans la fenêtre de l’employé montre ce terminal quand vous le voulez, et le fermer ne change rien.
 - **10 langues** : English, 简体中文, 繁體中文, 日本語, 한국어, Español, Français, Deutsch, Português (Brasil) et Русский. La page suit la langue de votre navigateur et propose un sélecteur de langue dans la barre du haut ; les messages du bridge suivent la langue de votre système (ou `-lang`), et ceux du mod suivent la page qui a démarré la session.
 - **Tout en local** : le bridge est un seul programme Go (bibliothèque standard uniquement), les pages sont en JavaScript pur, et rien ne dépend d’un service tiers.
 
@@ -22,7 +23,7 @@ Réunissez une équipe de sessions Claude Code dans un bureau en pixel art : voy
 
 - Claude Code 2.1.314 (testé avec cette version). Le mod utilise les function hooks de Claude Code, une API encore en accès anticipé : après chaque mise à jour de Claude Code, relancez les tests de bout en bout.
 - Le bridge existe en programme prêt à l’emploi pour Linux, macOS et Windows ; Go 1.27 ou plus récent n’est nécessaire que pour le lancer depuis les sources.
-- Pour démarrer des sessions depuis la page : tmux est recommandé sous Linux et macOS.
+- Rien d’autre : les sessions démarrées depuis la page tournent dans le bridge, sur toutes les plateformes.
 
 ## Installation
 
@@ -88,7 +89,6 @@ Le bureau s’ouvre dans votre navigateur à l’adresse <http://127.0.0.1:7788/
 | --- | --- | --- |
 | `-addr` | `127.0.0.1:7788` | Adresse d’écoute. La page n’a pas encore d’authentification : n’écoutez que sur cette machine |
 | `-data` | `$SYMPHONY_DATA`, sinon `symphony` dans votre dossier de configuration | Où sont conservés les comptes (avec leurs tokens) et le journal des messages |
-| `-terminal` | `auto` | Terminal des sessions démarrées depuis la page : `auto`, `tmux` ou `window` |
 | `-claude` | `claude` | L’exécutable claude |
 | `-lang` | la langue de votre système | Langue des messages du bridge |
 | `-mod` | vide | Pour le développement : donne aux sessions le mod de ce dossier avec `--plugin-dir`, à la place de la copie installée |
@@ -102,7 +102,7 @@ Le bureau s’ouvre dans votre navigateur à l’adresse <http://127.0.0.1:7788/
 
 ### 3. Démarrer des sessions
 
-**Depuis la page** : cliquez sur le « + » d’un poste libre, saisissez un nom, puis choisissez le dossier et les options. Le bridge ouvre un terminal qui lance `claude` ; avec tmux, la session s’appelle `sym-<id>`, et `tmux attach -t sym-<id>` vous y amène.
+**Depuis la page** : cliquez sur le « + » d’un poste libre, saisissez un nom, puis choisissez le dossier et les options. Le bridge lance `claude` sur un terminal à lui, à l’intérieur du bridge : aucune fenêtre ne s’ouvre. La fenêtre de l’employé montre la session sous forme de discussion, et son bouton « Ouvrir le terminal » ouvre une fenêtre de terminal reliée à la session (`symphony attach <id>` fait de même depuis n’importe quel terminal ; `Ctrl-]` ou la fermeture de la fenêtre détache, et la session continue). Les sessions sont des processus enfants du bridge : arrêter le bridge les termine.
 
 **Depuis un terminal** : créez un compte pour obtenir un token, puis lancez `claude` avec ce token :
 
@@ -128,13 +128,13 @@ Quand rien ne répond à l’adresse du bridge sur cette machine, la session dé
 
 ## Plateformes
 
-| Système | Terminal des sessions démarrées depuis la page | Tests |
-| --- | --- | --- |
-| Linux | tmux s’il est installé, sinon un terminal graphique | Tests de bout en bout complets |
-| macOS | Terminal.app par défaut ; `-terminal tmux` pour tmux | Compilation croisée et tests unitaires uniquement |
-| Windows | Une nouvelle fenêtre de console | Compilation croisée et tests unitaires uniquement |
+| Système | Sessions démarrées depuis la page | « Ouvrir le terminal » | Tests |
+| --- | --- | --- | --- |
+| Linux | Un pseudo-terminal dans le bridge | Un terminal graphique (x-terminal-emulator, gnome-terminal, konsole, xterm) qui lance `symphony attach` | Tests de bout en bout complets |
+| macOS | Un pseudo-terminal dans le bridge | Terminal.app lançant `symphony attach` | Tests de bout en bout complets |
+| Windows | Une pseudo-console (ConPTY) dans le bridge | Une nouvelle fenêtre de console qui lance `symphony attach` | Compilation croisée et tests unitaires uniquement |
 
-Seul tmux peut choisir « faire confiance à ce dossier » à votre place. Avec une fenêtre de terminal, la première session dans un nouveau dossier demande un clic dans cette fenêtre.
+Le bridge choisit « faire confiance à ce dossier » à votre place, sur toutes les plateformes.
 
 ## Développement
 
@@ -149,7 +149,7 @@ SYMPHONY_E2E=1 go test -tags e2e -v -count=1 -timeout 20m ./e2e/   # bout en bou
 - Travailler sur les pages : `go run ./cmd/bridge -web web`, et un rechargement affiche vos modifications.
 - Voir le bureau sans vraies sessions : démarrez un second bridge et remplissez-le d’activité fictive : `go run ./cmd/bridge -addr 127.0.0.1:7799 -data /tmp/demo`, puis `go run ./cmd/demo -base http://127.0.0.1:7799`.
 - Traductions : chaque langue tient dans un fichier, `web/locales/<lang>.json` pour les pages et `internal/i18n/locales/<lang>.json` pour le bridge, avec les mêmes clés que `en.json` ; les quelques messages du mod se trouvent dans `mods/symphony-bridge/hooks/messages.ts`. Les tests unitaires vérifient que chaque langue a toutes les clés et les mêmes `{variables}`, et le test de bout en bout `TestI18n` ouvre les pages dans chaque langue.
-- Les tests de bout en bout ont besoin de claude, tmux et chromium : ils tournent donc sous Linux, et sous macOS avec tmux. Par défaut, ils utilisent le mod de ce dépôt ; définissez `SYMPHONY_E2E_MOD=installed` pour utiliser le mod installé. Les captures d’écran sont enregistrées dans `e2e/artifacts/`.
+- Les tests de bout en bout ont besoin de claude, tmux (pour les sessions que les tests pilotent eux-mêmes) et Chromium ou Chrome : ils tournent donc sous Linux et macOS. Par défaut, ils utilisent le mod de ce dépôt ; définissez `SYMPHONY_E2E_MOD=installed` pour utiliser le mod installé. Les captures d’écran sont enregistrées dans `e2e/artifacts/`.
 - Versions : étiquetez un commit de main avec sa version et poussez l’étiquette (`git tag -a v0.3.0 -m v0.3.0 && git push origin v0.3.0`) ; GitHub Actions compile alors le programme pour toutes les plateformes et publie une version (`.github/workflows/release.yml`). L’étiquette doit être la version du mod dans `plugin.json`. `.github/release.sh v0.3.0 dist` produit les mêmes archives en local. Chaque version doit avoir sa section dans `CHANGELOG.md`, qui ouvre ses notes.
 
 | Dossier | Contenu |

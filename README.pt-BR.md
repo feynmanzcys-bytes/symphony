@@ -2,17 +2,18 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md) | [繁體中文](README.zh-TW.md) | [日本語](README.ja.md) | [한국어](README.ko.md) | [Español](README.es.md) | [Français](README.fr.md) | [Deutsch](README.de.md) | **Português (Brasil)** | [Русский](README.ru.md)
 
-Coloque uma equipe de sessões do Claude Code num escritório em pixel art: veja de relance quem está trabalhando e quem está esperando por você, e resolva pedidos de permissão e perguntas do AskUserQuestion com um clique, num pop-up na página web.
+Coloque uma equipe de sessões do Claude Code num escritório em pixel art: veja de relance quem está trabalhando e quem está esperando por você, converse com cada um na própria janela dele, e resolva ali pedidos de permissão e perguntas do AskUserQuestion com um clique.
 
 ![O escritório](docs/office.png)
 
 ## O que ele faz
 
-- **Aprovações no navegador**: pedidos de permissão (rodar comandos, editar arquivos) e perguntas do AskUserQuestion vão para a página web. Quando o bridge não está rodando ou não reconhece a conta, a sessão volta a usar o terminal, como sempre, e nunca fica travada.
+- **Cada sessão como um chat**: clique num funcionário e a janela dele abre no meio da página: em cima quem ele é, embaixo a sessão como um chat: os prompts, o raciocínio do modelo (recolhido, "Pensando…" em laranja enquanto dura), as respostas conforme chegam, as chamadas de ferramentas e as mensagens de outras sessões em roxo. Escreva embaixo e o texto chega à sessão como seu prompt; o botão Parar interrompe.
+- **Aprovações no navegador**: pedidos de permissão (rodar comandos, editar arquivos) e perguntas do AskUserQuestion sobem como cartões por cima da caixa de texto da janela daquele funcionário, e o contador vermelho na barra do topo leva você até eles. Quando o bridge não está rodando ou não reconhece a conta, a sessão volta a usar o terminal, como sempre, e nunca fica travada.
 - **Um escritório em pixel art**: cada sessão é um funcionário numa mesa fixa. Verde: livre; amarelo: trabalhando; vermelho: esperando sua aprovação ou resposta; cinza: fora do expediente. Os funcionários livres primeiro ficam na mesa mexendo no celular ou jogando videogame, depois saem para passear: veem TV no sofá da área de descanso, jogam pebolim ou pega-pega, batem papo na mesa redonda, pegam um café, olham pela janela; depois de um tempo tiram um cochilo, quase sempre escondidos na sala de reunião. O tamanho do personagem acompanha o modelo, e os músculos acompanham o esforço de raciocínio. O escritório é um andar do prédio de uma grande empresa e ocupa a janela inteira: a área de trabalho no centro, pequenas salas de reunião para 3 a 5 pessoas com placa à esquerda, a sala de reunião e a área de descanso à direita, e elevadores por onde se chega e se sai. Na barra do topo você também escolhe o tamanho do pixel, em quatro níveis: o mesmo escritório, desenhado com pixels mais finos e mais detalhes a cada nível.
 - **Ache qualquer um e chame de volta**: clique num funcionário livre e ele volta para a mesa (e fica lá até a próxima tarefa); a busca na barra do topo encontra funcionários pelo nome ou pela pasta (tecle `/` para ir até ela), e um clique num contador ao lado dela (livre, trabalhando, pendente, fora do expediente) destaca todos nesse estado. A aba embaixo da barra a recolhe para cima e a traz de volta.
 - **Mensagens entre sessões**: quando as sessões trocam mensagens (SendMessage), um envelope atravessa o escritório voando, e um histórico de mensagens guarda tudo.
-- **Inicie sessões pela página**: clique no "+" de uma mesa vazia para contratar um novo funcionário e escolha a pasta, o modelo, o esforço de raciocínio e o modo de permissão; clique em "Começar a trabalhar" num funcionário fora do expediente para trazê-lo de volta à mesma mesa.
+- **Inicie sessões pela página, sem que nada se abra**: clique no "+" de uma mesa vazia para contratar um novo funcionário e escolha a pasta, o modelo, o esforço de raciocínio e o modo de permissão (um funcionário novo começa com tudo permitido, Opus e o máximo de raciocínio); clique em "Começar a trabalhar" na janela de um funcionário fora do expediente para trazê-lo de volta à mesma mesa. A sessão roda num terminal próprio dentro do bridge, então nenhuma janela abre e nada rouba o foco; "Abrir terminal" na janela do funcionário mostra esse terminal quando você quiser, e fechá-lo não muda nada.
 - **10 idiomas**: English, 简体中文, 繁體中文, 日本語, 한국어, Español, Français, Deutsch, Português (Brasil) e Русский. A página segue o idioma do seu navegador e tem um seletor de idioma na barra do topo; as mensagens do bridge seguem o idioma do seu sistema (ou `-lang`), e as do mod seguem a página que iniciou a sessão.
 - **Tudo local**: o bridge é um único programa em Go (só com a biblioteca padrão), as páginas são JavaScript puro, e nada depende de serviços de terceiros.
 
@@ -22,7 +23,7 @@ Coloque uma equipe de sessões do Claude Code num escritório em pixel art: veja
 
 - Claude Code 2.1.314 (testado nesta versão). O mod usa os function hooks do Claude Code, que ainda são uma API em acesso antecipado; por isso, rode os testes de ponta a ponta depois de atualizar o Claude Code.
 - O bridge vem como programa pronto para Linux, macOS e Windows; Go 1.27 ou mais recente só é necessário para rodá-lo a partir do código-fonte.
-- Para iniciar sessões pela página: no Linux e no macOS, o ideal é usar o tmux.
+- Nada mais: as sessões iniciadas pela página rodam dentro do bridge em todas as plataformas.
 
 ## Instalação
 
@@ -88,7 +89,6 @@ O escritório abre no seu navegador em <http://127.0.0.1:7788/> (`-open=false` d
 | --- | --- | --- |
 | `-addr` | `127.0.0.1:7788` | Endereço de escuta. A página ainda não tem login, então use só endereços desta máquina |
 | `-data` | `$SYMPHONY_DATA`; se não houver, `symphony` na sua pasta de configuração | Onde ficam as contas (com seus tokens) e o histórico de mensagens |
-| `-terminal` | `auto` | Terminal das sessões iniciadas pela página: `auto`, `tmux` ou `window` |
 | `-claude` | `claude` | O executável do claude |
 | `-lang` | o idioma do seu sistema | Idioma das mensagens do bridge |
 | `-mod` | vazio | Para desenvolvimento: passa às sessões o mod desta pasta com `--plugin-dir`, no lugar da cópia instalada |
@@ -102,7 +102,7 @@ O escritório abre no seu navegador em <http://127.0.0.1:7788/> (`-open=false` d
 
 ### 3. Inicie sessões
 
-**Pela página**: clique no "+" de uma mesa vazia, digite um nome e escolha a pasta e as opções. O bridge abre um terminal que roda o `claude`; com tmux, a sessão se chama `sym-<id>`, e `tmux attach -t sym-<id>` leva você até lá.
+**Pela página**: clique no "+" de uma mesa vazia, digite um nome e escolha a pasta e as opções. O bridge roda o `claude` num terminal próprio, dentro do bridge: nenhuma janela abre. A janela do funcionário mostra a sessão como um chat, e o botão "Abrir terminal" abre uma janela de terminal ligada à sessão (`symphony attach <id>` faz o mesmo de qualquer terminal; `Ctrl-]` ou fechar a janela desconecta, e a sessão continua). As sessões são processos filhos do bridge: parar o bridge encerra todas.
 
 **Pelo terminal**: crie uma conta para obter um token e depois inicie o `claude` com ele:
 
@@ -128,13 +128,13 @@ Quando nada responde no endereço do bridge nesta máquina, a sessão inicia o b
 
 ## Plataformas
 
-| Sistema | Terminal das sessões iniciadas pela página | Testes |
-| --- | --- | --- |
-| Linux | tmux, se estiver instalado; senão, um terminal gráfico | Testes de ponta a ponta completos |
-| macOS | Terminal.app por padrão; `-terminal tmux` para usar o tmux | Só compilação cruzada e testes unitários |
-| Windows | Uma nova janela de console | Só compilação cruzada e testes unitários |
+| Sistema | Sessões iniciadas pela página | "Abrir terminal" | Testes |
+| --- | --- | --- | --- |
+| Linux | Um pseudoterminal dentro do bridge | Um terminal gráfico (x-terminal-emulator, gnome-terminal, konsole, xterm) rodando `symphony attach` | Testes de ponta a ponta completos |
+| macOS | Um pseudoterminal dentro do bridge | Terminal.app rodando `symphony attach` | Testes de ponta a ponta completos |
+| Windows | Um pseudoconsole (ConPTY) dentro do bridge | Uma nova janela de console rodando `symphony attach` | Só compilação cruzada e testes unitários |
 
-Só o tmux consegue confirmar por você que a pasta é confiável ("trust this folder"). Com uma janela de terminal, a primeira sessão numa pasta nova precisa de um clique seu nessa janela.
+O bridge confirma por você que a pasta é confiável ("trust this folder") em todas as plataformas.
 
 ## Desenvolvimento
 
@@ -149,7 +149,7 @@ SYMPHONY_E2E=1 go test -tags e2e -v -count=1 -timeout 20m ./e2e/   # ponta a pon
 - Para mexer nas páginas: `go run ./cmd/bridge -web web`, e basta recarregar para ver suas alterações.
 - Para ver o escritório sem sessões de verdade: inicie um segundo bridge e alimente-o com atividade fictícia: `go run ./cmd/bridge -addr 127.0.0.1:7799 -data /tmp/demo` e depois `go run ./cmd/demo -base http://127.0.0.1:7799`.
 - Traduções: cada idioma é um arquivo, `web/locales/<lang>.json` para as páginas e `internal/i18n/locales/<lang>.json` para o bridge, com as mesmas chaves do `en.json`; as poucas mensagens do mod ficam em `mods/symphony-bridge/hooks/messages.ts`. Os testes unitários verificam se cada idioma tem todas as chaves e os mesmos `{placeholders}`, e o teste de ponta a ponta `TestI18n` abre as páginas em todos os idiomas.
-- Os testes de ponta a ponta precisam de claude, tmux e chromium, então rodam no Linux e no macOS com tmux. Por padrão, eles usam o mod deste repositório; defina `SYMPHONY_E2E_MOD=installed` para usar o mod instalado. As capturas de tela vão para `e2e/artifacts/`.
+- Os testes de ponta a ponta precisam de claude, tmux (para as sessões que os próprios testes controlam) e Chromium ou Chrome, então rodam no Linux e no macOS. Por padrão, eles usam o mod deste repositório; defina `SYMPHONY_E2E_MOD=installed` para usar o mod instalado. As capturas de tela vão para `e2e/artifacts/`.
 - Versões: marque um commit da main com a versão dele e envie a tag (`git tag -a v0.3.0 -m v0.3.0 && git push origin v0.3.0`); o GitHub Actions então compila o programa para todas as plataformas e publica uma versão (`.github/workflows/release.yml`). A tag precisa ser a versão do mod em `plugin.json`. `.github/release.sh v0.3.0 dist` gera os mesmos arquivos localmente. Cada versão precisa de uma seção no `CHANGELOG.md`, que abre as notas dela.
 
 | Pasta | O que é |

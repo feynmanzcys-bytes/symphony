@@ -2,17 +2,18 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md) | **繁體中文** | [日本語](README.ja.md) | [한국어](README.ko.md) | [Español](README.es.md) | [Français](README.fr.md) | [Deutsch](README.de.md) | [Português (Brasil)](README.pt-BR.md) | [Русский](README.ru.md)
 
-把一群 Claude Code 工作階段放進一間像素風辦公室：誰在工作、誰在等你，一眼就看得出來；權限請求和 AskUserQuestion 的提問，在網頁的彈出視窗裡按一下就能處理。
+把一群 Claude Code 工作階段放進一間像素風辦公室：誰在工作、誰在等你，一眼就看得出來；每個員工都有自己的對話視窗，可以直接跟它交談，權限請求和 AskUserQuestion 的提問也在那裡按一下就能處理。
 
 ![辦公室](docs/office.png)
 
 ## 能做什麼
 
-- **在瀏覽器裡核准**：權限請求（執行指令、編輯檔案）和 AskUserQuestion 的提問都會轉到網頁上。bridge 沒在執行或不認得這個帳號時，工作階段會照常退回終端機處理，不會卡住。
+- **每個工作階段都是一個對話視窗**：按一下員工，頁面中央會打開它的視窗：上面是員工資訊，下面是整個工作階段的聊天流：輸入過的提示詞、模型的思考（預設摺疊，進行中顯示橘色「思考中…」）、逐字串流的回答、工具呼叫，以及其他工作階段傳來的訊息（紫色）。在底部輸入就是給這個工作階段送提示詞，「停止」按鈕能中斷它。
+- **在瀏覽器裡核准**：權限請求（執行指令、編輯檔案）和 AskUserQuestion 的提問會以卡片形式從該員工視窗底部升起、蓋住輸入框，頂欄的紅色計數能直接帶你過去。bridge 沒在執行或不認得這個帳號時，工作階段會照常退回終端機處理，不會卡住。
 - **像素風辦公室**：每個工作階段都是一位坐在固定座位上的員工。綠色是空閒，黃色是工作中，紅色是在等你核准或回答，灰色是下班。閒著的員工會先在座位上滑手機、打電動，過一陣子就滿辦公室閒晃：窩在休息區沙發看電視、玩手足球、追逐嬉鬧、在圓桌聊天、倒咖啡、看窗外，閒久了就去打盹，常常躲進會議室睡；角色的體型看模型，肌肉看思考強度。畫面是大公司的某一層樓，會填滿視窗：開放辦公區在正中央，左邊是掛著名牌的 3–5 人小會議室，右邊是大會議室和休息區，大家搭電梯上下班。頂部橫條裡還能調整像素大小，共四段：樓不變，越往細調畫得越細、細節越多。
 - **一搜就找到，一點就回來**：點一下閒著的員工，他就會回到自己的座位，一直待到下次工作；頂部橫條裡的搜尋框可以用名字或資料夾找人（按 `/` 直接跳過去）；點它旁邊的狀態牌（空閒、工作中、待處理、下班），就會把這一類員工都標出來；橫條下方的小把手能把它收上去、再拉下來。
 - **工作階段之間的訊息**：工作階段互傳訊息（SendMessage）時，會有一封信飛過辦公室，訊息紀錄也會把它們留下來。
-- **從頁面啟動工作階段**：按空座位上的「+」招募新員工，選好資料夾、模型、思考強度和權限模式；在下班員工的卡片上按「上班」，他就會回到原本的座位。
+- **從頁面啟動工作階段，不彈任何視窗**：按空座位上的「+」招募新員工，選好資料夾、模型、思考強度和權限模式（新員工預設全部放行、Opus、最高思考強度）；在下班員工的視窗裡按「上班」，他就會回到原本的座位。工作階段跑在 bridge 內部自己的終端機裡，不會彈出視窗、不會搶走你的注意力；想看終端機時按員工視窗裡的「開啟終端機」，關掉那個視窗也不影響工作階段。
 - **10 種語言**：English、简体中文、繁體中文、日本語、한국어、Español、Français、Deutsch、Português (Brasil) 和 Русский。頁面會跟著瀏覽器的語言，頂部橫條裡也可以切換；bridge 的訊息跟著系統語言（或 `-lang`），mod 的訊息則跟著啟動這個工作階段的頁面。
 - **只在本機執行**：bridge 是單一個 Go 程式（只用標準函式庫），頁面是原生 JavaScript，不依賴任何第三方服務。
 
@@ -22,7 +23,7 @@
 
 - Claude Code 2.1.314（在這個版本上測試過）。mod 用的是 Claude Code 的 function hooks，這個 API 還在搶先體驗階段，所以升級 Claude Code 之後，請先跑一次端對端測試。
 - bridge 有 Linux、macOS、Windows 的現成程式，下載就能用；只有從原始碼執行才需要 Go 1.27 以上。
-- 想從頁面啟動工作階段的話：在 Linux 和 macOS 上最好安裝 tmux。
+- 不需要其他東西：從頁面啟動的工作階段在每個平台上都跑在 bridge 內部。
 
 ## 安裝
 
@@ -88,7 +89,6 @@ bridge 一啟動就會在瀏覽器開啟辦公室 <http://127.0.0.1:7788/>（不
 | --- | --- | --- |
 | `-addr` | `127.0.0.1:7788` | 監聽位址。頁面目前還沒有登入功能，所以不要綁定到本機以外的位址 |
 | `-data` | `$SYMPHONY_DATA`，沒有的話就用使用者設定資料夾裡的 `symphony` | 存放帳號（含 token）和訊息紀錄的地方 |
-| `-terminal` | `auto` | 從頁面啟動的工作階段要用的終端機：`auto`、`tmux` 或 `window` |
 | `-claude` | `claude` | claude 執行檔 |
 | `-lang` | 系統語言 | bridge 訊息使用的語言 |
 | `-mod` | 空白 | 開發用：透過 `--plugin-dir` 讓工作階段載入這個資料夾裡的 mod，覆蓋已安裝的版本 |
@@ -102,7 +102,7 @@ bridge 一啟動就會在瀏覽器開啟辦公室 <http://127.0.0.1:7788/>（不
 
 ### 3. 啟動工作階段
 
-**從頁面啟動**：按空座位上的「+」，輸入名字，再選好資料夾和選項。bridge 會開一個終端機來執行 `claude`；用 tmux 的話，工作階段名稱是 `sym-<id>`，執行 `tmux attach -t sym-<id>` 就能連進去。
+**從頁面啟動**：按空座位上的「+」，輸入名字，再選好資料夾和選項。bridge 在自己內部的終端機裡執行 `claude`，不會彈出視窗。員工視窗以聊天的形式呈現工作階段；「開啟終端機」按鈕會開一個連到該工作階段的終端機視窗（在任何終端機裡執行 `symphony attach <id>` 也一樣；按 `Ctrl-]` 或關掉視窗即中斷連線，工作階段照常執行）。這些工作階段是 bridge 的子程序：停掉 bridge，工作階段也會結束。
 
 **從終端機啟動**：先建立一個帳號拿到 token，再帶著它啟動 `claude`：
 
@@ -128,13 +128,13 @@ SYMPHONY_TOKEN=<token> claude --name frontend-alice --permission-mode manual
 
 ## 平台
 
-| 系統 | 從頁面啟動的工作階段使用的終端機 | 測試情況 |
-| --- | --- | --- |
-| Linux | 有裝 tmux 就用 tmux，否則用圖形介面的終端機 | 完整的端對端測試 |
-| macOS | 預設用 Terminal.app；`-terminal tmux` 可改用 tmux | 只做過交叉編譯和單元測試 |
-| Windows | 新開一個主控台視窗 | 只做過交叉編譯和單元測試 |
+| 系統 | 從頁面啟動的工作階段 | 「開啟終端機」 | 測試情況 |
+| --- | --- | --- | --- |
+| Linux | bridge 內部的偽終端機 | 圖形終端機（x-terminal-emulator、gnome-terminal、konsole、xterm）執行 `symphony attach` | 完整的端對端測試 |
+| macOS | bridge 內部的偽終端機 | Terminal.app 執行 `symphony attach` | 完整的端對端測試 |
+| Windows | bridge 內部的偽主控台（ConPTY） | 新開主控台視窗執行 `symphony attach` | 只做過交叉編譯和單元測試 |
 
-只有 tmux 能替你回答「信任此資料夾」。如果用的是終端機視窗，在新資料夾裡啟動第一個工作階段時，需要你在那個視窗裡按一下。
+每個平台上都由 bridge 替你回答「信任此資料夾」。
 
 ## 開發
 
@@ -149,7 +149,7 @@ SYMPHONY_E2E=1 go test -tags e2e -v -count=1 -timeout 20m ./e2e/   # 端對端�
 - 開發頁面：執行 `go run ./cmd/bridge -web web`，重新整理就能看到你的修改。
 - 不開真的工作階段也想看看辦公室：另外啟動第二個 bridge，並灌入模擬的活動：`go run ./cmd/bridge -addr 127.0.0.1:7799 -data /tmp/demo`，接著執行 `go run ./cmd/demo -base http://127.0.0.1:7799`。
 - 翻譯：每種語言一個檔案，頁面的是 `web/locales/<lang>.json`，bridge 的是 `internal/i18n/locales/<lang>.json`，鍵和 `en.json` 相同；mod 的那幾則訊息在 `mods/symphony-bridge/hooks/messages.ts`。單元測試會檢查每種語言的鍵是否齊全、`{佔位符}` 是否和英文一致；端對端測試 `TestI18n` 會用每種語言開啟頁面。
-- 端對端測試需要 claude、tmux 和 chromium，所以只在 Linux 和裝了 tmux 的 macOS 上執行。預設使用這個儲存庫裡的 mod；設定 `SYMPHONY_E2E_MOD=installed` 就會改用已安裝的 mod。截圖會存到 `e2e/artifacts/`。
+- 端對端測試需要 claude、tmux（測試自己驅動的工作階段用）和 Chromium 或 Chrome，所以在 Linux 和 macOS 上執行。預設使用這個儲存庫裡的 mod；設定 `SYMPHONY_E2E_MOD=installed` 就會改用已安裝的 mod。截圖會存到 `e2e/artifacts/`。
 - 發布版本：在 main 的提交上建立版本標籤並推送（`git tag -a v0.3.0 -m v0.3.0 && git push origin v0.3.0`），GitHub Actions 就會為所有平台編譯程式並發布 Release（`.github/workflows/release.yml`）。標籤必須和 `plugin.json` 裡 mod 的版本號相同。`.github/release.sh v0.3.0 dist` 可以在本機打包出同樣的壓縮檔。每個版本都要在 `CHANGELOG.md` 裡寫一節，它會放在發布說明的最前面。
 
 | 資料夾 | 內容 |

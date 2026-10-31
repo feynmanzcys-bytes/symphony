@@ -2,17 +2,18 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md) | [繁體中文](README.zh-TW.md) | [日本語](README.ja.md) | [한국어](README.ko.md) | [Español](README.es.md) | [Français](README.fr.md) | **Deutsch** | [Português (Brasil)](README.pt-BR.md) | [Русский](README.ru.md)
 
-Setz ein Team aus Claude-Code-Sitzungen in ein Pixel-Art-Büro: Du siehst auf einen Blick, wer gerade arbeitet und wer auf dich wartet, und erledigst Berechtigungsanfragen und Fragen per AskUserQuestion mit einem Klick in einem Pop-up im Browser.
+Setz ein Team aus Claude-Code-Sitzungen in ein Pixel-Art-Büro: Du siehst auf einen Blick, wer gerade arbeitet und wer auf dich wartet, sprichst mit jedem in seinem eigenen Fenster und erledigst dort Berechtigungsanfragen und Fragen per AskUserQuestion mit einem Klick.
 
 ![Das Büro](docs/office.png)
 
 ## Was es kann
 
-- **Freigaben im Browser**: Berechtigungsanfragen (Befehle ausführen, Dateien bearbeiten) und Fragen per AskUserQuestion landen auf der Webseite. Läuft die Bridge nicht oder kennt sie das Konto nicht, fällt die Sitzung wie gewohnt aufs Terminal zurück und bleibt nie hängen.
+- **Jede Sitzung als Chat**: Klick auf einen Mitarbeiter, und sein Fenster öffnet sich in der Mitte der Seite: oben, wer er ist, darunter die Sitzung als Chat: die Eingaben, das Nachdenken des Modells (eingeklappt, „Denkt nach…“ in Orange, solange es dauert), seine Antworten, während sie eintreffen, die Werkzeugaufrufe und Nachrichten anderer Sitzungen in Lila. Schreib unten, und es erreicht die Sitzung als deine Eingabe; der Stopp-Knopf unterbricht sie.
+- **Freigaben im Browser**: Berechtigungsanfragen (Befehle ausführen, Dateien bearbeiten) und Fragen per AskUserQuestion steigen als Karten über das Eingabefeld im Fenster dieses Mitarbeiters, und der rote Zähler in der Leiste oben bringt dich hin. Läuft die Bridge nicht oder kennt sie das Konto nicht, fällt die Sitzung wie gewohnt aufs Terminal zurück und bleibt nie hängen.
 - **Ein Pixel-Art-Büro**: Jede Sitzung ist ein Mitarbeiter mit festem Platz. Grün ist frei, Gelb bei der Arbeit, Rot wartet auf deine Freigabe oder Antwort, Grau hat Feierabend. Wer nichts zu tun hat, bleibt erst am Platz und hängt am Handy oder zockt, dann zieht er los: Fernsehen auf dem Lounge-Sofa, Kicker, Fangen, ein Plausch am runden Tisch, Kaffee, ein Blick aus dem Fenster; nach einer Weile folgt ein Nickerchen, meist versteckt im Meetingraum. Die Größe der Figur richtet sich nach dem Modell, ihre Muskeln nach dem Denkaufwand. Das Büro ist ein Stockwerk im Gebäude einer großen Firma und füllt das Fenster: das Großraumbüro in der Mitte, links kleine Besprechungsräume für 3 bis 5 Personen mit Türschild, rechts der Meetingraum und die Lounge, und Aufzüge zum Kommen und Gehen. In der Leiste oben stellst du auch die Pixelgröße ein, in vier Stufen: dasselbe Büro, mit jeder Stufe in feineren Pixeln und mit mehr Details gezeichnet.
 - **Jeden finden und zurückrufen**: Klick auf einen freien Mitarbeiter, und er geht an seinen Platz zurück (und bleibt dort bis zu seiner nächsten Aufgabe); das Suchfeld in der Leiste oben findet Mitarbeiter nach Name oder Ordner (mit `/` springst du hinein), und ein Klick auf einen Zähler daneben (frei, arbeitet, offen, Feierabend) hebt alle in diesem Zustand hervor. Mit dem Griff unter der Leiste schiebst du sie nach oben weg und wieder herunter.
 - **Nachrichten zwischen Sitzungen**: Wenn sich Sitzungen gegenseitig Nachrichten schicken (SendMessage), fliegt ein Briefumschlag durchs Büro, und der Nachrichtenverlauf hält sie fest.
-- **Sitzungen über die Seite starten**: Klick auf das „+“ an einem leeren Platz, um einen neuen Mitarbeiter einzustellen, und wähle Ordner, Modell, Denkaufwand und Berechtigungsmodus; klick bei einem Mitarbeiter, der Feierabend hat, auf „An die Arbeit“, und er kehrt an seinen alten Platz zurück.
+- **Sitzungen über die Seite starten, ohne dass sich etwas öffnet**: Klick auf das „+“ an einem leeren Platz, um einen neuen Mitarbeiter einzustellen, und wähle Ordner, Modell, Denkaufwand und Berechtigungsmodus (ein neuer Mitarbeiter startet mit allem erlaubt, Opus und dem meisten Nachdenken); klick im Fenster eines Mitarbeiters, der Feierabend hat, auf „An die Arbeit“, und er kehrt an seinen alten Platz zurück. Die Sitzung läuft auf einem eigenen Terminal innerhalb der Bridge: kein Fenster öffnet sich, nichts nimmt dir den Fokus; „Terminal öffnen“ im Fenster des Mitarbeiters zeigt dieses Terminal, wenn du es willst, und es zu schließen ändert nichts.
 - **10 Sprachen**: English, 简体中文, 繁體中文, 日本語, 한국어, Español, Français, Deutsch, Português (Brasil) und Русский. Die Seite richtet sich nach der Sprache deines Browsers und hat in der Leiste oben eine Sprachauswahl; die Meldungen der Bridge folgen deiner Systemsprache (oder `-lang`), die des Mods der Seite, die die Sitzung gestartet hat.
 - **Nur lokal**: Die Bridge ist ein einzelnes Go-Programm (nur Standardbibliothek), die Seiten sind reines JavaScript, und nichts hängt von einem Drittanbieterdienst ab.
 
@@ -22,7 +23,7 @@ Setz ein Team aus Claude-Code-Sitzungen in ein Pixel-Art-Büro: Du siehst auf ei
 
 - Claude Code 2.1.314 (mit dieser Version getestet). Der Mod nutzt die Function Hooks von Claude Code, die noch eine Early-Access-API sind; führe also nach einem Update von Claude Code die End-to-End-Tests aus.
 - Die Bridge gibt es als fertiges Programm für Linux, macOS und Windows; Go 1.27 oder neuer brauchst du nur, um sie aus dem Quellcode zu starten.
-- Zum Starten von Sitzungen über die Seite: Unter Linux und macOS ist tmux am besten.
+- Sonst nichts: Über die Seite gestartete Sitzungen laufen auf jeder Plattform innerhalb der Bridge.
 
 ## Installation
 
@@ -88,7 +89,6 @@ Das Büro öffnet sich in deinem Browser unter <http://127.0.0.1:7788/> (`-open=
 | --- | --- | --- |
 | `-addr` | `127.0.0.1:7788` | Adresse, auf der die Bridge lauscht. Die Seite hat noch keine Anmeldung, also binde die Bridge nur an diesen Rechner |
 | `-data` | `$SYMPHONY_DATA`, sonst `symphony` in deinem Konfigurationsordner | Wo Konten (mit ihren Tokens) und der Nachrichtenverlauf liegen |
-| `-terminal` | `auto` | Terminal für über die Seite gestartete Sitzungen: `auto`, `tmux` oder `window` |
 | `-claude` | `claude` | Die ausführbare Datei von claude |
 | `-lang` | deine Systemsprache | Sprache der Bridge-Meldungen |
 | `-mod` | leer | Für die Entwicklung: gibt Sitzungen per `--plugin-dir` den Mod aus diesem Ordner mit, statt der installierten Kopie |
@@ -102,7 +102,7 @@ Das Büro öffnet sich in deinem Browser unter <http://127.0.0.1:7788/> (`-open=
 
 ### 3. Sitzungen starten
 
-**Über die Seite**: Klick auf das „+“ an einem leeren Platz, gib einen Namen ein und wähle Ordner und Optionen. Die Bridge öffnet ein Terminal, in dem `claude` läuft; bei tmux heißt die tmux-Sitzung `sym-<id>`, und mit `tmux attach -t sym-<id>` kommst du hin.
+**Über die Seite**: Klick auf das „+“ an einem leeren Platz, gib einen Namen ein und wähle Ordner und Optionen. Die Bridge führt `claude` auf einem eigenen Terminal innerhalb der Bridge aus: Es öffnet sich kein Fenster. Das Fenster des Mitarbeiters zeigt die Sitzung als Chat, und sein Knopf „Terminal öffnen“ öffnet ein Terminalfenster, das mit der Sitzung verbunden ist (`symphony attach <id>` tut dasselbe aus jedem Terminal; `Ctrl-]` oder das Schließen des Fensters trennt die Verbindung, und die Sitzung läuft weiter). Die Sitzungen sind Kindprozesse der Bridge: Wird die Bridge beendet, enden sie.
 
 **Aus einem Terminal**: Leg ein Konto an, um ein Token zu bekommen, und starte `claude` damit:
 
@@ -128,13 +128,13 @@ Antwortet unter der Adresse der Bridge auf diesem Rechner nichts, startet die Si
 
 ## Plattformen
 
-| System | Terminal für über die Seite gestartete Sitzungen | Getestet |
-| --- | --- | --- |
-| Linux | tmux, falls installiert, sonst ein grafisches Terminal | Vollständige End-to-End-Tests |
-| macOS | Standardmäßig Terminal.app; `-terminal tmux` für tmux | Nur Cross-Kompilierung und Unit-Tests |
-| Windows | Ein neues Konsolenfenster | Nur Cross-Kompilierung und Unit-Tests |
+| System | Über die Seite gestartete Sitzungen | „Terminal öffnen“ | Getestet |
+| --- | --- | --- | --- |
+| Linux | Ein Pseudoterminal innerhalb der Bridge | Ein grafisches Terminal (x-terminal-emulator, gnome-terminal, konsole, xterm) mit `symphony attach` | Vollständige End-to-End-Tests |
+| macOS | Ein Pseudoterminal innerhalb der Bridge | Terminal.app mit `symphony attach` | Vollständige End-to-End-Tests |
+| Windows | Eine Pseudokonsole (ConPTY) innerhalb der Bridge | Ein neues Konsolenfenster mit `symphony attach` | Nur Cross-Kompilierung und Unit-Tests |
 
-Nur tmux kann „trust this folder“ für dich bestätigen. Bei einem Terminalfenster musst du für die erste Sitzung in einem neuen Ordner einmal in diesem Fenster klicken.
+Die Bridge bestätigt „trust this folder“ auf jeder Plattform für dich.
 
 ## Entwicklung
 
@@ -149,7 +149,7 @@ SYMPHONY_E2E=1 go test -tags e2e -v -count=1 -timeout 20m ./e2e/   # End-to-End:
 - An den Seiten arbeiten: `go run ./cmd/bridge -web web`, dann zeigt ein Neuladen deine Änderungen.
 - Das Büro ohne echte Sitzungen ansehen: Starte eine zweite Bridge und füll sie mit ausgedachter Aktivität: `go run ./cmd/bridge -addr 127.0.0.1:7799 -data /tmp/demo`, dann `go run ./cmd/demo -base http://127.0.0.1:7799`.
 - Übersetzungen: Jede Sprache ist eine Datei, `web/locales/<lang>.json` für die Seiten und `internal/i18n/locales/<lang>.json` für die Bridge, mit denselben Schlüsseln wie `en.json`; die paar Meldungen des Mods stehen in `mods/symphony-bridge/hooks/messages.ts`. Die Unit-Tests prüfen, dass jede Sprache alle Schlüssel und dieselben `{Platzhalter}` hat, und der End-to-End-Test `TestI18n` öffnet die Seiten in jeder Sprache.
-- Die End-to-End-Tests brauchen claude, tmux und chromium, laufen also unter Linux und unter macOS mit tmux. Standardmäßig nutzen sie den Mod aus diesem Repository; mit `SYMPHONY_E2E_MOD=installed` nehmen sie den installierten Mod. Screenshots landen in `e2e/artifacts/`.
+- Die End-to-End-Tests brauchen claude, tmux (für die Sitzungen, die die Tests selbst steuern) und Chromium oder Chrome, laufen also unter Linux und macOS. Standardmäßig nutzen sie den Mod aus diesem Repository; mit `SYMPHONY_E2E_MOD=installed` nehmen sie den installierten Mod. Screenshots landen in `e2e/artifacts/`.
 - Releases: Versieh einen Commit auf main mit seiner Version als Tag und pushe den Tag (`git tag -a v0.3.0 -m v0.3.0 && git push origin v0.3.0`); GitHub Actions baut dann das Programm für alle Plattformen und veröffentlicht ein Release (`.github/workflows/release.yml`). Der Tag muss die Version des Mods in `plugin.json` sein. `.github/release.sh v0.3.0 dist` baut dieselben Archive lokal. Jedes Release braucht einen Abschnitt in `CHANGELOG.md`, der den Anfang seiner Release Notes bildet.
 
 | Ordner | Was drin ist |
