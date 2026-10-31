@@ -263,6 +263,27 @@ test('the response streams to the chat: thinking and text in batches, then a sto
   expect(w.reqs[3].body).toEqual(expect.objectContaining({ turnId: 't1', step: 0 }))
 })
 
+test('thinking without words still reaches the chat as a block', async ($, on) => {
+  const w = world(on, { SYMPHONY_TOKEN: 'tok' })
+  on('turn.step', async function* () {
+    yield { kind: 'thinking', index: 0, text: '' }
+    yield { kind: 'text', index: 1, text: '391' }
+    return { ...stepResult, answer: '391' }
+  })
+
+  await $.session.start(start)
+  for await (const _ of $.turn.step(step)) {
+    // consumed
+  }
+  await w.clock.advance(200)
+  await w.clock.settle()
+  const delta = w.reqs.find(r => r.body?.kind === 'chat.delta')
+  expect(delta?.body?.blocks).toEqual([
+    { i: 0, kind: 'thinking', text: '' },
+    { i: 1, kind: 'text', text: '391' },
+  ])
+})
+
 test('a subagent\'s steps pass through without reaching the chat', async ($, on) => {
   const w = world(on, { SYMPHONY_TOKEN: 'tok' })
   on('turn.step', async function* () {

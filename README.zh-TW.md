@@ -21,7 +21,7 @@
 
 ## 環境需求
 
-- Claude Code 2.1.314（在這個版本上測試過）。mod 用的是 Claude Code 的 function hooks，這個 API 還在搶先體驗階段，所以升級 Claude Code 之後，請先跑一次端對端測試。
+- Claude Code 2.1.316（在這個版本上測試過）。mod 用的是 Claude Code 的 function hooks，這個 API 還在搶先體驗階段，所以升級 Claude Code 之後，請先跑一次端對端測試。
 - bridge 有 Linux、macOS、Windows 的現成程式，下載就能用；只有從原始碼執行才需要 Go 1.27 以上。
 - 不需要其他東西：從頁面啟動的工作階段在每個平台上都跑在 bridge 內部。
 

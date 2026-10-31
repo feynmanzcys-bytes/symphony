@@ -219,7 +219,7 @@ func startClaude(t *testing.T, name, dir string, env map[string]string, args ...
 			p.key("Down")
 			p.key("Enter")
 			time.Sleep(time.Second)
-		case strings.Contains(screen, "for shortcuts"):
+		case strings.Contains(screen, "for shortcuts"), strings.Contains(screen, "shift+tab to cycle"): // the prompt's footer, by permission mode
 			return p
 		}
 		time.Sleep(500 * time.Millisecond)

@@ -21,7 +21,7 @@
 
 ## 需要什么
 
-- Claude Code 2.1.314（在这个版本上验证过）。mod 用的 function hooks 还是早期接口，升级 Claude Code 后最好先跑一遍端到端测试。
+- Claude Code 2.1.316（在这个版本上验证过）。mod 用的 function hooks 还是早期接口，升级 Claude Code 后最好先跑一遍端到端测试。
 - bridge 有 Linux、macOS、Windows 的现成程序，下载就能用；只有从源码跑才要 Go 1.27 以上。
 - 不需要别的：页面开的会话在每个平台上都跑在 bridge 内部。
 

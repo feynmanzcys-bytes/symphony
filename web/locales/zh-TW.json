@@ -185,7 +185,6 @@
   "chat.stopTitle": "中斷目前正在做的事",
   "chat.fromPage": "來自頁面",
   "chat.thinking": "思考中",
-  "chat.thought": "已思考（點擊查看）",
   "chat.tool.ok": "完成",
   "chat.tool.error": "失敗",
   "chat.tool.denied": "已拒絕",
@@ -207,5 +206,7 @@
   "error.window_no_display": "沒有圖形工作階段：請手動用 attach 指令開啟終端機",
   "error.window_unavailable": "這個 bridge 無法開啟終端機視窗；請手動執行：{command}",
   "error.session_offline": "工作階段不在線上",
-  "error.say_empty": "沒有可送出的內容"
+  "error.say_empty": "沒有可送出的內容",
+  "chat.thoughtFor": "思考了 {s} 秒",
+  "chat.thoughtRead": "思考了 {s} 秒（點擊查看）"
 }

@@ -21,7 +21,7 @@ Put a team of Claude Code sessions in a pixel-art office: see at a glance who is
 
 ## Requirements
 
-- Claude Code 2.1.314 (tested with this version). The mod uses Claude Code's function hooks, which are still an early-access API, so run the end-to-end tests after upgrading Claude Code.
+- Claude Code 2.1.316 (tested with this version). The mod uses Claude Code's function hooks, which are still an early-access API, so run the end-to-end tests after upgrading Claude Code.
 - The bridge comes as a ready-made program for Linux, macOS and Windows; Go 1.27 or later is only needed to run it from source.
 - Nothing else: sessions started from the page run inside the bridge, on every platform.
 

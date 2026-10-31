@@ -185,7 +185,6 @@
   "chat.stopTitle": "打断当前正在做的事",
   "chat.fromPage": "来自页面",
   "chat.thinking": "思考中",
-  "chat.thought": "已思考（点击查看）",
   "chat.tool.ok": "完成",
   "chat.tool.error": "失败",
   "chat.tool.denied": "已拒绝",
@@ -207,5 +206,7 @@
   "error.window_no_display": "没有图形会话：请手动用 attach 命令打开终端",
   "error.window_unavailable": "这个 bridge 无法打开终端窗口；请手动执行：{command}",
   "error.session_offline": "会话不在线",
-  "error.say_empty": "没有可发送的内容"
+  "error.say_empty": "没有可发送的内容",
+  "chat.thoughtFor": "思考了 {s} 秒",
+  "chat.thoughtRead": "思考了 {s} 秒（点击查看）"
 }

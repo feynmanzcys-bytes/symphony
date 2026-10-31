@@ -21,7 +21,7 @@ Réunissez une équipe de sessions Claude Code dans un bureau en pixel art : voy
 
 ## Prérequis
 
-- Claude Code 2.1.314 (testé avec cette version). Le mod utilise les function hooks de Claude Code, une API encore en accès anticipé : après chaque mise à jour de Claude Code, relancez les tests de bout en bout.
+- Claude Code 2.1.316 (testé avec cette version). Le mod utilise les function hooks de Claude Code, une API encore en accès anticipé : après chaque mise à jour de Claude Code, relancez les tests de bout en bout.
 - Le bridge existe en programme prêt à l’emploi pour Linux, macOS et Windows ; Go 1.27 ou plus récent n’est nécessaire que pour le lancer depuis les sources.
 - Rien d’autre : les sessions démarrées depuis la page tournent dans le bridge, sur toutes les plateformes.
 

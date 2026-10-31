@@ -185,7 +185,6 @@
   "chat.stopTitle": "지금 하는 작업을 중단합니다",
   "chat.fromPage": "페이지에서",
   "chat.thinking": "생각 중",
-  "chat.thought": "생각함 (클릭해서 보기)",
   "chat.tool.ok": "완료",
   "chat.tool.error": "실패",
   "chat.tool.denied": "거부됨",
@@ -207,5 +206,7 @@
   "error.window_no_display": "그래픽 세션이 없습니다. attach 명령으로 직접 터미널을 여세요",
   "error.window_unavailable": "이 bridge는 터미널 창을 열 수 없습니다. 직접 연결하세요: {command}",
   "error.session_offline": "세션이 온라인이 아닙니다",
-  "error.say_empty": "보낼 내용이 없습니다"
+  "error.say_empty": "보낼 내용이 없습니다",
+  "chat.thoughtFor": "{s}초 동안 생각함",
+  "chat.thoughtRead": "{s}초 동안 생각함 (클릭해서 보기)"
 }

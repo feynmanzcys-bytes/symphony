@@ -185,7 +185,6 @@
   "chat.stopTitle": "Прервать то, что он делает сейчас",
   "chat.fromPage": "Со страницы",
   "chat.thinking": "Думает",
-  "chat.thought": "Размышления (нажмите, чтобы прочитать)",
   "chat.tool.ok": "готово",
   "chat.tool.error": "ошибка",
   "chat.tool.denied": "отклонено",
@@ -207,5 +206,7 @@
   "error.window_no_display": "нет графического сеанса: откройте терминал вручную командой attach",
   "error.window_unavailable": "этот bridge не может открывать окна терминала; подключитесь вручную: {command}",
   "error.session_offline": "сеанс не в сети",
-  "error.say_empty": "нечего отправлять"
+  "error.say_empty": "нечего отправлять",
+  "chat.thoughtFor": "Думал {s} с",
+  "chat.thoughtRead": "Думал {s} с (нажмите, чтобы прочитать)"
 }

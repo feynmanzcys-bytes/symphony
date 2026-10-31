@@ -185,7 +185,6 @@
   "chat.stopTitle": "今の作業を中断します",
   "chat.fromPage": "ページから",
   "chat.thinking": "考え中",
-  "chat.thought": "考えました（クリックで表示）",
   "chat.tool.ok": "完了",
   "chat.tool.error": "失敗",
   "chat.tool.denied": "拒否",
@@ -207,5 +206,7 @@
   "error.window_no_display": "グラフィカルセッションがありません。attach コマンドで手動でターミナルを開いてください",
   "error.window_unavailable": "この bridge はターミナルウィンドウを開けません。手動で接続してください: {command}",
   "error.session_offline": "セッションはオンラインではありません",
-  "error.say_empty": "送信する内容がありません"
+  "error.say_empty": "送信する内容がありません",
+  "chat.thoughtFor": "{s} 秒考えました",
+  "chat.thoughtRead": "{s} 秒考えました（クリックで表示）"
 }

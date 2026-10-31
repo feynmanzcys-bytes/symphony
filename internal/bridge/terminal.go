@@ -58,13 +58,24 @@ func (t *ptyTerminal) Attach(launchID string) string {
 	return t.program + " attach " + launchID
 }
 
-// childEnv is the bridge's environment plus the session's variables; a terminal type when none is set (a bridge
-// started at login has none).
+// leakedToChild is true for an environment variable a spawned session must not inherit from the bridge: the
+// bridge's own Claude Code session identity and messaging wiring. A session started from the page has to be a
+// clean top-level session, as if launched from a plain terminal, or it collides with the session that started
+// the bridge (the mod can start the bridge from inside one) and cross-session messaging breaks.
+func leakedToChild(k string) bool {
+	return strings.HasPrefix(k, "CLAUDE_CODE_") || k == "CLAUDECODE" || k == "CLAUDE_PID"
+}
+
+// childEnv is the bridge's environment, minus its own Claude Code session (leakedToChild), plus the session's
+// variables; a terminal type when none is set (a bridge started at login has none).
 func childEnv(extra map[string]string) []string {
 	var env []string
 	set := map[string]bool{}
 	for _, kv := range os.Environ() {
 		k, v, _ := strings.Cut(kv, "=")
+		if leakedToChild(k) {
+			continue
+		}
 		if (k == "TERM" || k == "COLORTERM") && v == "" {
 			continue
 		}

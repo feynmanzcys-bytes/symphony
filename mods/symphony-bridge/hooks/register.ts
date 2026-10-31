@@ -250,7 +250,8 @@ function stepStream($: EngineInterface, turnId: string, step: number) {
   }
   return {
     add(index: number, kind: 'thinking' | 'text', text: string) {
-      if (!text) return
+      // thinking may come without words (a model whose thinking is summarized): the block still says it thinks
+      if (!text && kind !== 'thinking') return
       const b = blocks.get(index)
       if (b) b.text += text
       else blocks.set(index, { kind, text })

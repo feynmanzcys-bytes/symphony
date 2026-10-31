@@ -76,6 +76,28 @@ func TestChildEnv(t *testing.T) {
 	}
 }
 
+// the bridge's own Claude Code session must not reach a page-started session, or they collide and cross-session
+// messaging breaks; a CLAUDE_CONFIG_DIR (the login) and other vars are kept.
+func TestChildEnvDropsClaudeSession(t *testing.T) {
+	for _, kv := range []string{"CLAUDE_CODE_MESSAGING_SOCKET=/tmp/x.sock", "CLAUDE_CODE_SESSION_ID=abc", "CLAUDECODE=1", "CLAUDE_PID=42"} {
+		k, v, _ := strings.Cut(kv, "=")
+		t.Setenv(k, v)
+	}
+	t.Setenv("CLAUDE_CONFIG_DIR", "/home/me/.claude")
+	t.Setenv("ANTHROPIC_API_KEY", "sk-test")
+	env := childEnv(map[string]string{"SYMPHONY_TOKEN": "t"})
+	for _, kv := range env {
+		if k, _, _ := strings.Cut(kv, "="); leakedToChild(k) {
+			t.Fatalf("the bridge's Claude Code session leaked to the child: %s", kv)
+		}
+	}
+	for _, want := range []string{"SYMPHONY_TOKEN=t", "CLAUDE_CONFIG_DIR=/home/me/.claude", "ANTHROPIC_API_KEY=sk-test"} {
+		if !slices.Contains(env, want) {
+			t.Fatalf("env should keep %s: %v", want, env)
+		}
+	}
+}
+
 func TestPTYAttachCommand(t *testing.T) {
 	if got := NewPTYTerminal().Attach("abc"); got != "symphony attach abc" {
 		t.Fatalf("attach command: %q", got)

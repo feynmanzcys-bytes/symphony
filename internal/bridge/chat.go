@@ -45,6 +45,7 @@ type ChatItem struct {
 	To      string    `json:"to,omitempty"`     // message: the recipient's name
 	Ask     string    `json:"ask,omitempty"`    // ask: its id; kind: permission|question in Status until settled
 	AskKind string    `json:"askKind,omitempty"`
+	Secs    int       `json:"secs,omitempty"` // thinking: how long it took, once done
 	Time    time.Time `json:"time"`
 	key     string    // streamed blocks: turn/step/block; tools: the tool_use id; asks: the ask id
 }
@@ -122,13 +123,16 @@ func (h *Hub) pushChatLocked(session string, it *ChatItem, delta string) {
 func (h *Hub) chatStreamLocked(s *Session, turn string, step int, blocks []ChatDelta) {
 	c := h.chatLocked(s.ID)
 	for _, d := range blocks {
-		if d.Kind != ChatThinking && d.Kind != ChatText || d.Text == "" {
+		// a thinking block may carry no words (a model whose thinking is summarized); it still shows that it thinks
+		if d.Kind != ChatThinking && d.Kind != ChatText || d.Text == "" && d.Kind != ChatThinking {
 			continue
 		}
 		key := turn + "/" + itoa(step) + "/" + itoa(d.I)
 		if it := c.byKey[key]; it != nil {
-			it.Text = cutFront(it.Text+d.Text, chatTextMax)
-			h.pushChatLocked(s.ID, it, d.Text)
+			if d.Text != "" {
+				it.Text = cutFront(it.Text+d.Text, chatTextMax)
+				h.pushChatLocked(s.ID, it, d.Text)
+			}
 			continue
 		}
 		h.chatAppendLocked(s.ID, &ChatItem{Kind: d.Kind, Text: cutFront(d.Text, chatTextMax), key: key})
@@ -142,6 +146,9 @@ func (h *Hub) chatStopLocked(s *Session, turn string, step int) {
 	for key, it := range c.byKey {
 		if strings.HasPrefix(key, prefix) && !it.Done {
 			it.Done = true
+			if it.Kind == ChatThinking {
+				it.Secs = int(h.now().Sub(it.Time).Round(time.Second) / time.Second)
+			}
 			h.pushChatLocked(s.ID, it, "")
 		}
 	}

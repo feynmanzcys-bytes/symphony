@@ -21,7 +21,7 @@ Setz ein Team aus Claude-Code-Sitzungen in ein Pixel-Art-Büro: Du siehst auf ei
 
 ## Voraussetzungen
 
-- Claude Code 2.1.314 (mit dieser Version getestet). Der Mod nutzt die Function Hooks von Claude Code, die noch eine Early-Access-API sind; führe also nach einem Update von Claude Code die End-to-End-Tests aus.
+- Claude Code 2.1.316 (mit dieser Version getestet). Der Mod nutzt die Function Hooks von Claude Code, die noch eine Early-Access-API sind; führe also nach einem Update von Claude Code die End-to-End-Tests aus.
 - Die Bridge gibt es als fertiges Programm für Linux, macOS und Windows; Go 1.27 oder neuer brauchst du nur, um sie aus dem Quellcode zu starten.
 - Sonst nichts: Über die Seite gestartete Sitzungen laufen auf jeder Plattform innerhalb der Bridge.
 

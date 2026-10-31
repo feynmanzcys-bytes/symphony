@@ -185,7 +185,6 @@
   "chat.stopTitle": "Interrompe o que ele está fazendo agora",
   "chat.fromPage": "Da página",
   "chat.thinking": "Pensando",
-  "chat.thought": "Pensamento (clique para ler)",
   "chat.tool.ok": "concluído",
   "chat.tool.error": "falhou",
   "chat.tool.denied": "negado",
@@ -207,5 +206,7 @@
   "error.window_no_display": "sem sessão gráfica: abra o terminal manualmente com o comando attach",
   "error.window_unavailable": "este bridge não consegue abrir janelas de terminal; conecte manualmente: {command}",
   "error.session_offline": "a sessão não está online",
-  "error.say_empty": "nada para enviar"
+  "error.say_empty": "nada para enviar",
+  "chat.thoughtFor": "Pensou por {s} s",
+  "chat.thoughtRead": "Pensou por {s} s (clique para ler)"
 }

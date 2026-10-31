@@ -2,6 +2,12 @@
 
 What changed in each release of symphony. The program (the bridge) and the mod share one version number. A release's notes start with its section here: the release workflow stops before building when the section is missing.
 
+## v0.6.1 (2026-10-31)
+
+- Sessions started from the page no longer inherit the bridge's own Claude Code session (its messaging socket and session id): a page-started session is now a clean top-level session, as if launched from a plain terminal. Without this, when the bridge runs inside a Claude Code session (the mod can start it from one), the started sessions collided with it and SendMessage between them was never delivered.
+- The employee window shows a model's thinking even when it carries no words (a model whose thinking is summarized): a folded "Thought for Ns" line instead of nothing, and the time it took once done.
+- A finished answer bubble and tool rows no longer collapse to a sliver in the chat; blank lines around a fenced code block are trimmed; messages between sessions get a readable timestamp. The mod is 0.6.1: `claude plugin update symphony-bridge@symphony`.
+
 ## v0.6.0 (2026-10-31)
 
 - **Every session as a chat**: a click on an employee opens its window in the middle of the page (it replaces the card on the right and the pending popup): the employee at the top, and below it the session as a chat: the prompts, the model's thinking (folded, "Thinking…" in orange with three dots while it goes on), its answers as they stream, the tool calls with their outcome, messages from other sessions in purple, and the asks with how they were settled. Write at the bottom and it reaches the session as your prompt (Enter sends, Shift+Enter breaks a line); Stop interrupts the running turn. The mod (0.6.0) streams the response, reports the prompts that enter and polls the bridge for what the page sends: `claude plugin update symphony-bridge@symphony`.

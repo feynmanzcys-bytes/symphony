@@ -134,7 +134,7 @@
   .chat .btns button { font-size:12px; }
   .chat .flow { flex:1; overflow:auto; padding:12px 16px; background:#f6f3ec; display:flex; flex-direction:column; gap:8px; }
   .chat .flow .empty { color:#8a867e; text-align:center; margin:auto; }
-  .it { max-width:min(82%, 820px); font-size:13px; line-height:1.5; }
+  .it { flex:none; max-width:min(82%, 820px); font-size:13px; line-height:1.5; } /* flex:none: the column never squeezes a row (an overflow:hidden row would shrink to nothing) */
   .it .body { white-space:pre-wrap; overflow-wrap:anywhere; }
   .it .body pre { background:#2b2a28; color:#f2efe8; padding:6px 8px; margin:4px 0; font:12px/1.5 ui-monospace, monospace; overflow:auto; white-space:pre; }
   .it .body code { background:rgba(0,0,0,.08); padding:0 3px; font:12px ui-monospace, monospace; }
@@ -145,11 +145,12 @@
   .it.text { align-self:flex-start; background:#fff; color:#2b2a28; padding:6px 10px; border:2px solid #2b2a28; box-shadow:2px 2px 0 rgba(0,0,0,.2); }
   /* thinking: folded by default, orange "thinking…" with three dots in turn while it goes on */
   .it.thinking { align-self:flex-start; }
+  .it.thinking summary, .it.thinking .bare { display:inline-block; padding:1px 10px; border:1px dashed #e0a24a; background:#fff6e5; }
   .it.thinking summary { cursor:pointer; color:#e07b00; font-weight:700; font-size:12px; list-style:none; }
   .it.thinking summary::-webkit-details-marker { display:none; }
   .it.thinking:not(.done) summary .dots::after { content:'·'; display:inline-block; width:1.4em; text-align:left; animation:dots 1.2s steps(1) infinite; }
   @keyframes dots { 33% { content:'··'; } 66% { content:'···'; } }
-  .it.thinking.done summary { color:#c9961a; font-weight:400; }
+  .it.thinking.done summary, .it.thinking .bare { color:#a9790a; font-weight:400; font-size:12px; border-style:solid; border-color:#ead9b5; background:#fbf5e8; }
   .it.thinking .body { margin-top:4px; padding:6px 10px; background:#fff6e5; border:1px dashed #e0a24a; color:#6b4a00; font-size:12px; max-height:320px; overflow:auto; }
   .it.tool { align-self:flex-start; font:12px/1.5 ui-monospace, monospace; color:#4a4742; padding:1px 8px; border-left:3px solid #b9b3a8; background:#edeae2; max-width:min(90%, 900px); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .it.tool.ok { border-color:#2e9e5b; } .it.tool.error { border-color:#d64541; } .it.tool.denied { border-color:#d64541; color:#8a2a26; }
@@ -165,6 +166,7 @@
   .it.notice { align-self:center; font-size:11px; color:#8a867e; }
   .it time { display:block; font-size:10px; color:#8a867e; margin-top:2px; }
   .it.user time { color:#b9b3a8; text-align:right; }
+  .it.message time { color:rgba(255,255,255,.75); } .it.message.out time { color:rgba(29,17,51,.6); text-align:right; }
   /* the dock: the input; while asks wait, their cards rise over it from the bottom and must be handled first.
      They hang from a fixed line, so a new card goes in below and never moves the one being clicked. */
   .chat .dock { border-top:2px solid #2b2a28; background:#fffdf7; padding:8px 12px; }
@@ -1402,7 +1404,8 @@ function chatLine(e, pair, now) {
 
 // what an idle employee is doing, in words (for the card, the search list and the name tag's tooltip)
 function doingText(e) {
-  if (!e.inside || !isOnline(e) || e.s.state !== 'idle' || !e.want) return ''
+  // the plan lags the state by a tick: a 'work' or 'out' plan on an idle employee has no text yet
+  if (!e.inside || !isOnline(e) || e.s.state !== 'idle' || !e.want || e.want.act === 'work' || e.want.act === 'out') return ''
   const w = e.want, room = e.goal?.room
   if (e.moving && !e.tag) return t(w.act === 'ready' ? 'idle.back' : 'idle.walk')
   const doing = t('idle.' + w.act)
@@ -1922,10 +1925,10 @@ function applyEvent(ev, name) {
 
 // ================= pending asks =================
 // They are handled in the employee window: the HUD's red chip opens the window of the first employee waiting.
+// the card's top line: inside the employee's own window the name would only repeat, so it's the kind alone
 function askWho(a) {
-  const acc = snapshot.accounts.find(x => x.id === a.account)
-  return `<div class="who"><span class="name">${esc(acc?.name ?? a.session.slice(0, 6))}</span>
-    <span class="kind">${a.agentId ? esc(t('common.subagent')) + ' · ' : ''}${esc(t(a.kind === 'question' ? 'asks.question' : 'asks.permission'))}</span></div>`
+  return `<div class="who"><span class="name">${esc(t(a.kind === 'question' ? 'asks.question' : 'asks.permission'))}</span>` +
+    (a.agentId ? `<span class="kind">${esc(t('common.subagent'))}</span>` : '') + `</div>`
 }
 function openAsks(session = null) {
   const a = snapshot.asks.find(x => !session || x.session === session) || snapshot.asks[0]
@@ -2103,8 +2106,9 @@ function applyChat(msg) {
 function richText(text) {
   const parts = String(text ?? '').split(/(```[\s\S]*?(?:```|$))/)
   return parts.map((p, i) => i % 2
-    ? `<pre>${esc(p.replace(/^```[^\n]*\n?/, '').replace(/```$/, ''))}</pre>`
-    : esc(p).replace(/`([^`\n]+)`/g, '<code>$1</code>').replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>')).join('')
+    ? `<pre>${esc(p.replace(/^```[^\n]*\n?/, '').replace(/\n?```$/, ''))}</pre>`
+    // a blank line next to a fenced block would double the <pre>'s own margin: drop it
+    : esc(p.replace(/\n+$/, i ? '' : '\n').replace(/^\n+/, i < parts.length - 1 ? '' : '\n')).replace(/`([^`\n]+)`/g, '<code>$1</code>').replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>')).join('')
 }
 const timeOf = it => `<time>${new Date(it.time).toLocaleTimeString(lang)}</time>`
 function itemEl(it, old) {
@@ -2119,11 +2123,15 @@ function itemEl(it, old) {
     case 'thinking': {
       el.className = `it thinking${it.done ? ' done' : ''}`
       const open = old?.querySelector('details')?.open ? ' open' : '' // stays unfolded while it streams
-      el.innerHTML = `<details${open}><summary>${esc(t(it.done ? 'chat.thought' : 'chat.thinking'))}<span class="dots"></span></summary><div class="body">${richText(it.text)}</div></details>`
+      // without words (a model whose thinking is summarized) there is nothing to unfold: just that it thought, and how long
+      const label = !it.done ? t('chat.thinking') : it.text ? t('chat.thoughtRead', { s:it.secs || 0 }) : t('chat.thoughtFor', { s:it.secs || 0 })
+      el.innerHTML = it.text || !it.done
+        ? `<details${open}><summary>${esc(label)}<span class="dots"></span></summary><div class="body">${richText(it.text)}</div></details>`
+        : `<div class="bare">${esc(label)}</div>`
       break
     }
     case 'text':
-      el.className = 'it text'
+      el.className = `it text${it.done ? ' done' : ''}`
       el.innerHTML = `<div class="body">${richText(it.text)}</div>${it.done ? timeOf(it) : ''}`
       break
     case 'tool':

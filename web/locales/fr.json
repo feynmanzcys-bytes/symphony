@@ -185,7 +185,6 @@
   "chat.stopTitle": "Interrompt ce qu'il fait en ce moment",
   "chat.fromPage": "Depuis la page",
   "chat.thinking": "Réflexion",
-  "chat.thought": "Réflexion (cliquer pour lire)",
   "chat.tool.ok": "terminé",
   "chat.tool.error": "échoué",
   "chat.tool.denied": "refusé",
@@ -207,5 +206,7 @@
   "error.window_no_display": "pas de session graphique : ouvrez le terminal à la main avec la commande attach",
   "error.window_unavailable": "ce bridge ne peut pas ouvrir de fenêtre de terminal ; connectez-vous à la main : {command}",
   "error.session_offline": "la session n'est pas en ligne",
-  "error.say_empty": "rien à envoyer"
+  "error.say_empty": "rien à envoyer",
+  "chat.thoughtFor": "A réfléchi {s} s",
+  "chat.thoughtRead": "A réfléchi {s} s (cliquer pour lire)"
 }
