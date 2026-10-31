@@ -14,6 +14,7 @@ Pon a trabajar a un equipo de sesiones de Claude Code en una oficina en pixel ar
 - **Encuentra a cualquiera y llámalo**: haz clic en un empleado libre y volverá a su puesto (y se quedará allí hasta su siguiente tarea); el buscador de la barra superior encuentra empleados por nombre o carpeta (pulsa `/` para ir a él), y un clic en un contador junto a él (libre, trabajando, pendiente, fuera de servicio) resalta a todos los que están en ese estado. La pestaña bajo la barra la recoge hacia arriba y la vuelve a bajar.
 - **Mensajes entre sesiones**: cuando las sesiones se envían mensajes (SendMessage), un sobre cruza la oficina volando y el registro de mensajes los guarda.
 - **Abre sesiones desde la página, sin que se abra nada**: haz clic en el "+" de un puesto vacío para contratar a alguien nuevo y elige la carpeta, el modelo, el esfuerzo de razonamiento y el modo de permisos (un empleado nuevo empieza con todo permitido, Opus y el máximo razonamiento); en la ventana de alguien que está fuera de servicio, haz clic en "A trabajar" para que vuelva a su mismo puesto. La sesión corre en una terminal propia dentro del bridge, así que no se abre ninguna ventana ni se lleva el foco; «Abrir terminal» en la ventana del empleado muestra esa terminal cuando quieras, y cerrarla no cambia nada.
+- **Equipos en las salas de reuniones**: haz clic en una sala de reuniones pequeña libre, escribe una tarea y elige de 2 a 5 miembros: empleados, que reciben cada uno una segunda sesión solo para la tarea, o asesores de un solo uso. Por defecto el primer miembro dirige y reparte las partes con SendMessage; cada miembro trabaja en su propio worktree de git, en su propia rama, así que nadie pisa los archivos de nadie. Los miembros se quedan sentados en la sala hasta que termina la tarea.
 - **10 idiomas**: English, 简体中文, 繁體中文, 日本語, 한국어, Español, Français, Deutsch, Português (Brasil) y Русский. La página usa el idioma de tu navegador y tiene un selector de idioma en la barra superior; los mensajes del bridge usan el idioma de tu sistema (o el que indiques con `-lang`), y los del mod, el de la página que abrió la sesión.
 - **Todo en local**: el bridge es un único programa en Go (solo con la biblioteca estándar), las páginas son JavaScript puro y nada depende de servicios de terceros.
 
@@ -23,6 +24,7 @@ Pon a trabajar a un equipo de sesiones de Claude Code en una oficina en pixel ar
 
 - Claude Code 2.1.316 (probado con esta versión). El mod usa los function hooks de Claude Code, que todavía son una API en acceso anticipado, así que ejecuta las pruebas de extremo a extremo después de actualizar Claude Code.
 - El bridge viene como programa listo para usar en Linux, macOS y Windows; Go 1.27 o posterior solo hace falta para ejecutarlo desde el código fuente.
+- `git`, solo para las tareas en equipo: cada miembro de una tarea trabaja en un worktree de git.
 - Nada más: las sesiones abiertas desde la página corren dentro del bridge en todas las plataformas.
 
 ## Instalación
@@ -115,9 +117,30 @@ Se recomienda el modo de permisos `manual`: en el modo `auto` la mayoría de las
 
 Si nada responde en la dirección del bridge en esta máquina, la sesión lo inicia ella misma con `symphony -background` (si `symphony` está en tu PATH), y el bridge sigue en marcha cuando la sesión termina. Define `SYMPHONY_DATA` si tus cuentas no están en la carpeta de datos predeterminada.
 
+## Tareas en equipo
+
+Una sala de reuniones pequeña es donde un equipo de 2 a 5 sesiones trabaja junto en una misma tarea. Las tareas necesitan `git` y el mod en la versión 0.7.0 (`claude plugin update symphony-bridge@symphony`).
+
+**Empezar una tarea**: haz clic en una sala de reuniones pequeña libre y describe lo que hay que hacer. Marca a los miembros en el orden que quieras (de 2 hasta las plazas de la sala), elige el modelo y el esfuerzo de razonamiento de cada uno y el modo de permisos del equipo (todo permitido por defecto), y haz clic en «Empezar la tarea». Un miembro puede ser:
+
+- **Un empleado**: recibe una segunda sesión solo para la tarea, que trabaja en la carpeta del empleado; su sesión de siempre, la de su puesto, se queda como estaba. Un empleado solo está en una tarea a la vez, y el que nunca ha trabajado todavía no tiene carpeta: haz clic antes una vez en "A trabajar".
+- **Un asesor**: un participante de un solo uso creado para la tarea con los campos de siempre (nombre, carpeta, modelo, esfuerzo de razonamiento). No tiene puesto, sube en el ascensor y se va cuando termina la tarea.
+
+**El líder**: por defecto el primer miembro dirige: divide la tarea, reparte las partes con SendMessage, revisa el trabajo, fusiona las ramas de los demás en la suya y te cuenta lo que se ha hecho. Desmarca la casilla del líder y cada uno recibe la tarea entera, y se la reparten entre ellos. En los dos casos, el bridge le da a cada miembro su primera instrucción: quién está en el equipo (los miembros se encuentran por su nombre con SendMessage), la rama de cada uno y las reglas.
+
+**Git**: cada miembro trabaja en su propio worktree de git, en su propia rama `symphony/<tarea>/<nombre>` de su carpeta, así que nadie pisa los archivos de nadie y tu copia de trabajo se queda como estaba. Los worktrees están en `.symphony/worktrees/` dentro de la carpeta, ocultos para git con `.git/info/exclude` (tu `.gitignore` no se toca). Cuando termina la tarea, los cambios que un miembro tenga sin commit se guardan con un commit en su rama, así que no se pierde nada, y los worktrees se eliminan.
+
+- En tus propios repositorios las ramas se quedan para que las fusiones tú; si hay líder, su rama reúne el trabajo de todos.
+- Una carpeta que no es un repositorio de git se convierte en uno para la tarea (`git init` y un commit con todo lo que contiene). Cuando termina la tarea, las ramas de los miembros se fusionan en ella y el `.git` se vuelve a quitar: la carpeta vuelve a ser archivos normales con el resultado fusionado.
+- Si una fusión falla, todo se queda como está (el repositorio y las ramas, para que lo resuelvas a mano), y la ventana de la tarea dice qué rama tiene conflictos.
+
+**En la oficina**: los miembros se sientan a la mesa de la sala durante toda la tarea, y mientras tanto el puesto de un empleado muestra una silla vacía. La placa de la sala muestra el id de la tarea; su luz, verde mientras la sala está libre, se pone amarilla mientras la tarea está en marcha y roja mientras un miembro espera tu aprobación o tu respuesta. Haz clic en la sala para abrir la ventana de la tarea: la tarea, los miembros con sus carpetas y ramas, y «Terminar la tarea». Un clic en un miembro ahí, o en su figura en la sala, abre su ventana de chat, igual que la ventana de un empleado.
+
+Una tarea termina cuando la terminas desde la ventana de la tarea o cuando termina su última sesión: el bridge detiene las sesiones de los miembros, se encarga de la parte de git como se explica arriba y borra a los asesores. Una tarea que sigue en marcha cuando se detiene el bridge se termina de la misma manera la próxima vez que el bridge arranca.
+
 ## Cuentas y puestos
 
-- En symphony, una identidad es un nombre, un token y un puesto fijo. Una cuenta sirve para una sola sesión a la vez; si se conecta una segunda sesión, se rechaza y sus aprobaciones se quedan en la terminal.
+- En symphony, una identidad es un nombre, un token y un puesto fijo. Una cuenta sirve para una sola sesión a la vez, más otra en la tarea en la que participa; cualquier otra sesión se rechaza y sus aprobaciones se quedan en la terminal.
 - Aquí no se gestiona el inicio de sesión en Claude: todas las sesiones pueden compartir la misma cuenta de Claude.
 - Los datos se guardan en `~/.config/symphony` (Linux), `~/Library/Application Support/symphony` (macOS) o `%AppData%\symphony` (Windows). `accounts.json` contiene los tokens y solo su propietario puede leerlo (0600); en Windows lo protegen los permisos de la carpeta del usuario.
 

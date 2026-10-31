@@ -15,16 +15,21 @@ import (
 	"unicode"
 )
 
-// Account is one identity in the office: a name, a token and a fixed seat, used by one session at a time.
-// Claude logins are not managed here; all sessions may share one login.
+// Account is one identity in the office: a name, a token and a fixed seat, used by one desk session at a time (and
+// one session per task it is in). Claude logins are not managed here; all sessions may share one login. An advisor
+// is an account made for one task: it has no seat (-1) and goes when the task ends.
 type Account struct {
 	ID      string    `json:"id"`
 	Name    string    `json:"name"`
 	Token   string    `json:"token"`
 	Seat    int       `json:"seat"`
+	Advisor bool      `json:"advisor,omitempty"`
 	Created time.Time `json:"created"`
 	// Last holds the options of the last start from the page, filled in again next time
 	Last *LaunchRequest `json:"last,omitempty"`
+	// Dir is the folder the last desk session worked in, as the mod reported it (a session started in a terminal
+	// too), so an employee off duty still has a folder for a task
+	Dir string `json:"dir,omitempty"`
 }
 
 // AccountView is an account as the snapshot shows it: without the token.
@@ -32,8 +37,10 @@ type AccountView struct {
 	ID      string         `json:"id"`
 	Name    string         `json:"name"`
 	Seat    int            `json:"seat"`
-	Session string         `json:"session,omitempty"` // the online session's id; empty when off duty
+	Advisor bool           `json:"advisor,omitempty"`
+	Session string         `json:"session,omitempty"` // the online desk session's id; empty when off duty
 	Last    *LaunchRequest `json:"last,omitempty"`
+	Dir     string         `json:"dir,omitempty"`
 }
 
 var (
@@ -94,7 +101,8 @@ func saveAccounts(path string, list []*Account) error {
 
 // ---------- accounts on the Hub ----------
 
-// Open sets the data folder and reads the accounts (accounts.json) and the message log (messages.json).
+// Open sets the data folder and reads the accounts (accounts.json), the message log (messages.json) and the tasks
+// (tasks.json; tasks the previous bridge left running are ended now).
 func (h *Hub) Open(dir string) error {
 	list, err := loadAccounts(filepath.Join(dir, "accounts.json"))
 	if err != nil {
@@ -113,7 +121,7 @@ func (h *Hub) Open(dir string) error {
 		h.accounts[a.ID] = a
 	}
 	h.messages = msgs
-	return nil
+	return h.openTasksLocked(dir)
 }
 
 func (h *Hub) saveLocked() error {
@@ -127,8 +135,8 @@ func (h *Hub) saveLocked() error {
 	return saveAccounts(filepath.Join(h.dataDir, "accounts.json"), list)
 }
 
-// saver writes the message log in the background: the hub's lock is held while the log is encoded, never while
-// the disk is written; writes that pile up collapse into the latest.
+// saver writes a file (the message log, the tasks) in the background: the hub's lock is held while it is encoded,
+// never while the disk is written; writes that pile up collapse into the latest.
 type saver struct {
 	mu      sync.Mutex
 	pending []byte        // the latest log to write, nil when written
@@ -144,8 +152,11 @@ func (h *Hub) saveMessagesLocked() {
 	if err != nil {
 		return
 	}
-	path := filepath.Join(h.dataDir, "messages.json")
-	s := &h.msgSave
+	h.msgSave.put(filepath.Join(h.dataDir, "messages.json"), data)
+}
+
+// put hands the latest contents to the writer.
+func (s *saver) put(path string, data []byte) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.pending = data
@@ -173,18 +184,30 @@ func (s *saver) write(path string) {
 	}
 }
 
-// Flush waits until the message log is on disk.
-func (h *Hub) Flush() {
-	h.msgSave.mu.Lock()
-	idle := h.msgSave.idle
-	h.msgSave.mu.Unlock()
+// wait waits until what was handed over is on disk.
+func (s *saver) wait() {
+	s.mu.Lock()
+	idle := s.idle
+	s.mu.Unlock()
 	if idle != nil {
 		<-idle
 	}
 }
 
+// Flush waits until the tasks being ended are done, and the message log and the tasks are on disk.
+func (h *Hub) Flush() {
+	h.taskJobs.wait()
+	h.msgSave.wait()
+	h.taskSave.wait()
+}
+
 // CreateAccount creates an account in the lowest free seat. Names are unique (sessions message each other by name).
-func (h *Hub) CreateAccount(name string) (*Account, error) {
+func (h *Hub) CreateAccount(name string) (*Account, error) { return h.createAccount(name, false) }
+
+// CreateAdvisor creates an account for one task: no seat, deleted when the task ends.
+func (h *Hub) CreateAdvisor(name string) (*Account, error) { return h.createAccount(name, true) }
+
+func (h *Hub) createAccount(name string, advisor bool) (*Account, error) {
 	name = strings.TrimSpace(name)
 	if !validName(name) {
 		return nil, ErrBadName
@@ -202,7 +225,10 @@ func (h *Hub) CreateAccount(name string) (*Account, error) {
 	for taken[seat] {
 		seat++
 	}
-	a := &Account{ID: newID(), Name: name, Token: newToken(), Seat: seat, Created: h.now()}
+	if advisor {
+		seat = -1
+	}
+	a := &Account{ID: newID(), Name: name, Token: newToken(), Seat: seat, Advisor: advisor, Created: h.now()}
 	h.accounts[a.ID] = a
 	if err := h.saveLocked(); err != nil {
 		delete(h.accounts, a.ID)
@@ -213,7 +239,7 @@ func (h *Hub) CreateAccount(name string) (*Account, error) {
 	return &cp, nil
 }
 
-// DeleteAccount deletes an account that is offline and frees its seat.
+// DeleteAccount deletes an account that is offline and in no running task, and frees its seat.
 func (h *Hub) DeleteAccount(id string) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -221,13 +247,13 @@ func (h *Hub) DeleteAccount(id string) error {
 	if a == nil {
 		return ErrUnknownAccount
 	}
-	if h.onlineLocked(id) != nil {
+	if h.onlineLocked(id) != nil || h.runningTaskLocked(id) != nil {
 		return ErrAccountBusy
 	}
 	delete(h.accounts, id)
 	for sid, s := range h.sessions {
 		if s.Account == id {
-			delete(h.sessions, sid)
+			h.dropSessionLocked(sid)
 		}
 	}
 	// cancel what its lost sessions left pending, so the popup shows no orphaned cards
@@ -282,17 +308,20 @@ func (h *Hub) setLast(id string, req LaunchRequest) {
 	}
 }
 
-// onlineLocked returns the account's online session (neither off duty nor lost).
-func (h *Hub) onlineLocked(account string) *Session {
+// onlineLocked returns the account's online desk session (neither off duty nor lost).
+func (h *Hub) onlineLocked(account string) *Session { return h.onlineTaskLocked(account, "") }
+
+// onlineTaskLocked returns the account's online session of a task ("" for the desk).
+func (h *Hub) onlineTaskLocked(account, task string) *Session {
 	for _, s := range h.sessions {
-		if s.Account == account && s.State != StateEnded {
+		if s.Account == account && s.Task == task && s.State != StateEnded {
 			return s
 		}
 	}
 	return nil
 }
 
-// Online reports whether the account has a session online now.
+// Online reports whether the account has a desk session online now.
 func (h *Hub) Online(account string) bool {
 	h.mu.Lock()
 	defer h.mu.Unlock()

@@ -40,7 +40,7 @@ type ChatItem struct {
 	Summary string    `json:"summary,omitempty"` // tool: its main argument
 	Status  string    `json:"status,omitempty"`  // tool: ok|error|denied; user: queued|sent; ask: pending|allow|deny|answered|cancelled
 	AgentID string    `json:"agentId,omitempty"`
-	Origin  string    `json:"origin,omitempty"` // user: composer (typed), page, or the engine's origin kind
+	Origin  string    `json:"origin,omitempty"` // user: composer (typed), page, task (a task's kickoff), or the engine's origin kind
 	From    string    `json:"from,omitempty"`   // message: the sender's name
 	To      string    `json:"to,omitempty"`     // message: the recipient's name
 	Ask     string    `json:"ask,omitempty"`    // ask: its id; kind: permission|question in Status until settled
@@ -393,10 +393,16 @@ func (h *Hub) Say(session, text string) (*ChatItem, error) {
 	if text == "" {
 		return nil, newError("say_empty", "nothing to send")
 	}
-	it := h.chatAppendLocked(session, &ChatItem{Kind: ChatUser, Text: cutRunes(text, chatPromptMax), Origin: "page", Status: "queued"})
-	h.postInboxLocked(session, InboxItem{Kind: "say", Text: text})
-	cp := *it
+	cp := *h.sayLocked(session, text, "page")
 	return &cp, nil
+}
+
+// sayLocked queues text for a session as the person's next prompt: a queued item in the chat (origin page, or task for
+// a task's kickoff) and a say in the inbox.
+func (h *Hub) sayLocked(session, text, origin string) *ChatItem {
+	it := h.chatAppendLocked(session, &ChatItem{Kind: ChatUser, Text: cutRunes(text, chatPromptMax), Origin: origin, Status: "queued"})
+	h.postInboxLocked(session, InboxItem{Kind: "say", Text: text})
+	return it
 }
 
 // Abort asks the session to stop its running turn.

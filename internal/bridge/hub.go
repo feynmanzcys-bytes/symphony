@@ -75,6 +75,7 @@ type Session struct {
 	Effort  string            `json:"effort,omitempty"` // the thinking effort; sets the character's muscles
 	Launch  string            `json:"launch,omitempty"` // only for sessions started from the page
 	Attach  string            `json:"attach,omitempty"` // where to find its terminal
+	Task    string            `json:"task,omitempty"`   // the task this session works on; empty for a desk session
 	Started time.Time         `json:"started"`
 	Updated time.Time         `json:"updated"`
 	// StateSince is when the current state began (the page uses it to tell how long a session idles; long idlers fall asleep)
@@ -124,6 +125,7 @@ type Event struct {
 	Model       string  `json:"model,omitempty"`
 	Effort      string  `json:"effort,omitempty"`
 	Launch      string  `json:"launch,omitempty"` // the id the bridge gave when the page started the session
+	Task        string  `json:"task,omitempty"`   // the task id of a session started for a task (SYMPHONY_TASK)
 	Cwd         string  `json:"cwd,omitempty"`
 	Title       string  `json:"title,omitempty"`
 	Args        string  `json:"args,omitempty"`
@@ -156,6 +158,7 @@ type Snapshot struct {
 	Asks     []*Ask        `json:"asks"`
 	Messages []*Message    `json:"messages"`
 	Launches []*Launch     `json:"launches"`
+	Tasks    []*Task       `json:"tasks"` // running, ending and failed ones
 	// MessageTail is the latest message's id, in every snapshot: a page that doesn't have it fell behind and
 	// fetches the log again (/api/state)
 	MessageTail string `json:"messageTail,omitempty"`
@@ -187,9 +190,18 @@ type Hub struct {
 	inboxes  map[string]*inbox   // by session id
 	subs     map[chan *Push]struct{}
 	now      func() time.Time
-	msgSave  saver // writes the message log in the background
+	msgSave  saver   // writes the message log in the background
+	tasks    []*Task // the record, oldest first (tasks.json)
+	taskNext int     // the next task's number
+	taskSave saver   // writes tasks.json in the background
+	taskJobs jobs    // tasks being ended
+	stopping bool    // the bridge is on its way out (Stop)
+	// gitMu lets one task at a time make or tidy up its repositories (tasks may share a folder)
+	gitMu sync.Mutex
 	// AttachHint tells, by launch id, where to find a session's terminal; the current terminal backend provides it
 	AttachHint func(launchID string) string
+	// terms are the sessions' terminals when the bridge hosts them (ending a task kills its members' processes)
+	terms *Terms
 }
 
 func NewHub() *Hub {
@@ -262,9 +274,9 @@ func (h *Hub) Snapshot() Snapshot {
 
 // snapshotLocked builds a snapshot; a full one carries the message log, the others leave it null.
 func (h *Hub) snapshotLocked(full bool) Snapshot {
-	snap := Snapshot{Type: "snapshot", Accounts: []AccountView{}, Sessions: []*Session{}, Asks: []*Ask{}, Launches: []*Launch{}}
+	snap := Snapshot{Type: "snapshot", Accounts: []AccountView{}, Sessions: []*Session{}, Asks: []*Ask{}, Launches: []*Launch{}, Tasks: h.tasksLocked()}
 	for _, a := range h.accounts {
-		v := AccountView{ID: a.ID, Name: a.Name, Seat: a.Seat, Last: a.Last}
+		v := AccountView{ID: a.ID, Name: a.Name, Seat: a.Seat, Advisor: a.Advisor, Last: a.Last, Dir: a.Dir}
 		if s := h.onlineLocked(a.ID); s != nil {
 			v.Session = s.ID
 		}
@@ -309,9 +321,10 @@ func (h *Hub) snapshotLocked(full bool) Snapshot {
 
 // ---------- sessions ----------
 
-// sessionLocked returns the session, creating it if needed. An account serves one session at a time:
-// while it has a session online that isn't lost, a new one is refused (ErrAccountBusy).
-func (h *Hub) sessionLocked(id string, acc *Account) (s *Session, fresh bool, err error) {
+// sessionLocked returns the session, creating it if needed. An account serves one desk session at a time, and one
+// session per task it is in: while it has a session online that isn't lost on the same desk or task, a new one is
+// refused (ErrAccountBusy). A task session only comes (back) online while its task runs (ErrTaskEnded).
+func (h *Hub) sessionLocked(id string, acc *Account, task string) (s *Session, fresh bool, err error) {
 	s = h.sessions[id]
 	if s != nil && s.Account != acc.ID {
 		return nil, false, ErrWrongAccount
@@ -319,15 +332,20 @@ func (h *Hub) sessionLocked(id string, acc *Account) (s *Session, fresh bool, er
 	if s != nil && s.State != StateEnded {
 		return s, false, nil
 	}
-	if other := h.onlineLocked(acc.ID); other != nil && other.ID != id {
+	if task != "" {
+		if t := h.taskLocked(task); t == nil || t.Status != TaskRunning || t.member(acc.ID) == nil {
+			return nil, false, ErrTaskEnded
+		}
+	}
+	if other := h.onlineTaskLocked(acc.ID, task); other != nil && other.ID != id {
 		if h.now().Sub(other.Updated) < StaleAfter {
 			return nil, false, ErrAccountBusy
 		}
 		other.State, other.Tool = StateEnded, "" // that one was lost long ago; make way
 	}
-	// an account keeps the record of its current session only
+	// an account keeps the record of its current desk session only, and of one session per task
 	for sid, old := range h.sessions {
-		if old.Account == acc.ID && sid != id {
+		if old.Account == acc.ID && old.Task == task && sid != id {
 			h.dropSessionLocked(sid)
 		}
 	}
@@ -336,6 +354,7 @@ func (h *Hub) sessionLocked(id string, acc *Account) (s *Session, fresh bool, er
 		s = &Session{ID: id, Account: acc.ID, Agents: map[string]*Agent{}, Started: now}
 		h.sessions[id] = s
 	}
+	s.Task = task
 	s.State, s.Updated, s.StateSince = StateIdle, now, now // lost and back again; carry on
 	return s, true, nil
 }
@@ -351,7 +370,11 @@ func (h *Hub) Apply(ev Event, acc *Account) error {
 			return nil
 		}
 	}
-	s, fresh, err := h.sessionLocked(ev.Session, acc)
+	task := ev.Task
+	if s := h.sessions[ev.Session]; s != nil && task == "" {
+		task = s.Task
+	}
+	s, fresh, err := h.sessionLocked(ev.Session, acc, task)
 	if err != nil {
 		return err
 	}
@@ -367,6 +390,12 @@ func (h *Hub) Apply(ev Event, acc *Account) error {
 	// every mod event carries the folder and the launch id, so a restarted bridge can restore them
 	if ev.Cwd != "" {
 		s.Cwd = ev.Cwd
+		// the account remembers where its desk session works (however it was started), so the employee can join a
+		// task there once off duty
+		if a := h.accounts[acc.ID]; s.Task == "" && a != nil && a.Dir != ev.Cwd {
+			a.Dir = ev.Cwd
+			_ = h.saveLocked()
+		}
 	}
 	if ev.Launch != "" && s.Launch == "" {
 		s.Launch = ev.Launch
@@ -386,6 +415,9 @@ func (h *Hub) Apply(ev Event, acc *Account) error {
 		}
 	}
 	s.Updated = h.now()
+	if fresh && s.Task != "" {
+		h.joinTaskLocked(s)
+	}
 	if ev.Kind == "heartbeat" && !fresh {
 		return nil // a heartbeat only keeps the session alive; nothing to tell the page
 	}
@@ -476,6 +508,9 @@ func (h *Hub) Apply(ev Event, acc *Account) error {
 	h.refreshWaitingLocked(s)
 	h.markStateLocked(s, before)
 	h.broadcastLocked(extra)
+	if ev.Kind == "session.end" && s.Task != "" {
+		h.checkTaskLocked(s.Task) // the last member gone ends the task
+	}
 	return nil
 }
 
@@ -507,14 +542,21 @@ func (h *Hub) Reap() {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	changed := false
+	var tasks []string
 	for _, s := range h.sessions {
 		if s.State != StateEnded && h.now().Sub(s.Updated) >= StaleAfter {
 			s.State, s.Tool, s.StateSince = StateEnded, "", h.now()
 			changed = true
+			if s.Task != "" {
+				tasks = append(tasks, s.Task)
+			}
 		}
 	}
 	if changed {
 		h.broadcastLocked(nil)
+	}
+	for _, t := range tasks {
+		h.checkTaskLocked(t)
 	}
 }
 
@@ -571,14 +613,14 @@ func parseIncoming(text string) (from, body string) {
 }
 
 // sessionByNameLocked finds an online session by name: the session name in Claude first, then the
-// account name; the most recently active one wins.
+// account name (a desk session's only: bob is not bob-T7); the most recently active one wins.
 func (h *Hub) sessionByNameLocked(name string) *Session {
 	var best *Session
 	for _, s := range h.sessions {
 		if s.State == StateEnded {
 			continue
 		}
-		if s.Title != name && (h.accounts[s.Account] == nil || h.accounts[s.Account].Name != name) {
+		if s.Title != name && (s.Task != "" || h.accounts[s.Account] == nil || h.accounts[s.Account].Name != name) {
 			continue
 		}
 		if best == nil || s.Updated.After(best.Updated) {
@@ -588,9 +630,16 @@ func (h *Hub) sessionByNameLocked(name string) *Session {
 	return best
 }
 
-// nameLocked is the name a session goes by: the account name, or the session name once the account is gone.
+// nameLocked is the name a session goes by: a desk session's is the account name (or the session name once the
+// account is gone), a task session's its session name (bob-T7).
 func (h *Hub) nameLocked(s *Session) string {
+	if s.Task != "" && s.Title != "" {
+		return s.Title
+	}
 	if a := h.accounts[s.Account]; a != nil {
+		if s.Task != "" {
+			return a.Name + "-" + s.Task
+		}
 		return a.Name
 	}
 	return s.Title
@@ -740,7 +789,11 @@ type AskRequest struct {
 func (h *Hub) CreateAsk(req AskRequest, acc *Account) (string, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	s, _, err := h.sessionLocked(req.Session, acc)
+	task := "" // the mod doesn't send it with an ask; the session reported it before
+	if s := h.sessions[req.Session]; s != nil {
+		task = s.Task
+	}
+	s, _, err := h.sessionLocked(req.Session, acc, task)
 	if err != nil {
 		return "", err
 	}
@@ -842,10 +895,13 @@ func (h *Hub) failLaunch(id string, why *Error) {
 	if l := h.launches[id]; l != nil && l.Status == LaunchStarting {
 		l.Status, l.Error, l.ErrorCode, l.ErrorParams = LaunchFailed, why.Text, why.Code, why.Params
 		h.broadcastLocked(map[string]any{"type": "launch", "id": id})
+		if l.Task != "" {
+			h.checkTaskLocked(l.Task) // a task whose last member never came ends
+		}
 	}
 }
 
-// recentDirs are recently used folders, offered as shortcuts in the launch dialog.
+// recentDirs are recently used folders, offered as shortcuts in the launch dialog; task sessions' worktrees aren't.
 func (h *Hub) recentDirs(n int) []string {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -855,10 +911,12 @@ func (h *Hub) recentDirs(n int) []string {
 	}
 	var all []seen
 	for _, l := range h.launches {
-		all = append(all, seen{l.Dir, l.Time})
+		if l.Task == "" {
+			all = append(all, seen{l.Dir, l.Time})
+		}
 	}
 	for _, s := range h.sessions {
-		if s.Cwd != "" {
+		if s.Cwd != "" && s.Task == "" {
 			all = append(all, seen{s.Cwd, s.Updated})
 		}
 	}

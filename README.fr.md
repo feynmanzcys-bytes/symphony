@@ -14,6 +14,7 @@ Réunissez une équipe de sessions Claude Code dans un bureau en pixel art : voy
 - **Retrouver quelqu’un et le rappeler** : cliquez sur un employé disponible et il retourne à son poste (il y reste jusqu’à sa prochaine tâche) ; le champ de recherche de la barre du haut trouve les employés par nom ou par dossier (touche `/` pour y aller), et un clic sur un compteur à côté (disponible, occupé, en attente, hors service) fait ressortir tous les employés dans cet état. L’onglet sous la barre la range vers le haut et la fait redescendre.
 - **Messages entre sessions** : quand des sessions s’envoient des messages (SendMessage), une enveloppe traverse le bureau, et le journal des messages les conserve.
 - **Démarrer des sessions depuis la page, sans qu’aucune fenêtre ne s’ouvre** : cliquez sur le « + » d’un poste libre pour embaucher un nouvel employé, puis choisissez le dossier, le modèle, l’effort de réflexion et le mode d’autorisation (un nouvel employé démarre avec tout autorisé, Opus et le maximum de réflexion) ; cliquez sur « Au travail ! » dans la fenêtre d’un employé hors service pour le faire revenir à son poste. La session tourne sur un terminal à elle, à l’intérieur du bridge : rien ne s’ouvre et rien ne vous prend le focus ; « Ouvrir le terminal » dans la fenêtre de l’employé montre ce terminal quand vous le voulez, et le fermer ne change rien.
+- **Des équipes dans les salles de réunion** : cliquez sur une petite salle de réunion libre, écrivez une tâche et choisissez de 2 à 5 membres : des employés, qui reçoivent chacun une deuxième session rien que pour la tâche, ou des conseillers ponctuels. Par défaut, le premier membre dirige et distribue les parts avec SendMessage ; chaque membre travaille dans son propre worktree git, sur sa propre branche, si bien que personne ne marche sur les fichiers des autres. Les membres restent assis dans la salle jusqu’à la fin de la tâche.
 - **10 langues** : English, 简体中文, 繁體中文, 日本語, 한국어, Español, Français, Deutsch, Português (Brasil) et Русский. La page suit la langue de votre navigateur et propose un sélecteur de langue dans la barre du haut ; les messages du bridge suivent la langue de votre système (ou `-lang`), et ceux du mod suivent la page qui a démarré la session.
 - **Tout en local** : le bridge est un seul programme Go (bibliothèque standard uniquement), les pages sont en JavaScript pur, et rien ne dépend d’un service tiers.
 
@@ -23,6 +24,7 @@ Réunissez une équipe de sessions Claude Code dans un bureau en pixel art : voy
 
 - Claude Code 2.1.316 (testé avec cette version). Le mod utilise les function hooks de Claude Code, une API encore en accès anticipé : après chaque mise à jour de Claude Code, relancez les tests de bout en bout.
 - Le bridge existe en programme prêt à l’emploi pour Linux, macOS et Windows ; Go 1.27 ou plus récent n’est nécessaire que pour le lancer depuis les sources.
+- `git`, pour les tâches en équipe seulement : chaque membre d’une tâche travaille dans un worktree git.
 - Rien d’autre : les sessions démarrées depuis la page tournent dans le bridge, sur toutes les plateformes.
 
 ## Installation
@@ -115,9 +117,30 @@ Le mode d’autorisation `manual` est recommandé : en mode `auto`, la plupart d
 
 Quand rien ne répond à l’adresse du bridge sur cette machine, la session démarre elle-même le bridge avec `symphony -background` (si `symphony` est dans votre PATH), et le bridge continue de tourner après la fin de la session. Définissez `SYMPHONY_DATA` si vos comptes ne sont pas dans le dossier de données par défaut.
 
+## Tâches en équipe
+
+Une petite salle de réunion, c’est l’endroit où une équipe de 2 à 5 sessions travaille ensemble sur une même tâche. Les tâches demandent `git` et le mod en version 0.7.0 (`claude plugin update symphony-bridge@symphony`).
+
+**Lancer une tâche** : cliquez sur une petite salle de réunion libre et décrivez ce qu’il faut faire. Cochez les membres dans l’ordre voulu (de 2 jusqu’au nombre de places de la salle), choisissez le modèle et l’effort de réflexion de chacun ainsi que le mode d’autorisation de l’équipe (tout autorisé par défaut), puis cliquez sur « Lancer la tâche ». Un membre peut être :
+
+- **Un employé** : il reçoit une deuxième session rien que pour la tâche, qui travaille dans le dossier de l’employé ; sa session habituelle, à son poste, reste telle quelle. Un employé n’est que dans une tâche à la fois, et celui qui n’a jamais travaillé n’a pas encore de dossier : cliquez d’abord une fois sur « Au travail ! ».
+- **Un conseiller** : un participant ponctuel créé pour la tâche avec les champs habituels (nom, dossier, modèle, effort de réflexion). Il n’a pas de poste, arrive par l’ascenseur et disparaît à la fin de la tâche.
+
+**Le chef** : par défaut, le premier membre dirige : il découpe la tâche, distribue les parts avec SendMessage, relit le travail, fusionne les branches des autres dans la sienne et vous dit ce qui a été fait. Décochez la case du chef et chacun reçoit toute la tâche, que les membres se répartissent entre eux. Dans les deux cas, le bridge donne à chaque membre sa première instruction : qui fait partie de l’équipe (les membres se joignent par leur nom avec SendMessage), la branche de chacun et les règles.
+
+**Côté git** : chaque membre travaille dans son propre worktree git, sur sa propre branche `symphony/<tâche>/<nom>` de son dossier, si bien que personne ne marche sur les fichiers des autres et que votre propre copie de travail reste telle quelle. Les worktrees sont dans `.symphony/worktrees/` à l’intérieur du dossier, cachés à git par `.git/info/exclude` (votre `.gitignore` n’est pas touché). À la fin de la tâche, ce qu’un membre n’a pas encore commité est commité sur sa branche, donc rien ne se perd, et les worktrees sont supprimés.
+
+- Dans vos propres dépôts, les branches restent, à vous de les fusionner ; s’il y a un chef, sa branche rassemble le travail de tous.
+- Un dossier qui n’est pas un dépôt git en devient un pour la tâche (`git init` et un commit de tout ce qu’il contient). À la fin de la tâche, les branches des membres y sont fusionnées et le `.git` est de nouveau retiré : le dossier redevient de simples fichiers, avec le résultat fusionné.
+- Une fusion qui échoue laisse tout en place (le dépôt et les branches, à démêler à la main), et la fenêtre de la tâche indique quelle branche est en conflit.
+
+**Dans le bureau** : les membres restent assis à la table de la salle pendant toute la tâche, et pendant ce temps le poste d’un employé montre une chaise vide. La plaque de la salle affiche l’identifiant de la tâche ; son voyant, vert tant que la salle est libre, passe au jaune pendant la tâche et au rouge quand un membre attend votre autorisation ou votre réponse. Cliquez sur la salle pour ouvrir la fenêtre de la tâche : la tâche, les membres avec leurs dossiers et leurs branches, et « Terminer la tâche ». Un clic sur un membre à cet endroit, ou sur son personnage dans la salle, ouvre sa fenêtre de discussion, la même que celle d’un employé.
+
+Une tâche se termine quand vous la terminez depuis la fenêtre de la tâche ou quand sa dernière session prend fin : le bridge arrête les sessions des membres, s’occupe de la partie git comme décrit plus haut et supprime les conseillers. Une tâche encore en cours quand le bridge s’arrête est terminée de la même façon au prochain démarrage du bridge.
+
 ## Comptes et postes
 
-- Dans symphony, une identité, c’est un nom, un token et un poste fixe. Un compte ne peut servir qu’à une session à la fois ; une deuxième session est refusée et ses approbations restent dans le terminal.
+- Dans symphony, une identité, c’est un nom, un token et un poste fixe. Un compte ne peut servir qu’à une session à la fois, plus une dans la tâche dont il fait partie ; toute autre session est refusée et ses approbations restent dans le terminal.
 - La connexion à Claude n’est pas gérée ici : toutes les sessions peuvent partager le même identifiant Claude.
 - Les données sont stockées dans `~/.config/symphony` (Linux), `~/Library/Application Support/symphony` (macOS) ou `%AppData%\symphony` (Windows). `accounts.json` contient les tokens et n’est lisible que par son propriétaire (0600) ; sous Windows, ce sont les droits d’accès du dossier utilisateur qui le protègent.
 

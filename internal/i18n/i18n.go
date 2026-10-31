@@ -8,6 +8,7 @@ package i18n
 import (
 	"embed"
 	"encoding/json"
+	"regexp"
 	"strings"
 	"sync"
 )
@@ -107,8 +108,17 @@ func Has(key string) bool {
 
 // TMap is T with the placeholder values in a map.
 func TMap(key string, params map[string]string) string {
+	return TLang(Lang(), key, params)
+}
+
+// TLang is TMap in the given language rather than the bridge's own (a task's kickoff speaks the page's language);
+// an unsupported language means English.
+func TLang(lang, key string, params map[string]string) string {
+	if lang = Match(lang); lang == "" {
+		lang = "en"
+	}
 	mu.Lock()
-	msg, ok := catalog(current)[key]
+	msg, ok := catalog(lang)[key]
 	if !ok {
 		msg, ok = catalog("en")[key]
 	}
@@ -116,11 +126,16 @@ func TMap(key string, params map[string]string) string {
 	if !ok {
 		msg = key
 	}
-	for name, value := range params {
-		msg = strings.ReplaceAll(msg, "{"+name+"}", value)
-	}
-	return msg
+	// one pass, so a value that holds {braces} (a user's text, say) is never filled in again
+	return placeholder.ReplaceAllStringFunc(msg, func(m string) string {
+		if v, ok := params[m[1:len(m)-1]]; ok {
+			return v
+		}
+		return m
+	})
 }
+
+var placeholder = regexp.MustCompile(`\{(\w+)\}`)
 
 // catalog loads a language's messages once; the caller holds mu.
 func catalog(lang string) map[string]string {

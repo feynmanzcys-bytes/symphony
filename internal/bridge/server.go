@@ -77,6 +77,11 @@ func NewServer(hub *Hub, web fs.FS) *Server {
 	s.mux.HandleFunc("POST /api/terminal/{id}/input", s.termInput)
 	s.mux.HandleFunc("POST /api/terminal/{id}/resize", s.termResize)
 	s.mux.HandleFunc("POST /api/terminal/{id}/open", s.termOpen)
+	// tasks in the small meeting rooms
+	s.mux.HandleFunc("GET /api/tasks", s.tasks)
+	s.mux.HandleFunc("POST /api/tasks", s.createTask)
+	s.mux.HandleFunc("POST /api/tasks/{id}/end", s.endTask)
+	s.mux.HandleFunc("DELETE /api/tasks/{id}", s.forgetTask)
 	return s
 }
 
@@ -86,6 +91,7 @@ func (s *Server) SetLauncher(l *Launcher) {
 	s.Launcher = l
 	s.Hub.mu.Lock()
 	s.Hub.AttachHint = l.Term.Attach
+	s.Hub.terms = l.Terms
 	s.Hub.mu.Unlock()
 }
 
@@ -118,8 +124,18 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
+// errStatus is the HTTP status of errors made on the spot (with params), which errors.Is can't tell apart.
+var errStatus = map[string]int{
+	"task_room_busy": http.StatusConflict, "task_member_busy": http.StatusConflict, "task_ended": http.StatusConflict,
+	"task_running": http.StatusConflict, "task_unknown": http.StatusNotFound, "task_no_git": http.StatusPreconditionFailed,
+	"task_git_failed": http.StatusInternalServerError, "pty_start_failed": http.StatusInternalServerError,
+}
+
 func writeErr(w http.ResponseWriter, err error) {
 	status := http.StatusBadRequest
+	if e := (*Error)(nil); errors.As(err, &e) && errStatus[e.Code] != 0 {
+		status = errStatus[e.Code]
+	}
 	switch {
 	case errors.Is(err, ErrUnknownAsk), errors.Is(err, ErrUnknownAccount):
 		status = http.StatusNotFound
@@ -365,20 +381,28 @@ func (s *Server) dirs(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{"path": filepath.Clean(path), "parent": parent, "dirs": dirs, "roots": Roots(runtime.GOOS)})
 }
 
-// launch starts a session for an account: with account it puts that (offline) account back to work,
-// without it a new account named name is created and takes the lowest free seat.
-func (s *Server) launch(w http.ResponseWriter, r *http.Request) {
+// launchReady says whether sessions can be started from the page; when not, it answers why: no launcher (501), or no
+// mod, without which a session could never reach the office (412, with the command that installs it).
+func (s *Server) launchReady(w http.ResponseWriter, r *http.Request) bool {
 	if s.Launcher == nil {
 		writeJSON(w, http.StatusNotImplemented, errorBody(errLaunchDisabled))
-		return
+		return false
 	}
-	// without the mod the session could never reach the office, so don't start it
 	if mod := s.Launcher.Mod(r.Context()); !mod.OK {
 		body := map[string]any{"error": mod.Error, "code": mod.Code, "params": mod.Params, "fix": mod.Fix}
 		if mod.Fix != "" {
 			body["error"] = mod.Error + "; run first: " + mod.Fix
 		}
 		writeJSON(w, http.StatusPreconditionFailed, body)
+		return false
+	}
+	return true
+}
+
+// launch starts a session for an account: with account it puts that (offline) account back to work,
+// without it a new account named name is created and takes the lowest free seat.
+func (s *Server) launch(w http.ResponseWriter, r *http.Request) {
+	if !s.launchReady(w, r) {
 		return
 	}
 	var req LaunchRequest
@@ -394,7 +418,8 @@ func (s *Server) launch(w http.ResponseWriter, r *http.Request) {
 	var acc *Account
 	created := false
 	if req.Account != "" {
-		if acc = s.Hub.Account(req.Account); acc == nil {
+		// an advisor has no desk to work at
+		if acc = s.Hub.Account(req.Account); acc == nil || acc.Advisor {
 			writeErr(w, ErrUnknownAccount)
 			return
 		}

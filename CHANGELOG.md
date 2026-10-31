@@ -2,6 +2,13 @@
 
 What changed in each release of symphony. The program (the bridge) and the mod share one version number. A release's notes start with its section here: the release workflow stops before building when the section is missing.
 
+## v0.7.0 (2026-10-31)
+
+- **Collaborative tasks in the meeting rooms**: a click on a free small meeting room creates a task: write what has to be done, pick 2 to 5 members and start. Members are employees — each gets a second session just for the task, its own session stays as it was — and advisors, one-off participants made with the usual fields (name, folder, model, effort) and gone when the task ends. The first member picked leads by default (it splits the task, hands out the parts with SendMessage, reviews and merges); untick "lead" and everyone gets the whole task. The members sit in the meeting room for the duration; the room's nameplate shows the task; a click on the room opens the task window, where each member's chat is a click away and the task can be ended.
+- **A worktree for everyone**: each member's session runs in its own git worktree on its own branch (`symphony/<task>/<name>`) of that member's folder, so members never step on each other's files and your checkout stays as it was. A folder that isn't a git repository becomes one for the task (`git init`, a commit of everything in it); when the task ends the members' branches are merged into it and the `.git` removed again, so the folder is plain files holding the results (a merge that fails leaves everything in place and says so). In your own repositories the branches stay for you to merge.
+- An account remembers the folder its last session worked in, however that session was started, so an employee off duty can join a task there and "Start work" offers that folder.
+- The mod is 0.7.0 (it reports the task a session belongs to): `claude plugin update symphony-bridge@symphony`.
+
 ## v0.6.1 (2026-10-31)
 
 - Sessions started from the page no longer inherit the bridge's own Claude Code session (its messaging socket and session id): a page-started session is now a clean top-level session, as if launched from a plain terminal. Without this, when the bridge runs inside a Claude Code session (the mod can start it from one), the started sessions collided with it and SendMessage between them was never delivered.

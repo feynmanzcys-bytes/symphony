@@ -5,6 +5,7 @@ import { type Lang, matchLang, message } from './messages'
 //   SYMPHONY_TOKEN    the office account's token: one account serves one session at a time and sets its identity and seat
 //   SYMPHONY_BRIDGE   the bridge's address, by default port 7788 on this machine
 //   SYMPHONY_LAUNCH   the launch id the bridge sets when the page starts a session
+//   SYMPHONY_TASK     the collaborative task's id, when the bridge starts the session as a task member (in a worktree of its own)
 //   SYMPHONY_LANG     the language of the mod's messages (the bridge passes the page's language); else LC_ALL / LC_MESSAGES / LANG
 // The mod is usually installed at user scope, so every Claude Code session loads it, but only sessions started
 // with SYMPHONY_TOKEN belong to the office. In any other session it does nothing: it doesn't contact the bridge,
@@ -37,8 +38,8 @@ type Identity = { bridge: string; headers: Record<string, string>; login?: strin
 let identity: Identity | null | undefined
 let sessionId: string | undefined
 let transcriptPath: string | undefined
-// every event carries the folder and the launch id, so a restarted bridge recognizes the session right away
-let sticky: { cwd?: string; launch?: string } = {}
+// every event carries the folder, the launch id and the task id, so a restarted bridge recognizes the session right away
+let sticky: { cwd?: string; launch?: string; task?: string } = {}
 // the model and effort last reported to the bridge; reported again only when they change
 let reported = { model: '', effort: '' }
 let heartbeat: { cancel: () => void } | undefined
@@ -316,7 +317,7 @@ export const register: Register = on => {
     const id = await ident($)
     if (!id) return started
     // sessions started from the page carry the bridge's launch id, which matches the session with its tmux window
-    sticky = { cwd: e.cwd, launch: (await $.env.get('SYMPHONY_LAUNCH')) || undefined }
+    sticky = { cwd: e.cwd, launch: (await $.env.get('SYMPHONY_LAUNCH')) || undefined, task: (await $.env.get('SYMPHONY_TASK')) || undefined }
     const model = await $.session.model()
     reported = { model, effort: '' }
     ended = false

@@ -128,6 +128,7 @@ func main() {
 		signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 		go func() {
 			<-stop
+			hub.Stop() // no task ends by itself from here on: killing the members would start tidying git up just as we leave
 			l.Terms.KillAll()
 			os.Exit(0)
 		}()

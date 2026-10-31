@@ -14,6 +14,7 @@ Put a team of Claude Code sessions in a pixel-art office: see at a glance who is
 - **Find anyone, call them back**: click an idle employee and it heads back to its desk (and stays there until its next turn); the search box in the bar at the top finds employees by name or folder (press `/` to jump to it), and clicking a count beside it (idle, working, pending, off duty) lights up everyone in that state. The tab under the bar slides it up out of the way and back.
 - **Messages between sessions**: when sessions message each other (SendMessage), an envelope flies across the office, and a message log keeps them.
 - **Start sessions from the page, nothing pops up**: click the "+" on an empty desk to hire a new employee and pick the folder, model, thinking effort and permission mode (a new employee starts with everything allowed, Opus and the most thinking); click "Start work" on an off-duty employee to bring them back to the same desk. The session runs on a terminal of its own inside the bridge, so no window opens and nothing takes your focus; "Open terminal" in the employee's window shows that terminal when you want it, and closing the window changes nothing.
+- **Teams in the meeting rooms**: click a free small meeting room, write a task and pick 2 to 5 members: employees, who each get a second session just for the task, or one-off advisors. The first member leads by default and hands out the parts with SendMessage; every member works in its own git worktree on its own branch, so nobody steps on anyone's files. The members sit in the meeting room until the task ends.
 - **10 languages**: English, 简体中文, 繁體中文, 日本語, 한국어, Español, Français, Deutsch, Português (Brasil) and Русский. The page follows your browser's language and has a language picker in the bar at the top; the bridge's messages follow your system language (or `-lang`), and the mod's messages follow the page that started the session.
 - **Local only**: the bridge is a single Go program (standard library only), the pages are plain JavaScript, and nothing depends on a third-party service.
 
@@ -23,6 +24,7 @@ Put a team of Claude Code sessions in a pixel-art office: see at a glance who is
 
 - Claude Code 2.1.316 (tested with this version). The mod uses Claude Code's function hooks, which are still an early-access API, so run the end-to-end tests after upgrading Claude Code.
 - The bridge comes as a ready-made program for Linux, macOS and Windows; Go 1.27 or later is only needed to run it from source.
+- `git`, for collaborative tasks only: every member of a task works in a git worktree.
 - Nothing else: sessions started from the page run inside the bridge, on every platform.
 
 ## Install
@@ -115,9 +117,30 @@ The `manual` permission mode is recommended: in `auto` mode most actions don't a
 
 When nothing answers at the bridge's address on this machine, the session starts the bridge itself with `symphony -background` (if `symphony` is on your PATH), and the bridge keeps running after the session ends. Set `SYMPHONY_DATA` if your accounts aren't in the default data folder.
 
+## Collaborative tasks
+
+A small meeting room is where a team of 2 to 5 sessions works together on one task. Tasks need `git` and the mod at 0.7.0 (`claude plugin update symphony-bridge@symphony`).
+
+**Start a task**: click a free small meeting room and describe what has to be done. Tick the members in the order you want them (2 up to the room's seats), pick each one's model and thinking effort and the team's permission mode (everything allowed by default), then click "Start the task". A member is one of:
+
+- **An employee**: it gets a second session just for the task, working in the employee's folder; its own session at the desk is left as it was. An employee is in one task at a time, and one that has never worked has no folder yet: click "Start work" once first.
+- **An advisor**: a one-off participant made for the task with the usual fields (name, folder, model, thinking effort). It has no desk, comes in by the lift, and is gone when the task ends.
+
+**The lead**: by default the first member leads: it splits the task, hands out the parts with SendMessage, reviews the work, merges the others' branches into its own and tells you what was done. Untick the lead box and everyone gets the whole task and shares it out with the others. Either way the bridge gives each member its first prompt: who is on the team (the members reach each other by name with SendMessage), everyone's branch, and the rules.
+
+**Git**: every member works in its own git worktree on its own branch, `symphony/<task>/<name>`, of its folder, so members never step on each other's files and your own checkout stays as it was. The worktrees are in the folder's `.symphony/worktrees/`, hidden from git by `.git/info/exclude` (your `.gitignore` is left alone). When the task ends, whatever a member hasn't committed is committed to its branch, so nothing is lost, and the worktrees are removed.
+
+- In your own repositories the branches stay for you to merge; with a lead, the lead's branch gathers everyone's work.
+- A folder that isn't a git repository becomes one for the task (`git init` and a commit of everything in it). When the task ends, the members' branches are merged into it and the `.git` is removed again: the folder is back to plain files holding the merged result.
+- A merge that fails leaves everything in place, the repository and the branches, for you to sort out by hand, and the task window says which branch conflicts.
+
+**In the office**: the members sit at the room's table for the whole task, and an employee's desk shows an empty chair meanwhile. The room's nameplate shows the task id; its light, green while the room is free, turns yellow while the task runs and red while a member waits for your approval or answer. Click the room for the task window: the task, the members with their folders and branches, and "End the task". A click on a member there, or on its figure in the room, opens its chat window, the same as an employee's window.
+
+A task ends when you end it in the task window or when its last session ends: the bridge stops the members' sessions, takes care of the git side as above and deletes the advisors. A task still running when the bridge stops is ended the same way when the bridge starts again.
+
 ## Accounts and seats
 
-- An identity in symphony is a name, a token and a fixed seat. An account serves one session at a time; a second session is refused and its approvals stay in the terminal.
+- An identity in symphony is a name, a token and a fixed seat. An account serves one session at a time, plus one in the task it's part of; any other session is refused and its approvals stay in the terminal.
 - Claude logins are not managed here: all sessions may share one Claude login.
 - Data lives in `~/.config/symphony` (Linux), `~/Library/Application Support/symphony` (macOS) or `%AppData%\symphony` (Windows). `accounts.json` holds the tokens and is readable by its owner only (0600); on Windows the user folder's permissions protect it.
 

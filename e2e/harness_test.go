@@ -28,6 +28,7 @@ import (
 
 type testBridge struct {
 	URL      string
+	Data     string // the data folder (accounts.json with the tokens, tasks.json)
 	Hub      *bridge.Hub
 	Launcher *bridge.Launcher
 	// anon counts requests to the mod endpoints without a token: a session without SYMPHONY_TOKEN must send none
@@ -43,11 +44,12 @@ type testBridge struct {
 func startBridge(t *testing.T, mod string) *testBridge {
 	t.Helper()
 	hub := bridge.NewHub()
-	if err := hub.Open(t.TempDir()); err != nil {
+	data := t.TempDir()
+	if err := hub.Open(data); err != nil {
 		t.Fatal(err)
 	}
 	srv := bridge.NewServer(hub, web.FS)
-	b := &testBridge{Hub: hub}
+	b := &testBridge{Hub: hub, Data: data}
 	ts := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if isModAPI(r.URL.Path) && r.Header.Get("Authorization") == "" {
 			b.anon.Add(1)

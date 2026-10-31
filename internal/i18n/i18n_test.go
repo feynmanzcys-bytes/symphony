@@ -71,6 +71,23 @@ func TestT(t *testing.T) {
 	}
 }
 
+// TestTLang: a message in a language other than the bridge's own, English for an unsupported one, and values filled
+// in once (a value holding {braces} stays as it is).
+func TestTLang(t *testing.T) {
+	t.Cleanup(func() { SetLang("en") })
+	SetLang("ja")
+	line := map[string]string{"name": "bob-T1", "dir": "/w/{dir}", "branch": "symphony/T1/bob", "worktree": "/w/.symphony/worktrees/bob-T1"}
+	if got := TLang("zh_CN.UTF-8", "task.kickoff.teammate", line); got != "- bob-T1：仓库 /w/{dir}，分支 symphony/T1/bob，工作树 /w/.symphony/worktrees/bob-T1" {
+		t.Fatalf("zh-CN message: %q", got)
+	}
+	if got := TLang("xx", "task.kickoff.teammate", line); got != "- bob-T1: repository /w/{dir}, branch symphony/T1/bob, worktree /w/.symphony/worktrees/bob-T1" {
+		t.Fatalf("an unsupported language should mean English: %q", got)
+	}
+	if Lang() != "ja" {
+		t.Fatalf("TLang must leave the bridge's language alone, got %q", Lang())
+	}
+}
+
 // TestCatalogs checks every language against English, for the bridge's catalogs and the page's:
 // the same keys, and the same {placeholders} in each message, so no translation drops or invents a value.
 func TestCatalogs(t *testing.T) {
@@ -92,6 +109,7 @@ func TestKeysInUse(t *testing.T) {
 		t.Fatal(err)
 	}
 	call := regexp.MustCompile(`i18n\.T(?:Map)?\("([^"]+)"\s*[,)]`) // literal keys only; "error."+code is dynamic
+	inLang := regexp.MustCompile(`i18n\.TLang\([^,()]+,\s*"([^"]+)"\s*,`)
 	used := 0
 	for _, dir := range []string{"../../cmd", "../../internal"} {
 		_ = filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
@@ -102,10 +120,12 @@ func TestKeysInUse(t *testing.T) {
 			if err != nil {
 				return err
 			}
-			for _, m := range call.FindAllStringSubmatch(string(src), -1) {
-				used++
-				if _, ok := en[m[1]]; !ok {
-					t.Errorf("%s asks for %q, which en.json lacks", path, m[1])
+			for _, re := range []*regexp.Regexp{call, inLang} {
+				for _, m := range re.FindAllStringSubmatch(string(src), -1) {
+					used++
+					if _, ok := en[m[1]]; !ok {
+						t.Errorf("%s asks for %q, which en.json lacks", path, m[1])
+					}
 				}
 			}
 			return nil
@@ -149,8 +169,6 @@ func TestWebKeysInUse(t *testing.T) {
 		t.Fatalf("found only %d keys in the pages; is the scan looking in the right place?", used)
 	}
 }
-
-var placeholder = regexp.MustCompile(`\{(\w+)\}`)
 
 func checkCatalogs(t *testing.T, read func(lang string) ([]byte, error)) {
 	t.Helper()

@@ -79,6 +79,7 @@ type Launch struct {
 	ErrorParams map[string]string `json:"errorParams,omitempty"`
 	Session     string            `json:"session,omitempty"`
 	Time        time.Time         `json:"time"`
+	Task        string            `json:"task,omitempty"` // the task a member's session is started for
 }
 
 // Launcher starts Claude Code in an interactive terminal (how depends on the platform, see Terminal)
@@ -272,18 +273,28 @@ func normalizeLaunch(req LaunchRequest) (LaunchRequest, error) {
 	if req.Account == "" && !validName(req.Name) {
 		return req, ErrBadName
 	}
-	if !filepath.IsAbs(req.Dir) {
-		return req, newError("launch_dir_not_absolute", "the folder must be an absolute path")
-	}
-	req.Dir = filepath.Clean(req.Dir)
-	if fi, err := os.Stat(req.Dir); err != nil || !fi.IsDir() {
-		return req, newError("launch_dir_missing", "folder does not exist: "+req.Dir, "dir", req.Dir)
+	var err error
+	if req.Dir, err = normalizeDir(req.Dir); err != nil {
+		return req, err
 	}
 	if !validOption(launchModels, req.Model) || !validOption(launchEfforts, req.Effort) ||
 		!validOption(launchPermissionModes, req.PermissionMode) || !validOption(launchResumes, req.Resume) {
 		return req, newError("launch_bad_option", "unknown drop-down value")
 	}
 	return req, nil
+}
+
+// normalizeDir checks a folder to start a session in: an existing absolute directory, cleaned.
+func normalizeDir(dir string) (string, error) {
+	dir = strings.TrimSpace(dir)
+	if !filepath.IsAbs(dir) {
+		return dir, newError("launch_dir_not_absolute", "the folder must be an absolute path")
+	}
+	dir = filepath.Clean(dir)
+	if fi, err := os.Stat(dir); err != nil || !fi.IsDir() {
+		return dir, newError("launch_dir_missing", "folder does not exist: "+dir, "dir", dir)
+	}
+	return dir, nil
 }
 
 // Start opens a terminal that runs claude; env holds the extra environment variables.

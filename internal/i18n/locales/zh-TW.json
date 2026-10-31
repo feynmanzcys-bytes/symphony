@@ -52,5 +52,9 @@
   "attach.failed": "無法連線：{reason}",
   "attach.banner": "symphony：{name} 的終端機。Ctrl-] 或關閉本視窗即中斷連線，工作階段繼續執行。",
   "attach.detached": "symphony：已與 {name} 中斷連線，工作階段繼續執行。",
-  "attach.ended": "symphony：{name} 的工作階段已結束。"
+  "attach.ended": "symphony：{name} 的工作階段已結束。",
+  "task.kickoff.teammate": "- {name}：儲存庫 {dir}，分支 {branch}，工作樹 {worktree}",
+  "task.kickoff.lead": "你是任務 {task}（會議室 {room}）的負責人。使用者的任務：\n\n{title}\n\n你的團隊——本機上的 Claude Code 工作階段；用 SendMessage 按下面的名字聯絡他們（他們會出現在 ListAgents 裡）：\n{team}\n\n你是 {name}：你在自己的 git 工作樹 {worktree} 裡工作，用的是 {dir} 的分支 {branch}（基礎分支 {base}）；每位隊友在各自的儲存庫裡都有自己的工作樹和分支，誰也不會碰到別人的檔案。把任務拆開，用 SendMessage 給每位隊友分配他們的部分，回答他們的問題，審查他們回報的成果。他們完成後，把他們的分支合併進你的分支（在你的工作樹裡 git merge <branch>），然後告訴使用者做了什麼、還剩什麼；由使用者把你的分支合併進 {base}。",
+  "task.kickoff.member": "你是任務 {task}（會議室 {room}）的成員；負責人是 {lead}。使用者的任務：\n\n{title}\n\n你的團隊——本機上的 Claude Code 工作階段；用 SendMessage 按下面的名字聯絡他們（他們會出現在 ListAgents 裡）：\n{team}\n\n你是 {name}：你在自己的 git 工作樹 {worktree} 裡工作，用的是 {dir} 的分支 {branch}（基礎分支 {base}）；每位隊友都有自己的工作樹和分支，誰也不會碰到別人的檔案。等負責人給你分配工作（會以訊息的形式送達），有不清楚的地方就問，把你的工作提交到你的分支，完成後告訴負責人。",
+  "task.kickoff.flat": "你是任務 {task}（會議室 {room}）的成員。使用者的任務：\n\n{title}\n\n你的團隊——本機上的 Claude Code 工作階段；用 SendMessage 按下面的名字聯絡他們（他們會出現在 ListAgents 裡）：\n{team}\n\n你是 {name}：你在自己的 git 工作樹 {worktree} 裡工作，用的是 {dir} 的分支 {branch}（基礎分支 {base}）；每位隊友都有自己的工作樹和分支，誰也不會碰到別人的檔案。用 SendMessage 彼此商量好誰做什麼，把你的工作提交到你的分支，完成後告訴使用者。"
 }

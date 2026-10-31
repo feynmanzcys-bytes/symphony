@@ -100,11 +100,16 @@
   .emp-label.found { animation:found .4s steps(1) 8; }
   @keyframes found { 50% { background:#f2b705; } }
   .room-label { position:absolute; background:rgba(43,42,40,.82); color:#fffdf7; padding:0 6px; font-size:11px; line-height:1.6; letter-spacing:1px; white-space:nowrap; }
-  /* the small meeting rooms' nameplates, beside their doors, with a light that's green while the room is free */
+  /* the small meeting rooms' nameplates, beside their doors, with a light: green while the room is free, yellow while a
+     task runs in it, red while one of its members waits for you or the task failed */
   .room-plate { position:absolute; transform:translateY(-50%); pointer-events:auto; cursor:default; box-sizing:border-box; background:#2b2a28; color:#f3e6bf;
     border:2px solid #9a7b3c; padding:0 6px 0 5px; font-size:11px; font-weight:700; line-height:1.45; letter-spacing:1px; white-space:nowrap;
     overflow:hidden; text-overflow:ellipsis; box-shadow:2px 2px 0 rgba(0,0,0,.3); } /* no wider than its room (placeLabels); the full name shows on hover */
   .room-plate i { display:inline-block; width:6px; height:6px; margin-right:5px; vertical-align:1px; background:#2e9e5b; }
+  .room-plate.busy i { background:#f2b705; }
+  .room-plate.alert i { background:#d64541; }
+  .room-plate.click { cursor:pointer; }
+  .room-plate.click:hover { border-color:#f2b705; }
   .sign-text { position:absolute; transform:translate(-50%, -50%); color:#fffdf7; font:700 13px/1 ui-monospace, monospace; letter-spacing:3px; white-space:nowrap; }
   .seat-add { position:absolute; transform:translate(-50%, -50%); pointer-events:auto; cursor:pointer; width:22px; height:22px; padding:0;
     background:#fffdf7; color:#2b2a28; border:2px solid #2b2a28; font:700 16px/16px ui-monospace, monospace; box-shadow:2px 2px 0 rgba(0,0,0,.3); }
@@ -130,6 +135,8 @@
   .chat .meta { display:flex; flex-wrap:wrap; gap:4px 6px; margin-top:6px; }
   .chat .meta span { font-size:11px; line-height:1.5; padding:0 6px; border:1px solid #d6d1c6; background:#f6f3ec; color:#2b2a28; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .chat .meta span b { color:#8a867e; font-weight:400; margin-right:4px; }
+  .chat .meta span.task { cursor:pointer; background:#fff3cf; border-color:#c9961a; } /* a task session's: opens the task window */
+  .chat .meta span.task:hover { background:#f2b705; }
   .chat .btns { display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
   .chat .btns button { font-size:12px; }
   .chat .flow { flex:1; overflow:auto; padding:12px 16px; background:#f6f3ec; display:flex; flex-direction:column; gap:8px; }
@@ -201,17 +208,70 @@
   #launch .row { display:flex; gap:6px; }
   #launch .row input { flex:1; }
   #launch .grid { display:grid; grid-template-columns:1fr 1fr; gap:0 10px; }
-  #launch .browser { border:2px solid #2b2a28; margin-top:6px; background:#fff; }
-  #launch .browser .cur { padding:3px 6px; background:#ece8df; font:12px ui-monospace, monospace; word-break:break-all; }
-  #launch .browser ul { list-style:none; margin:0; padding:0; max-height:180px; overflow:auto; }
-  #launch .browser li { padding:2px 8px; cursor:pointer; font-size:13px; }
-  #launch .browser li:hover { background:#f2b705; }
-  #launch .browser .pick { margin:6px; }
-  #launch .recent { margin-top:4px; display:flex; flex-wrap:wrap; gap:4px; }
-  #launch .recent span { font:11px ui-monospace, monospace; border:1px solid #b9b3a8; padding:0 5px; cursor:pointer; }
+  :is(#launch, #task) .browser { border:2px solid #2b2a28; margin-top:6px; background:#fff; }
+  :is(#launch, #task) .browser .cur { padding:3px 6px; background:#ece8df; font:12px ui-monospace, monospace; word-break:break-all; }
+  :is(#launch, #task) .browser ul { list-style:none; margin:0; padding:0; max-height:180px; overflow:auto; }
+  :is(#launch, #task) .browser li { padding:2px 8px; cursor:pointer; font-size:13px; }
+  :is(#launch, #task) .browser li:hover { background:#f2b705; }
+  :is(#launch, #task) .browser .pick { margin:6px; }
+  :is(#launch, #task) .recent { margin-top:4px; display:flex; flex-wrap:wrap; gap:4px; }
+  :is(#launch, #task) .recent span { font:11px ui-monospace, monospace; border:1px solid #b9b3a8; padding:0 5px; cursor:pointer; }
   #launch pre { margin:10px 0 0; padding:6px 8px; background:#2b2a28; color:#f2efe8; font:12px/1.5 ui-monospace, monospace; white-space:pre-wrap; overflow-wrap:anywhere; }
-  #launch .status { margin-top:8px; font-size:12px; white-space:pre-wrap; }
-  #launch .status.err { color:#c0392b; }
+  :is(#launch, #task) .status { margin-top:8px; font-size:12px; white-space:pre-wrap; }
+  :is(#launch, #task) .status.err { color:#c0392b; }
+  /* the task dialog: the launch dialog's fields, the employees ticked in order and the advisors, numbered as the team */
+  #task .panel { width:min(680px, calc(100vw - 32px)); }
+  #task label { display:block; margin:8px 0 2px; font-size:12px; color:#6f6b64; }
+  #task :is(input:not([type=checkbox]), select, textarea) { width:100%; box-sizing:border-box; font:inherit; color:#2b2a28; background:#fff; border:2px solid #2b2a28; padding:3px 6px; }
+  #task textarea { resize:vertical; }
+  #task .mem, #task .adv { border:2px solid #d6d1c6; background:#fff; margin-top:4px; padding:3px 6px; }
+  #task .mem { display:flex; align-items:center; gap:6px; }
+  #task .mem label { flex:1; min-width:0; display:flex; align-items:center; gap:6px; margin:0; font-size:13px; color:#2b2a28; cursor:pointer; }
+  #task .mem label .dot { flex:none; margin:0; }
+  #task .mem.off label { cursor:default; opacity:.5; }
+  #task .mem .nm { font-weight:700; white-space:nowrap; }
+  #task .mem small { color:#8a867e; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #task .mem select, #task .adv .grid select { width:auto; max-width:150px; }
+  #task .mem:not(.on) select { visibility:hidden; }
+  #task .on { border-color:#2b2a28; }
+  #task .ord { flex:none; min-width:16px; padding:0 3px; box-sizing:border-box; text-align:center; font:700 11px/16px ui-monospace, monospace; color:#fffdf7; background:#2b2a28; }
+  #task .ord:empty { background:none; }
+  #task .lead-tag { display:none; flex:none; font-size:11px; line-height:16px; padding:0 5px; background:#f2b705; color:#2b2a28; white-space:nowrap; }
+  #task .lead .lead-tag { display:inline-block; }
+  #task .adv .line { display:flex; align-items:center; gap:6px; }
+  #task .adv .line input { flex:1; }
+  #task .adv .kind { flex:none; font-size:11px; padding:0 5px; border:1px solid #b9b3a8; color:#6f6b64; white-space:nowrap; }
+  #task .adv .row { display:flex; gap:6px; margin-top:4px; }
+  #task .adv .row input { flex:1; }
+  #task .adv .grid { display:flex; gap:6px; margin-top:4px; }
+  #task .add-adv { margin-top:6px; }
+  #task label.check { display:flex; align-items:center; gap:6px; color:#2b2a28; font-size:13px; margin-top:10px; cursor:pointer; }
+  #task .actions { align-items:center; }
+  #task .count { margin-right:auto; font-size:12px; color:#6f6b64; }
+  #task .count.over { color:#c0392b; font-weight:700; }
+  /* the task window: what the team is on, its members (a click opens one's window), the button to end it */
+  #taskwin .panel { position:relative; width:min(780px, calc(100vw - 32px)); }
+  #taskwin .close { position:absolute; right:10px; top:6px; cursor:pointer; color:#8a867e; font-size:14px; }
+  #taskwin .top { display:flex; align-items:center; gap:10px; margin-right:24px; }
+  #taskwin .top h2 { margin:0; }
+  #taskwin .top .status { font-size:12px; line-height:1.6; padding:0 8px 0 6px; border:2px solid #2b2a28; border-left:6px solid var(--c, #a9a49b); white-space:nowrap; }
+  #taskwin .desc { margin-top:8px; padding:6px 10px; background:#f6f3ec; border:1px solid #d6d1c6; white-space:pre-wrap; overflow-wrap:anywhere; max-height:30vh; overflow:auto; }
+  #taskwin .mode { margin-top:6px; font-size:12px; color:#6f6b64; }
+  #taskwin .err { margin-top:8px; padding:4px 8px; border:2px solid #d64541; background:#fdecea; color:#8a2a26; font-size:12px; white-space:pre-wrap; overflow-wrap:anywhere; }
+  #taskwin .mode[hidden], #taskwin .err[hidden] { display:none; }
+  #taskwin .members { margin-top:10px; border-top:2px solid #2b2a28; }
+  #taskwin .mrow { display:flex; align-items:center; gap:8px; padding:5px 6px; border-bottom:1px dashed #d6d1c6; cursor:pointer; font-size:13px; }
+  #taskwin .mrow:hover { background:#f2efe8; }
+  #taskwin .mrow.wait { cursor:default; color:#8a867e; }
+  #taskwin .mrow.wait:hover { background:none; }
+  #taskwin .mrow .dot { flex:none; margin:0; }
+  #taskwin .mrow b { white-space:nowrap; }
+  #taskwin .badge { flex:none; font-size:11px; padding:0 5px; white-space:nowrap; }
+  #taskwin .badge.lead { background:#f2b705; }
+  #taskwin .badge.adv { border:1px solid #b9b3a8; color:#6f6b64; }
+  #taskwin .where { flex:1; min-width:0; color:#6f6b64; font:12px ui-monospace, monospace; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #taskwin .chip { flex:none; font-size:11px; padding:0 6px; border:1px solid #d6d1c6; background:#f6f3ec; white-space:nowrap; }
+  #taskwin .st { flex:none; color:#6f6b64; font-size:12px; white-space:nowrap; max-width:220px; overflow:hidden; text-overflow:ellipsis; }
   /* the message log: a side panel */
   .side { position:fixed; right:12px; top:calc(var(--hud-h, 0px) + 12px); bottom:12px; z-index:5; width:min(340px, calc(100vw - 24px)); overflow:auto; background:#fffdf7; color:#2b2a28;
     border:2px solid #2b2a28; box-shadow:4px 4px 0 rgba(0,0,0,.35); padding:10px 12px; box-sizing:border-box; }
@@ -288,6 +348,37 @@
   </form>
 </div>
 
+<!-- the task dialog: a team of sessions for one task in a small meeting room -->
+<div class="modal" id="task" hidden>
+  <form class="panel" autocomplete="off">
+    <h2 class="title"></h2>
+    <label data-i18n="task.description"></label>
+    <textarea name="desc" rows="4" data-i18n-placeholder="task.descriptionPlaceholder"></textarea>
+    <label data-i18n="task.members"></label>
+    <div class="emps"></div>
+    <div class="advs"></div>
+    <button type="button" class="px add-adv" data-i18n="task.addAdvisor" data-i18n-title="task.advisorTitle"></button>
+    <label class="check"><input type="checkbox" name="leader" checked><span data-i18n="task.leader"></span></label>
+    <label data-i18n="launch.permissionMode"></label>
+    <select name="permissionMode"></select>
+    <div class="status"></div>
+    <div class="actions"><span class="count"></span><button type="button" class="px cancel" data-i18n="common.cancel"></button><button type="submit" class="px primary go" data-i18n="task.go"></button></div>
+  </form>
+</div>
+
+<!-- the task window: what the team is on, who is in it, the button to end it -->
+<div class="modal" id="taskwin" hidden>
+  <div class="panel">
+    <span class="close">✕</span>
+    <div class="top"><h2></h2><span class="status"></span></div>
+    <div class="desc"></div>
+    <div class="mode" data-i18n="task.flat" hidden></div>
+    <div class="err" hidden></div>
+    <div class="members"></div>
+    <div class="actions"></div>
+  </div>
+</div>
+
 <div class="side" id="msgs-panel" hidden><span class="close">✕</span><h2 data-i18n="office.messages"></h2><div class="msgs"></div></div>
 
 <script type="module">
@@ -338,9 +429,16 @@ const base = p => (p || '').split(/[\\/]/).filter(Boolean).pop() || p || '?' // 
 const dot = state => `<span class="dot" style="background:${STATE_COLOR[state] ?? GRAY}"></span>`
 const hash = s => [...String(s)].reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 7) >>> 0
 
-let snapshot = { accounts:[], sessions:[], asks:[], messages:[], launches:[] }
+let snapshot = { accounts:[], sessions:[], asks:[], messages:[], launches:[], tasks:[] }
 let launchOpts = null // /api/launch/options: whether the page can start sessions, and the drop-down choices
-const sessionOf = acc => acc.session ? snapshot.sessions.find(s => s.id === acc.session) : null
+const sessionOf = acc => acc.session ? snapshot.sessions.find(s => s.id === acc.session) : null // the desk session
+const sessionById = id => id ? snapshot.sessions.find(s => s.id === id) ?? null : null
+const asking = sid => !!sid && snapshot.asks.some(a => a.session === sid) // the session waits for an approval or an answer
+// tasks: a team of sessions in a small meeting room; the snapshot has those running, ending or failed
+const taskById = id => snapshot.tasks.find(task => task.id === id) ?? null
+const roomTask = k => snapshot.tasks.filter(task => task.room === k).sort((a, b) => (a.status === 'failed') - (b.status === 'failed'))[0] ?? null
+const roomName = k => t('room.small.' + (k % 24 + 1)) + (k < 24 ? '' : ' ' + ['II', 'III', 'IV'][Math.min(2, Math.floor(k / 24) - 1)])
+const taskRoom = task => task.roomName || roomName(task.room)
 
 // what a session waits for: an approval or an answer
 function waitingText(sessionId) {
@@ -749,10 +847,18 @@ function drawWallScreen(g, x, y) {
 }
 // a table around (cx, cy) for 3 (round: a chair on the far side and one at each end), 4 or 5 (two chairs a side, the
 // fifth at the east end); far is -1 when the room's far wall is north of the table, 1 when it's south
+// The chairs in the order a task's members take them: for 5 the head of the table first, then the far side, then the
+// near side; x, y is a chair's top left (drawSeatTop), side which side of the table it stands on (n, s, w or e)
+function roomChairs(cx, cy, seats, far) {
+  if (seats === 3) return [{ x:cx - 5, y:far < 0 ? cy - 16 : cy + 8, side:far < 0 ? 'n' : 's' }, { x:cx - 21, y:cy - 4, side:'w' }, { x:cx + 11, y:cy - 4, side:'e' }]
+  const w = seats === 4 ? 28 : 40, x = cx - (w >> 1), y = cy - 8, xs = [0.25, 0.75].map(f => Math.round(x + f * w) - 5)
+  const north = xs.map(sx => ({ x:sx, y:y - 9, side:'n' })), south = xs.map(sx => ({ x:sx, y:y + 17, side:'s' }))
+  return [...(seats === 5 ? [{ x:x + w + 1, y:y + 4, side:'e' }] : []), ...(far < 0 ? [...north, ...south] : [...south, ...north])]
+}
 function drawRoomTable(g, cx, cy, seats, far) {
-  const chair = (x, y) => drawSeatTop(g, x, y, '#5d6169')
+  const chairs = () => roomChairs(cx, cy, seats, far).forEach(c => drawSeatTop(g, c.x, c.y, '#5d6169'))
   if (seats === 3) {
-    chair(cx - 5, far < 0 ? cy - 16 : cy + 8); chair(cx - 21, cy - 4); chair(cx + 11, cy - 4)
+    chairs()
     rect(g, cx - 7, cy - 7, 14, 14, '#8a6747'); rect(g, cx - 10, cy - 4, 20, 8, '#8a6747')
     rect(g, cx - 7, cy - 7, 14, 2, '#a5815e'); rect(g, cx - 10, cy - 4, 3, 1, '#a5815e'); rect(g, cx + 7, cy - 4, 3, 1, '#a5815e')
     rect(g, cx - 7, cy + 5, 14, 2, '#6e5138'); rect(g, cx - 10, cy + 3, 3, 1, '#6e5138'); rect(g, cx + 7, cy + 3, 3, 1, '#6e5138')
@@ -761,8 +867,7 @@ function drawRoomTable(g, cx, cy, seats, far) {
   }
   const w = seats === 4 ? 28 : 40, x = cx - (w >> 1), y = cy - 8
   ground(g, x, y + 16, w)
-  for (const f of [0.25, 0.75]) { const sx = Math.round(x + f * w) - 5; chair(sx, y - 9); chair(sx, y + 17) }
-  if (seats === 5) chair(x + w + 1, y + 4)
+  chairs()
   box(g, x, y, w, 16, '#8a6747'); rect(g, x, y, w, 2, '#a5815e'); rect(g, x, y + 13, w, 3, '#6e5138')
   rect(g, cx - 3, y + 5, 6, 4, '#3b3e44'); rect(g, cx - 1, y + 6, 2, 1, '#7ccf6b') // a conference phone
   rect(g, x + 3, y + 4, 7, 5, '#fbfbf8') // papers
@@ -851,13 +956,13 @@ function roomRow(x0, x1, y, h, north) {
 // layout lays the building out for the team and the window, and draws the background. Every snapshot calls it,
 // but it only works when something it depends on changed: the seats, the "+", the window, the pixel size.
 function layout() {
-  const taken = new Set(snapshot.accounts.map(a => a.seat))
+  const taken = new Set(snapshot.accounts.filter(a => a.seat >= 0).map(a => a.seat)) // advisors (seat -1) have no desk
   addSeat = -1
   if (launchOpts?.enabled) { addSeat = 0; while (taken.has(addSeat)) addSeat++ }
   const made = `${[...taken].sort((a, b) => a - b).join(',')}|${addSeat}|${innerWidth}x${innerHeight}@${devicePixelRatio}|${detail}`
   if (made === layoutKey) return
   layoutKey = made
-  const seats = Math.max(addSeat + 1, ...snapshot.accounts.map(a => a.seat + 1), 1)
+  const seats = Math.max(addSeat + 1, ...[...taken].map(s => s + 1), 1)
   const team = Math.max(MIN_ROWS, Math.ceil(seats / COLS)), sideMin = ECOR + RIGHT_MIN + 4
   fitScreen(OFFICE_W + 2 * sideMin, Math.max(officeBottom(team) + STRIP_MIN + 6, WALL_H + MEET_H + GLASS + LOUNGE_MIN + 6))
   rows = Math.max(team, Math.floor((H - 6 - STRIP_MIN - officeBottom(1)) / ROW_PITCH) + 1)
@@ -902,6 +1007,7 @@ function layout() {
   if (key !== navKey) { // the graph changed under everyone's feet: put them straight where they're going
     navKey = key
     for (const e of emps.values()) if (e.inside) e.fresh = true
+    for (const f of figs.values()) { f.inside = true; f.fresh = true } // at the chair, or out if the room is gone
   }
   for (const e of emps.values()) seatEmployee(e)
   const [l] = toCss(rooms.work.x, 0), [rr] = toCss(rooms.work.x + rooms.work.w, 0)
@@ -1009,6 +1115,39 @@ function buildPlaces() {
   spot('water', lx + 28, lb - 10, coolA, { room:'lounge' })
   spot('rt0', mx + 142, lb - 52, east, { room:'lounge', sit:true })
   spot('rt1', mx + 172, lb - 52, cafe, { room:'lounge', sit:true })
+
+  // the small meeting rooms: a walkway along each hall from the corridor past the doors, and in each room one around the
+  // table, with the chairs a task's members sit on (taskSeats; they aren't spots, so idle life keeps out of them)
+  taskSeats.clear()
+  const wingX = work.x - WCOR - 4, ways = halls.map(h => ({ h, y:h.y + (HALL >> 1), doors:new Map() }))
+  for (const r of smalls) {
+    const hy = r.north ? r.y + r.h + GLASS : r.y - GLASS - HALL
+    const way = ways.find(w => w.h.y === hy && r.x >= w.h.x0 - 4 && r.x < w.h.x1)
+    if (!way) continue
+    const d = smallDoor(r), dx = d.x + (d.w >> 1)
+    const outside = way.doors.get(dx) ?? way.doors.set(dx, node(dx, way.y)).get(dx), inside = node(dx, r.north ? r.y + r.h - 4 : r.y + 4)
+    link(outside, inside)
+    // a walkway around the table and its chairs, which the door joins on its side
+    const cx = r.x + (r.w >> 1), cy = r.y + (r.h >> 1), chairs = roomChairs(cx, cy, r.seats, r.north ? -1 : 1), half = [10, 14, 20][r.seats - 3]
+    const L = Math.max(r.x + 5, Math.min(cx - half, ...chairs.map(c => c.x)) - 5), R = Math.min(r.x + r.w - 5, Math.max(cx + half, ...chairs.map(c => c.x + 10)) + 4)
+    const N = Math.max(r.y + 5, Math.min(cy - 8, ...chairs.map(c => c.y)) - 5), S = Math.min(r.y + r.h - 5, Math.max(cy + 8, ...chairs.map(c => c.y + 8)) + 4)
+    const NW = node(L, N), NE = node(R, N), SE = node(R, S), SW = node(L, S), edge = { n:[NW, NE], s:[SW, SE], w:[NW, SW], e:[NE, SE] }
+    chain([NW, NE, SE, SW, NW])
+    edge[r.north ? 's' : 'n'].forEach(n => link(inside, n))
+    // on a chair north of the table one faces us, south of it one shows its back; at the ends one faces us too
+    const seats = chairs.map((c, i) => {
+      const sx = c.x + 5, sy = c.y + (c.side === 'n' ? 9 : 8)
+      const a = node(c.side === 'w' ? L : c.side === 'e' ? R : sx, c.side === 'n' ? N : c.side === 's' ? S : sy), n = node(sx, sy)
+      edge[c.side].forEach(m => link(a, m)); link(a, n)
+      return { id:`room${r.k}.${i}`, x:sx, y:sy, node:n, room:'small', face:c.side === 's' ? -1 : 1, sit:true, nap:false }
+    })
+    const stand = [NW, NE, SW, SE].map((n, i) => ({ id:`room${r.k}.stand${i}`, x:pts[n].x, y:pts[n].y, node:n, room:'small', face:1, sit:false, nap:false }))
+    taskSeats.set(r.k, [...seats, ...stand]) // more members than chairs stand at the corners
+  }
+  for (const w of ways) { // the halls left of the office meet the west corridor at their east end, those below the lounge the east one
+    const west = w.h.x1 === wingX
+    chain([west ? onWest(w.y) : onSide(w.y), ...[...w.doors].sort((a, b) => west ? b[0] - a[0] : a[0] - b[0]).map(([, n]) => n)])
+  }
 
   const sorted = m => [...m].sort((a, b) => a[0] - b[0]).map(([, n]) => n)
   chain(sorted(top)); chain(sorted(bot)); chain(sorted(side)); chain(sorted(wing))
@@ -1150,18 +1289,20 @@ function makeEmployee(acc) {
   label.dataset.account = acc.id
   label.addEventListener('click', () => onEmployeeClick(acc.id))
   document.getElementById('labels').appendChild(label)
-  return { acc, s:null, label, x:0, y:0, path:[], node:-1, goal:null, want:null, inside:false, fresh:false, facing:1,
+  return { key:acc.id, acc, s:null, label, x:0, y:0, path:[], node:-1, goal:null, want:null, inside:false, fresh:false, facing:1,
     blinkAt:performance.now() + 2000 + Math.random() * 4000, phase:hash(acc.id) % 1000 }
 }
 
-const isOnline = e => !!e.s && e.s.state !== 'ended'
+const isOnline = e => !!e?.s && e.s.state !== 'ended'
 
-function updateEmployee(e, acc, walkIn) {
+// task: the task the employee is away in (its figure sits in the meeting room); its desk then shows an empty chair, and its
+// tag stays there with the desk session
+function updateEmployee(e, acc, walkIn, task) {
   const was = isOnline(e)
   e.acc = acc
   e.s = sessionOf(acc)
   const online = isOnline(e)
-  if (online && !was && !e.inside) { // on duty: in through the door, or straight to its spot when the page opens
+  if (online && !was && !e.inside && !task) { // on duty: in through the door, or straight to its spot when the page opens
     if (walkIn) { e.x = door.x; e.y = door.y; e.node = nav.door; e.path = []; e.goal = null; liftRide() }
     else e.fresh = true
     e.inside = true
@@ -1170,13 +1311,89 @@ function updateEmployee(e, acc, walkIn) {
   e.label.style.borderLeftColor = STATE_COLOR[state] ?? GRAY
   e.label.classList.toggle('off', !online)
   e.label.dataset.state = state
-  const status = statusText(online ? e.s : null)
+  const status = task && !online ? t('task.inRoom', { room:taskRoom(task), id:task.id }) : statusText(online ? e.s : null)
   const html = `<div class="nm">${esc(acc.name)}</div><div class="st">${dot(state)}${esc(status)}</div>`
   if (html !== e.labelHTML) { e.labelHTML = html; e.label.innerHTML = html; e.sized = false } // measured again next frame
   e.status = `${acc.name} · ${status}`
 }
 
 function dropEmployee(e) { e.label.remove(); e.bubble?.remove(); emps.delete(e.acc.id) }
+
+// ================= task members =================
+// While a member's task session is online, its figure sits at a chair of the task's small meeting room (chairs in member
+// order): an employee gets up from wherever it is and walks there, or comes in by the lift when it's off duty; an advisor
+// comes in by the lift and wears a visitor's badge. When the task session ends, the figure goes back to its desk (and is
+// the employee again there) or out by the lift. Figures move and are drawn like employees; key: task id/account id.
+const figs = new Map()
+const taskSeats = new Map() // a small room's k -> where a task's members sit: its chairs in member order, then places to stand
+
+function makeFigure(key) {
+  const label = document.createElement('div')
+  label.className = 'emp-label member'
+  label.addEventListener('click', () => onFigureClick(figs.get(key)))
+  document.getElementById('labels').appendChild(label)
+  return { key, label, x:0, y:0, path:[], node:-1, goal:null, want:null, inside:true, fresh:false, facing:1,
+    blinkAt:performance.now() + 2000 + Math.random() * 4000, phase:hash(key) % 1000 }
+}
+
+// the accounts away in a task now: those with a figure, and those whose task session is online (account id -> task)
+function awayInTasks() {
+  const away = new Map()
+  for (const f of figs.values()) away.set(f.acc.id, f.task)
+  for (const task of snapshot.tasks) for (const m of task.members) if (isOnline({ s:sessionById(m.session) })) away.set(m.account, task)
+  return away
+}
+
+function syncFigures(walkIn) {
+  const live = new Map()
+  for (const task of snapshot.tasks) task.members.forEach((m, i) => {
+    const s = sessionById(m.session)
+    if (s && s.state !== 'ended') live.set(task.id + '/' + m.account, { task, m, i, s })
+  })
+  for (const [key, w] of live) {
+    let f = figs.get(key)
+    if (!f) {
+      f = makeFigure(key)
+      const e = emps.get(w.m.account)
+      if (e?.inside && !e.fresh) { // it gets up from wherever it is
+        Object.assign(f, { x:e.x, y:e.y, node:e.node, path:e.path, facing:e.facing })
+        Object.assign(e, { inside:false, path:[], goal:null, tag:null, there:false, atDesk:false })
+      } else if (walkIn) { f.x = door.x; f.y = door.y; f.node = nav.door; liftRide() }
+      else f.fresh = true
+      figs.set(key, f)
+    }
+    const acc = snapshot.accounts.find(a => a.id === w.m.account) ?? f.acc ?? { id:w.m.account, name:w.m.name, seat:-1, advisor:!!w.m.advisor }
+    Object.assign(f, { acc, s:w.s, task:w.task, member:w.m, order:w.i, leaving:false })
+  }
+  for (const [key, f] of figs) if (!live.has(key)) { // its task session ended (or the task did): back to the desk, or out
+    f.leaving = true
+    f.s = { ...(sessionById(f.s.id) ?? f.s), state:'ended' }
+    f.task = taskById(f.task.id) ?? f.task
+  }
+  for (const f of figs.values()) labelFigure(f)
+}
+
+// a member's tag: the member's name (bob-T7) and its task session's state; a pending ask in its desk session turns it red too
+function labelFigure(f) {
+  const online = isOnline(f), state = !online ? 'ended' : asking(f.acc.session) ? 'waiting' : f.s.state
+  f.label.style.borderLeftColor = STATE_COLOR[state] ?? GRAY
+  f.label.classList.toggle('off', !online)
+  setData(f.label, 'state', state); setData(f.label, 'account', f.acc.id); setData(f.label, 'task', f.task.id); setData(f.label, 'session', f.s.id)
+  const status = statusText(online ? f.s : null)
+  const html = `<div class="nm">${esc(f.member.name)}</div><div class="st">${dot(state)}${esc(status)}</div>`
+  if (html !== f.labelHTML) { f.labelHTML = html; f.label.innerHTML = html; f.sized = false }
+  f.status = `${f.member.name} · ${status} · ${taskRoom(f.task)}`
+}
+
+// a figure that left its task: at its desk it becomes the employee again; out by the lift it's gone
+function settleFigure(f) {
+  const e = emps.get(f.acc.id)
+  if (f.inside && !(f.goal?.id === 'home' && !f.path.length)) return
+  if (f.inside && e) Object.assign(e, { x:f.x, y:f.y, node:f.node, path:[], goal:null, facing:f.facing, inside:true, fresh:false })
+  f.label.remove(); f.bubble?.remove(); figs.delete(f.key)
+  if (e) updateEmployee(e, e.acc, false, awayInTasks().get(e.acc.id))
+}
+function onFigureClick(f) { if (f) openChat(f.acc.id, f.s.id) }
 
 // ================= idle life =================
 // An idle employee stays at its desk a while (the next prompt may be on its way), then wanders off: TV on the
@@ -1260,10 +1477,19 @@ function planLife(at) {
   const desk = e => ({ id:'desk', x:e.seat.x, y:e.seat.y, node:nav.seats[e.acc.seat], room:'desk', face:1, sit:true })
   const free = (ids, turn) => ids.map((_, i) => spots.get(ids[(i + turn) % ids.length])).find(s => s && !taken.has(s.id))
   const claim = (e, act, s, more) => { taken.add(s.id); plan.set(e, { act, spot:s, ...more }) }
-  const naps = [], roam = []
+  const naps = [], roam = [], out = { id:'out', x:door.x, y:door.y, node:nav.door, room:'out', face:1 }
+  // a task's members sit at their chairs for the whole task (out of the building when the room isn't in this layout);
+  // one that left goes back to its desk if its desk session is online, else out
+  for (const f of figs.values()) {
+    if (!f.inside) continue
+    const seats = taskSeats.get(f.task.room), e = emps.get(f.acc.id)
+    if (!f.leaving) plan.set(f, { act:'task', spot:seats ? seats[Math.min(f.order, seats.length - 1)] : out })
+    else if (isOnline(e)) plan.set(f, { act:'back', spot:{ ...desk(e), id:'home' }, hurry:true })
+    else plan.set(f, { act:'out', spot:out })
+  }
   for (const e of emps.values()) {
     if (!e.inside || !e.desk) continue
-    if (!isOnline(e)) plan.set(e, { act:'out', spot:{ id:'out', x:door.x, y:door.y, node:nav.door, room:'out', face:1 } })
+    if (!isOnline(e)) plan.set(e, { act:'out', spot:out })
     else if (e.s.state !== 'idle') plan.set(e, { act:'work', spot:desk(e), hurry:true })
     else if (summoned(e)) plan.set(e, { act:'ready', spot:desk(e), hurry:true })
     else {
@@ -1314,6 +1540,7 @@ function lifeTick(at, now, dt) {
   }
   playTag(plan, now, dt)
   for (const e of plan.keys()) e.moving = move(e, dt, now)
+  for (const f of [...figs.values()]) if (f.leaving) settleFigure(f)
 }
 
 function place(e, spot, now) {
@@ -1404,8 +1631,9 @@ function chatLine(e, pair, now) {
 
 // what an idle employee is doing, in words (for the card, the search list and the name tag's tooltip)
 function doingText(e) {
-  // the plan lags the state by a tick: a 'work' or 'out' plan on an idle employee has no text yet
-  if (!e.inside || !isOnline(e) || e.s.state !== 'idle' || !e.want || e.want.act === 'work' || e.want.act === 'out') return ''
+  // the plan lags the state by a tick: a 'work' or 'out' plan on an idle employee has no text yet; a task's member has no
+  // idle life
+  if (e.member || !e.inside || !isOnline(e) || e.s.state !== 'idle' || !e.want || e.want.act === 'work' || e.want.act === 'out') return ''
   const w = e.want, room = e.goal?.room
   if (e.moving && !e.tag) return t(w.act === 'ready' ? 'idle.back' : 'idle.walk')
   const doing = t('idle.' + w.act)
@@ -1420,8 +1648,8 @@ let S = 1, offX = 0, offY = 0, dpr = 1, D = 1, drawHair = 0 // D: the drawing's 
 
 const toCss = (x, y) => [(offX + x * S) / dpr, (offY + y * S) / dpr]
 
-const flights = [] // envelopes in flight { from, to, t, toAcc }
-const mailAt = new Map() // account id -> when mail arrived; it shows above the head for a while
+const flights = [] // envelopes in flight { from, to, t, toKey }
+const mailAt = new Map() // an employee's or a member's key -> when mail arrived; it shows above the head for a while
 
 const FRAME_MS = 1000 / 30 // frames a second: enough for pixel art, and half the work of a 60 Hz screen
 function frame(now) {
@@ -1438,7 +1666,7 @@ function frame(now) {
   lifeTick(at, now, dt)
 
   const items = [] // sorted by the feet's y, so nearer things cover farther ones
-  const taken = new Set(snapshot.accounts.map(a => a.seat))
+  const taken = new Set(snapshot.accounts.filter(a => a.seat >= 0).map(a => a.seat))
   for (let seat = 0; seat < rows * COLS; seat++) { // empty desks are drawn too
     if (taken.has(seat)) continue
     const d = deskOf(seat)
@@ -1465,6 +1693,10 @@ function frame(now) {
       items.push({ y:ay + 5, draw:() => drawMini(g, ax, ay + bob, color, shade) })
     })
   }
+  for (const f of figs.values()) { // a task's members, in its meeting room or on their way
+    if (f.inside) items.push(employeeItem(g, f, now, at))
+    else f.there = false
+  }
   // furniture that comes alive while it's used, the sofa backrests over whoever sits there, and a tag's burst
   const { tv, foos, printer, sofa } = geo
   if (watching) items.push({ y:tv.y + 19, draw:() => drawTVShow(g, tv.x, tv.y, now) })
@@ -1484,7 +1716,7 @@ function frame(now) {
     const p = Math.min(f.t, 1)
     const x = f.from.x + (f.to.x - f.from.x) * p, y = f.from.y + (f.to.y - f.from.y) * p - Math.sin(p * Math.PI) * 24
     drawEnvelope(g, Math.round(x) - 4, Math.round(y) - 3)
-    if (f.t >= 1) { flights.splice(i, 1); mailAt.set(f.toAcc, now) }
+    if (f.t >= 1) { flights.splice(i, 1); mailAt.set(f.toKey, now) }
   }
 
   hair = 0
@@ -1573,21 +1805,35 @@ function employeeItem(g, e, now, at) {
           if (say) drawSay(g, spot.id === 'rt0' ? x - (b.bw >> 1) - b.armW - 10 : x + (b.bw >> 1) + b.armW + 1, top + 1, say)
         }
         break
+      case 'task': { // at the meeting table: thinking, hands busy while it works, a hand up and the sign while either of its
+        // sessions waits for you, now and then a look at its notes while it waits for the others
+        const red = st === 'waiting' || asking(e.acc.session)
+        if (st === 'tool') { pose.armL = Math.floor(t / 140) % 2; pose.armR = 1 - Math.floor(t / 140) % 2 }
+        else if (st === 'idle' && !blink && Math.floor(t / 4000) % 3 === 0) pose.eyes = 'down'
+        pose.raiseL = red
+        extra = top => {
+          if (st === 'thinking') drawThinking(g, x, top, t)
+          if (red) drawAlert(g, x + (b.bw >> 1) + b.armW + 2, top - 3 - (Math.floor(t / 400) % 2))
+        }
+        break
+      }
       // window, print, and tag (waiting at the corner for the other): just standing there
     }
   }
   if (face < 0) pose.eyes = 'none'
-  const body = online ? CLAWD : GRAY, shade = online ? CLAWD_SHADE : '#8f8a82'
+  const lit = online || e.goal?.id === 'home' // a member on its way back to its desk session
+  const body = lit ? CLAWD : GRAY, shade = lit ? CLAWD_SHADE : '#8f8a82'
   const dim = filtering() && !picked(e), ring = (filtering() && !dim) || now - (e.foundAt ?? -1e9) < 4000
   return { y:y + 10, draw:() => {
     if (dim) g.globalAlpha = 0.3
     if (detail && pose.legs && hair) solid(g, x - (b.bw >> 1) - 1, y + 1, b.bw + 2, 2 * hair, 'rgba(43,42,40,.18)') // a shadow
     if (ring) drawRing(g, x, y, b, now)
     drawClawd(g, x, y, b, pose, body, shade)
+    if (e.member?.advisor && face > 0) solid(g, x + 1, y - 4, 2, 2, '#fbfbf8') // an advisor's visitor badge, on the chest
     const top = y - b.bh
     extra?.(top)
     if (now - (e.popAt ?? -1e9) < 1200) drawSay(g, x + (b.bw >> 1) + b.armW + 1, top - 1, '!') // called back
-    const got = mailAt.get(e.acc.id)
+    const got = mailAt.get(e.key)
     if (got && now - got < 4000) drawEnvelope(g, x - 4, top - 10 - (Math.floor(now / 300) % 2))
     g.globalAlpha = 1
   } }
@@ -1601,21 +1847,22 @@ function headOf(e) {
 const setData = (el, key, value) => { if (el.dataset[key] !== value) el.dataset[key] = value }
 
 // Name tags follow their employees. Away from its desk a tag shows just the name, and a tag that stays put
-// (on a sofa, at the meeting table) moves up out of the way of the tags already there.
+// (on a sofa, at the meeting table) moves up out of the way of the tags already there. A task's members have tags too
+// (while they're in the building); the tag of an employee away in one stays at its desk.
 function placeLabels(now) {
   const maxW = Math.max(60, COL_PITCH * S / dpr - 6), placed = [], loose = []
   const box = (e, y) => ({ l:e.lx - e.lw / 2, r:e.lx + e.lw / 2, t:y - e.lh, b:y })
-  for (const e of emps.values()) { // what changes a tag's size, written first; the sizes are read below, all at once
-    if (!e.desk) continue
+  for (const f of figs.values()) if (f.label.hidden === f.inside) { f.label.hidden = !f.inside; f.sized = false }
+  const tagged = [...emps.values(), ...figs.values()].filter(e => e.desk || e.inside)
+  for (const e of tagged) { // what changes a tag's size, written first; the sizes are read below, all at once
     const el = e.label, away = e.inside && !e.atDesk
     if (el.classList.contains('away') !== away) { el.classList.toggle('away', away); e.sized = false }
     if (e.maxW !== maxW) { el.style.maxWidth = maxW + 'px'; e.maxW = maxW; e.sized = false }
   }
-  for (const e of emps.values()) {
-    if (e.desk && !e.sized) { e.lw = e.label.offsetWidth; e.lh = e.label.offsetHeight; e.sized = true }
+  for (const e of tagged) {
+    if (!e.sized) { e.lw = e.label.offsetWidth; e.lh = e.label.offsetHeight; e.sized = true }
   }
-  for (const e of emps.values()) {
-    if (!e.desk) continue
+  for (const e of tagged) {
     const el = e.label, away = e.inside && !e.atDesk
     const h = headOf(e)
     ;[e.lx, e.ly] = toCss(h.x, h.y - 2)
@@ -1644,8 +1891,7 @@ function placeLabels(now) {
     }
     placed.push(box(e, e.ty))
   }
-  for (const e of emps.values()) {
-    if (!e.desk) continue
+  for (const e of tagged) {
     e.label.style.left = e.lx + 'px'; e.label.style.top = e.ty + 'px'
     if (e.bubble) { e.bubble.style.left = e.lx + 'px'; e.bubble.style.top = e.ty + 'px' }
   }
@@ -1673,6 +1919,7 @@ function placeLabels(now) {
 // ================= search =================
 // Finds employees by name (or session name, or folder): the matches light up in the office and show in a list
 // under the box; picking one (a click, or Enter for the highlighted one) is the same as clicking that employee.
+// It finds a task's members by their names too (bob-T7), and tasks by id, room or description (picking one opens it).
 const findEl = document.getElementById('find'), findList = document.getElementById('find-list')
 let findQ = '', findSel = 0
 // a state chip in the HUD, clicked: its employees light up too ('idle' | 'busy' | 'waiting' | 'off'), until a second click
@@ -1683,28 +1930,35 @@ const filtering = () => !!findQ || !!chipOn
 const picked = e => (!findQ || matchesFind(e, findQ)) && (!chipOn || groupOf(e) === chipOn)
 const lower = s => String(s ?? '').toLowerCase()
 // a folder matches by its last part ("symphony"), or by its whole path once the query has a slash in it
-const matchesFind = (e, q) => [e.acc.name, e.s?.title, ...[e.s?.cwd, e.acc.last?.dir].map(d => d && (/[\\/]/.test(q) ? d : base(d)))]
+const matchesFind = (e, q) => (e.member ? [e.member.name] : [e.acc.name, e.s?.title, ...[e.s?.cwd, e.acc.last?.dir, e.acc.dir].map(d => d && (/[\\/]/.test(q) ? d : base(d)))])
   .some(v => lower(v).includes(q))
+const TASK_DOT = { running:'tool', ending:'tool', failed:'waiting' }
+// the hits: { key, name, e } for an employee or a member, { key, name, task } for a task
 function findHits() {
   if (!findQ) return []
-  const rank = e => lower(e.acc.name).startsWith(findQ) ? 0 : lower(e.acc.name).includes(findQ) ? 1 : 2
-  return [...emps.values()].filter(e => matchesFind(e, findQ))
-    .sort((a, b) => rank(a) - rank(b) || a.acc.name.localeCompare(b.acc.name, lang)).slice(0, 8)
+  const rank = h => lower(h.name).startsWith(findQ) ? 0 : lower(h.name).includes(findQ) ? 1 : 2
+  const people = [...emps.values(), ...[...figs.values()].filter(f => f.inside && !f.leaving)].filter(e => matchesFind(e, findQ))
+    .map(e => ({ key:e.key, name:e.member ? e.member.name : e.acc.name, e }))
+  const tasks = snapshot.tasks.filter(task => [task.id, taskRoom(task), task.title].some(v => lower(v).includes(findQ)))
+    .map(task => ({ key:'task:' + task.id, name:`${task.id} · ${taskRoom(task)}`, task }))
+  return [...people, ...tasks].sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name, lang)).slice(0, 8)
 }
 function renderFind() {
   findQ = lower(findEl.value.trim())
   const hits = findHits()
   findSel = Math.max(0, Math.min(findSel, hits.length - 1))
   findList.hidden = !findQ || document.activeElement !== findEl
-  findList.innerHTML = hits.map((e, i) => `<div class="hit${i === findSel ? ' on' : ''}" data-account="${esc(e.acc.id)}">` +
-    `${dot(isOnline(e) ? e.s.state : 'ended')}<b>${esc(e.acc.name)}</b><small>${esc(stateLine(e))}</small></div>`).join('') ||
+  findList.innerHTML = hits.map((h, i) => `<div class="hit${i === findSel ? ' on' : ''}" data-key="${esc(h.key)}">` +
+    (h.task ? `${dot(TASK_DOT[h.task.status])}<b>${esc(h.name)}</b><small>${esc(h.task.title)}</small></div>`
+      : `${dot(isOnline(h.e) ? h.e.s.state : 'ended')}<b>${esc(h.name)}</b><small>${esc(stateLine(h.e))}</small></div>`)).join('') ||
     `<div class="none">${esc(t('search.none'))}</div>`
 }
-function pickFound(e) {
+function pickFound(h) {
   findEl.value = ''; findSel = 0; findEl.blur(); renderFind()
-  if (!e) return
-  e.foundAt = performance.now()
-  onEmployeeClick(e.acc.id)
+  if (!h) return
+  if (h.task) return openTaskWin(h.task.id)
+  h.e.foundAt = performance.now()
+  if (h.e.member) onFigureClick(h.e); else onEmployeeClick(h.e.acc.id)
 }
 findEl.addEventListener('input', () => { findSel = 0; renderFind() })
 findEl.addEventListener('focus', renderFind)
@@ -1720,12 +1974,14 @@ findList.addEventListener('mousedown', ev => { // mousedown, so the box keeps it
   const row = ev.target.closest('.hit')
   if (!row) return
   ev.preventDefault()
-  pickFound(emps.get(row.dataset.account))
+  pickFound(findHits().find(h => h.key === row.dataset.key))
 })
 addEventListener('keydown', ev => { // "/" jumps to the search box; Esc lets go of a state chip
   if (ev.key === 'Escape' && chipOn) { chipOn = null; renderStats() }
   if (ev.key === 'Escape' && !chatEl.hidden && !dock.classList.contains('asking')) closeChat()
-  if (ev.key !== '/' || ev.ctrlKey || ev.metaKey || ev.altKey || !chatEl.hidden || !dlg.hidden) return
+  if (ev.key === 'Escape' && !taskWin.hidden) closeTaskWin()
+  if (ev.key === 'Escape' && !taskDlg.hidden) closeTask()
+  if (ev.key !== '/' || ev.ctrlKey || ev.metaKey || ev.altKey || !chatEl.hidden || !dlg.hidden || !taskDlg.hidden || !taskWin.hidden) return
   if (/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName)) return
   ev.preventDefault()
   if (hud.classList.contains('up')) setHud(false)
@@ -1744,6 +2000,7 @@ function renderStats() {
   if (!snapshot.accounts.length) { chipOn = null; el.textContent = t('office.nobody'); return }
   const n = { idle:0, busy:0, waiting:0, off:0 }
   for (const e of emps.values()) n[groupOf(e)]++
+  for (const f of figs.values()) if (isOnline(f)) n[groupOf(f)]++ // task sessions count like desk sessions
   el.innerHTML = CHIPS.map(([group, state, key]) => {
     const hot = group === 'waiting' && snapshot.asks.length > 0
     return `<button class="chip${hot ? ' hot' : ''}${chipOn === group ? ' on' : ''}" data-group="${group}" style="--c:${STATE_COLOR[state]}" ` +
@@ -1801,24 +2058,38 @@ pixelsEl.addEventListener('click', ev => {
 markDetail()
 
 // ================= small meeting rooms' nameplates =================
-// The rooms are for meetings in a later version; for now each nameplate shows the room's name and a green light: free.
+// Each nameplate shows the room's name and a light: green while the room is free, yellow while a task runs in it (its id
+// beside the name), red while one of its members waits for you or the task failed. A click on it, or on the room, opens
+// the task window, or the task dialog for a free room when the page can start sessions.
 const plates = []
 function syncPlates() {
   while (plates.length > smalls.length) plates.pop().remove()
   while (plates.length < smalls.length) {
     const el = document.createElement('div')
     el.className = 'room-plate'
+    el.addEventListener('click', () => { const r = smalls[plates.indexOf(el)]; if (r) onRoomClick(r) })
     document.getElementById('labels').appendChild(el)
     plates.push(el)
   }
   smalls.forEach((r, i) => {
-    const name = t('room.small.' + (r.k % 24 + 1)) + (r.k < 24 ? '' : ' ' + ['II', 'III', 'IV'][Math.min(2, Math.floor(r.k / 24) - 1)])
-    if (plates[i].dataset.name !== name || plates[i].dataset.seats !== String(r.seats)) {
-      plates[i].dataset.name = name; plates[i].dataset.seats = r.seats
-      plates[i].innerHTML = `<i></i>${esc(name)}`
-      plates[i].title = `${name} · ${t('room.seats', { n:r.seats })} · ${t('room.free')}`
-    }
+    const el = plates[i], name = roomName(r.k), task = roomTask(r.k)
+    const light = !task ? 'free' : task.status === 'failed' || task.members.some(m => asking(m.session)) ? 'alert' : 'busy'
+    const text = task ? `${name} · ${task.id}` : name, click = !!task || !!launchOpts?.enabled
+    const title = `${name} · ${t('room.seats', { n:r.seats })} · ` +
+      (task ? `${t(task.status === 'running' ? 'room.busy' : 'task.status.' + task.status)} · ${task.id}${t('common.colon')}${task.title}` : t('room.free'))
+    const sig = `${text}|${r.seats}|${light}|${click}|${title}`
+    if (el.dataset.sig === sig) return
+    el.dataset.sig = sig; el.dataset.seats = r.seats; el.dataset.light = light
+    if (task) el.dataset.task = task.id; else delete el.dataset.task
+    el.className = `room-plate ${light}${click ? ' click' : ''}`
+    el.innerHTML = `<i></i>${esc(text)}`
+    el.title = title
   })
+}
+function onRoomClick(r) {
+  const task = roomTask(r.k)
+  if (task) openTaskWin(task.id)
+  else if (launchOpts?.enabled) openTask(r)
 }
 
 // ================= data =================
@@ -1842,14 +2113,15 @@ document.getElementById('open-log').onclick = () => setLog(logEl.hidden)
 logEl.querySelector('.close').onclick = () => setLog(false)
 setLog((() => { try { return localStorage.getItem(LOG_STORE) === 'open' } catch { return false } })())
 
-const empBySession = id => [...emps.values()].find(e => e.s && e.s.id === id)
+// whoever is a session in the building: a task session's member figure, or the employee of a desk session
+const empBySession = id => [...figs.values()].find(f => f.s?.id === id && f.inside) ?? [...emps.values()].find(e => e.s && e.s.id === id)
 
 // messages between sessions: an envelope flies from sender to recipient, a bubble pops up over the sender,
 // and the message log gets it
 function showMessage(m) {
   const from = empBySession(m.from), to = empBySession(m.to)
-  if (from && to) flights.push({ from:headOf(from), to:headOf(to), t:0, toAcc:to.acc.id })
-  else if (to) mailAt.set(to.acc.id, performance.now())
+  if (from && to) flights.push({ from:headOf(from), to:headOf(to), t:0, toKey:to.key })
+  else if (to) mailAt.set(to.key, performance.now())
   if (!from) return
   from.bubble?.remove()
   const el = document.createElement('div')
@@ -1897,20 +2169,27 @@ function applySnapshot(snap) {
   const messages = Array.isArray(snap.messages) ? snap.messages : snapshot.messages
   snapshot = snap
   snapshot.messages = messages
+  if (!Array.isArray(snap.tasks)) snapshot.tasks = []
   if (Array.isArray(snap.messages)) takeMessages(snap.messages)
   else if (snap.messageTail && !messages.some(m => m.id === snap.messageTail)) catchUpMessages()
-  const live = new Set(snap.accounts.map(a => a.id))
+  const desks = snap.accounts.filter(a => !a.advisor) // an advisor has no desk: it's in the building as a task's member only
+  const live = new Set(desks.map(a => a.id))
   for (const [id, e] of emps) if (!live.has(id)) dropEmployee(e)
-  for (const acc of snap.accounts) {
+  for (const acc of desks) {
     if (!emps.has(acc.id)) { const e = makeEmployee(acc); emps.set(acc.id, e); seatEmployee(e) }
     emps.get(acc.id).acc = acc
   }
   layout()
-  for (const acc of snap.accounts) updateEmployee(emps.get(acc.id), acc, !first)
+  const away = awayInTasks()
+  for (const acc of desks) updateEmployee(emps.get(acc.id), acc, !first, away.get(acc.id))
+  syncFigures(!first)
+  noteTasks()
   first = false
 
+  syncPlates()
   renderStats()
   if (chatFor) showChat(chatFor)
+  if (taskWinFor) renderTaskWin()
   if (!msgsPanel.hidden) renderMessages()
   if (!findList.hidden) renderFind()
   watchLaunch()
@@ -1932,7 +2211,7 @@ function askWho(a) {
 }
 function openAsks(session = null) {
   const a = snapshot.asks.find(x => !session || x.session === session) || snapshot.asks[0]
-  if (a) openChat(a.account)
+  if (a) openChat(a.account, sessionById(a.session)?.task ? a.session : null) // a task session's ask: that session's window
 }
 
 // ================= message log =================
@@ -1975,11 +2254,14 @@ msgsPanel.querySelector('.close').onclick = () => { msgsPanel.hidden = true }
 const chatEl = document.getElementById('chat'), chatPanel = chatEl.querySelector('.panel')
 const flow = chatEl.querySelector('.flow'), dock = chatEl.querySelector('.dock'), sayForm = chatEl.querySelector('.say'), sayBox = sayForm.querySelector('textarea')
 let chatFor = null // the account whose window is open
+let chatSid = null // the task session it shows; null: the account's desk session, whichever is current
+let chatName = '' // who the window is for: the account's name, a member's name (bob-T7) for a task session
 let chatSession = null // the session whose log the flow shows
 const chatItems = new Map() // item id -> item, of chatSession
 const chatShown = { meta:'', btns:'', asks:'' }
 chatEl.querySelector('.close').onclick = closeChat
 chatEl.addEventListener('click', ev => { if (ev.target === chatEl) closeChat() })
+chatEl.querySelector('.meta').addEventListener('click', ev => { const el = ev.target.closest('[data-task]'); if (el) openTaskWin(el.dataset.task) })
 function closeChat() { chatEl.hidden = true; chatFor = null }
 
 // a click on an employee opens its window, and an idle one goes back to its desk and waits there for its next turn
@@ -1992,29 +2274,37 @@ function onEmployeeClick(id) {
   }
   openChat(id)
 }
-function openChat(id) {
+// sid: a task session to show; without one the window shows the desk session
+function openChat(id, sid = null) {
+  chatSid = sid
+  closeTaskWin()
   showChat(id)
   if (!chatEl.hidden && dock.classList.contains('asking')) dock.querySelector('#asks input, #asks button')?.focus()
   else if (!chatEl.hidden && !sayBox.disabled) sayBox.focus()
 }
 
 function showChat(id) {
-  const acc = snapshot.accounts.find(a => a.id === id), e = emps.get(id)
-  if (!acc || !e) { closeChat(); return }
+  const acc = snapshot.accounts.find(a => a.id === id)
+  if (!acc || (!chatSid && !emps.has(id))) { closeChat(); return }
   chatFor = id
-  const s = sessionOf(acc), online = !!s && s.state !== 'ended'
+  const s = chatSid ? sessionById(chatSid) : sessionOf(acc), online = !!s && s.state !== 'ended'
+  // a task session's window: the member's name, the task (a click opens it), no seat; it can't start work or be deleted
+  const task = chatSid ? taskById(s?.task) ?? snapshot.tasks.find(k => k.members.some(m => m.session === chatSid)) ?? null : null
+  const member = task?.members.find(m => m.session === chatSid)
+  chatName = chatSid ? member?.name || s?.title || acc.name : acc.name
   const head = chatEl.querySelector('.head')
-  head.querySelector('h2').textContent = acc.name
+  head.querySelector('h2').textContent = chatName
   head.querySelector('.dot').style.background = STATE_COLOR[online ? s.state : 'ended'] ?? GRAY
   refreshChatLine()
-  const chips = [['seat', t('card.seatNo', { n:acc.seat + 1 })], ['model', online ? buildText(s) : ''], ['session', s?.title],
-    ['dir', s?.cwd || acc.last?.dir], ['subagents', online ? Object.keys(s.agents || {}).length || '' : ''], ['tools', online ? s.tools : ''],
+  const chips = [['seat', chatSid ? '' : t('card.seatNo', { n:acc.seat + 1 })], ['model', online ? buildText(s) : ''], ['session', s?.title],
+    ['dir', s?.cwd || (chatSid ? member?.worktree : acc.last?.dir || acc.dir)], ['subagents', online ? Object.keys(s.agents || {}).length || '' : ''], ['tools', online ? s.tools : ''],
     ['login', s?.login]]
-  const meta = chips.filter(c => c[1] !== undefined && c[1] !== '' && c[1] !== null)
-    .map(([k, v]) => `<span title="${esc(v)}"><b>${esc(t('card.' + k))}</b>${esc(v)}</span>`).join('')
+  const meta = (task ? `<span class="task" data-task="${esc(task.id)}" title="${esc(task.title)}">${esc(t('task.chip', { id:task.id, room:taskRoom(task) }))}</span>` : '') +
+    chips.filter(c => c[1] !== undefined && c[1] !== '' && c[1] !== null)
+      .map(([k, v]) => `<span title="${esc(v)}"><b>${esc(t('card.' + k))}</b>${esc(v)}</span>`).join('')
   if (meta !== chatShown.meta) { chatShown.meta = meta; head.querySelector('.meta').innerHTML = meta }
   const busy = online && (s.state === 'thinking' || s.state === 'tool' || s.state === 'waiting')
-  const btnKey = `${id}|${online}|${busy}|${online && !!s.launch}|${!!launchOpts?.enabled}`
+  const btnKey = `${id}|${chatSid}|${online}|${busy}|${online && !!s.launch}|${!!launchOpts?.enabled}`
   if (btnKey !== chatShown.btns) {
     chatShown.btns = btnKey
     const btns = head.querySelector('.btns')
@@ -2022,16 +2312,17 @@ function showChat(id) {
     const add = (text, cls, fn, title) => { const b = document.createElement('button'); b.className = 'px ' + cls; b.textContent = text; b.onclick = fn; if (title) b.title = title; btns.appendChild(b) }
     if (online && s.launch) add(t('chat.terminal'), 'terminal', () => openTerminal(s), t('chat.terminalTitle'))
     if (busy) add(t('chat.stop'), 'stop', () => post(`/api/abort/${s.id}`, {}), t('chat.stopTitle'))
-    if (!online && launchOpts?.enabled) add(t('launch.go'), 'primary go-work', () => openLaunch(acc.id))
-    if (!online) add(t('card.delete'), '', async () => {
+    if (!online && !chatSid && launchOpts?.enabled) add(t('launch.go'), 'primary go-work', () => openLaunch(acc.id))
+    if (!online && !chatSid) add(t('card.delete'), '', async () => {
       if (!confirm(t('card.deleteConfirm', { name:acc.name }))) return
       const r = await fetch(`/api/accounts/${acc.id}`, { method:'DELETE' })
       if (!r.ok) alert(t('card.deleteFailed', { reason:errorText(await r.json().catch(() => null)) }))
       closeChat()
     })
   }
-  // the chat follows the account's current session; an employee off duty keeps the last one's log while the bridge has it
-  const sid = s?.id || null
+  // the chat follows the account's current desk session (an employee off duty keeps the last one's log while the bridge
+  // has it), or shows the one task session
+  const sid = chatSid || s?.id || null
   if (sid !== chatSession) {
     chatSession = sid
     chatItems.clear()
@@ -2048,13 +2339,17 @@ function showChat(id) {
   }
   sayBox.disabled = !online
   sayForm.hidden = !online
-  dock.querySelector('.offline').hidden = online
+  const off = dock.querySelector('.offline'), offText = t(chatSid ? 'task.offline' : 'chat.offline')
+  off.hidden = online
+  if (off.textContent !== offText) off.textContent = offText
   chatEl.hidden = false
 }
-// the status line follows what the employee is doing
+// the status line follows what the employee (or the member) is doing
 function refreshChatLine() {
-  const e = chatFor && !chatEl.hidden && emps.get(chatFor), el = e && chatEl.querySelector('.who .state')
-  if (el && el.textContent !== stateLine(e)) el.textContent = stateLine(e)
+  if (!chatFor || chatEl.hidden) return
+  const el = chatEl.querySelector('.who .state'), e = chatSid ? [...figs.values()].find(f => f.s?.id === chatSid) : emps.get(chatFor)
+  const line = e ? stateLine(e) : statusText(sessionById(chatSid))
+  if (el.textContent !== line) el.textContent = line
 }
 
 async function post(path, body) {
@@ -2118,7 +2413,8 @@ function itemEl(it, old) {
   switch (it.kind) {
     case 'user':
       el.className = `it user ${it.status || ''}`
-      el.innerHTML = `${it.origin === 'page' ? `<div class="from">${esc(t('chat.fromPage'))}</div>` : ''}<div class="body">${richText(it.text)}</div>${timeOf(it)}`
+      // from the page, or the bridge's kickoff of a task
+      el.innerHTML = `${it.origin === 'page' || it.origin === 'task' ? `<div class="from">${esc(t(it.origin === 'task' ? 'chat.fromTask' : 'chat.fromPage'))}</div>` : ''}<div class="body">${richText(it.text)}</div>${timeOf(it)}`
       break
     case 'thinking': {
       el.className = `it thinking${it.done ? ' done' : ''}`
@@ -2141,8 +2437,7 @@ function itemEl(it, old) {
       el.title = it.summary || ''
       break
     case 'message': {
-      const acc = snapshot.accounts.find(a => a.id === chatFor)
-      const out = acc && it.from === acc.name
+      const out = !!chatName && it.from === chatName // a task session sends as its member's name
       el.className = `it message${out ? ' out' : ''}`
       el.innerHTML = `<div class="from">${esc(out ? t('chat.msgTo', { name:it.to || '?' }) : t('chat.msgFrom', { name:it.from || '?' }))}</div><div class="body">${richText(it.text)}</div>${timeOf(it)}`
       break
@@ -2174,15 +2469,21 @@ sayBox.addEventListener('keydown', ev => {
   if (ev.key === 'Enter' && !ev.shiftKey && !ev.isComposing) { ev.preventDefault(); sayForm.requestSubmit() }
 })
 
-// a click on a character, or else on a desk, is a click on that employee
+// a click on a character, or else on a desk, is a click on that employee (on a task's member: the window of its task
+// session); a click on a small meeting room opens its task, or the task dialog
 cv.addEventListener('click', ev => {
   const x = (ev.clientX * dpr - offX) / S, y = (ev.clientY * dpr - offY) / S
-  const list = [...emps.values()].filter(e => e.desk)
-  const hit = list.find(e => {
+  const on = e => {
     const b = build(e.s)
     return e.inside && x >= e.x - b.bw / 2 - 3 && x < e.x + b.bw / 2 + 3 && y >= e.y - b.bh - 4 && y < e.y + 2
-  }) || list.find(e => x >= e.desk.x && x < e.desk.x + 32 && y >= e.desk.y - 15 && y < e.desk.y + 16)
-  if (hit) onEmployeeClick(hit.acc.id)
+  }
+  const fig = [...figs.values()].find(on)
+  if (fig) return onFigureClick(fig)
+  const list = [...emps.values()].filter(e => e.desk)
+  const hit = list.find(on) || list.find(e => x >= e.desk.x && x < e.desk.x + 32 && y >= e.desk.y - 15 && y < e.desk.y + 16)
+  if (hit) return onEmployeeClick(hit.acc.id)
+  const room = smalls.find(r => x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h)
+  if (room) onRoomClick(room)
 })
 
 // ================= starting sessions from the page =================
@@ -2202,6 +2503,7 @@ async function loadLaunchOptions() {
     note.innerHTML = esc(t(fix ? 'launch.offWithFix' : 'launch.off', { reason:launchOffReason() })) + (fix ? `<code>${esc(fix)}</code>` : '')
   }
   layout()
+  syncPlates() // a free room takes clicks while the page can start sessions
 }
 
 // why the page can't start sessions: the mod's problem, or no launcher at all
@@ -2229,7 +2531,7 @@ async function openLaunch(accountId) {
   field('name').value = acc ? acc.name : ''
   field('name').readOnly = !!acc
   const recent = launchOpts.recentDirs || []
-  field('dir').value = last.dir || recent[0] || launchOpts.home || ''
+  field('dir').value = last.dir || acc?.dir || recent[0] || launchOpts.home || ''
   // a new employee starts with everything allowed, Opus and the most thinking; an old one as it last worked
   fill(field('model'), launchOpts.models, acc ? last.model : 'opus')
   fill(field('effort'), launchOpts.efforts, acc ? last.effort : 'max')
@@ -2274,8 +2576,9 @@ function preview() {
   form.querySelector('.preview').textContent = `cd ${q(r.dir || '?')}\n${args.join(' ')}\n# ${note}`
 }
 
-async function browse(path) {
-  const box = form.querySelector('.browser')
+// the folder browser under a folder field (the launch dialog's, an advisor's in the task dialog): box is its .browser,
+// fail shows why a folder can't be opened
+async function browse(box, path, fail) {
   try {
     const res = await fetch('/api/dirs?path=' + encodeURIComponent(path || launchOpts.home))
     const data = await res.json()
@@ -2288,15 +2591,15 @@ async function browse(path) {
     const items = up.concat((data.dirs || []).map(d => [d.name + '/', d.path]))
     const ul = box.querySelector('ul')
     ul.innerHTML = items.map(([label]) => `<li>${esc(label)}</li>`).join('') || `<li style="color:#8a867e;cursor:default">${esc(t('launch.noSubfolders'))}</li>`
-    ul.querySelectorAll('li').forEach((li, i) => { if (items[i]) li.onclick = () => browse(items[i][1]) })
+    ul.querySelectorAll('li').forEach((li, i) => { if (items[i]) li.onclick = () => browse(box, items[i][1], fail) })
   } catch (err) {
-    setStatus(t('launch.browseFailed', { reason:err.message }), true)
+    fail(t('launch.browseFailed', { reason:err.message }))
   }
 }
 
 form.addEventListener('input', preview)
 form.addEventListener('change', preview)
-form.querySelector('.browse').onclick = () => browse(field('dir').value.trim())
+form.querySelector('.browse').onclick = () => browse(form.querySelector('.browser'), field('dir').value.trim(), reason => setStatus(reason, true))
 form.querySelector('.pick').onclick = () => {
   field('dir').value = form.querySelector('.browser').dataset.path
   form.querySelector('.browser').hidden = true
@@ -2339,6 +2642,210 @@ function watchLaunch() {
     form.querySelector('.go').disabled = false
     pendingLaunch = null
   }
+}
+
+// ================= tasks =================
+// A click on a free small meeting room opens the task dialog: what the team should do, its members (employees ticked in
+// order, and advisors made for this task), whether the first one leads. The bridge starts a session for each member in a
+// git worktree of its own and sends each the kickoff. A click on a room with a task opens the task window: what it's on,
+// who is in it (a click opens a member's window), and the button to end it; a failed one says why and can be dismissed.
+const taskDlg = document.getElementById('task'), taskForm = taskDlg.querySelector('form')
+let taskFor = null // the room the dialog is for: { k, seats }
+let picks = [] // the members, in order: rows of the dialog (an employee ticked, or an advisor added)
+let taskPosting = false
+
+async function openTask(r) {
+  await loadLaunchOptions()
+  if (!launchOpts?.enabled) return alert(launchOpts ? launchOffReason() : t('error.unreachable'))
+  taskFor = { k:r.k, seats:r.seats }
+  taskForm.querySelector('.title').textContent = t('task.titleNew', { room:roomName(r.k), seats:r.seats })
+  taskForm.elements.desc.value = ''
+  taskForm.elements.leader.checked = true
+  fill(taskForm.elements.permissionMode, launchOpts.permissionModes, 'bypassPermissions')
+  // the employees: one in a running task, or without a folder to work in yet, can't be picked
+  const busy = new Map()
+  for (const task of snapshot.tasks) if (task.status !== 'failed') for (const m of task.members) busy.set(m.account, task.id)
+  picks = []
+  const list = taskForm.querySelector('.emps')
+  list.innerHTML = ''
+  for (const acc of snapshot.accounts.filter(a => !a.advisor)) {
+    const s = sessionOf(acc), dir = s?.cwd || acc.last?.dir || acc.dir || '', inTask = busy.get(acc.id), off = !!inTask || !dir
+    const row = document.createElement('div')
+    row.className = 'mem' + (off ? ' off' : '')
+    row.dataset.account = acc.id
+    row.innerHTML = `<label><input type="checkbox"${off ? ' disabled' : ''}><b class="ord"></b><span class="lead-tag">${esc(t('task.lead'))}</span>` +
+      `${dot(s && s.state !== 'ended' ? s.state : 'ended')}<span class="nm">${esc(acc.name)}</span>` +
+      `<small title="${esc(dir)}">${esc(inTask ? t('task.inTask', { id:inTask }) : dir ? base(dir) : t('task.noDir'))}</small></label>` +
+      `<select name="model" title="${esc(t('launch.model'))}"></select><select name="effort" title="${esc(t('launch.effort'))}"></select>`
+    // as it last worked, or Opus and the most thinking
+    fill(row.querySelector('[name=model]'), launchOpts.models, acc.last ? acc.last.model : 'opus')
+    fill(row.querySelector('[name=effort]'), launchOpts.efforts, acc.last ? acc.last.effort : 'max')
+    row.querySelector('input').onchange = ev => { picks = picks.filter(x => x !== row); if (ev.target.checked) picks.push(row); renderPicks() }
+    list.appendChild(row)
+  }
+  taskForm.querySelector('.advs').innerHTML = ''
+  setTaskStatus('')
+  taskPosting = false
+  renderPicks()
+  closeChat(); closeTaskWin()
+  taskDlg.hidden = false
+  taskForm.elements.desc.focus()
+}
+function closeTask() { taskDlg.hidden = true; taskFor = null }
+function setTaskStatus(text, err) {
+  const el = taskForm.querySelector('.status')
+  el.textContent = text
+  el.className = 'status' + (err ? ' err' : '')
+}
+
+// an advisor: a one-off member made for this task with the launch form's fields; it joins the team at the end
+function addAdvisor() {
+  const row = document.createElement('div'), recent = launchOpts?.recentDirs || []
+  row.className = 'adv'
+  row.innerHTML = `<div class="line"><b class="ord"></b><span class="lead-tag">${esc(t('task.lead'))}</span><span class="kind">${esc(t('task.advisor'))}</span>` +
+    `<input name="name" placeholder="${esc(t('task.advisorName'))}"><button type="button" class="px rm" title="${esc(t('task.remove'))}">✕</button></div>` +
+    `<div class="row"><input name="dir" placeholder="${esc(t('launch.dirPlaceholder'))}"><button type="button" class="px browse">${esc(t('launch.browse'))}</button></div>` +
+    `<div class="browser" hidden><div class="cur"></div><ul></ul><button type="button" class="px pick">${esc(t('launch.pick'))}</button></div>` +
+    `<div class="recent">${recent.map(d => `<span title="${esc(d)}">${esc(base(d))}</span>`).join('')}</div>` +
+    `<div class="grid"><select name="model" title="${esc(t('launch.model'))}"></select><select name="effort" title="${esc(t('launch.effort'))}"></select></div>`
+  const dir = row.querySelector('[name=dir]'), box = row.querySelector('.browser')
+  dir.value = recent[0] || launchOpts?.home || ''
+  row.querySelector('.browse').onclick = () => browse(box, dir.value.trim(), reason => setTaskStatus(reason, true))
+  box.querySelector('.pick').onclick = () => { dir.value = box.dataset.path; box.hidden = true }
+  row.querySelectorAll('.recent span').forEach((el, i) => el.onclick = () => { dir.value = recent[i] })
+  fill(row.querySelector('[name=model]'), launchOpts?.models || [], 'opus')
+  fill(row.querySelector('[name=effort]'), launchOpts?.efforts || [], 'max')
+  row.querySelector('.rm').onclick = () => { picks = picks.filter(x => x !== row); row.remove(); renderPicks() }
+  taskForm.querySelector('.advs').appendChild(row)
+  picks.push(row)
+  renderPicks()
+  row.querySelector('[name=name]').focus()
+}
+
+// the members' numbers, the lead's tag, the count of seats taken; Start only for 2 members up to the room's seats
+function renderPicks() {
+  const lead = taskForm.elements.leader.checked
+  for (const row of taskForm.querySelectorAll('.mem, .adv')) {
+    const i = picks.indexOf(row)
+    row.classList.toggle('on', i >= 0)
+    row.classList.toggle('lead', i === 0 && lead)
+    row.querySelector('.ord').textContent = i >= 0 ? String(i + 1) : ''
+  }
+  const n = picks.length, seats = taskFor?.seats ?? 0, count = taskForm.querySelector('.count')
+  count.textContent = t('task.count', { n, seats })
+  count.classList.toggle('over', n > seats)
+  taskForm.querySelector('.go').disabled = taskPosting || n < 2 || n > seats
+}
+
+taskForm.querySelector('.add-adv').onclick = addAdvisor
+taskForm.elements.leader.onchange = renderPicks
+taskForm.querySelector('.cancel').onclick = closeTask
+taskDlg.addEventListener('click', ev => { if (ev.target === taskDlg) closeTask() })
+taskForm.addEventListener('submit', async ev => {
+  ev.preventDefault()
+  if (!taskFor) return
+  const title = taskForm.elements.desc.value.trim()
+  if (!title) return setTaskStatus(t('task.descriptionRequired'), true)
+  const members = picks.map(row => {
+    const m = { model:row.querySelector('[name=model]').value, effort:row.querySelector('[name=effort]').value }
+    if (row.dataset.account) m.account = row.dataset.account
+    else m.advisor = { name:row.querySelector('[name=name]').value.trim(), dir:row.querySelector('[name=dir]').value.trim() }
+    return m
+  })
+  if (members.some(m => m.advisor && (!m.advisor.name || !m.advisor.dir))) return setTaskStatus(t('task.advisorIncomplete'), true)
+  const body = { room:taskFor.k, roomName:roomName(taskFor.k), title, leader:taskForm.elements.leader.checked,
+    permissionMode:taskForm.elements.permissionMode.value, lang, members }
+  taskPosting = true
+  renderPicks()
+  setTaskStatus(t('launch.starting'))
+  try {
+    const res = await fetch('/api/tasks', { method:'POST', headers:{ 'content-type':'application/json' }, body:JSON.stringify(body) })
+    const data = await res.json().catch(() => null)
+    if (!res.ok) throw new Error(data ? errorText(data) + (data.fix ? '\n' + data.fix : '') : `${t('error.unknown')} (HTTP ${res.status})`)
+    closeTask()
+    openTaskWin(data.id, data)
+  } catch (err) {
+    setTaskStatus(t('task.failed', { reason:err.message }), true)
+  } finally {
+    taskPosting = false
+    if (!taskDlg.hidden) renderPicks()
+  }
+})
+
+// the task window; until the snapshot has a task just started, it shows what the bridge answered
+const taskWin = document.getElementById('taskwin')
+let taskWinFor = null, taskWinData = null, taskWinShown = { members:'', btns:'' }
+taskWin.querySelector('.close').onclick = closeTaskWin
+taskWin.addEventListener('click', ev => { if (ev.target === taskWin) closeTaskWin() })
+function openTaskWin(id, data = null) {
+  taskWinFor = id; taskWinData = data; taskWinShown = { members:'', btns:'' }
+  closeChat()
+  renderTaskWin()
+}
+function closeTaskWin() { taskWin.hidden = true; taskWinFor = null }
+const TASK_COLOR = { running:YELLOW, ending:YELLOW, failed:RED }
+function renderTaskWin() {
+  if (!taskWinFor) return
+  const known = taskById(taskWinFor)
+  if (known) taskWinData = null
+  const task = known ?? (taskWinData?.id === taskWinFor ? taskWinData : null)
+  if (!task) return closeTaskWin() // it ended, and left the snapshot
+  taskWin.querySelector('h2').textContent = `${task.id} · ${taskRoom(task)}`
+  const st = taskWin.querySelector('.top .status')
+  st.textContent = t('task.status.' + task.status)
+  st.style.setProperty('--c', TASK_COLOR[task.status] ?? GRAY)
+  taskWin.querySelector('.desc').textContent = task.title
+  taskWin.querySelector('.mode').hidden = !!task.leader
+  const err = taskWin.querySelector('.err')
+  err.hidden = task.status !== 'failed'
+  err.textContent = err.hidden ? '' : errorText({ code:task.errorCode, params:task.errorParams, error:task.error })
+  // the members: state, name, lead and advisor tags, where it works, its model; a click opens its window
+  const rows = task.members.map((m, i) => {
+    const s = sessionById(m.session), online = !!s && s.state !== 'ended', state = !online ? 'ended' : asking(m.session) ? 'waiting' : s.state
+    const runs = [s?.model || m.model, s?.effort || m.effort].filter(Boolean).join(' · ')
+    return `<div class="mrow${m.session ? '' : ' wait'}" data-i="${i}">${dot(state)}<b>${esc(m.name)}</b>` +
+      (task.leader && m.account === task.leader ? `<span class="badge lead">${esc(t('task.lead'))}</span>` : '') +
+      (m.advisor ? `<span class="badge adv" title="${esc(t('task.advisorTitle'))}">${esc(t('task.advisor'))}</span>` : '') +
+      `<span class="where" title="${esc([m.dir, m.worktree].filter(Boolean).join('\n'))}">${esc(base(m.dir))} · ${esc(m.branch || '')}</span>` +
+      (runs ? `<span class="chip">${esc(runs)}</span>` : '') +
+      `<span class="st">${esc(m.session ? statusText(online ? s : null) : t('task.memberStarting'))}</span></div>`
+  }).join('')
+  if (rows !== taskWinShown.members) { taskWinShown.members = rows; taskWin.querySelector('.members').innerHTML = rows }
+  const btnKey = task.id + '|' + task.status
+  if (btnKey !== taskWinShown.btns) {
+    taskWinShown.btns = btnKey
+    const btns = taskWin.querySelector('.actions')
+    btns.innerHTML = ''
+    const add = (text, cls, fn, title) => { const b = document.createElement('button'); b.className = 'px ' + cls; b.textContent = text; b.onclick = fn; if (title) b.title = title; btns.appendChild(b) }
+    if (task.status === 'running') add(t('task.end'), 'alert end', () => { if (confirm(t('task.endConfirm', { id:task.id }))) post(`/api/tasks/${task.id}/end`, {}) })
+    if (task.status === 'failed') add(t('task.dismiss'), 'dismiss', async () => {
+      const r = await fetch(`/api/tasks/${task.id}`, { method:'DELETE' })
+      if (!r.ok) alert(errorText(await r.json().catch(() => null)))
+      else closeTaskWin()
+    }, t('task.dismissTitle'))
+  }
+  taskWin.hidden = false
+}
+taskWin.querySelector('.members').addEventListener('click', ev => {
+  const row = ev.target.closest('.mrow'), task = taskById(taskWinFor) ?? taskWinData, m = row && task?.members[row.dataset.i]
+  if (m?.session) openChat(m.account, m.session)
+})
+
+// the activity log's lines for tasks: started, ended, failed (one dismissed just goes)
+let tasksSeen = new Map() // task id -> { status, room } as the last snapshot had it
+function noteTasks() {
+  const now = new Map(snapshot.tasks.map(task => [task.id, { status:task.status, room:taskRoom(task) }]))
+  if (!first) {
+    for (const task of snapshot.tasks) {
+      const was = tasksSeen.get(task.id)?.status
+      if (!was) log(t('log.taskStarted', { id:task.id, room:taskRoom(task), names:task.members.map(m => m.name).join(', ') }))
+      if (task.status === 'failed' && was !== 'failed') {
+        log(t('log.taskFailed', { id:task.id, room:taskRoom(task), reason:errorText({ code:task.errorCode, params:task.errorParams, error:task.error }) }))
+      }
+    }
+    for (const [id, was] of tasksSeen) if (!now.has(id) && was.status !== 'failed') log(t('log.taskEnded', { id, room:was.room }))
+  }
+  tasksSeen = now
 }
 
 // ================= start-up =================

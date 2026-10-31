@@ -85,6 +85,17 @@ test('a session with a token: reports itself online with the token, then a heart
   expect(w.toasts).toEqual([])
 })
 
+test('a task member (SYMPHONY_TASK): every event carries the task id, so the bridge seats it in the meeting room', async ($, on) => {
+  const w = world(on, { SYMPHONY_TOKEN: 'tok', SYMPHONY_BRIDGE: 'http://bridge.test', SYMPHONY_LAUNCH: 'L2', SYMPHONY_TASK: 'T7' })
+
+  await $.session.start(start)
+  expect(w.reqs[0].body).toEqual(expect.objectContaining({ kind: 'session.start', launch: 'L2', task: 'T7' }))
+
+  await w.clock.advance(15_000)
+  await w.clock.settle()
+  expect(w.reqs.at(-1)?.body).toEqual(expect.objectContaining({ kind: 'heartbeat', task: 'T7' }))
+})
+
 test('the bridge rejects the token: one message, approvals stay in the terminal, and nothing more is sent', async ($, on) => {
   const w = world(on, { SYMPHONY_TOKEN: 'bad' }, () => ({ status: 401, text: '{"error":"no valid account token"}' }))
   on('tool.check', () => ({ decision: 'ask' }))

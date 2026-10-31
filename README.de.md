@@ -14,6 +14,7 @@ Setz ein Team aus Claude-Code-Sitzungen in ein Pixel-Art-Büro: Du siehst auf ei
 - **Jeden finden und zurückrufen**: Klick auf einen freien Mitarbeiter, und er geht an seinen Platz zurück (und bleibt dort bis zu seiner nächsten Aufgabe); das Suchfeld in der Leiste oben findet Mitarbeiter nach Name oder Ordner (mit `/` springst du hinein), und ein Klick auf einen Zähler daneben (frei, arbeitet, offen, Feierabend) hebt alle in diesem Zustand hervor. Mit dem Griff unter der Leiste schiebst du sie nach oben weg und wieder herunter.
 - **Nachrichten zwischen Sitzungen**: Wenn sich Sitzungen gegenseitig Nachrichten schicken (SendMessage), fliegt ein Briefumschlag durchs Büro, und der Nachrichtenverlauf hält sie fest.
 - **Sitzungen über die Seite starten, ohne dass sich etwas öffnet**: Klick auf das „+“ an einem leeren Platz, um einen neuen Mitarbeiter einzustellen, und wähle Ordner, Modell, Denkaufwand und Berechtigungsmodus (ein neuer Mitarbeiter startet mit allem erlaubt, Opus und dem meisten Nachdenken); klick im Fenster eines Mitarbeiters, der Feierabend hat, auf „An die Arbeit“, und er kehrt an seinen alten Platz zurück. Die Sitzung läuft auf einem eigenen Terminal innerhalb der Bridge: kein Fenster öffnet sich, nichts nimmt dir den Fokus; „Terminal öffnen“ im Fenster des Mitarbeiters zeigt dieses Terminal, wenn du es willst, und es zu schließen ändert nichts.
+- **Teams in den Besprechungsräumen**: Klick auf einen freien kleinen Besprechungsraum, schreib eine Aufgabe auf und wähl 2 bis 5 Mitglieder: Mitarbeiter, die jeweils eine zweite Sitzung nur für die Aufgabe bekommen, oder Berater, die nur für dieses eine Mal dazukommen. Standardmäßig leitet das erste Mitglied und verteilt die Teile per SendMessage; jedes Mitglied arbeitet in seinem eigenen Git-Worktree auf seinem eigenen Branch, sodass niemand jemandem in die Dateien pfuscht. Bis die Aufgabe endet, sitzen die Mitglieder im Besprechungsraum.
 - **10 Sprachen**: English, 简体中文, 繁體中文, 日本語, 한국어, Español, Français, Deutsch, Português (Brasil) und Русский. Die Seite richtet sich nach der Sprache deines Browsers und hat in der Leiste oben eine Sprachauswahl; die Meldungen der Bridge folgen deiner Systemsprache (oder `-lang`), die des Mods der Seite, die die Sitzung gestartet hat.
 - **Nur lokal**: Die Bridge ist ein einzelnes Go-Programm (nur Standardbibliothek), die Seiten sind reines JavaScript, und nichts hängt von einem Drittanbieterdienst ab.
 
@@ -23,6 +24,7 @@ Setz ein Team aus Claude-Code-Sitzungen in ein Pixel-Art-Büro: Du siehst auf ei
 
 - Claude Code 2.1.316 (mit dieser Version getestet). Der Mod nutzt die Function Hooks von Claude Code, die noch eine Early-Access-API sind; führe also nach einem Update von Claude Code die End-to-End-Tests aus.
 - Die Bridge gibt es als fertiges Programm für Linux, macOS und Windows; Go 1.27 oder neuer brauchst du nur, um sie aus dem Quellcode zu starten.
+- `git`, nur für gemeinsame Aufgaben: Jedes Mitglied einer Aufgabe arbeitet in einem Git-Worktree.
 - Sonst nichts: Über die Seite gestartete Sitzungen laufen auf jeder Plattform innerhalb der Bridge.
 
 ## Installation
@@ -115,9 +117,30 @@ Empfohlen ist der Berechtigungsmodus `manual`: Im Modus `auto` wird bei den meis
 
 Antwortet unter der Adresse der Bridge auf diesem Rechner nichts, startet die Sitzung die Bridge selbst mit `symphony -background` (wenn `symphony` in deinem PATH liegt), und die Bridge läuft nach dem Ende der Sitzung weiter. Setz `SYMPHONY_DATA`, wenn deine Konten nicht im Standard-Datenordner liegen.
 
+## Gemeinsame Aufgaben
+
+In einem kleinen Besprechungsraum arbeitet ein Team aus 2 bis 5 Sitzungen gemeinsam an einer Aufgabe. Aufgaben brauchen `git` und den Mod in Version 0.7.0 (`claude plugin update symphony-bridge@symphony`).
+
+**Eine Aufgabe starten**: Klick auf einen freien kleinen Besprechungsraum und beschreib, was zu tun ist. Hak die Mitglieder in der gewünschten Reihenfolge an (2 bis zu den Plätzen im Raum), wähl für jedes Mitglied Modell und Denkaufwand und für das ganze Team den Berechtigungsmodus (standardmäßig alles erlaubt), dann klick auf „Aufgabe starten“. Es gibt zwei Arten von Mitgliedern:
+
+- **Mitarbeiter**: Jeder bekommt eine zweite Sitzung nur für die Aufgabe, die im Ordner des Mitarbeiters arbeitet; seine eigene Sitzung am Platz bleibt, wie sie ist. Ein Mitarbeiter ist immer nur in einer Aufgabe, und wer noch nie gearbeitet hat, hat noch keinen Ordner: Klick vorher einmal auf „An die Arbeit“.
+- **Berater**: Teilnehmer nur für diese eine Aufgabe, angelegt mit den üblichen Feldern (Name, Ordner, Modell, Denkaufwand). Sie haben keinen Platz, kommen mit dem Aufzug und sind wieder weg, sobald die Aufgabe endet.
+
+**Die Leitung**: Standardmäßig leitet das erste Mitglied: Es teilt die Aufgabe auf, verteilt die Teile per SendMessage, prüft die Arbeit, führt die Branches der anderen in seinen eigenen zusammen und sagt dir, was erledigt wurde. Nimm den Haken bei der Leitung weg, dann bekommt jeder die ganze Aufgabe, und die Mitglieder teilen sie unter sich auf. So oder so gibt die Bridge jedem Mitglied seine erste Eingabe: wer im Team ist (die Mitglieder erreichen einander per SendMessage über ihren Namen), den Branch jedes Einzelnen und die Regeln.
+
+**Git**: Jedes Mitglied arbeitet in seinem eigenen Git-Worktree auf seinem eigenen Branch `symphony/<aufgabe>/<name>` seines Ordners, sodass niemand jemandem in die Dateien pfuscht und dein eigener Checkout unverändert bleibt. Die Worktrees liegen im Ordner unter `.symphony/worktrees/`, vor Git versteckt durch `.git/info/exclude` (deine `.gitignore` bleibt unberührt). Wenn die Aufgabe endet, wird alles, was ein Mitglied noch nicht committet hat, auf seinen Branch committet, damit nichts verloren geht, und die Worktrees werden entfernt.
+
+- In deinen eigenen Repositorys bleiben die Branches, damit du sie zusammenführst; gibt es eine Leitung, sammelt deren Branch die Arbeit aller.
+- Ein Ordner, der kein Git-Repository ist, wird für die Aufgabe zu einem (`git init` und ein Commit mit allem, was darin liegt). Wenn die Aufgabe endet, werden die Branches der Mitglieder darin zusammengeführt und das `.git` wieder entfernt: Der Ordner besteht wieder aus gewöhnlichen Dateien, mit dem zusammengeführten Ergebnis.
+- Schlägt ein Merge fehl, bleibt alles, wie es ist (das Repository und die Branches, zum Aufräumen von Hand), und das Aufgabenfenster zeigt, welcher Branch einen Konflikt hat.
+
+**Im Büro**: Die Mitglieder sitzen die ganze Aufgabe über am Tisch des Raums, und am Platz eines Mitarbeiters steht so lange ein leerer Stuhl. Das Türschild des Raums zeigt die ID der Aufgabe; sein Licht, grün, solange der Raum frei ist, wird gelb, während die Aufgabe läuft, und rot, während ein Mitglied auf deine Freigabe oder Antwort wartet. Ein Klick auf den Raum öffnet das Aufgabenfenster: die Aufgabe, die Mitglieder mit ihren Ordnern und Branches und „Aufgabe beenden“. Ein Klick auf ein Mitglied dort oder auf seine Figur im Raum öffnet sein Chatfenster, genau wie das Fenster eines Mitarbeiters.
+
+Eine Aufgabe endet, wenn du sie im Aufgabenfenster beendest oder wenn ihre letzte Sitzung endet: Die Bridge stoppt die Sitzungen der Mitglieder, kümmert sich wie oben beschrieben um die Git-Seite und löscht die Berater. Eine Aufgabe, die noch läuft, wenn die Bridge stoppt, wird beim nächsten Start der Bridge auf dieselbe Weise beendet.
+
 ## Konten und Plätze
 
-- Eine Identität in symphony besteht aus einem Namen, einem Token und einem festen Platz. Ein Konto kann immer nur von einer Sitzung zugleich genutzt werden; eine zweite Sitzung wird abgewiesen, und ihre Freigaben bleiben im Terminal.
+- Eine Identität in symphony besteht aus einem Namen, einem Token und einem festen Platz. Ein Konto kann immer nur von einer Sitzung zugleich genutzt werden, dazu von einer in der Aufgabe, an der es teilnimmt; jede weitere Sitzung wird abgewiesen, und ihre Freigaben bleiben im Terminal.
 - Claude-Logins werden hier nicht verwaltet: Alle Sitzungen können sich ein Claude-Login teilen.
 - Die Daten liegen in `~/.config/symphony` (Linux), `~/Library/Application Support/symphony` (macOS) oder `%AppData%\symphony` (Windows). `accounts.json` enthält die Tokens und ist nur für den Besitzer lesbar (0600); unter Windows übernehmen das die Zugriffsrechte des Benutzerordners.
 
