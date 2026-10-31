@@ -108,13 +108,17 @@
   .room-plate i { display:inline-block; width:6px; height:6px; margin-right:5px; vertical-align:1px; background:#2e9e5b; }
   .room-plate.busy i { background:#f2b705; }
   .room-plate.alert i { background:#d64541; }
+  .room-plate.failed i { animation:nudge-light 1s steps(1) infinite; } /* a failed task: the light blinks and an "!" follows the id */
+  @keyframes nudge-light { 50% { background:#5a2320; } }
+  .room-plate .bang { color:#ff8a80; margin-left:2px; }
+  .room-plate.narrow .nm { display:none; } /* too narrow for the name beside the task id: the id alone (the name shows on hover) */
   .room-plate.click { cursor:pointer; }
   .room-plate.click:hover { border-color:#f2b705; }
   .sign-text { position:absolute; transform:translate(-50%, -50%); color:#fffdf7; font:700 13px/1 ui-monospace, monospace; letter-spacing:3px; white-space:nowrap; }
   .seat-add { position:absolute; transform:translate(-50%, -50%); pointer-events:auto; cursor:pointer; width:22px; height:22px; padding:0;
     background:#fffdf7; color:#2b2a28; border:2px solid #2b2a28; font:700 16px/16px ui-monospace, monospace; box-shadow:2px 2px 0 rgba(0,0,0,.3); }
   .seat-add:hover { background:#f2b705; }
-  .bubble { position:absolute; transform:translate(-50%, calc(-100% - 36px)); background:#fffdf7; color:#2b2a28; border:2px solid #2b2a28;
+  .bubble { position:absolute; transform:translate(-50%, -100%); box-sizing:border-box; /* placed above its tag, clear of the others (placeLabels) */ background:#fffdf7; color:#2b2a28; border:2px solid #2b2a28;
     padding:1px 6px; font-size:12px; max-width:220px; box-shadow:2px 2px 0 rgba(0,0,0,.3); }
   .bubble b { font-weight:700; }
   /* popups */
@@ -148,7 +152,16 @@
   .it.user { align-self:flex-end; background:#2b2a28; color:#fffdf7; padding:6px 10px; border:2px solid #2b2a28; box-shadow:2px 2px 0 rgba(0,0,0,.3); }
   .it.user.queued { opacity:.6; }
   .it.user .body code { background:rgba(255,255,255,.18); }
-  .it.user .from { font-size:11px; color:#b9b3a8; margin-bottom:2px; }
+  .it.user .from { font-size:11px; color:#d6d1c6; margin-bottom:2px; }
+  /* the bridge's kickoff of a task: long, so folded to a line until clicked */
+  .it.user.kickoff summary { display:flex; gap:8px; align-items:baseline; cursor:pointer; list-style:none; margin:0; }
+  .it.user.kickoff summary::-webkit-details-marker { display:none; }
+  .it.user.kickoff summary b { flex:none; font-size:12px; color:#f2b705; }
+  .it.user.kickoff summary b::before { content:'▸ '; }
+  .it.user.kickoff details[open] summary b::before { content:'▾ '; }
+  .it.user.kickoff .peek { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#d6d1c6; font-size:12px; }
+  .it.user.kickoff details[open] .peek { display:none; }
+  .it.user.kickoff .body { margin-top:4px; }
   .it.text { align-self:flex-start; background:#fff; color:#2b2a28; padding:6px 10px; border:2px solid #2b2a28; box-shadow:2px 2px 0 rgba(0,0,0,.2); }
   /* thinking: folded by default, orange "thinking…" with three dots in turn while it goes on */
   .it.thinking { align-self:flex-start; }
@@ -231,9 +244,13 @@
   #task .mem.off label { cursor:default; opacity:.5; }
   #task .mem .nm { font-weight:700; white-space:nowrap; }
   #task .mem small { color:#8a867e; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  #task .mem select, #task .adv .grid select { width:auto; max-width:150px; }
+  #task .mem select, #task .adv .row select { width:auto; max-width:150px; }
   #task .mem:not(.on) select { visibility:hidden; }
   #task .on { border-color:#2b2a28; }
+  #task .on.over { border-color:#c0392b; } /* numbered past the room's seats */
+  #task .over .ord { background:#c0392b; }
+  #task .bad, #task input.bad { border-color:#c0392b; }
+  #task input.bad { background:#fdecea; }
   #task .ord { flex:none; min-width:16px; padding:0 3px; box-sizing:border-box; text-align:center; font:700 11px/16px ui-monospace, monospace; color:#fffdf7; background:#2b2a28; }
   #task .ord:empty { background:none; }
   #task .lead-tag { display:none; flex:none; font-size:11px; line-height:16px; padding:0 5px; background:#f2b705; color:#2b2a28; white-space:nowrap; }
@@ -243,10 +260,12 @@
   #task .adv .kind { flex:none; font-size:11px; padding:0 5px; border:1px solid #b9b3a8; color:#6f6b64; white-space:nowrap; }
   #task .adv .row { display:flex; gap:6px; margin-top:4px; }
   #task .adv .row input { flex:1; }
-  #task .adv .grid { display:flex; gap:6px; margin-top:4px; }
   #task .add-adv { margin-top:6px; }
   #task label.check { display:flex; align-items:center; gap:6px; color:#2b2a28; font-size:13px; margin-top:10px; cursor:pointer; }
   #task .actions { align-items:center; }
+  /* the status line and the buttons stay at the bottom of the dialog while the rest scrolls */
+  #task .foot { position:sticky; bottom:-14px; z-index:1; margin:10px -16px -14px; padding:0 16px 14px; background:#fffdf7; border-top:1px solid #d6d1c6; }
+  #task .foot .status:empty { display:none; }
   #task .count { margin-right:auto; font-size:12px; color:#6f6b64; }
   #task .count.over { color:#c0392b; font-weight:700; }
   /* the task window: what the team is on, its members (a click opens one's window), the button to end it */
@@ -361,8 +380,10 @@
     <label class="check"><input type="checkbox" name="leader" checked><span data-i18n="task.leader"></span></label>
     <label data-i18n="launch.permissionMode"></label>
     <select name="permissionMode"></select>
-    <div class="status"></div>
-    <div class="actions"><span class="count"></span><button type="button" class="px cancel" data-i18n="common.cancel"></button><button type="submit" class="px primary go" data-i18n="task.go"></button></div>
+    <div class="foot">
+      <div class="status"></div>
+      <div class="actions"><span class="count"></span><button type="button" class="px cancel" data-i18n="common.cancel"></button><button type="submit" class="px primary go" data-i18n="task.go"></button></div>
+    </div>
   </form>
 </div>
 
@@ -438,7 +459,7 @@ const asking = sid => !!sid && snapshot.asks.some(a => a.session === sid) // the
 const taskById = id => snapshot.tasks.find(task => task.id === id) ?? null
 const roomTask = k => snapshot.tasks.filter(task => task.room === k).sort((a, b) => (a.status === 'failed') - (b.status === 'failed'))[0] ?? null
 const roomName = k => t('room.small.' + (k % 24 + 1)) + (k < 24 ? '' : ' ' + ['II', 'III', 'IV'][Math.min(2, Math.floor(k / 24) - 1)])
-const taskRoom = task => task.roomName || roomName(task.room)
+const taskRoom = task => roomName(task.room) // in this page's language (the task's roomName is the kickoff's, in the creator's)
 
 // what a session waits for: an approval or an answer
 function waitingText(sessionId) {
@@ -850,7 +871,7 @@ function drawWallScreen(g, x, y) {
 // The chairs in the order a task's members take them: for 5 the head of the table first, then the far side, then the
 // near side; x, y is a chair's top left (drawSeatTop), side which side of the table it stands on (n, s, w or e)
 function roomChairs(cx, cy, seats, far) {
-  if (seats === 3) return [{ x:cx - 5, y:far < 0 ? cy - 16 : cy + 8, side:far < 0 ? 'n' : 's' }, { x:cx - 21, y:cy - 4, side:'w' }, { x:cx + 11, y:cy - 4, side:'e' }]
+  if (seats === 3) return [{ x:cx - 5, y:far < 0 ? cy - 16 : cy + 8, side:far < 0 ? 'n' : 's' }, { x:cx - 23, y:cy - 4, side:'w' }, { x:cx + 13, y:cy - 4, side:'e' }]
   const w = seats === 4 ? 28 : 40, x = cx - (w >> 1), y = cy - 8, xs = [0.25, 0.75].map(f => Math.round(x + f * w) - 5)
   const north = xs.map(sx => ({ x:sx, y:y - 9, side:'n' })), south = xs.map(sx => ({ x:sx, y:y + 17, side:'s' }))
   return [...(seats === 5 ? [{ x:x + w + 1, y:y + 4, side:'e' }] : []), ...(far < 0 ? [...north, ...south] : [...south, ...north])]
@@ -1134,15 +1155,24 @@ function buildPlaces() {
     const NW = node(L, N), NE = node(R, N), SE = node(R, S), SW = node(L, S), edge = { n:[NW, NE], s:[SW, SE], w:[NW, SW], e:[NE, SE] }
     chain([NW, NE, SE, SW, NW])
     edge[r.north ? 's' : 'n'].forEach(n => link(inside, n))
-    // on a chair north of the table one faces us, south of it one shows its back; at the ends one faces us too
+    // on a chair north of the table one faces us, south of it one shows its back; at the ends one faces us too, sitting a
+    // little out from the table so it doesn't cover it
     const seats = chairs.map((c, i) => {
-      const sx = c.x + 5, sy = c.y + (c.side === 'n' ? 9 : 8)
+      const sx = c.x + 5 + (c.side === 'w' ? -2 : c.side === 'e' ? 2 : 0), sy = c.y + (c.side === 'n' ? 9 : 8)
       const a = node(c.side === 'w' ? L : c.side === 'e' ? R : sx, c.side === 'n' ? N : c.side === 's' ? S : sy), n = node(sx, sy)
       edge[c.side].forEach(m => link(a, m)); link(a, n)
-      return { id:`room${r.k}.${i}`, x:sx, y:sy, node:n, room:'small', face:c.side === 's' ? -1 : 1, sit:true, nap:false }
+      return { id:`room${r.k}.${i}`, x:sx, y:sy, node:n, room:'small', face:c.side === 's' ? -1 : 1, sit:true, nap:false, side:c.side }
     })
-    const stand = [NW, NE, SW, SE].map((n, i) => ({ id:`room${r.k}.stand${i}`, x:pts[n].x, y:pts[n].y, node:n, room:'small', face:1, sit:false, nap:false }))
-    taskSeats.set(r.k, [...seats, ...stand]) // more members than chairs stand at the corners
+    // more members than chairs stand: in front of the table on the door's side when that side has no chairs, at an end
+    // without a chair, then at the corners on the door's side (the plant is in a far corner), clear of the walls
+    const has = side => chairs.some(c => c.side === side), near = r.north ? S : N, front = near + (r.north ? 4 : -4)
+    const places = [...(has(r.north ? 's' : 'n') ? [] : [[cx - 14, front], [cx + 14, front]]), ...(has('w') ? [] : [[L, cy]]), ...(has('e') ? [] : [[R, cy]]), [L, near], [R, near]]
+    const stand = places.map(([x, y], i) => {
+      const n = node(Math.max(r.x + 12, Math.min(r.x + r.w - 12, x)), y)
+      link(n, [NW, NE, SE, SW].reduce((a, b) => Math.hypot(pts[b].x - pts[n].x, pts[b].y - pts[n].y) < Math.hypot(pts[a].x - pts[n].x, pts[a].y - pts[n].y) ? b : a))
+      return { id:`room${r.k}.stand${i}`, x:pts[n].x, y:pts[n].y, node:n, room:'small', face:1, sit:false, nap:false }
+    })
+    taskSeats.set(r.k, [...seats, ...stand])
   }
   for (const w of ways) { // the halls left of the office meet the west corridor at their east end, those below the lounge the east one
     const west = w.h.x1 === wingX
@@ -1301,6 +1331,7 @@ function updateEmployee(e, acc, walkIn, task) {
   const was = isOnline(e)
   e.acc = acc
   e.s = sessionOf(acc)
+  e.away = task ?? null
   const online = isOnline(e)
   if (online && !was && !e.inside && !task) { // on duty: in through the door, or straight to its spot when the page opens
     if (walkIn) { e.x = door.x; e.y = door.y; e.node = nav.door; e.path = []; e.goal = null; liftRide() }
@@ -1806,14 +1837,15 @@ function employeeItem(g, e, now, at) {
         }
         break
       case 'task': { // at the meeting table: thinking, hands busy while it works, a hand up and the sign while either of its
-        // sessions waits for you, now and then a look at its notes while it waits for the others
-        const red = st === 'waiting' || asking(e.acc.session)
+        // sessions waits for you, now and then a look at its notes while it waits for the others; the hand and the sign go
+        // up on the side away from the table, so the sign never lands on it (west of the table: the left)
+        const red = st === 'waiting' || asking(e.acc.session), west = spot.side === 'w'
         if (st === 'tool') { pose.armL = Math.floor(t / 140) % 2; pose.armR = 1 - Math.floor(t / 140) % 2 }
         else if (st === 'idle' && !blink && Math.floor(t / 4000) % 3 === 0) pose.eyes = 'down'
-        pose.raiseL = red
+        pose.raiseL = red && spot.side !== 'e'; pose.raiseR = red && spot.side === 'e'
         extra = top => {
           if (st === 'thinking') drawThinking(g, x, top, t)
-          if (red) drawAlert(g, x + (b.bw >> 1) + b.armW + 2, top - 3 - (Math.floor(t / 400) % 2))
+          if (red) drawAlert(g, west ? x - (b.bw >> 1) - b.armW - 9 : x + (b.bw >> 1) + b.armW + 2, top - 3 - (Math.floor(t / 400) % 2))
         }
         break
       }
@@ -1839,6 +1871,33 @@ function employeeItem(g, e, now, at) {
   } }
 }
 
+// a member's tag at its task's table: above its head, else beside that to the left or the right, then a row up and the
+// same again, then below its feet; always within the room's width, between its walls (a room on the back wall: up to
+// the wall's pictures) and below the HUD. With no free place, where it covers the fewest other tags.
+function tableTag(e, room, placed) {
+  const [rl, rt] = toCss(room.x, room.north && room.y === WALL_H ? DECOR : room.y), [rr, rb] = toCss(room.x + room.w, room.y + room.h)
+  const top = Math.max(rt, hudBottom) + 2 + e.lh, bottom = rb - 2, half = e.lw / 2, s = half + 2, step = e.lh + 1
+  const inX = x => Math.max(rl + half + 1, Math.min(rr - half - 1, x))
+  const ys = []
+  for (let y = Math.min(e.ly, bottom); y >= top && ys.length < 4; y -= step) ys.push(y)
+  for (let y = Math.max(toCss(0, e.y + 3)[1] + step, top); y <= bottom && ys.length < 8; y += step) ys.push(y)
+  if (!ys.length) ys.push(Math.max(top, Math.min(e.ly, bottom)))
+  ;[e.tx, e.ty] = bestPlace(e.lw, e.lh, ys.flatMap(y => [0, -s, s, -2 * s, 2 * s].map(dx => [inX(e.lx + dx), y])), placed)
+}
+// the first of the places (x the middle, y the bottom of a w x h box) that covers none of the boxes placed, else the one
+// that covers the least of them; [x, y, how much it covers]
+function bestPlace(w, h, places, placed) {
+  let best = [...places[0], Infinity], least = Infinity
+  for (const [x, y] of places) {
+    const l = x - w / 2, r = x + w / 2, t = y - h
+    let n = 0
+    for (const p of placed) n += Math.max(0, Math.min(p.r, r) - Math.max(p.l, l)) * Math.max(0, Math.min(p.b, y) - Math.max(p.t, t))
+    if (!n) return [x, y, 0]
+    if (n < least) { best = [x, y, n]; least = n }
+  }
+  return best
+}
+
 function headOf(e) {
   const b = build(e.s)
   return e.inside ? { x:Math.round(e.x), y:Math.round(e.y) - b.bh - 4 } : { x:e.desk.x + 16, y:e.desk.y - 12 }
@@ -1848,26 +1907,28 @@ const setData = (el, key, value) => { if (el.dataset[key] !== value) el.dataset[
 
 // Name tags follow their employees. Away from its desk a tag shows just the name, and a tag that stays put
 // (on a sofa, at the meeting table) moves up out of the way of the tags already there. A task's members have tags too
-// (while they're in the building); the tag of an employee away in one stays at its desk.
+// (while they're in the building); at their table the tags go beside each other first, then up, inside the room. The
+// tag of an employee away in a task stays at its desk.
 function placeLabels(now) {
   const maxW = Math.max(60, COL_PITCH * S / dpr - 6), placed = [], loose = []
-  const box = (e, y) => ({ l:e.lx - e.lw / 2, r:e.lx + e.lw / 2, t:y - e.lh, b:y })
+  const box = (e, x, y) => ({ l:x - e.lw / 2, r:x + e.lw / 2, t:y - e.lh, b:y })
   for (const f of figs.values()) if (f.label.hidden === f.inside) { f.label.hidden = !f.inside; f.sized = false }
   const tagged = [...emps.values(), ...figs.values()].filter(e => e.desk || e.inside)
   for (const e of tagged) { // what changes a tag's size, written first; the sizes are read below, all at once
-    const el = e.label, away = e.inside && !e.atDesk
+    const el = e.label, away = e.inside && !e.atDesk, mw = e.member ? Math.max(90, maxW) : maxW // a member's tag has no desk to fit
     if (el.classList.contains('away') !== away) { el.classList.toggle('away', away); e.sized = false }
-    if (e.maxW !== maxW) { el.style.maxWidth = maxW + 'px'; e.maxW = maxW; e.sized = false }
+    if (e.maxW !== mw) { el.style.maxWidth = mw + 'px'; e.maxW = mw; e.sized = false }
   }
   for (const e of tagged) {
     if (!e.sized) { e.lw = e.label.offsetWidth; e.lh = e.label.offsetHeight; e.sized = true }
+    if (e.bubble && !e.bubbleSized) { e.bubW = e.bubble.offsetWidth; e.bubH = e.bubble.offsetHeight; e.bubbleSized = true }
   }
   for (const e of tagged) {
     const el = e.label, away = e.inside && !e.atDesk
     const h = headOf(e)
     ;[e.lx, e.ly] = toCss(h.x, h.y - 2)
-    e.ty = e.ly
-    if (!away) placed.push(box(e, e.ly))
+    e.tx = e.lx; e.ty = e.ly
+    if (!away) placed.push(box(e, e.lx, e.ly))
     else if (!e.moving) loose.push(e)
     // for the tests and the curious: what it's up to, and where
     setData(el, 'act', e.inside ? e.want?.act ?? '' : '')
@@ -1884,16 +1945,33 @@ function placeLabels(now) {
   }
   loose.sort((a, b) => b.ly - a.ly)
   for (const e of loose) {
-    for (let k = 0; k < 12; k++) {
-      const me = box(e, e.ty), hit = placed.find(p => p.l < me.r && me.l < p.r && p.t < me.b && me.t < p.b)
+    const room = e.member && e.want?.act === 'task' && smalls.find(r => r.k === e.task.room)
+    if (room) tableTag(e, room, placed)
+    else for (let k = 0; k < 12; k++) {
+      const me = box(e, e.tx, e.ty), hit = placed.find(p => p.l < me.r && me.l < p.r && p.t < me.b && me.t < p.b)
       if (!hit) break
       e.ty = hit.t - 1
     }
-    placed.push(box(e, e.ty))
+    placed.push(box(e, e.tx, e.ty))
+  }
+  // message bubbles, after the tags, the newest first: above the sender's tag, else beside it or higher, else below the
+  // figure; inside the window and below the HUD. Where there's no room for one (it would cover a quarter of itself or
+  // more), it doesn't show: the envelope and the message log have the message
+  for (const e of tagged.filter(e => e.bubble && e.bubbleSized).sort((a, b) => b.bubbleAt - a.bubbleAt)) {
+    const w = e.bubW, h = e.bubH, s = w / 2 + 2, step = h + 2, top = hudBottom + 2 + h
+    const inX = x => Math.max(w / 2 + 2, Math.min(innerWidth - w / 2 - 2, x)), ys = []
+    for (let y = e.ty - e.lh - 2, k = 0; k < 4 && y >= top; k++, y -= step) ys.push(y)
+    for (let y = Math.max(e.ly + e.lh + h + 24, top), k = 0; k < 2 && y <= innerHeight - 2; k++, y += step) ys.push(y)
+    if (!ys.length) ys.push(top)
+    const at = bestPlace(w, h, ys.flatMap(y => [0, -s, s].map(dx => [inX(e.tx + dx), y])), placed), shown = at[2] < w * h / 4
+    ;[e.bx, e.by] = at
+    const vis = shown ? '' : 'hidden'
+    if (e.bubble.style.visibility !== vis) e.bubble.style.visibility = vis
+    if (shown) placed.push({ l:at[0] - w / 2, r:at[0] + w / 2, t:at[1] - h, b:at[1] })
   }
   for (const e of tagged) {
-    e.label.style.left = e.lx + 'px'; e.label.style.top = e.ty + 'px'
-    if (e.bubble) { e.bubble.style.left = e.lx + 'px'; e.bubble.style.top = e.ty + 'px' }
+    e.label.style.left = e.tx + 'px'; e.label.style.top = e.ty + 'px'
+    if (e.bubble && e.bubbleSized) { e.bubble.style.left = e.bx + 'px'; e.bubble.style.top = e.by + 'px' }
   }
   for (const [key, el] of Object.entries(roomEls)) {
     const r = rooms[key]
@@ -1906,7 +1984,7 @@ function placeLabels(now) {
   smalls.forEach((r, i) => {
     const d = smallDoor(r), [x, y] = toCss(d.plateX, d.plateY), maxW = Math.max(40, (r.x + r.w - 4 - d.plateX) * S / dpr) + 'px'
     plates[i].style.left = x + 'px'; plates[i].style.top = y + 'px'
-    if (plates[i].style.maxWidth !== maxW) plates[i].style.maxWidth = maxW
+    if (plates[i].style.maxWidth !== maxW) { plates[i].style.maxWidth = maxW; fitPlate(plates[i]) }
   })
   addBtn.hidden = addSeat < 0
   if (addSeat >= 0) {
@@ -2025,7 +2103,8 @@ function setHud(up, remember = true) {
   if (remember) try { localStorage.setItem(HUD_STORE, up ? 'up' : 'down') } catch {}
   hudRoom()
 }
-const hudRoom = () => document.documentElement.style.setProperty('--hud-h', (hud.classList.contains('up') ? 0 : hud.offsetHeight) + 'px')
+let hudBottom = 0 // where the HUD ends, in CSS pixels from the top; tags at a task's table keep below it
+const hudRoom = () => { hudBottom = hud.classList.contains('up') ? 0 : hud.offsetHeight; document.documentElement.style.setProperty('--hud-h', hudBottom + 'px') }
 hudTab.addEventListener('click', () => setHud(!hud.classList.contains('up')))
 new ResizeObserver(hudRoom).observe(hud)
 
@@ -2059,8 +2138,9 @@ markDetail()
 
 // ================= small meeting rooms' nameplates =================
 // Each nameplate shows the room's name and a light: green while the room is free, yellow while a task runs in it (its id
-// beside the name), red while one of its members waits for you or the task failed. A click on it, or on the room, opens
-// the task window, or the task dialog for a free room when the page can start sessions.
+// before the name, the id alone on a narrow plate), red while one of its members waits for you, blinking red with an "!"
+// after the id when the task failed. A click on it, or on the room, opens the task window, or the task dialog for a free
+// room when the page can start sessions.
 const plates = []
 function syncPlates() {
   while (plates.length > smalls.length) plates.pop().remove()
@@ -2072,19 +2152,25 @@ function syncPlates() {
     plates.push(el)
   }
   smalls.forEach((r, i) => {
-    const el = plates[i], name = roomName(r.k), task = roomTask(r.k)
-    const light = !task ? 'free' : task.status === 'failed' || task.members.some(m => asking(m.session)) ? 'alert' : 'busy'
-    const text = task ? `${name} · ${task.id}` : name, click = !!task || !!launchOpts?.enabled
+    const el = plates[i], name = roomName(r.k), task = roomTask(r.k), failed = task?.status === 'failed'
+    const light = !task ? 'free' : failed || task.members.some(m => asking(m.session)) ? 'alert' : 'busy'
+    const text = task ? `${task.id}${failed ? '!' : ''} · ${name}` : name, click = !!task || !!launchOpts?.enabled
     const title = `${name} · ${t('room.seats', { n:r.seats })} · ` +
       (task ? `${t(task.status === 'running' ? 'room.busy' : 'task.status.' + task.status)} · ${task.id}${t('common.colon')}${task.title}` : t('room.free'))
     const sig = `${text}|${r.seats}|${light}|${click}|${title}`
     if (el.dataset.sig === sig) return
     el.dataset.sig = sig; el.dataset.seats = r.seats; el.dataset.light = light
     if (task) el.dataset.task = task.id; else delete el.dataset.task
-    el.className = `room-plate ${light}${click ? ' click' : ''}`
-    el.innerHTML = `<i></i>${esc(text)}`
+    el.className = `room-plate ${light}${failed ? ' failed' : ''}${click ? ' click' : ''}`
+    el.innerHTML = task ? `<i></i><span class="id">${esc(task.id)}${failed ? '<b class="bang">!</b>' : ''}</span><span class="nm"> · ${esc(name)}</span>` : `<i></i>${esc(name)}`
     el.title = title
+    if (el.style.maxWidth) fitPlate(el)
   })
+}
+// a plate with a task too narrow for the id and the name shows the id alone
+function fitPlate(el) {
+  el.classList.remove('narrow')
+  if (el.dataset.task && el.scrollWidth > el.clientWidth) el.classList.add('narrow')
 }
 function onRoomClick(r) {
   const task = roomTask(r.k)
@@ -2096,9 +2182,17 @@ function onRoomClick(r) {
 // the activity log: hidden until its HUD button opens it (the page remembers), the last 200 lines
 const logEl = document.getElementById('log'), logLines = logEl.querySelector('.lines'), LOG_STORE = 'symphony.log'
 logLines.dataset.empty = t('log.empty')
+// While the panel is hidden the lines only go into a list (no elements, no measuring: under load this runs 100 times a
+// second); opening the panel puts them in
+const logKept = [] // the last 200 lines
+let logStale = false // the panel's lines are behind logKept
 function log(text) {
+  const line = `${new Date().toLocaleTimeString(lang)}  ${text}`
+  logKept.push(line)
+  if (logKept.length > 200) logKept.shift()
+  if (logEl.hidden) { logStale = true; return }
   const d = document.createElement('div')
-  d.textContent = `${new Date().toLocaleTimeString(lang)}  ${text}`
+  d.textContent = line
   const atEnd = logLines.scrollTop + logLines.clientHeight >= logLines.scrollHeight - 4
   logLines.appendChild(d)
   while (logLines.children.length > 200) logLines.firstChild.remove()
@@ -2107,6 +2201,10 @@ function log(text) {
 function setLog(open) {
   logEl.hidden = !open
   try { localStorage.setItem(LOG_STORE, open ? 'open' : 'closed') } catch {}
+  if (open && logStale) {
+    logStale = false
+    logLines.replaceChildren(...logKept.map(line => { const d = document.createElement('div'); d.textContent = line; return d }))
+  }
   if (open) logLines.scrollTop = logLines.scrollHeight
 }
 document.getElementById('open-log').onclick = () => setLog(logEl.hidden)
@@ -2126,9 +2224,10 @@ function showMessage(m) {
   from.bubble?.remove()
   const el = document.createElement('div')
   el.className = 'bubble'
+  el.style.visibility = 'hidden' // until placed
   el.innerHTML = `<b>→ ${esc(m.toName || '?')}</b>${esc(t('common.colon'))}${esc(m.text.length > 60 ? m.text.slice(0, 60) + '…' : m.text)}`
   document.getElementById('labels').appendChild(el)
-  from.bubble = el
+  from.bubble = el; from.bubbleSized = false; from.bubbleAt = performance.now() // measured and placed next frame
   setTimeout(() => { if (from.bubble === el) from.bubble = null; el.remove() }, 6000)
 }
 
@@ -2196,7 +2295,8 @@ function applySnapshot(snap) {
 }
 
 function applyEvent(ev, name) {
-  const who = (name || ev.session.slice(0, 6)) + (ev.agentId ? ' / ' + t('common.subagent') : '')
+  // a task session goes by its member's name (bob-T7)
+  const who = (name ? name + (ev.task ? '-' + ev.task : '') : ev.session.slice(0, 6)) + (ev.agentId ? ' / ' + t('common.subagent') : '')
   if (ev.kind === 'tool.start') log(`${who}  ${ev.tool}`)
   else if (ev.kind === 'session.start') log(`${who}  ${t('log.onDuty')}`)
   else if (ev.kind === 'session.end') log(`${who}  ${t('log.offDuty')}`)
@@ -2288,9 +2388,12 @@ function showChat(id) {
   if (!acc || (!chatSid && !emps.has(id))) { closeChat(); return }
   chatFor = id
   const s = chatSid ? sessionById(chatSid) : sessionOf(acc), online = !!s && s.state !== 'ended'
-  // a task session's window: the member's name, the task (a click opens it), no seat; it can't start work or be deleted
-  const task = chatSid ? taskById(s?.task) ?? snapshot.tasks.find(k => k.members.some(m => m.session === chatSid)) ?? null : null
-  const member = task?.members.find(m => m.session === chatSid)
+  // a task session's window: the member's name, the task (a click opens it), no seat; it can't start work or be deleted.
+  // The desk window of an employee away in a task shows that task too, and a button to its window there; while it's away
+  // it can't be deleted (the bridge refuses)
+  const away = chatSid ? null : emps.get(id)?.away ?? null
+  const task = chatSid ? taskById(s?.task) ?? snapshot.tasks.find(k => k.members.some(m => m.session === chatSid)) ?? null : away
+  const member = chatSid ? task?.members.find(m => m.session === chatSid) : away?.members.find(m => m.account === id)
   chatName = chatSid ? member?.name || s?.title || acc.name : acc.name
   const head = chatEl.querySelector('.head')
   head.querySelector('h2').textContent = chatName
@@ -2304,7 +2407,7 @@ function showChat(id) {
       .map(([k, v]) => `<span title="${esc(v)}"><b>${esc(t('card.' + k))}</b>${esc(v)}</span>`).join('')
   if (meta !== chatShown.meta) { chatShown.meta = meta; head.querySelector('.meta').innerHTML = meta }
   const busy = online && (s.state === 'thinking' || s.state === 'tool' || s.state === 'waiting')
-  const btnKey = `${id}|${chatSid}|${online}|${busy}|${online && !!s.launch}|${!!launchOpts?.enabled}`
+  const btnKey = `${id}|${chatSid}|${online}|${busy}|${online && !!s.launch}|${!!launchOpts?.enabled}|${away?.id}|${member?.session}`
   if (btnKey !== chatShown.btns) {
     chatShown.btns = btnKey
     const btns = head.querySelector('.btns')
@@ -2312,8 +2415,10 @@ function showChat(id) {
     const add = (text, cls, fn, title) => { const b = document.createElement('button'); b.className = 'px ' + cls; b.textContent = text; b.onclick = fn; if (title) b.title = title; btns.appendChild(b) }
     if (online && s.launch) add(t('chat.terminal'), 'terminal', () => openTerminal(s), t('chat.terminalTitle'))
     if (busy) add(t('chat.stop'), 'stop', () => post(`/api/abort/${s.id}`, {}), t('chat.stopTitle'))
-    if (!online && !chatSid && launchOpts?.enabled) add(t('launch.go'), 'primary go-work', () => openLaunch(acc.id))
-    if (!online && !chatSid) add(t('card.delete'), '', async () => {
+    if (away && member?.session) add(t('task.openMember', { name:member.name }), 'primary to-task', () => openChat(acc.id, member.session),
+      t('task.openMemberTitle', { id:away.id, room:taskRoom(away) }))
+    if (!online && !chatSid && launchOpts?.enabled) add(t('launch.go'), (away ? '' : 'primary ') + 'go-work', () => openLaunch(acc.id))
+    if (!online && !chatSid && !away) add(t('card.delete'), '', async () => {
       if (!confirm(t('card.deleteConfirm', { name:acc.name }))) return
       const r = await fetch(`/api/accounts/${acc.id}`, { method:'DELETE' })
       if (!r.ok) alert(t('card.deleteFailed', { reason:errorText(await r.json().catch(() => null)) }))
@@ -2328,7 +2433,7 @@ function showChat(id) {
     chatItems.clear()
     flow.innerHTML = ''
     if (sid) loadChat(sid)
-    else flow.innerHTML = `<div class="empty">${esc(t('chat.noSession'))}</div>`
+    else flow.innerHTML = `<div class="empty">${esc(away ? t('task.inRoom', { room:taskRoom(away), id:away.id }) : t('chat.noSession'))}</div>`
   }
   const mine = snapshot.asks.filter(a => a.session === sid)
   const askKey = mine.map(a => a.id).join(',')
@@ -2339,7 +2444,8 @@ function showChat(id) {
   }
   sayBox.disabled = !online
   sayForm.hidden = !online
-  const off = dock.querySelector('.offline'), offText = t(chatSid ? 'task.offline' : 'chat.offline')
+  const off = dock.querySelector('.offline')
+  const offText = chatSid ? t('task.offline') : away && member ? t('chat.awayInTask', { id:away.id, name:member.name }) : t('chat.offline')
   off.hidden = online
   if (off.textContent !== offText) off.textContent = offText
   chatEl.hidden = false
@@ -2348,7 +2454,8 @@ function showChat(id) {
 function refreshChatLine() {
   if (!chatFor || chatEl.hidden) return
   const el = chatEl.querySelector('.who .state'), e = chatSid ? [...figs.values()].find(f => f.s?.id === chatSid) : emps.get(chatFor)
-  const line = e ? stateLine(e) : statusText(sessionById(chatSid))
+  // off duty at its desk but away in a task: where it is, as its name tag says
+  const line = e?.away && !isOnline(e) ? t('task.inRoom', { room:taskRoom(e.away), id:e.away.id }) : e ? stateLine(e) : statusText(sessionById(chatSid))
   if (el.textContent !== line) el.textContent = line
 }
 
@@ -2413,8 +2520,15 @@ function itemEl(it, old) {
   switch (it.kind) {
     case 'user':
       el.className = `it user ${it.status || ''}`
-      // from the page, or the bridge's kickoff of a task
-      el.innerHTML = `${it.origin === 'page' || it.origin === 'task' ? `<div class="from">${esc(t(it.origin === 'task' ? 'chat.fromTask' : 'chat.fromPage'))}</div>` : ''}<div class="body">${richText(it.text)}</div>${timeOf(it)}`
+      if (it.origin === 'task') { // the bridge's kickoff of a task: long, so folded to its first line
+        el.classList.add('kickoff')
+        const open = old?.querySelector('details')?.open ? ' open' : '', peek = String(it.text ?? '').trim().split('\n')[0]
+        el.innerHTML = `<details${open}><summary class="from"><b>${esc(t('chat.fromTask'))}</b><span class="peek">${esc(peek)}</span></summary>` +
+          `<div class="body">${richText(it.text)}</div></details>${timeOf(it)}`
+        break
+      }
+      // from the page
+      el.innerHTML = `${it.origin === 'page' ? `<div class="from">${esc(t('chat.fromPage'))}</div>` : ''}<div class="body">${richText(it.text)}</div>${timeOf(it)}`
       break
     case 'thinking': {
       el.className = `it thinking${it.done ? ' done' : ''}`
@@ -2673,8 +2787,8 @@ async function openTask(r) {
     const row = document.createElement('div')
     row.className = 'mem' + (off ? ' off' : '')
     row.dataset.account = acc.id
-    row.innerHTML = `<label><input type="checkbox"${off ? ' disabled' : ''}><b class="ord"></b><span class="lead-tag">${esc(t('task.lead'))}</span>` +
-      `${dot(s && s.state !== 'ended' ? s.state : 'ended')}<span class="nm">${esc(acc.name)}</span>` +
+    row.innerHTML = `<label><input type="checkbox"${off ? ' disabled' : ''}><b class="ord"></b>` +
+      `${dot(s && s.state !== 'ended' ? s.state : 'ended')}<span class="nm">${esc(acc.name)}</span><span class="lead-tag">${esc(t('task.lead'))}</span>` +
       `<small title="${esc(dir)}">${esc(inTask ? t('task.inTask', { id:inTask }) : dir ? base(dir) : t('task.noDir'))}</small></label>` +
       `<select name="model" title="${esc(t('launch.model'))}"></select><select name="effort" title="${esc(t('launch.effort'))}"></select>`
     // as it last worked, or Opus and the most thinking
@@ -2696,18 +2810,37 @@ function setTaskStatus(text, err) {
   const el = taskForm.querySelector('.status')
   el.textContent = text
   el.className = 'status' + (err ? ' err' : '')
+  if (err) el.scrollIntoView({ block:'nearest' })
+}
+// the rows an error is about, outlined in red: advisors without a name or a folder (code 'incomplete'), with a name that's
+// taken or too long, or in a folder that's missing, and the member the error names
+function markBad(code, params = {}) {
+  taskForm.querySelectorAll('.bad').forEach(el => el.classList.remove('bad'))
+  const taken = new Set(snapshot.accounts.map(a => lower(a.name))), seen = new Set()
+  for (const row of picks) {
+    const name = row.querySelector('input[name=name]'), dir = row.querySelector('input[name=dir]')
+    const who = lower(name ? name.value.trim() : row.querySelector('.nm').textContent)
+    const fields = !name ? [] : code === 'incomplete' ? [name, dir].filter(f => !f.value.trim())
+      : code === 'account_name_taken' ? (taken.has(who) || seen.has(who) ? [name] : [])
+      : code === 'account_bad_name' ? ([...name.value.trim()].length > 40 || !who ? [name] : [])
+      : code === 'launch_dir_missing' || code === 'launch_dir_not_absolute' ? (params.dir ? dir.value.trim() === params.dir : !dir.value.trim().match(/^([\/\\]|[A-Za-z]:)/)) ? [dir] : []
+      : []
+    seen.add(who)
+    if (fields.length || (params.name && lower(params.name) === who)) { row.classList.add('bad'); fields.forEach(f => f.classList.add('bad')) }
+  }
+  taskForm.querySelector('.bad')?.scrollIntoView({ block:'nearest' })
 }
 
 // an advisor: a one-off member made for this task with the launch form's fields; it joins the team at the end
 function addAdvisor() {
   const row = document.createElement('div'), recent = launchOpts?.recentDirs || []
   row.className = 'adv'
-  row.innerHTML = `<div class="line"><b class="ord"></b><span class="lead-tag">${esc(t('task.lead'))}</span><span class="kind">${esc(t('task.advisor'))}</span>` +
+  row.innerHTML = `<div class="line"><b class="ord"></b><span class="kind">${esc(t('task.advisor'))}</span><span class="lead-tag">${esc(t('task.lead'))}</span>` +
     `<input name="name" placeholder="${esc(t('task.advisorName'))}"><button type="button" class="px rm" title="${esc(t('task.remove'))}">✕</button></div>` +
-    `<div class="row"><input name="dir" placeholder="${esc(t('launch.dirPlaceholder'))}"><button type="button" class="px browse">${esc(t('launch.browse'))}</button></div>` +
+    `<div class="row"><input name="dir" placeholder="${esc(t('launch.dirPlaceholder'))}"><button type="button" class="px browse">${esc(t('launch.browse'))}</button>` +
+    `<select name="model" title="${esc(t('launch.model'))}"></select><select name="effort" title="${esc(t('launch.effort'))}"></select></div>` +
     `<div class="browser" hidden><div class="cur"></div><ul></ul><button type="button" class="px pick">${esc(t('launch.pick'))}</button></div>` +
-    `<div class="recent">${recent.map(d => `<span title="${esc(d)}">${esc(base(d))}</span>`).join('')}</div>` +
-    `<div class="grid"><select name="model" title="${esc(t('launch.model'))}"></select><select name="effort" title="${esc(t('launch.effort'))}"></select></div>`
+    `<div class="recent">${recent.map(d => `<span title="${esc(d)}">${esc(base(d))}</span>`).join('')}</div>`
   const dir = row.querySelector('[name=dir]'), box = row.querySelector('.browser')
   dir.value = recent[0] || launchOpts?.home || ''
   row.querySelector('.browse').onclick = () => browse(box, dir.value.trim(), reason => setTaskStatus(reason, true))
@@ -2729,6 +2862,7 @@ function renderPicks() {
     const i = picks.indexOf(row)
     row.classList.toggle('on', i >= 0)
     row.classList.toggle('lead', i === 0 && lead)
+    row.classList.toggle('over', i >= (taskFor?.seats ?? 0)) // past the room's seats
     row.querySelector('.ord').textContent = i >= 0 ? String(i + 1) : ''
   }
   const n = picks.length, seats = taskFor?.seats ?? 0, count = taskForm.querySelector('.count')
@@ -2739,6 +2873,7 @@ function renderPicks() {
 
 taskForm.querySelector('.add-adv').onclick = addAdvisor
 taskForm.elements.leader.onchange = renderPicks
+taskForm.addEventListener('input', ev => { ev.target.classList.remove('bad'); if (!ev.target.closest('.adv')?.querySelector('input.bad')) ev.target.closest('.adv')?.classList.remove('bad') })
 taskForm.querySelector('.cancel').onclick = closeTask
 taskDlg.addEventListener('click', ev => { if (ev.target === taskDlg) closeTask() })
 taskForm.addEventListener('submit', async ev => {
@@ -2752,7 +2887,8 @@ taskForm.addEventListener('submit', async ev => {
     else m.advisor = { name:row.querySelector('[name=name]').value.trim(), dir:row.querySelector('[name=dir]').value.trim() }
     return m
   })
-  if (members.some(m => m.advisor && (!m.advisor.name || !m.advisor.dir))) return setTaskStatus(t('task.advisorIncomplete'), true)
+  if (members.some(m => m.advisor && (!m.advisor.name || !m.advisor.dir))) { markBad('incomplete'); return setTaskStatus(t('task.advisorIncomplete'), true) }
+  markBad('')
   const body = { room:taskFor.k, roomName:roomName(taskFor.k), title, leader:taskForm.elements.leader.checked,
     permissionMode:taskForm.elements.permissionMode.value, lang, members }
   taskPosting = true
@@ -2761,7 +2897,10 @@ taskForm.addEventListener('submit', async ev => {
   try {
     const res = await fetch('/api/tasks', { method:'POST', headers:{ 'content-type':'application/json' }, body:JSON.stringify(body) })
     const data = await res.json().catch(() => null)
-    if (!res.ok) throw new Error(data ? errorText(data) + (data.fix ? '\n' + data.fix : '') : `${t('error.unknown')} (HTTP ${res.status})`)
+    if (!res.ok) {
+      if (data?.code) markBad(data.code, data.params)
+      throw new Error(data ? errorText(data) + (data.fix ? '\n' + data.fix : '') : `${t('error.unknown')} (HTTP ${res.status})`)
+    }
     closeTask()
     openTaskWin(data.id, data)
   } catch (err) {
@@ -2798,7 +2937,7 @@ function renderTaskWin() {
   taskWin.querySelector('.mode').hidden = !!task.leader
   const err = taskWin.querySelector('.err')
   err.hidden = task.status !== 'failed'
-  err.textContent = err.hidden ? '' : errorText({ code:task.errorCode, params:task.errorParams, error:task.error })
+  err.textContent = err.hidden ? '' : t('task.failedWhy', { reason:errorText({ code:task.errorCode, params:task.errorParams, error:task.error }) })
   // the members: state, name, lead and advisor tags, where it works, its model; a click opens its window
   const rows = task.members.map((m, i) => {
     const s = sessionById(m.session), online = !!s && s.state !== 'ended', state = !online ? 'ended' : asking(m.session) ? 'waiting' : s.state
@@ -2808,7 +2947,7 @@ function renderTaskWin() {
       (m.advisor ? `<span class="badge adv" title="${esc(t('task.advisorTitle'))}">${esc(t('task.advisor'))}</span>` : '') +
       `<span class="where" title="${esc([m.dir, m.worktree].filter(Boolean).join('\n'))}">${esc(base(m.dir))} · ${esc(m.branch || '')}</span>` +
       (runs ? `<span class="chip">${esc(runs)}</span>` : '') +
-      `<span class="st">${esc(m.session ? statusText(online ? s : null) : t('task.memberStarting'))}</span></div>`
+      `<span class="st">${esc(!m.session ? t('task.memberStarting') : online ? statusText(s) : t('task.memberEnded'))}</span></div>`
   }).join('')
   if (rows !== taskWinShown.members) { taskWinShown.members = rows; taskWin.querySelector('.members').innerHTML = rows }
   const btnKey = task.id + '|' + task.status

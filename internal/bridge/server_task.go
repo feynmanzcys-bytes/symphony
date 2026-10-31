@@ -2,7 +2,6 @@ package bridge
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
 	"os"
 	"os/exec"
@@ -94,14 +93,14 @@ func (s *Server) startTask(req TaskRequest) (*Task, error) {
 		return nil, newError("task_too_few", "a task needs at least "+strconv.Itoa(taskMinMembers)+" members", "min", strconv.Itoa(taskMinMembers))
 	case len(req.Members) > taskMaxMembers:
 		return nil, newError("task_too_many", "a task takes at most "+strconv.Itoa(taskMaxMembers)+" members", "max", strconv.Itoa(taskMaxMembers))
-	case !validOption(launchPermissionModes, req.PermissionMode):
+	case !validOption(launchPermissionModes, req.PermissionMode), req.Room < 0:
 		return nil, errBadOption
 	}
 	members := make([]*Member, 0, len(req.Members))
 	var employees []string
 	names := map[string]bool{}
 	for _, mr := range req.Members {
-		if !validOption(launchModels, mr.Model) || !validOption(launchEfforts, mr.Effort) {
+		if !validOption(launchModels, mr.Model) || !validOption(launchEfforts, mr.Effort) || (mr.Advisor != nil && mr.Account != "") {
 			return nil, errBadOption
 		}
 		m := &Member{Model: mr.Model, Effort: mr.Effort}
@@ -123,12 +122,20 @@ func (s *Server) startTask(req TaskRequest) (*Task, error) {
 			if acc == nil || acc.Advisor {
 				return nil, ErrUnknownAccount
 			}
+			if strings.TrimSpace(dir) == "" {
+				return nil, newError("task_bad_dir", acc.Name+" has no folder to work in (no desk session, no start from the page)", "name", acc.Name, "dir", dir)
+			}
 			norm, err := normalizeDir(dir)
 			if err != nil {
-				return nil, newError("task_bad_dir", acc.Name+" has no folder to work in (no desk session, no start from the page): "+dir, "name", acc.Name, "dir", dir)
+				return nil, newError("task_dir_missing", acc.Name+"'s folder is gone or not an absolute path: "+dir, "name", acc.Name, "dir", dir)
 			}
 			m.Account, m.Name, m.Dir = acc.ID, acc.Name, norm
 			employees = append(employees, acc.ID)
+		}
+		// a folder in another task's worktree (where a desk session went, or an advisor's pick) would nest one task in
+		// another's branch
+		if inTaskWorktree(m.Dir) {
+			return nil, newError("task_dir_in_worktree", m.Name+"'s folder "+m.Dir+" is in a task's git worktree; pick the project folder", "name", m.Name, "dir", m.Dir)
 		}
 		if names[m.Name] {
 			return nil, newError("task_member_dup", m.Name+" is in the team twice", "name", m.Name)
@@ -178,8 +185,11 @@ func (s *Server) startTask(req TaskRequest) (*Task, error) {
 		m.Launch = newID()
 	}
 
-	hub.gitMu.Lock()
-	defer hub.gitMu.Unlock()
+	var trees []string
+	for _, m := range members {
+		trees = append(trees, gitLockKey(m.Dir))
+	}
+	defer hub.gitLocks.lock(trees)()
 	prefixes, err := s.prepareGit(t, undo)
 	if err != nil {
 		return fail(err)
@@ -236,9 +246,13 @@ func (s *Server) prepareGit(t *Task, undo *taskUndo) (map[string]string, error) 
 	for _, dir := range dirs {
 		r := &TaskRepo{Dir: dir}
 		if _, err := os.Lstat(filepath.Join(dir, ".git")); errors.Is(err, os.ErrNotExist) && !gitInWorkTree(dir) {
-			// git add -A of a whole home folder or drive would take ages and hold everything
-			if dir == home || filepath.Dir(dir) == dir {
-				return nil, gitFailed(dir, errors.New("won't make a git repository of the home folder or a drive's root; pick a project folder"))
+			// git add -A of a whole home folder (or a folder above it) or drive would take ages and hold everything
+			if (home != "" && within(home, dir)) || filepath.Dir(dir) == dir {
+				return nil, newError("task_dir_home", "won't make a git repository of "+dir+" (the home folder, a folder above it or a drive's root); pick a project folder", "dir", dir)
+			}
+			// nor of a folder around a repository another task made
+			if other := s.Hub.repoMadeBy(dir, "", true); other != "" {
+				return nil, repoInUse(dir, other)
 			}
 			undo.inited = append(undo.inited, dir)
 			if err := gitInit(dir, t.ID); err != nil {
@@ -250,10 +264,12 @@ func (s *Server) prepareGit(t *Task, undo *taskUndo) (map[string]string, error) 
 		if err != nil {
 			return nil, gitFailed(dir, err)
 		}
-		if other := s.Hub.repoMadeBy(root); other != "" {
-			return nil, gitFailed(dir, fmt.Errorf("the repository %s was made for task %s, which hasn't ended yet", root, other))
+		if other := s.Hub.repoMadeBy(dir, root, false); other != "" {
+			return nil, repoInUse(dir, other)
 		}
-		if r.Base, err = gitBase(dir); err != nil {
+		if r.Base, err = gitBase(dir); errors.Is(err, errNoCommit) {
+			return nil, newError("task_repo_no_commit", "the repository of "+dir+" has no commit yet, so there is nothing to branch off", "dir", dir)
+		} else if err != nil {
 			return nil, gitFailed(dir, err)
 		}
 		if err := gitExclude(dir); err != nil {
@@ -269,6 +285,10 @@ func (s *Server) prepareGit(t *Task, undo *taskUndo) (map[string]string, error) 
 		undo.worktrees = append(undo.worktrees, m)
 	}
 	return prefixes, nil
+}
+
+func repoInUse(dir, task string) *Error {
+	return newError("task_repo_in_use", "the repository of "+dir+" was made for task "+task+", which hasn't ended yet", "dir", dir, "task", task)
 }
 
 // taskUndo is what making a task has done so far, taken back when a later step fails.

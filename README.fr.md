@@ -130,9 +130,9 @@ Une petite salle de réunion, c’est l’endroit où une équipe de 2 à 5 sess
 
 **Côté git** : chaque membre travaille dans son propre worktree git, sur sa propre branche `symphony/<tâche>/<nom>` de son dossier, si bien que personne ne marche sur les fichiers des autres et que votre propre copie de travail reste telle quelle. Les worktrees sont dans `.symphony/worktrees/` à l’intérieur du dossier, cachés à git par `.git/info/exclude` (votre `.gitignore` n’est pas touché). À la fin de la tâche, ce qu’un membre n’a pas encore commité est commité sur sa branche, donc rien ne se perd, et les worktrees sont supprimés.
 
-- Dans vos propres dépôts, les branches restent, à vous de les fusionner ; s’il y a un chef, sa branche rassemble le travail de tous.
-- Un dossier qui n’est pas un dépôt git en devient un pour la tâche (`git init` et un commit de tout ce qu’il contient). À la fin de la tâche, les branches des membres y sont fusionnées et le `.git` est de nouveau retiré : le dossier redevient de simples fichiers, avec le résultat fusionné.
-- Une fusion qui échoue laisse tout en place (le dépôt et les branches, à démêler à la main), et la fenêtre de la tâche indique quelle branche est en conflit.
+- Dans vos propres dépôts, rien n’est fusionné : les branches restent, à vous de les fusionner ; s’il y a un chef, sa branche rassemble le travail de tous.
+- Un dossier qui n’est pas un dépôt git en devient un pour la tâche (`git init` et un commit de tout ce qu’il contient) et le reste. À la fin de la tâche, les branches des membres y sont fusionnées, si bien que le dossier contient le résultat ; le `.git` et les branches sont conservés.
+- Une fusion qui échoue est annulée et le dossier reste tel qu’il était avant ; les branches restent, avec le travail qu’elles portent, et la fenêtre de la tâche indique quelle branche est en conflit.
 
 **Dans le bureau** : les membres restent assis à la table de la salle pendant toute la tâche, et pendant ce temps le poste d’un employé montre une chaise vide. La plaque de la salle affiche l’identifiant de la tâche ; son voyant, vert tant que la salle est libre, passe au jaune pendant la tâche et au rouge quand un membre attend votre autorisation ou votre réponse. Cliquez sur la salle pour ouvrir la fenêtre de la tâche : la tâche, les membres avec leurs dossiers et leurs branches, et « Terminer la tâche ». Un clic sur un membre à cet endroit, ou sur son personnage dans la salle, ouvre sa fenêtre de discussion, la même que celle d’un employé.
 

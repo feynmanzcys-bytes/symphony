@@ -126,6 +126,11 @@ func main() {
 		// the sessions are the bridge's children: stopping it ends them, cleanly rather than by surprise
 		stop := make(chan os.Signal, 1)
 		signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+		go func() { // ended terminals keep up to 256 KiB of history each: let them go after a while
+			for range time.Tick(time.Minute) {
+				l.Terms.Prune()
+			}
+		}()
 		go func() {
 			<-stop
 			hub.Stop() // no task ends by itself from here on: killing the members would start tidying git up just as we leave

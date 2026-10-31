@@ -264,8 +264,15 @@ func TestTask(t *testing.T) {
 	if got := git(app, "show", "symphony/T1/bob:Makefile"); got != "all:" {
 		t.Fatalf("bob's Makefile should be committed on his branch, got %q", got)
 	}
-	if isDirectory(filepath.Join(plain, ".git")) || isDirectory(filepath.Join(plain, ".symphony")) || isDirectory(filepath.Join(app, ".symphony")) {
-		t.Fatal("the plain folder should be plain again, and the .symphony folders gone")
+	// the plain folder stays a repository: alice's branch merged into its base, the branch kept, the .symphony folders gone
+	if !isDirectory(filepath.Join(plain, ".git")) || isDirectory(filepath.Join(plain, ".symphony")) || isDirectory(filepath.Join(app, ".symphony")) {
+		t.Fatal("the plain folder should keep its repository, and the .symphony folders should be gone")
+	}
+	if got := git(plain, "branch", "--list", "symphony/T1/alice"); !strings.Contains(got, "symphony/T1/alice") {
+		t.Fatalf("alice's branch should stay in the plain folder's repository: %q", got)
+	}
+	if got := git(plain, "rev-list", "--count", "HEAD"); got == "" || git(plain, "status", "--porcelain") != "" {
+		t.Fatal("the plain folder's base should hold the merged result, clean")
 	}
 	if _, err := os.Stat(filepath.Join(plain, "notes.txt")); err != nil {
 		t.Fatal("the plain folder's files should still be there")

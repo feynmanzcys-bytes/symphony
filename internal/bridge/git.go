@@ -2,17 +2,21 @@ package bridge
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
+	"time"
 	"unicode"
 )
 
 // Git for tasks: every member works in a worktree of its own, on a branch of its own, of its folder's repository.
-// A folder that isn't in one becomes one for the task, and plain files again when it ends (tidyTask).
+// A folder that isn't in one becomes one for the task, and the members' branches are merged into it when it ends
+// (tidyTask).
 
 // gitCommitter is who the commits the bridge makes itself are by, so they work without a git identity set up; they
 // are never signed (a signing prompt would hang) and skip the hooks (a pre-commit hook must not keep a member's
@@ -26,7 +30,10 @@ const (
 	symphonyExclude = ".symphony/"
 )
 
-var ErrNoGit = newError("task_no_git", "git is not on PATH; tasks need it")
+var (
+	ErrNoGit    = newError("task_no_git", "git is not on PATH; tasks need it")
+	errNoCommit = errors.New("the repository has no commit yet")
+)
 
 // gitEnv is the bridge's environment without what would point git at another repository than the folder's.
 func gitEnv() []string {
@@ -42,14 +49,27 @@ func gitEnv() []string {
 	return append(env, "GIT_TERMINAL_PROMPT=0")
 }
 
-// runGit runs git in dir and returns its output, trimmed; a failure carries git's own words.
+// gitTimeout is how long one git command may take (git add -A of a huge folder); then it is killed.
+var gitTimeout = 5 * time.Minute
+
+// runGit runs git in dir and returns its output, trimmed; a failure carries git's own words (the last lines of its
+// output too: a merge tells its conflicts there).
 func runGit(dir string, args ...string) (string, error) {
-	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+	ctx, cancel := context.WithTimeout(context.Background(), gitTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...)
 	cmd.Env = gitEnv()
+	cmd.WaitDelay = 5 * time.Second // what it started may hold its output open
 	var out, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &stderr
 	if err := cmd.Run(); err != nil {
 		msg := strings.TrimSpace(stderr.String())
+		if o := lastLines(out.String(), 5); o != "" {
+			msg = strings.TrimSpace(msg + "\n" + o)
+		}
+		if ctx.Err() != nil {
+			msg = "timed out after " + gitTimeout.String()
+		}
 		if msg == "" {
 			msg = err.Error()
 		}
@@ -63,6 +83,65 @@ func runGit(dir string, args ...string) (string, error) {
 		return "", fmt.Errorf("git %s: %s", sub, msg)
 	}
 	return strings.TrimSpace(out.String()), nil
+}
+
+// gitLockKey is the folder tree git work on dir touches: the top of its work tree, or dir itself when it isn't in
+// one (it may become one), symlinks resolved.
+func gitLockKey(dir string) string {
+	key := dir
+	if gitInWorkTree(dir) {
+		if root, _, err := gitRoot(dir); err == nil {
+			key = filepath.FromSlash(root)
+		}
+	}
+	if real, err := filepath.EvalSymlinks(key); err == nil {
+		key = real
+	}
+	return key
+}
+
+// treeLocks lets the git work of tasks go on side by side, one at a time per folder tree: a lock on some folders
+// waits while any of them is inside, or holds, a folder locked already. The zero value is ready to use.
+type treeLocks struct {
+	mu   sync.Mutex
+	cond *sync.Cond
+	held map[string]int
+}
+
+// lock takes the folders all at once (so two tasks can't each hold one the other waits for) and returns the unlock.
+func (l *treeLocks) lock(dirs []string) (unlock func()) {
+	l.mu.Lock()
+	if l.cond == nil {
+		l.cond, l.held = sync.NewCond(&l.mu), map[string]int{}
+	}
+	for l.busyLocked(dirs) {
+		l.cond.Wait()
+	}
+	for _, d := range dirs {
+		l.held[d]++
+	}
+	l.mu.Unlock()
+	return func() {
+		l.mu.Lock()
+		defer l.mu.Unlock()
+		for _, d := range dirs {
+			if l.held[d]--; l.held[d] <= 0 {
+				delete(l.held, d)
+			}
+		}
+		l.cond.Broadcast()
+	}
+}
+
+func (l *treeLocks) busyLocked(dirs []string) bool {
+	for held := range l.held {
+		for _, d := range dirs {
+			if within(d, held) || within(held, d) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // gitFailed is a git command's failure as the page shows it.
@@ -100,7 +179,7 @@ func gitRoot(dir string) (root, prefix string, err error) {
 // gitBase is the branch dir's checkout is on ("HEAD" when detached); a repository without a commit has none.
 func gitBase(dir string) (string, error) {
 	if _, err := runGit(dir, "rev-parse", "--verify", "-q", "HEAD^{commit}"); err != nil {
-		return "", errors.New("the repository has no commit yet")
+		return "", errNoCommit
 	}
 	if b, err := runGit(dir, "symbolic-ref", "--short", "-q", "HEAD"); err == nil && b != "" {
 		return b, nil
@@ -174,6 +253,27 @@ func gitRemoveWorktree(dir, path string) error {
 	return err
 }
 
+// gitHead is the commit dir's checkout is at.
+func gitHead(dir string) (string, error) {
+	return runGit(dir, "rev-parse", "--verify", "-q", "HEAD^{commit}")
+}
+
+// gitLooseHead says whether dir's checkout is on a detached HEAD that no ref (branch, tag, stash) holds: what was
+// committed there would go with the worktree. When git can't tell, it says so too.
+func gitLooseHead(dir string) bool {
+	if _, err := runGit(dir, "symbolic-ref", "-q", "HEAD"); err == nil {
+		return false
+	}
+	refs, err := runGit(dir, "for-each-ref", "--contains", "HEAD", "--format=%(refname)")
+	return err != nil || refs == ""
+}
+
+// gitResetHard puts dir's checkout back at a commit.
+func gitResetHard(dir, commit string) error {
+	_, err := runGit(dir, "reset", "-q", "--hard", commit)
+	return err
+}
+
 // gitMerge merges a branch into dir's checkout; a merge that fails is aborted, leaving the checkout as it was.
 func gitMerge(dir, branch string) error {
 	if _, err := runGit(dir, append(gitCommitter, "merge", "-q", "--no-edit", branch)...); err != nil {
@@ -215,6 +315,32 @@ func slug(name string) string {
 		return "member"
 	}
 	return s
+}
+
+// within says whether path is dir or inside it.
+func within(path, dir string) bool {
+	rel, err := filepath.Rel(dir, path)
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel)
+}
+
+// inTaskWorktree says whether dir is in a task's worktree (<folder>/.symphony/worktrees/<name>), going by its path
+// and by the top of its work tree as git names it (which sees through symlinks).
+func inTaskWorktree(dir string) bool {
+	if hasWorktreesPart(dir) {
+		return true
+	}
+	root, _, err := gitRoot(dir)
+	return err == nil && hasWorktreesPart(root)
+}
+
+func hasWorktreesPart(p string) bool {
+	parts := strings.Split(filepath.ToSlash(p), "/")
+	for i := 0; i+1 < len(parts); i++ {
+		if parts[i] == symphonyDir && parts[i+1] == "worktrees" {
+			return true
+		}
+	}
+	return false
 }
 
 // removeIfEmpty removes folders that are empty, innermost first (.symphony/worktrees, then .symphony).

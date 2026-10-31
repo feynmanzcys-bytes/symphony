@@ -68,7 +68,12 @@ func (p *unixProc) Kill() error {
 	if p.cmd.Process == nil {
 		return nil
 	}
-	// the whole session (claude and whatever it started), as closing a terminal would
-	_ = syscall.Kill(-p.cmd.Process.Pid, syscall.SIGHUP)
-	return p.cmd.Process.Kill()
+	// the whole session (claude and whatever it started): a hangup, as closing a terminal would, then for good, as
+	// some ignore the hangup (the child leads its own process group, Setsid)
+	pid := p.cmd.Process.Pid
+	_ = syscall.Kill(-pid, syscall.SIGHUP)
+	if err := syscall.Kill(-pid, syscall.SIGKILL); err != nil {
+		return p.cmd.Process.Kill()
+	}
+	return nil
 }

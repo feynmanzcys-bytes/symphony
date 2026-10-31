@@ -243,6 +243,14 @@ func (h *Hub) createAccount(name string, advisor bool) (*Account, error) {
 func (h *Hub) DeleteAccount(id string) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	if err := h.deleteAccountLocked(id); err != nil {
+		return err
+	}
+	h.broadcastLocked(nil)
+	return nil
+}
+
+func (h *Hub) deleteAccountLocked(id string) error {
 	a := h.accounts[id]
 	if a == nil {
 		return ErrUnknownAccount
@@ -267,7 +275,6 @@ func (h *Hub) DeleteAccount(id string) error {
 		h.accounts[id] = a
 		return err
 	}
-	h.broadcastLocked(nil)
 	return nil
 }
 

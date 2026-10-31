@@ -4,8 +4,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 func needGit(t *testing.T) {
@@ -191,5 +193,60 @@ func TestSlug(t *testing.T) {
 		if got := slug(name); got != want {
 			t.Errorf("slug(%q) = %q, want %q", name, got, want)
 		}
+	}
+}
+
+// TestTreeLocks: git work on unrelated folder trees goes on side by side; on the same tree, or one inside another,
+// it waits its turn.
+func TestTreeLocks(t *testing.T) {
+	var l treeLocks
+	unlockA := l.lock([]string{"/w/a"})
+	done := make(chan struct{})
+	go func() { l.lock([]string{"/w/b", "/w/c"})(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("an unrelated tree should not wait")
+	}
+	for _, dirs := range [][]string{{"/w/a"}, {"/w/a/sub"}, {"/w"}, {"/w/x", "/w/a"}} {
+		got := make(chan struct{})
+		go func() { l.lock(dirs)(); close(got) }()
+		select {
+		case <-got:
+			t.Fatalf("%v should wait for /w/a", dirs)
+		case <-time.After(50 * time.Millisecond):
+		}
+		unlockA()
+		select {
+		case <-got:
+		case <-time.After(2 * time.Second):
+			t.Fatalf("%v should go once /w/a is free", dirs)
+		}
+		unlockA = l.lock([]string{"/w/a"})
+	}
+	unlockA()
+}
+
+// TestGitTimeout: a git command that takes too long is killed, and says so.
+func TestGitTimeout(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the fake git is a shell script")
+	}
+	bin := t.TempDir()
+	writeFile(t, filepath.Join(bin, "git"), "#!/bin/sh\nexec sleep 30\n")
+	if err := os.Chmod(filepath.Join(bin, "git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	old := gitTimeout
+	gitTimeout = 200 * time.Millisecond
+	t.Cleanup(func() { gitTimeout = old })
+	start := time.Now()
+	_, err := runGit(t.TempDir(), "add", "-A")
+	if err == nil || err.Error() != "git add: timed out after 200ms" || time.Since(start) > 5*time.Second {
+		t.Fatalf("want a timeout, got %v after %v", err, time.Since(start))
+	}
+	if e := gitFailed("/x", err); e.Code != "task_git_failed" || !strings.Contains(e.Params["detail"], "timed out") {
+		t.Fatalf("a timeout is a git failure: %+v", e)
 	}
 }

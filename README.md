@@ -130,9 +130,9 @@ A small meeting room is where a team of 2 to 5 sessions works together on one ta
 
 **Git**: every member works in its own git worktree on its own branch, `symphony/<task>/<name>`, of its folder, so members never step on each other's files and your own checkout stays as it was. The worktrees are in the folder's `.symphony/worktrees/`, hidden from git by `.git/info/exclude` (your `.gitignore` is left alone). When the task ends, whatever a member hasn't committed is committed to its branch, so nothing is lost, and the worktrees are removed.
 
-- In your own repositories the branches stay for you to merge; with a lead, the lead's branch gathers everyone's work.
-- A folder that isn't a git repository becomes one for the task (`git init` and a commit of everything in it). When the task ends, the members' branches are merged into it and the `.git` is removed again: the folder is back to plain files holding the merged result.
-- A merge that fails leaves everything in place, the repository and the branches, for you to sort out by hand, and the task window says which branch conflicts.
+- In your own repositories nothing is merged: the branches stay for you to merge; with a lead, the lead's branch gathers everyone's work.
+- A folder that isn't a git repository becomes one for the task (`git init` and a commit of everything in it) and stays one. When the task ends, the members' branches are merged into it, so the folder holds the result; the `.git` and the branches are kept.
+- A merge that fails is undone and the base is left as it was; the branches stay, with the work on them, and the task window says which branch conflicts.
 
 **In the office**: the members sit at the room's table for the whole task, and an employee's desk shows an empty chair meanwhile. The room's nameplate shows the task id; its light, green while the room is free, turns yellow while the task runs and red while a member waits for your approval or answer. Click the room for the task window: the task, the members with their folders and branches, and "End the task". A click on a member there, or on its figure in the room, opens its chat window, the same as an employee's window.
 

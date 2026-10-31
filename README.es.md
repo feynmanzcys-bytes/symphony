@@ -130,9 +130,9 @@ Una sala de reuniones pequeña es donde un equipo de 2 a 5 sesiones trabaja junt
 
 **Git**: cada miembro trabaja en su propio worktree de git, en su propia rama `symphony/<tarea>/<nombre>` de su carpeta, así que nadie pisa los archivos de nadie y tu copia de trabajo se queda como estaba. Los worktrees están en `.symphony/worktrees/` dentro de la carpeta, ocultos para git con `.git/info/exclude` (tu `.gitignore` no se toca). Cuando termina la tarea, los cambios que un miembro tenga sin commit se guardan con un commit en su rama, así que no se pierde nada, y los worktrees se eliminan.
 
-- En tus propios repositorios las ramas se quedan para que las fusiones tú; si hay líder, su rama reúne el trabajo de todos.
-- Una carpeta que no es un repositorio de git se convierte en uno para la tarea (`git init` y un commit con todo lo que contiene). Cuando termina la tarea, las ramas de los miembros se fusionan en ella y el `.git` se vuelve a quitar: la carpeta vuelve a ser archivos normales con el resultado fusionado.
-- Si una fusión falla, todo se queda como está (el repositorio y las ramas, para que lo resuelvas a mano), y la ventana de la tarea dice qué rama tiene conflictos.
+- En tus propios repositorios no se fusiona nada: las ramas se quedan para que las fusiones tú; si hay líder, su rama reúne el trabajo de todos.
+- Una carpeta que no es un repositorio de git se convierte en uno para la tarea (`git init` y un commit con todo lo que contiene) y lo sigue siendo. Cuando termina la tarea, las ramas de los miembros se fusionan en ella, así que la carpeta tiene el resultado; el `.git` y las ramas se conservan.
+- Si una fusión falla, se deshace y la carpeta queda como estaba antes; las ramas se quedan con el trabajo hecho en ellas, y la ventana de la tarea dice qué rama tiene conflictos.
 
 **En la oficina**: los miembros se sientan a la mesa de la sala durante toda la tarea, y mientras tanto el puesto de un empleado muestra una silla vacía. La placa de la sala muestra el id de la tarea; su luz, verde mientras la sala está libre, se pone amarilla mientras la tarea está en marcha y roja mientras un miembro espera tu aprobación o tu respuesta. Haz clic en la sala para abrir la ventana de la tarea: la tarea, los miembros con sus carpetas y ramas, y «Terminar la tarea». Un clic en un miembro ahí, o en su figura en la sala, abre su ventana de chat, igual que la ventana de un empleado.
 

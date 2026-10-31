@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"syscall"
 	"unsafe"
 )
@@ -20,11 +21,16 @@ var (
 	procInitializeProcThreadAttributeList = kernel32.NewProc("InitializeProcThreadAttributeList")
 	procUpdateProcThreadAttribute         = kernel32.NewProc("UpdateProcThreadAttribute")
 	procDeleteProcThreadAttributeList     = kernel32.NewProc("DeleteProcThreadAttributeList")
+	procCreateJobObject                   = kernel32.NewProc("CreateJobObjectW")
+	procAssignProcessToJobObject          = kernel32.NewProc("AssignProcessToJobObject")
+	procTerminateJobObject                = kernel32.NewProc("TerminateJobObject")
+	procResumeThread                      = kernel32.NewProc("ResumeThread")
 )
 
 const (
 	procThreadAttributePseudoConsole = 0x20016
 	extendedStartupInfoPresent       = 0x00080000
+	createSuspended                  = 0x00000004
 )
 
 // coordArg packs a COORD (passed by value) into one argument: X in the low 16 bits, Y in the high ones.
@@ -41,6 +47,8 @@ type windowsProc struct {
 	console syscall.Handle
 	in, out *os.File // our ends: in is the console's input (we write), out its output (we read)
 	process syscall.Handle
+	jobMu   sync.Mutex
+	job     syscall.Handle // the job object the process and whatever it starts are in, so Kill gets them all; 0 when none
 	waited  chan struct{}
 	err     error
 }
@@ -99,15 +107,40 @@ func startPTY(dir string, env []string, argv []string, cols, rows int) (ptyProc,
 	block := utf16Block(env)
 	cmdline, _ := syscall.UTF16PtrFromString(strings.Join(quoted, " "))
 	cwd, _ := syscall.UTF16PtrFromString(dir)
-	err := syscall.CreateProcess(nil, cmdline, nil, nil, false, extendedStartupInfoPresent|syscall.CREATE_UNICODE_ENVIRONMENT,
+	// started suspended, so it is in its job before it can start anything
+	err := syscall.CreateProcess(nil, cmdline, nil, nil, false, extendedStartupInfoPresent|syscall.CREATE_UNICODE_ENVIRONMENT|createSuspended,
 		&block[0], cwd, &si.StartupInfo, &pi)
 	if err != nil {
 		p.closeAll()
 		return nil, err
 	}
-	syscall.CloseHandle(pi.Thread)
 	p.process = pi.Process
+	if job, _, _ := procCreateJobObject.Call(0, 0); job != 0 {
+		if ok, _, _ := procAssignProcessToJobObject.Call(job, uintptr(pi.Process)); ok != 0 {
+			p.job = syscall.Handle(job)
+		} else {
+			syscall.CloseHandle(syscall.Handle(job)) // no job then; Kill ends the process alone
+		}
+	}
+	if n, _, err := procResumeThread.Call(uintptr(pi.Thread)); n == 0xFFFFFFFF {
+		syscall.CloseHandle(pi.Thread)
+		p.Kill()
+		syscall.CloseHandle(p.process)
+		p.closeJob()
+		p.closeAll()
+		return nil, fmt.Errorf("ResumeThread: %v", err)
+	}
+	syscall.CloseHandle(pi.Thread)
 	return p, nil
+}
+
+func (p *windowsProc) closeJob() {
+	p.jobMu.Lock()
+	defer p.jobMu.Unlock()
+	if p.job != 0 {
+		syscall.CloseHandle(p.job)
+		p.job = 0
+	}
 }
 
 func (p *windowsProc) closeAll() {
@@ -143,10 +176,22 @@ func (p *windowsProc) Wait() error {
 	return p.err
 }
 
-func (p *windowsProc) Close() error { return p.out.Close() }
+func (p *windowsProc) Close() error {
+	p.closeJob()
+	return p.out.Close()
+}
+
+// Kill ends the process and whatever it started (its job), or the process alone when it has no job.
 func (p *windowsProc) Kill() error {
 	if p.process == 0 {
 		return errors.New("not started")
+	}
+	p.jobMu.Lock()
+	defer p.jobMu.Unlock()
+	if p.job != 0 {
+		if ok, _, _ := procTerminateJobObject.Call(uintptr(p.job), 1); ok != 0 {
+			return nil
+		}
 	}
 	return syscall.TerminateProcess(p.process, 1)
 }

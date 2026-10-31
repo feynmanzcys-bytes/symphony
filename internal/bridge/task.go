@@ -21,7 +21,7 @@ import (
 // of its own, of its folder's repository (git.go). The members talk among themselves with SendMessage; the bridge
 // only names them predictably and sends each a kickoff prompt. When the task ends, the sessions stop, what they left
 // uncommitted is committed to their branches and the worktrees go; in a repository the bridge made for the task, the
-// branches are merged and the repository is removed again, so the folder is plain files holding the results.
+// branches are merged into the base branch, so the folder holds the results. The repositories and the branches stay.
 
 // task states
 const (
@@ -62,7 +62,7 @@ type Task struct {
 	ErrorCode      string            `json:"errorCode,omitempty"`
 	ErrorParams    map[string]string `json:"errorParams,omitempty"`
 	Created        time.Time         `json:"created"`
-	Ended          time.Time         `json:"ended,omitempty"`
+	Ended          *time.Time        `json:"ended,omitempty"`
 
 	starting bool // still being made: out of sight, but in the way of other tasks wanting its room or its members
 }
@@ -70,7 +70,7 @@ type Task struct {
 // TaskRepo is one member folder's repository.
 type TaskRepo struct {
 	Dir    string `json:"dir"`
-	Inited bool   `json:"inited"` // the bridge made this repository; its .git goes when the task ends
+	Inited bool   `json:"inited"` // the bridge made this repository: the members' branches are merged when the task ends
 	Base   string `json:"base"`   // the branch the worktrees branched off ("HEAD" when detached)
 	Root   string `json:"root"`   // the top of the work tree as git names it: folders in one repository share it
 }
@@ -241,9 +241,10 @@ func (h *Hub) reserveTask(room int, accounts []string) (string, error) {
 	return t.ID, nil
 }
 
-// repoMadeBy is the open task that made the repository at root, if any: no other task may use that repository, as
-// it goes when that task ends.
-func (h *Hub) repoMadeBy(root string) string {
+// repoMadeBy is the open task that made a repository holding dir (whose work tree's top is root), if any: no other
+// task may use that repository while that task runs, as it merges into the folder's checkout when it ends. With
+// around, a repository inside dir counts too (dir is about to be made one).
+func (h *Hub) repoMadeBy(dir, root string, around bool) string {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	for _, t := range h.tasks {
@@ -251,7 +252,10 @@ func (h *Hub) repoMadeBy(root string) string {
 			continue
 		}
 		for _, r := range t.Repos {
-			if r.Inited && r.Root == root {
+			if !r.Inited {
+				continue
+			}
+			if within(dir, r.Dir) || (root != "" && within(root, r.Root)) || (around && (within(r.Dir, dir) || within(r.Root, dir))) {
 				return t.ID
 			}
 		}
@@ -322,9 +326,10 @@ func (h *Hub) dropTask(id string) {
 
 // ---------- the members' sessions ----------
 
-// joinTaskLocked ties a task session that reports in to its member; the first time, it queues the kickoff (a session
-// that comes back after being lost gets nothing again).
-func (h *Hub) joinTaskLocked(s *Session) {
+// joinTaskLocked ties a task session that reports in to its member; the first time, it queues the kickoff. A session
+// that starts afresh after the member's last one ended (/clear) gets it again, as its context is gone; one that comes
+// back after being lost gets nothing again.
+func (h *Hub) joinTaskLocked(s *Session, started bool) {
 	t := h.taskLocked(s.Task)
 	if t == nil || t.Status != TaskRunning {
 		return
@@ -336,12 +341,13 @@ func (h *Hub) joinTaskLocked(s *Session) {
 	if s.Title == "" {
 		s.Title = m.Name // its --name, until the mod reports it
 	}
-	if m.Session == s.ID {
+	again := started && m.Session != ""
+	if m.Session == s.ID && !again {
 		return
 	}
 	first := m.Session == ""
 	m.Session = s.ID
-	if first {
+	if first || again {
 		h.sayLocked(s.ID, kickoffText(t, m), "task")
 	}
 	h.saveTasksLocked()
@@ -380,15 +386,19 @@ func kickoffText(t *Task, m *Member) string {
 }
 
 // memberAliveLocked says whether a member is still at it: its session is online, its process still runs (a session
-// that ended may start again in it), or its launch is on the way.
+// that ended may start again in it), or its launch is on the way. A launch that failed is over (its process is
+// killed, failLaunch).
 func (h *Hub) memberAliveLocked(m *Member) bool {
 	if s := h.sessions[m.Session]; m.Session != "" && s != nil && s.State != StateEnded {
 		return true
 	}
+	l := h.launches[m.Launch]
+	if l != nil && l.Status == LaunchFailed {
+		return false
+	}
 	if h.terms != nil && m.Launch != "" && h.terms.Live(m.Launch) {
 		return true
 	}
-	l := h.launches[m.Launch]
 	return l != nil && l.Status == LaunchStarting
 }
 
@@ -475,8 +485,9 @@ func (h *Hub) endTaskLocked(t *Task) {
 	go h.finishTask(t.ID)
 }
 
-// finishTask does the rest of ending a task: the members' processes are killed, git is tidied up (tidyTask), the
-// advisors' accounts go; then the task is ended, or failed when something in git couldn't be done.
+// finishTask does the rest of ending a task: the members' processes are killed, git is tidied up (tidyTask); then the
+// task is ended and the advisors' accounts go, or it fails when something in git couldn't be done (and keeps its
+// advisors and sessions for its window until it is dismissed).
 func (h *Hub) finishTask(id string) {
 	defer h.taskJobs.done()
 	h.mu.Lock()
@@ -505,14 +516,13 @@ func (h *Hub) finishTask(id string) {
 			}
 		}
 	}
-	h.gitMu.Lock()
-	fail := tidyTask(t)
-	h.gitMu.Unlock()
-	for _, m := range t.Members {
-		if m.Advisor {
-			_ = h.DeleteAccount(m.Account)
-		}
+	var trees []string
+	for _, r := range t.Repos {
+		trees = append(trees, gitLockKey(r.Dir))
 	}
+	unlock := h.gitLocks.lock(trees)
+	fail := tidyTask(t)
+	unlock()
 
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -520,26 +530,45 @@ func (h *Hub) finishTask(id string) {
 	if task == nil {
 		return
 	}
-	task.Status, task.Ended = TaskEnded, h.now()
+	now := h.now()
+	task.Status, task.Ended = TaskEnded, &now
 	if fail != nil {
 		task.Status, task.Error, task.ErrorCode, task.ErrorParams = TaskFailed, fail.Text, fail.Code, fail.Params
 	} else {
-		// an ended task leaves the office, and its sessions with it; a failed one keeps them for its window
-		for sid, s := range h.sessions {
-			if s.Task == id {
-				h.dropSessionLocked(sid)
-			}
-		}
+		// an ended task leaves the office, and its sessions and advisors with it; a failed one keeps them for its window
+		h.dropTaskPeopleLocked(task)
 	}
 	h.saveTasksLocked()
 	h.broadcastLocked(taskEvent(id))
 }
 
+// dropTaskPeopleLocked forgets a task's sessions, launches and the terminals whose process ended, and deletes its
+// advisors' accounts.
+func (h *Hub) dropTaskPeopleLocked(t *Task) {
+	for sid, s := range h.sessions {
+		if s.Task == t.ID {
+			h.dropSessionLocked(sid)
+		}
+	}
+	for _, m := range t.Members {
+		if m.Launch != "" {
+			delete(h.launches, m.Launch)
+			if h.terms != nil {
+				h.terms.Forget(m.Launch)
+			}
+		}
+		if m.Advisor {
+			_ = h.deleteAccountLocked(m.Account)
+		}
+	}
+}
+
 // tidyTask puts the members' folders in order after a task. What a member left uncommitted is committed to its
-// branch and its worktree goes. In a repository the bridge made, uncommitted changes in the folder itself are
-// committed too, then every member's branch is merged in member order and the repository is removed (the branches
-// with it), leaving plain files that hold the results; in the user's own repositories the branches stay. The first
-// failure is the answer, and whatever it concerns stays as it is, so nothing is lost.
+// branch and its worktree goes (commits on a detached HEAD that no ref holds get a branch first, <branch>-detached,
+// or they would go with it). In a repository the bridge made, uncommitted changes in the folder itself are committed
+// too and every member's branch is merged into the base branch in member order; when a merge fails, the merges are
+// taken back and the task fails. Nothing else is ever removed: the repositories, the bridge's own included, and the
+// branches stay. The first failure is the answer, and whatever it concerns stays as it is, so nothing is lost.
 func tidyTask(t *Task) *Error {
 	var fail *Error
 	note := func(e *Error) {
@@ -562,6 +591,13 @@ func tidyTask(t *Task) *Error {
 				broken[rootOf[m.Dir]] = true
 				continue
 			}
+			if gitLooseHead(m.Worktree) {
+				if _, err := runGit(m.Worktree, "branch", m.Branch+"-detached", "HEAD"); err != nil {
+					note(gitFailed(m.Worktree, err))
+					broken[rootOf[m.Dir]] = true
+					continue
+				}
+			}
 		}
 		if !isDir(m.Dir) {
 			continue // the folder is gone; so is everything in it
@@ -573,42 +609,33 @@ func tidyTask(t *Task) *Error {
 	}
 	for _, r := range t.Repos {
 		if !r.Inited || broken[r.Root] || !isDir(filepath.Join(r.Dir, ".git")) {
-			removeIfEmpty(filepath.Join(r.Dir, symphonyDir, "worktrees"), filepath.Join(r.Dir, symphonyDir))
 			continue
 		}
 		if _, err := gitCommitAll(r.Dir, "symphony: changes outside task "+t.ID); err != nil {
 			note(gitFailed(r.Dir, err))
 			continue
 		}
-		var branches []string
-		for _, m := range t.Members {
-			if rootOf[m.Dir] == r.Root && m.Branch != "" {
-				branches = append(branches, m.Branch)
-			}
-		}
-		merged := true
-		for _, b := range branches {
-			if err := gitMerge(r.Dir, b); err != nil {
-				note(newError("task_merge_conflict", fmt.Sprintf("merging %s in %s failed: %v", b, r.Dir, err), "dir", r.Dir, "branch", b))
-				merged = false
-				break
-			}
-		}
-		if !merged {
-			continue
-		}
-		for _, b := range branches {
-			_ = gitDeleteBranch(r.Dir, b)
-		}
-		if err := os.RemoveAll(filepath.Join(r.Dir, ".git")); err != nil {
+		before, err := gitHead(r.Dir)
+		if err != nil {
 			note(gitFailed(r.Dir, err))
 			continue
 		}
-		for _, o := range t.Repos {
-			if o.Root == r.Root {
-				_ = os.RemoveAll(filepath.Join(o.Dir, symphonyDir))
+		for _, m := range t.Members {
+			if rootOf[m.Dir] != r.Root || m.Branch == "" {
+				continue
+			}
+			if err := gitMerge(r.Dir, m.Branch); err != nil {
+				note(newError("task_merge_conflict", fmt.Sprintf("merging %s in %s failed: %v", m.Branch, r.Dir, err), "dir", r.Dir, "branch", m.Branch))
+				// the merges that went through are taken back: the folder and the branches are as the members left them
+				if err := gitResetHard(r.Dir, before); err != nil {
+					note(gitFailed(r.Dir, err))
+				}
+				break
 			}
 		}
+	}
+	for _, r := range t.Repos {
+		removeIfEmpty(filepath.Join(r.Dir, symphonyDir, "worktrees"), filepath.Join(r.Dir, symphonyDir))
 	}
 	return fail
 }
@@ -634,11 +661,7 @@ func (h *Hub) ForgetTask(id string) error {
 	if t.Status != TaskFailed {
 		return ErrTaskRunning
 	}
-	for sid, s := range h.sessions {
-		if s.Task == id {
-			h.dropSessionLocked(sid)
-		}
-	}
+	h.dropTaskPeopleLocked(t)
 	h.tasks = slices.DeleteFunc(h.tasks, func(t *Task) bool { return t.ID == id })
 	h.saveTasksLocked()
 	h.broadcastLocked(taskEvent(id))
@@ -677,7 +700,8 @@ func (h *Hub) saveTasksLocked() {
 }
 
 // openTasksLocked reads tasks.json. A task found running or ending lost its sessions with the previous bridge: it is
-// ended now, the same way. Advisors without such a task are left over (the bridge stopped while making one): they go.
+// ended now, the same way. Advisors without such a task or a failed one are left over (the bridge stopped while
+// making one): they go.
 func (h *Hub) openTasksLocked(dir string) error {
 	data, err := os.ReadFile(filepath.Join(dir, "tasks.json"))
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
@@ -696,6 +720,8 @@ func (h *Hub) openTasksLocked(dir string) error {
 		if t.open() {
 			t.Status = TaskEnding
 			stale = append(stale, t.ID)
+		}
+		if t.open() || t.Status == TaskFailed {
 			for _, m := range t.Members {
 				keep[m.Account] = true
 			}

@@ -57,7 +57,9 @@ let sessions = new Map(), accounts = new Map()
 if (onlySession) document.getElementById('filter').innerHTML = `${esc(t('approve.filtered'))} · <a href="/approve">${esc(t('approve.showAll'))}</a>`
 
 const who = a => {
-  const name = accounts.get(a.account)?.name ?? sessions.get(a.session)?.title ?? a.session.slice(0, 6)
+  // a task session goes by its member's name (bob-T7), so it isn't taken for the account's desk session
+  const s = sessions.get(a.session), acc = accounts.get(a.account)?.name
+  const name = s?.task ? s.title || `${acc ?? a.session.slice(0, 6)}-${s.task}` : acc ?? s?.title ?? a.session.slice(0, 6)
   return `<div class="who"><span class="name">${esc(name)}</span>
     <span class="kind">${a.agentId ? esc(t('common.subagent')) + ' ' + esc(a.agentId.slice(0, 6)) + ' · ' : ''}${esc(t(a.kind === 'question' ? 'asks.question' : 'asks.permission'))}</span></div>`
 }

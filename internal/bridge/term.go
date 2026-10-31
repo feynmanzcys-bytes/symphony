@@ -255,6 +255,15 @@ func (ts *Terms) Prune() {
 	}
 }
 
+// Forget drops a launch's terminal once its process has ended.
+func (ts *Terms) Forget(id string) {
+	ts.mu.Lock()
+	defer ts.mu.Unlock()
+	if t := ts.m[id]; t != nil && t.Ended() {
+		delete(ts.m, id)
+	}
+}
+
 // Live says whether a launch's process is still running.
 func (ts *Terms) Live(id string) bool {
 	t := ts.Get(id)

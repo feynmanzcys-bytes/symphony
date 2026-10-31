@@ -196,8 +196,8 @@ type Hub struct {
 	taskSave saver   // writes tasks.json in the background
 	taskJobs jobs    // tasks being ended
 	stopping bool    // the bridge is on its way out (Stop)
-	// gitMu lets one task at a time make or tidy up its repositories (tasks may share a folder)
-	gitMu sync.Mutex
+	// gitLocks let one task at a time make or tidy up the repositories of a folder tree (tasks may share a folder)
+	gitLocks treeLocks
 	// AttachHint tells, by launch id, where to find a session's terminal; the current terminal backend provides it
 	AttachHint func(launchID string) string
 	// terms are the sessions' terminals when the bridge hosts them (ending a task kills its members' processes)
@@ -374,6 +374,10 @@ func (h *Hub) Apply(ev Event, acc *Account) error {
 	if s := h.sessions[ev.Session]; s != nil && task == "" {
 		task = s.Task
 	}
+	// a mod too old to report the task: a session started for one is known by its launch
+	if l := h.launches[ev.Launch]; task == "" && ev.Launch != "" && l != nil && l.Account == acc.ID {
+		task = l.Task
+	}
 	s, fresh, err := h.sessionLocked(ev.Session, acc, task)
 	if err != nil {
 		return err
@@ -416,7 +420,7 @@ func (h *Hub) Apply(ev Event, acc *Account) error {
 	}
 	s.Updated = h.now()
 	if fresh && s.Task != "" {
-		h.joinTaskLocked(s)
+		h.joinTaskLocked(s, ev.Kind == "session.start")
 	}
 	if ev.Kind == "heartbeat" && !fresh {
 		return nil // a heartbeat only keeps the session alive; nothing to tell the page
@@ -896,6 +900,12 @@ func (h *Hub) failLaunch(id string, why *Error) {
 		l.Status, l.Error, l.ErrorCode, l.ErrorParams = LaunchFailed, why.Text, why.Code, why.Params
 		h.broadcastLocked(map[string]any{"type": "launch", "id": id})
 		if l.Task != "" {
+			// a member that never reported in won't: its process goes (it would keep the task running for nothing)
+			if h.terms != nil {
+				if term := h.terms.Get(id); term != nil {
+					term.Kill()
+				}
+			}
 			h.checkTaskLocked(l.Task) // a task whose last member never came ends
 		}
 	}

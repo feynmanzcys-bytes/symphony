@@ -130,9 +130,9 @@ Uma sala de reunião pequena é onde uma equipe de 2 a 5 sessões trabalha junta
 
 **O lado do git**: cada membro trabalha no próprio worktree do git, no próprio branch `symphony/<tarefa>/<nome>` da sua pasta, então ninguém mexe nos arquivos de ninguém e a sua cópia de trabalho fica como estava. Os worktrees ficam em `.symphony/worktrees/` dentro da pasta, escondidos do git pelo `.git/info/exclude` (o seu `.gitignore` não é tocado). Quando a tarefa termina, o que um membro não commitou é commitado no branch dele, então nada se perde, e os worktrees são removidos.
 
-- Nos seus próprios repositórios os branches ficam para você mesclar; se houver líder, o branch dele reúne o trabalho de todos.
-- Uma pasta que não é um repositório git vira um para a tarefa (`git init` e um commit de tudo o que há nela). Quando a tarefa termina, os branches dos membros são mesclados nela e o `.git` é removido de novo: a pasta volta a ser arquivos comuns, com o resultado mesclado.
-- Uma mesclagem que falha deixa tudo como está (o repositório e os branches, para você resolver à mão), e a janela da tarefa mostra qual branch deu conflito.
+- Nos seus próprios repositórios nada é mesclado: os branches ficam para você mesclar; se houver líder, o branch dele reúne o trabalho de todos.
+- Uma pasta que não é um repositório git vira um para a tarefa (`git init` e um commit de tudo o que há nela) e continua sendo. Quando a tarefa termina, os branches dos membros são mesclados nela, então a pasta fica com o resultado; o `.git` e os branches são mantidos.
+- Uma mesclagem que falha é desfeita e a pasta fica como estava antes; os branches ficam, com o trabalho feito neles, e a janela da tarefa mostra qual branch deu conflito.
 
 **No escritório**: os membros ficam sentados em volta da mesa da sala durante toda a tarefa, e enquanto isso a cadeira na mesa de trabalho do funcionário fica vazia. A placa da sala mostra o id da tarefa; a luz dela, verde enquanto a sala está livre, fica amarela enquanto a tarefa roda e vermelha enquanto um membro espera sua aprovação ou resposta. Clique na sala para abrir a janela da tarefa: a tarefa, os membros com suas pastas e branches, e "Encerrar a tarefa". Um clique num membro ali, ou no boneco dele na sala, abre a janela de chat dele, igual à janela de um funcionário.
 
