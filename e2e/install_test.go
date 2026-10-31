@@ -66,9 +66,14 @@ func TestInstall(t *testing.T) {
 
 	// install as told: no bridge restart, and after a reload the page can hire
 	claude("plugin", "install", "symphony-bridge", "--marketplace", repo)
-	if m = b.Launcher.Mod(ctx); !m.OK || m.ID != "symphony-bridge@symphony" || m.Version != manifest.Version {
+	// a fresh Launcher asks claude again (the bridge's own keeps a failed answer for 10 seconds; the page's reload
+	// below waits that out)
+	fresh := bridge.NewLauncher("claude", "", b.URL, nil)
+	fresh.Market = repo
+	if m = fresh.Mod(ctx); !m.OK || m.ID != "symphony-bridge@symphony" || m.Version != manifest.Version {
 		t.Fatalf("once installed the bridge should see symphony-bridge@symphony %s: %+v", manifest.Version, m)
 	}
+	time.Sleep(11 * time.Second) // the bridge keeps its failed answer for 10 seconds; the page asks once per load
 	do(t, office, 10*time.Second, chromedp.Reload())
 	waitUntil(t, 20*time.Second, "after a reload the page can hire and the hint is gone", func() bool {
 		return get(t, office, 5*time.Second, chromedp.Evaluate[bool](

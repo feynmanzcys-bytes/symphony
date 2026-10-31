@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -29,10 +30,11 @@ import (
 // team in every state, three tasks in the small meeting rooms (one of 3 members, seated; one of 5 in a room for 3, two
 // of them standing; one failed on a merge conflict) and walks every screen: the office at every pixel size and at a
 // small and a big window, the nameplates, the task dialog in each of its states, the task window running, flat and
-// failed, the task chat (the members' messages, yours, the mention picker, a refusal), the employee window of a member
-// (docked to its task window), of a desk employee and of one away in a task, the HUD with the search box, the message
-// and activity logs, the launch dialog and the /approve page; the task screens again in zh-CN and ja. The screenshots
-// go to e2e/artifacts/screens/. It fails on a page error, a key a catalog lacks, or a raw key on screen.
+// failed, the task chat (the members' messages, yours, the mention picker and its narrowed list, a refusal, a long chat
+// that scrolls, alone and docked), the employee window of a member (docked to its task window), of a desk employee and
+// of one away in a task, the HUD with the search box, the message and activity logs, the launch dialog and the /approve
+// page; the task screens and the message log again in zh-CN and ja, with a task started in that language (its kickoff).
+// The screenshots go to e2e/artifacts/screens/. It fails on a page error, a key a catalog lacks, or a raw key on screen.
 func TestScreens(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("the fake claude is a shell script")
@@ -135,18 +137,23 @@ func TestScreens(t *testing.T) {
 	roomT2, roomT3, roomT1, roomFree := threes[0], threes[1], threes[2], others[0]
 	t.Logf("rooms: %+v; T1 (failed) in %d, T2 (3) in %d, T3 (5) in %d, free %d", plates, roomT1, roomT2, roomT3, roomFree)
 
-	// tasks: made from the page's own fetch (the bridge refuses writes from elsewhere), members reported in as the mod
-	// would, from their worktrees
-	createTask := func(room int, title string, leader bool, members []map[string]any) *bridge.Task {
+	// tasks: made from the page's own fetch (the bridge refuses writes from elsewhere), in its language as the task
+	// dialog does, members reported in as the mod would, from their worktrees
+	createTaskIn := func(s *screens, room int, title string, leader bool, members []map[string]any) *bridge.Task {
 		t.Helper()
-		body, _ := json.Marshal(map[string]any{"room": room, "roomName": plates[room].Name, "title": title, "leader": leader,
-			"permissionMode": "bypassPermissions", "lang": "en", "members": members})
-		res := p.fetch("POST", "/api/tasks", string(body))
+		roomName := s.js(fmt.Sprintf(`document.querySelectorAll('.room-plate')[%d].textContent`, room))
+		body, _ := json.Marshal(map[string]any{"room": room, "roomName": roomName, "title": title, "leader": leader,
+			"permissionMode": "bypassPermissions", "lang": s.lang, "members": members})
+		res := s.fetch("POST", "/api/tasks", string(body))
 		var task bridge.Task
 		if err := json.Unmarshal([]byte(res), &task); err != nil || task.ID == "" {
 			t.Fatalf("creating a task failed: %s", res)
 		}
 		return &task
+	}
+	createTask := func(room int, title string, leader bool, members []map[string]any) *bridge.Task {
+		t.Helper()
+		return createTaskIn(p, room, title, leader, members)
 	}
 	accounts := func() {
 		var list []struct{ Name, Token string }
@@ -395,6 +402,7 @@ func TestScreens(t *testing.T) {
 	if n := p.js(`[...document.querySelectorAll('#taskwin .tpick:not([hidden]) .hit')].map(h => h.dataset.name).join()`); n != revT2 {
 		t.Errorf("@R should narrow the picker to %s, it lists %q", revT2, n)
 	}
+	p.shot("taskwin-mention-filtered")
 	press("Tab")
 	do(t, en, 10*time.Second, chromedp.SendKeys(chromedp.CSS(box), "please look at the Makefile"))
 	if got, want := draft(), "@"+daveT2+" @"+revT2+" please look at the Makefile"; got != want {
@@ -414,9 +422,13 @@ func TestScreens(t *testing.T) {
 		t.Error("Esc in the picker should close the picker and leave the task window open")
 	}
 	p.run(`(b => { b.value = ''; b.dispatchEvent(new Event('input')) })(document.querySelector('#taskwin .tsay textarea'))`)
-	p.run(`(b => { b.value = '@nobody-T9 hello'; b.closest('form').requestSubmit() })(document.querySelector('#taskwin .tsay textarea'))`)
+	// a name that reads like one of T2's members but isn't: refused, rather than sent to everyone
+	nobody := "@nobody-" + t2.ID + " hello"
+	p.run(fmt.Sprintf(`(b => { b.value = %q; b.closest('form').requestSubmit() })(document.querySelector('#taskwin .tsay textarea'))`, nobody))
 	waitUntil(t, 10*time.Second, "the task chat says why it couldn't send, and keeps the draft", func() bool {
-		return p.is(`document.querySelector('#taskwin .tstatus').textContent.length > 0 && document.querySelector('#taskwin .tsay textarea').value === '@nobody-T9 hello'`)
+		return p.is(fmt.Sprintf(`document.querySelector('#taskwin .tstatus').textContent.length > 0 && document.querySelector('#taskwin .tsay textarea').value === %q`, nobody))
+	}, func() string {
+		return p.js(`document.querySelector('#taskwin .tstatus').textContent + ' | ' + document.querySelector('#taskwin .tsay textarea').value`)
 	})
 	p.shot("taskwin-chat-error")
 	p.check()
@@ -514,6 +526,33 @@ func TestScreens(t *testing.T) {
 	p.check()
 	p.run(`document.querySelector('#launch .cancel').click()`)
 
+	// ---------- a long team chat: T3's members talk it over, the list scrolls (after the logs, which it would crowd) ----------
+	t3names := []string{"alice", "gina", "ana", "ben", "cyd"}
+	for i := 0; i < 32; i++ {
+		from, to := t3names[i%5], t3names[(i+2)%5]
+		text := fmt.Sprintf("Step %d of the port: %s takes this one and reports back when it's on the branch.", i+1, to)
+		if i%9 == 4 {
+			text += "\n\n```\nnpm run build && npm test -- src/client.ts\n```"
+		}
+		message(from, from+"-"+t3.ID, to, to+"-"+t3.ID, text)
+	}
+	p.openPlate(roomT3)
+	waitUntil(t, 10*time.Second, "T3's chat lists its 33 messages, scrolled to the end", func() bool {
+		return p.is(`document.querySelectorAll('#taskwin .tmsg').length >= 33 && (l => l.scrollHeight > l.clientHeight + 100 && l.scrollTop + l.clientHeight >= l.scrollHeight - 2)(document.querySelector('#taskwin .tlist'))`)
+	}, func() string { return p.js(`document.querySelectorAll('#taskwin .tmsg').length`) })
+	p.shot("taskwin-chat-long")
+	p.check()
+	p.run(`document.querySelector('#taskwin .tlist').scrollTop = 0`)
+	p.shot("taskwin-chat-long-top")
+	p.run(fmt.Sprintf(`[...document.querySelectorAll('#taskwin .mrow')].find(r => r.querySelector('b').textContent === %q).click()`, "alice-"+t3.ID))
+	waitUntil(t, 10*time.Second, "alice-T3's window docks beside the long chat", func() bool {
+		return p.is(`!document.getElementById('chat').hidden && document.getElementById('chat').classList.contains('docked')`)
+	})
+	time.Sleep(300 * time.Millisecond)
+	p.shot("taskwin-chat-long-docked")
+	p.check()
+	p.run(`document.querySelector('#taskwin .close').click()`)
+
 	// the modals side by side: the task dialog and window should sit centered like the launch dialog and the chat window
 	p.logModals()
 
@@ -551,6 +590,51 @@ func TestScreens(t *testing.T) {
 	}
 	do(t, en, 10*time.Second, chromedp.EmulateViewport(1400, 860))
 
+	// langTask starts a task in the tab's language, in the free room: its kickoff is in that language too. Two advisors
+	// on the app repository (the others were made for T3); then one goes offline, and a message naming both reaches the
+	// other only, which the team chat says. The task ends again after.
+	langTask := func(q *screens) {
+		t.Helper()
+		lang := q.lang
+		advisors := map[string][2]string{"en": {"kai", "noa"}, "zh-CN": {"lin", "mo"}, "ja": {"ken", "mio"}}[lang]
+		tk := createTaskIn(q, roomFree, map[string]string{"en": "Write a CHANGELOG", "zh-CN": "写一个 CHANGELOG", "ja": "CHANGELOG を書く"}[lang], false, []map[string]any{
+			{"advisor": map[string]string{"name": advisors[0], "dir": dir("app")}, "model": "sonnet", "effort": "high"},
+			{"advisor": map[string]string{"name": advisors[1], "dir": dir("app")}, "model": "haiku", "effort": "low"}})
+		accounts()
+		reportIn(tk, advisors[0])
+		reportIn(tk, advisors[1])
+		q.openPlate(roomFree)
+		lead := advisors[0] + "-" + tk.ID
+		waitUntil(t, 10*time.Second, lang+": the new task's window shows its two members online", func() bool {
+			return q.is(`document.querySelectorAll('#taskwin .mrow').length === 2 && !document.querySelector('#taskwin .mrow.wait')`)
+		})
+		q.run(fmt.Sprintf(`[...document.querySelectorAll('#taskwin .mrow')].find(r => r.querySelector('b').textContent === %q).click()`, lead))
+		waitUntil(t, 10*time.Second, lang+": "+lead+"'s window shows its kickoff", func() bool {
+			return q.is(`!document.getElementById('chat').hidden && !!document.querySelector('#chat .flow .it.user.kickoff')`)
+		})
+		q.run(`document.querySelector('#chat .flow .it.user.kickoff details').open = true`)
+		q.shot("chat-kickoff")
+		q.check()
+		// the other one goes offline: a message naming both gets to the lead only, and the team chat says so
+		other := advisors[1] + "-" + tk.ID
+		event(advisors[1], "t-"+other, map[string]any{"kind": "session.end", "task": tk.ID})
+		q.run(`document.querySelector('#chat .close').click()`)
+		q.run(fmt.Sprintf(`(b => { b.value = %q; b.closest('form').requestSubmit() })(document.querySelector('#taskwin .tsay textarea'))`, "@"+lead+" @"+other+" "+map[string]string{"en": "tell me when it is written", "zh-CN": "写好了告诉我", "ja": "書けたら教えて"}[lang]))
+		waitUntil(t, 10*time.Second, lang+": the team chat strikes "+other+" through and says it didn't get the message", func() bool {
+			return q.is(fmt.Sprintf(`document.querySelector('#taskwin .tstatus').classList.contains('note') && [...document.querySelectorAll('#taskwin .tmsg.me .to s')].some(e => e.textContent === '@%s')`, other))
+		}, func() string {
+			return q.js(`document.querySelector('#taskwin .tstatus').textContent + ' | ' + document.querySelector('#taskwin .tlist').innerHTML`)
+		})
+		q.shot("taskwin-chat-missed")
+		q.check()
+		q.run(`document.querySelector('#taskwin .close').click()`)
+		q.fetch("POST", "/api/tasks/"+tk.ID+"/end", "{}")
+		waitUntil(t, 60*time.Second, lang+": the new task ends and leaves the free room", func() bool {
+			return !slices.ContainsFunc(b.Hub.Tasks(), func(k *bridge.Task) bool { return k.ID == tk.ID }) && q.is(fmt.Sprintf(`document.querySelectorAll('.room-plate')[%d].dataset.light === 'free'`, roomFree))
+		}, func() string { data, _ := json.Marshal(b.Hub.Tasks()); return string(data) })
+	}
+	langTask(p)
+
 	// ---------- the /approve page, for comparison ----------
 	approve, closeApprove := openTab(t, browser, b.URL+"/approve?lang=en")
 	do(t, approve, 10*time.Second, chromedp.EmulateViewport(1400, 860))
@@ -586,8 +670,13 @@ func TestScreens(t *testing.T) {
 		q.openPlate(roomT2)
 		q.shot("taskwin-running")
 		q.check()
-		q.run(`document.querySelector('#taskwin .tchat').scrollIntoView({ block:'end' })`)
+		// the chat with the mention picker open, in this language
+		q.run(`(b => { b.focus(); b.value = '@'; b.setSelectionRange(1, 1); b.dispatchEvent(new Event('input')) })(document.querySelector('#taskwin .tsay textarea'))`)
+		waitUntil(t, 5*time.Second, lang+": the mention picker lists T2's members", func() bool {
+			return q.is(`document.querySelectorAll('#taskwin .tpick:not([hidden]) .hit').length === 3`)
+		})
 		q.shot("taskwin-chat")
+		q.run(`(b => { b.value = ''; b.dispatchEvent(new Event('input')); b.blur() })(document.querySelector('#taskwin .tsay textarea'))`)
 		q.openPlate(roomT3)
 		q.shot("taskwin-flat")
 		q.openPlate(roomT1)
@@ -601,6 +690,12 @@ func TestScreens(t *testing.T) {
 		q.shot("chat-member")
 		q.check()
 		q.run(`document.querySelector('#taskwin .close').click()`)
+		langTask(q)
+		q.run(`document.getElementById('open-msgs').click()`)
+		waitUntil(t, 5*time.Second, lang+": the message log opens", func() bool { return q.is(`!document.getElementById('msgs-panel').hidden`) })
+		q.shot("messages")
+		q.check()
+		q.run(`document.querySelector('#msgs-panel .close').click()`)
 		q.clip("#hud", 12, 2, "hud-pending")
 		q.done()
 		closeTab()

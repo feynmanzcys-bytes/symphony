@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title data-i18n="approve.title">Symphony Approvals</title>
 <style>
+  :root { --mono:ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }
   * { box-sizing: border-box; }
   body { margin:0; background:#f7f6f3; color:#2b2a28; font:14px/1.5 system-ui, sans-serif; }
   /* CJK fonts per language, so each gets its own glyph forms */
@@ -24,7 +25,7 @@
   .who { display:flex; gap:8px; align-items:baseline; flex-wrap:wrap; margin-bottom:6px; }
   .who .name { font-weight:600; }
   .who .dept, .who .kind, .meta { color:#8a867e; font-size:12px; }
-  .tool { font:600 13px ui-monospace, monospace; }
+  .tool { font:600 13px var(--mono); }
   pre { background:#f7f6f3; border:1px solid #ece9e3; border-radius:4px; padding:8px; overflow:auto; max-height:220px; margin:8px 0; white-space:pre-wrap; word-break:break-all; font-size:12px; }
   .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:8px; }
   button { border:1px solid #2b2a28; border-radius:4px; padding:5px 14px; font:inherit; cursor:pointer; background:#fff; color:#2b2a28; }

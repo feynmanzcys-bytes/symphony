@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/feynmanzcys-bytes/symphony/internal/i18n"
 )
@@ -162,14 +163,37 @@ func (h *Hub) Tasks() []*Task {
 	return h.tasksLocked()
 }
 
-// runningTaskLocked is the running task the account is a member of, if any.
-func (h *Hub) runningTaskLocked(account string) *Task {
+// shownTaskLocked is the task in the office (running, ending or failed, or still being made) the account is a member
+// of, if any.
+func (h *Hub) shownTaskLocked(account string) *Task {
 	for _, t := range h.tasks {
-		if t.Status == TaskRunning && t.member(account) != nil {
+		if t.Status != TaskEnded && t.member(account) != nil {
 			return t
 		}
 	}
 	return nil
+}
+
+// sessionTaskLocked is the task of a session the hub no longer has (pruned): the task whose member it is, or the task
+// its launch was for.
+func (h *Hub) sessionTaskLocked(session, account string) string {
+	if session == "" {
+		return ""
+	}
+	for _, t := range h.tasks {
+		if t.Status == TaskEnded {
+			continue
+		}
+		if m := t.member(account); m != nil && m.Session == session {
+			return t.ID
+		}
+	}
+	for _, l := range h.launches {
+		if l.Session == session && l.Account == account && l.Task != "" {
+			return l.Task
+		}
+	}
+	return ""
 }
 
 // ---------- making a task (the steps that need the hub; the rest is in server_task.go) ----------
@@ -316,11 +340,8 @@ func (h *Hub) dropTask(id string) {
 			h.dropSessionLocked(sid)
 		}
 	}
+	// its number is not given back: messages may have been logged under it, and a task taking it again would inherit them
 	h.tasks = slices.DeleteFunc(h.tasks, func(t *Task) bool { return t.ID == id })
-	// its number goes back when no task took one since, so the ids people see have no gaps
-	if n, err := strconv.Atoi(strings.TrimPrefix(id, "T")); err == nil && h.taskNext == n+1 {
-		h.taskNext = n
-	}
 	h.saveTasksLocked()
 	h.broadcastLocked(nil)
 }
@@ -462,33 +483,67 @@ func (h *Hub) stopTaskSessionsLocked(id string) {
 
 // ---------- the task chat ----------
 
-// splitMentions takes the leading "@name"s off text (separated by whitespace, a ":" or "," right after each dropped):
-// the names in the order given, repeats left out, and the rest. Text that doesn't start with one gives no names.
-func splitMentions(text string) (names []string, rest string) {
+// mentionMarks are what may follow a mentioned name (besides whitespace); one right after it is dropped.
+const mentionMarks = ":,：，"
+
+// mentionEnds says whether a mentioned name may end where s begins: at the end of the text, whitespace or a mark.
+func mentionEnds(s string) bool {
+	r, size := utf8.DecodeRuneInString(s)
+	return size == 0 || unicode.IsSpace(r) || strings.ContainsRune(mentionMarks, r)
+}
+
+// splitMentions takes the leading "@name"s off text, the names being the task's members': after each "@" the longest
+// member name there that ends the text or is followed by whitespace or a mark (":", ",", "：", "，"; the mark is
+// dropped, and the whitespace after). It gives the names in the order given, repeats left out, and the rest. An "@"
+// that no member's name follows ends the mentions and is text; when what follows it reads like a member name of this
+// task (up to the first "<suffix>", "-T7", that ends a name, on the same line), it is given as unknown instead, so a
+// typo isn't sent to everyone.
+func splitMentions(text string, members []string, suffix string) (names []string, unknown, rest string) {
+	longest := slices.Clone(members)
+	slices.SortStableFunc(longest, func(a, b string) int { return len(b) - len(a) })
 	rest = text
 	for strings.HasPrefix(rest, "@") {
-		end := strings.IndexFunc(rest, unicode.IsSpace)
-		if end < 0 {
-			end = len(rest)
+		after := rest[1:]
+		i := slices.IndexFunc(longest, func(n string) bool {
+			return n != "" && strings.HasPrefix(after, n) && mentionEnds(after[len(n):])
+		})
+		if i < 0 {
+			return names, unknownMention(after, suffix), rest
 		}
-		name := rest[1:end]
-		for _, p := range []string{":", ",", "：", "，"} {
-			name = strings.TrimSuffix(name, p)
-		}
-		if name == "" {
-			break
-		}
-		if !slices.Contains(names, name) {
+		if name := longest[i]; !slices.Contains(names, name) {
 			names = append(names, name)
 		}
-		rest = strings.TrimSpace(rest[end:])
+		rest = after[len(longest[i]):]
+		if r, size := utf8.DecodeRuneInString(rest); size > 0 && strings.ContainsRune(mentionMarks, r) {
+			rest = rest[size:]
+		}
+		rest = strings.TrimLeftFunc(rest, unicode.IsSpace)
 	}
-	return names, rest
+	return names, "", rest
+}
+
+// unknownMention is the name an "@" was followed by when it reads like one of a task's session names: up to the first
+// suffix (the task's "-T7") that ends a name, on the same line, with an account name (at most 40 characters) before it.
+func unknownMention(after, suffix string) string {
+	line, _, _ := strings.Cut(after, "\n")
+	for from := 0; suffix != ""; {
+		i := strings.Index(line[from:], suffix)
+		if i < 0 {
+			return ""
+		}
+		end := from + i + len(suffix)
+		if n := utf8.RuneCountInString(line[:from+i]); n > 0 && n <= 40 && mentionEnds(line[end:]) {
+			return line[:end]
+		}
+		from = end
+	}
+	return ""
 }
 
 // SayTask sends what the person wrote in a task's chat: "@<member name> ..." (one or more) to those members' sessions
 // that are online, anything else to every member online. Each gets it as its next prompt from the page, as the
-// employee window's input does, and the message log keeps one message for it (from the page, no sender).
+// employee window's input does, and the message log keeps one message for it (from the page, no sender; Missed names
+// the members named that were offline).
 func (h *Hub) SayTask(id, text string) (*Message, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -504,22 +559,25 @@ func (h *Hub) SayTask(id, text string) (*Message, error) {
 		return nil, newError("say_empty", "nothing to send")
 	}
 	m := &Message{ID: newID(), Text: text, Origin: "page", Task: id, Delivered: true, Received: true, Time: h.now()}
+	memberNames := make([]string, len(t.Members))
+	for i, mb := range t.Members {
+		memberNames[i] = mb.Name
+	}
+	names, unknown, rest := splitMentions(text, memberNames, "-"+id)
+	if unknown != "" {
+		return nil, newError("task_say_unknown_member", "no member named "+unknown+" in this task", "name", unknown)
+	}
 	var targets []*Session
-	if names, rest := splitMentions(text); len(names) > 0 {
-		var members []*Member
-		for _, name := range names {
-			i := slices.IndexFunc(t.Members, func(mb *Member) bool { return mb.Name == name })
-			if i < 0 {
-				return nil, newError("task_say_unknown_member", "no member named "+name+" in this task", "name", name)
-			}
-			members = append(members, t.Members[i])
-		}
+	if len(names) > 0 {
 		if rest == "" {
 			return nil, newError("say_empty", "nothing to send")
 		}
-		for _, mb := range members {
+		for _, name := range names {
+			mb := t.Members[slices.Index(memberNames, name)]
 			if s := h.onlineTaskLocked(mb.Account, id); s != nil {
 				targets = append(targets, s)
+			} else {
+				m.Missed = append(m.Missed, name)
 			}
 		}
 		if len(targets) == 0 {
@@ -765,8 +823,9 @@ func (h *Hub) ForgetTask(id string) error {
 	if t.Status != TaskFailed {
 		return ErrTaskRunning
 	}
-	h.dropTaskPeopleLocked(t)
+	// out of the record first: its advisors can't be deleted while it is in the office
 	h.tasks = slices.DeleteFunc(h.tasks, func(t *Task) bool { return t.ID == id })
+	h.dropTaskPeopleLocked(t)
 	h.saveTasksLocked()
 	h.broadcastLocked(taskEvent(id))
 	return nil

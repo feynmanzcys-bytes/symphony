@@ -367,15 +367,17 @@ func TestOffice(t *testing.T) {
 	}, func() string {
 		return get(t, office, 5*time.Second, chromedp.Evaluate[string](`document.querySelector('#chat .flow')?.innerText ?? ''`))
 	})
-	// the bridge's log of D's chat has the page's prompt, sent by the mod, and the answer that streamed
+	// the bridge's log of D's chat has the page's prompt, sent by the mod, and the answer that streamed (the page
+	// shows the answer as it streams; the log marks it done a moment later, at chat.stop)
 	var sent, answered bool
-	for _, it := range b.Hub.Chat(b.online(nameD).ID) {
-		sent = sent || it.Kind == bridge.ChatUser && it.Origin == "page" && it.Status == "sent" && strings.Contains(it.Text, "pineapple")
-		answered = answered || it.Kind == bridge.ChatText && it.Done && strings.Contains(strings.ToLower(it.Text), "pineapple")
-	}
-	if !sent || !answered {
-		t.Fatalf("the chat log should hold the page's prompt as sent and the finished answer: sent=%v answered=%v", sent, answered)
-	}
+	waitUntil(t, 30*time.Second, "the chat log holds the page's prompt as sent and the finished answer", func() bool {
+		sent, answered = false, false
+		for _, it := range b.Hub.Chat(b.online(nameD).ID) {
+			sent = sent || it.Kind == bridge.ChatUser && it.Origin == "page" && it.Status == "sent" && strings.Contains(it.Text, "pineapple")
+			answered = answered || it.Kind == bridge.ChatText && it.Done && strings.Contains(strings.ToLower(it.Text), "pineapple")
+		}
+		return sent && answered
+	}, func() string { return fmt.Sprintf("sent=%v answered=%v", sent, answered) })
 	screenshot(t, office, "office-chat-say.png")
 	// the terminal inside the bridge shows the same conversation, and a window could attach to it
 	termD := b.Launcher.Terms.Get(launchD)

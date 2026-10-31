@@ -239,7 +239,8 @@ func (h *Hub) createAccount(name string, advisor bool) (*Account, error) {
 	return &cp, nil
 }
 
-// DeleteAccount deletes an account that is offline and in no running task, and frees its seat.
+// DeleteAccount deletes an account that is offline and in no task the office shows (running, ending or failed), and
+// frees its seat.
 func (h *Hub) DeleteAccount(id string) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -255,7 +256,7 @@ func (h *Hub) deleteAccountLocked(id string) error {
 	if a == nil {
 		return ErrUnknownAccount
 	}
-	if h.onlineLocked(id) != nil || h.runningTaskLocked(id) != nil {
+	if h.onlineLocked(id) != nil || h.shownTaskLocked(id) != nil {
 		return ErrAccountBusy
 	}
 	delete(h.accounts, id)

@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -266,7 +267,7 @@ func (s *Server) prepareGit(t *Task, undo *taskUndo) (map[string]string, error) 
 		r := &TaskRepo{Dir: dir}
 		if _, err := os.Lstat(filepath.Join(dir, ".git")); errors.Is(err, os.ErrNotExist) && !gitInWorkTree(dir) {
 			// git add -A of a whole home folder (or a folder above it) or drive would take ages and hold everything
-			if (home != "" && within(home, dir)) || filepath.Dir(dir) == dir {
+			if holdsHome(dir, home) || filepath.Dir(dir) == dir {
 				return nil, newError("task_dir_home", "won't make a git repository of "+dir+" (the home folder, a folder above it or a drive's root); pick a project folder", "dir", dir)
 			}
 			// nor of a folder around a repository another task made
@@ -304,6 +305,44 @@ func (s *Server) prepareGit(t *Task, undo *taskUndo) (map[string]string, error) 
 		undo.worktrees = append(undo.worktrees, m)
 	}
 	return prefixes, nil
+}
+
+// holdsHome says whether dir is the home folder or a folder above it, however either is spelled: through a symlink, in
+// another case where the file system ignores case, or by another path to the same folder (macOS's
+// /System/Volumes/Data/Users/<me>). It compares folders, not names: walking up from home, dir is each folder on the
+// way, or holds home where that folder does.
+func holdsHome(dir, home string) bool {
+	if home == "" {
+		return false
+	}
+	if within(home, dir) {
+		return true
+	}
+	if real, err := filepath.EvalSymlinks(dir); err == nil {
+		dir = real
+	}
+	if real, err := filepath.EvalSymlinks(home); err == nil {
+		home = real
+	}
+	caseless := runtime.GOOS == "darwin" || runtime.GOOS == "windows"
+	homeInfo, homeErr := os.Stat(home)
+	dirInfo, dirErr := os.Stat(dir)
+	for p := home; ; p = filepath.Dir(p) {
+		if caseless && strings.EqualFold(p, dir) {
+			return true
+		}
+		if pi, err := os.Stat(p); err == nil && dirErr == nil && os.SameFile(pi, dirInfo) {
+			return true
+		}
+		if rel, err := filepath.Rel(p, home); err == nil && homeErr == nil {
+			if fi, err := os.Stat(filepath.Join(dir, rel)); err == nil && os.SameFile(fi, homeInfo) {
+				return true
+			}
+		}
+		if filepath.Dir(p) == p {
+			return false
+		}
+	}
 }
 
 func repoInUse(dir, task string) *Error {

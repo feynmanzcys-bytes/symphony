@@ -68,7 +68,8 @@ func TestTask(t *testing.T) {
 		t.Fatal(err)
 	}
 	tokens := map[string]string{}
-	for name, dir := range map[string]string{"bob": app, "alice": plain, "carol": ""} {
+	for _, a := range []struct{ name, dir string }{{"bob", app}, {"alice", plain}, {"carol", ""}} { // in this order: the dialog lists them by seat
+		name, dir := a.name, a.dir
 		acc, err := b.Hub.CreateAccount(name)
 		if err != nil {
 			t.Fatal(err)

@@ -110,6 +110,7 @@ type Message struct {
 	To        string    `json:"to,omitempty"`
 	ToName    string    `json:"toName"`
 	ToNames   []string  `json:"toNames,omitempty"` // the task chat's mentioned members, when the page sent it to some
+	Missed    []string  `json:"missed,omitempty"`  // of those, the ones that were offline and didn't get it
 	Text      string    `json:"text"`
 	Origin    string    `json:"origin,omitempty"`
 	AgentID   string    `json:"agentId,omitempty"`
@@ -325,8 +326,10 @@ func (h *Hub) snapshotLocked(full bool) Snapshot {
 
 // sessionLocked returns the session, creating it if needed. An account serves one desk session at a time, and one
 // session per task it is in: while it has a session online that isn't lost on the same desk or task, a new one is
-// refused (ErrAccountBusy). A task session only comes (back) online while its task runs (ErrTaskEnded).
-func (h *Hub) sessionLocked(id string, acc *Account, task string) (s *Session, fresh bool, err error) {
+// refused (ErrAccountBusy), unless it starts in the same process (restart, the launch id of a session.start, is the
+// online one's): a fresh session after /clear may report in before the one it replaces says goodbye, which then ends.
+// A task session only comes (back) online while its task runs (ErrTaskEnded).
+func (h *Hub) sessionLocked(id string, acc *Account, task, restart string) (s *Session, fresh bool, err error) {
 	s = h.sessions[id]
 	if s != nil && s.Account != acc.ID {
 		return nil, false, ErrWrongAccount
@@ -340,10 +343,14 @@ func (h *Hub) sessionLocked(id string, acc *Account, task string) (s *Session, f
 		}
 	}
 	if other := h.onlineTaskLocked(acc.ID, task); other != nil && other.ID != id {
-		if h.now().Sub(other.Updated) < StaleAfter {
+		switch {
+		case restart != "" && other.Launch == restart:
+			h.endSessionLocked(other) // the launch id proves it is the same process
+		case h.now().Sub(other.Updated) < StaleAfter:
 			return nil, false, ErrAccountBusy
+		default:
+			other.State, other.Tool = StateEnded, "" // that one was lost long ago; make way
 		}
-		other.State, other.Tool = StateEnded, "" // that one was lost long ago; make way
 	}
 	// an account keeps the record of its current desk session only, and of one session per task
 	for sid, old := range h.sessions {
@@ -380,7 +387,14 @@ func (h *Hub) Apply(ev Event, acc *Account) error {
 	if l := h.launches[ev.Launch]; task == "" && ev.Launch != "" && l != nil && l.Account == acc.ID {
 		task = l.Task
 	}
-	s, fresh, err := h.sessionLocked(ev.Session, acc, task)
+	if task == "" && h.sessions[ev.Session] == nil {
+		task = h.sessionTaskLocked(ev.Session, acc.ID) // a member's session pruned while it was away
+	}
+	restart := ""
+	if ev.Kind == "session.start" {
+		restart = ev.Launch
+	}
+	s, fresh, err := h.sessionLocked(ev.Session, acc, task, restart)
 	if err != nil {
 		return err
 	}
@@ -686,11 +700,44 @@ func messageTask(from, to *Session) string {
 	return ""
 }
 
+// pushMessageLocked adds a message to the log. The log keeps the latest keepMessages messages of each task the office
+// shows (running, ending, failed), so a busy office doesn't push a team chat out, and as many of the others (between
+// desks, of tasks gone); the oldest go first.
 func (h *Hub) pushMessageLocked(m *Message) {
 	h.messages = append(h.messages, m)
-	if len(h.messages) > keepMessages {
-		h.messages = h.messages[len(h.messages)-keepMessages:]
+	if len(h.messages) <= keepMessages {
+		return
 	}
+	shown := map[string]bool{}
+	for _, t := range h.tasks {
+		if t.Status != TaskEnded {
+			shown[t.ID] = true
+		}
+	}
+	count := map[string]int{}
+	keep := make([]bool, len(h.messages))
+	n := 0
+	for i := len(h.messages) - 1; i >= 0; i-- {
+		group := h.messages[i].Task
+		if !shown[group] {
+			group = ""
+		}
+		if count[group] < keepMessages {
+			count[group]++
+			keep[i] = true
+			n++
+		}
+	}
+	if n == len(h.messages) {
+		return
+	}
+	kept := make([]*Message, 0, n)
+	for i, msg := range h.messages {
+		if keep[i] {
+			kept = append(kept, msg)
+		}
+	}
+	h.messages = kept
 }
 
 func originKind(origin any) string {
@@ -810,11 +857,13 @@ type AskRequest struct {
 func (h *Hub) CreateAsk(req AskRequest, acc *Account) (string, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	task := "" // the mod doesn't send it with an ask; the session reported it before
+	// the mod doesn't send the task with an ask: the session reported it before, or, when the hub no longer has the
+	// session (pruned), the task's members or launches know it
+	task := h.sessionTaskLocked(req.Session, acc.ID)
 	if s := h.sessions[req.Session]; s != nil {
 		task = s.Task
 	}
-	s, _, err := h.sessionLocked(req.Session, acc, task)
+	s, _, err := h.sessionLocked(req.Session, acc, task, "")
 	if err != nil {
 		return "", err
 	}

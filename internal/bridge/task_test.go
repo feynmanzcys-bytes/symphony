@@ -405,10 +405,17 @@ func TestTaskMergeConflict(t *testing.T) {
 	if st, code := e.page.failure("POST", "/api/tasks/T1/end", nil); st != http.StatusConflict || code != "task_ended" {
 		t.Fatalf("ending a failed task: want 409 task_ended, got %d %q", st, code)
 	}
+	// its members stay its members until it is dismissed: no deleting them
+	for _, id := range []string{carolAcc.ID, helper.Account} {
+		if st, code := e.page.failure("DELETE", "/api/accounts/"+id, nil); st != http.StatusConflict || code != "account_busy" {
+			t.Fatalf("deleting a member of a failed task: want 409 account_busy, got %d %q", st, code)
+		}
+	}
 	e.page.ok("DELETE", "/api/tasks/T1", nil)
 	if n := len(e.srv.Hub.Tasks()); n != 0 {
 		t.Fatalf("a dismissed task leaves the office, %d left", n)
 	}
+	e.page.ok("DELETE", "/api/accounts/"+carolAcc.ID, nil)
 	if snap := e.srv.Hub.Snapshot(); e.srv.Hub.Account(helper.Account) != nil || len(snap.Launches) != 0 ||
 		slices.ContainsFunc(snap.Sessions, func(s *Session) bool { return s.Task != "" }) {
 		t.Fatal("dismissing a failed task deletes its advisor and forgets its sessions and launches")
@@ -591,10 +598,11 @@ func TestTaskErrors(t *testing.T) {
 		t.Fatal("the failed task should leave nothing behind")
 	}
 
-	// the tries that failed gave their numbers back; a room holds one task, an employee is in one at a time
+	// the tries that failed keep their numbers (messages may have been logged under them); a room holds one task, an
+	// employee is in one at a time
 	task := asTask(t, e.page.ok("POST", "/api/tasks", TaskRequest{Room: 4, Title: "t", Members: two}))
-	if task.ID != "T1" {
-		t.Fatalf("the first task made should be T1, got %s", task.ID)
+	if task.ID != "T3" {
+		t.Fatalf("the first task made should be T3 (T1 and T2 went to the tries that failed), got %s", task.ID)
 	}
 	if st, code := e.page.failure("POST", "/api/tasks", TaskRequest{Room: 4, Title: "t", Members: []TaskMemberRequest{advisor("x", plain), advisor("y", plain)}}); st != http.StatusConflict || code != "task_room_busy" {
 		t.Fatalf("want 409 task_room_busy, got %d %q", st, code)
@@ -758,8 +766,71 @@ func TestTaskFolderChecks(t *testing.T) {
 			t.Errorf("%s: want 400 task_dir_home, got %d %v", dir, st, body)
 		}
 	}
+	// nor when they are spelled another way: through a symlink, in another case where the file system ignores it
+	link := filepath.Join(e.root, "home-link")
+	above := filepath.Join(e.root, "users-link")
+	if err := os.Symlink(home, link); err != nil {
+		t.Skip("no symlinks here:", err)
+	}
+	if err := os.Symlink(filepath.Dir(home), above); err != nil {
+		t.Fatal(err)
+	}
+	spellings := []string{link, above, filepath.Join(above, "me")}
+	if upper := filepath.Join(filepath.Dir(home), "ME"); exists(upper) {
+		spellings = append(spellings, upper, filepath.Join(filepath.Dir(filepath.Dir(home)), "USERS", "me"))
+	}
+	for _, dir := range spellings {
+		st, body := e.page.do("POST", "/api/tasks", advisor(dir))
+		if st != 400 || body["code"] != "task_dir_home" {
+			t.Errorf("%s: want 400 task_dir_home, got %d %v", dir, st, body)
+		}
+	}
 	if exists(filepath.Join(home, ".git")) || exists(filepath.Join(filepath.Dir(home), ".git")) {
 		t.Fatal("no repository of the home folder")
+	}
+}
+
+// TestHoldsHome: the home folder and the folders above it, by any path to them; not the folders in it or beside it.
+func TestHoldsHome(t *testing.T) {
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	home := filepath.Join(root, "Users", "me")
+	for _, d := range []string{home, filepath.Join(home, "proj"), filepath.Join(root, "Users", "meow"), filepath.Join(root, "data", "Users", "me")} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// a second way to the same folders, as macOS's /System/Volumes/Data/Users is to /Users
+	if err := os.Symlink(filepath.Join(root, "Users"), filepath.Join(root, "mirror")); err != nil {
+		t.Skip("no symlinks here:", err)
+	}
+	for dir, want := range map[string]bool{
+		home:                                true,
+		filepath.Join(root, "Users"):        true,
+		root:                                true,
+		filepath.Join(root, "mirror"):       true,
+		filepath.Join(root, "mirror", "me"): true,
+		filepath.Join(home, "proj"):         false,
+		filepath.Join(root, "mirror", "me", "proj"): false,
+		filepath.Join(root, "Users", "meow"):        false,
+		filepath.Join(root, "data"):                 false, // its Users/me is another folder
+		filepath.Join(root, "data", "Users", "me"):  false,
+	} {
+		if got := holdsHome(dir, home); got != want {
+			t.Errorf("holdsHome(%s): got %v, want %v", dir, got, want)
+		}
+	}
+	// home itself through a symlink: the folders above the real one count
+	if err := os.Symlink(home, filepath.Join(root, "home-link")); err != nil {
+		t.Fatal(err)
+	}
+	if !holdsHome(filepath.Join(root, "Users"), filepath.Join(root, "home-link")) || holdsHome(filepath.Join(home, "proj"), filepath.Join(root, "home-link")) {
+		t.Error("a home reached through a symlink should be resolved")
+	}
+	if holdsHome(home, "") {
+		t.Error("no home, no guard")
 	}
 }
 
@@ -835,6 +906,35 @@ func TestTaskSessionStartsAgain(t *testing.T) {
 	}
 	if got := taskState(e.srv.Hub, task.ID); got.Status != TaskRunning {
 		t.Fatalf("the task goes on: %+v", got)
+	}
+	// /clear with the new session reporting in before the old one's end: the launch id proves it's the same process,
+	// so the old one ends and the new one takes over (and gets the kickoff)
+	bob.ok("POST", "/api/event", Event{Session: "b3", Kind: "session.start", Launch: b.Launch, Task: task.ID})
+	if n := kickoffs("b3"); n != 1 || taskState(e.srv.Hub, task.ID).Members[0].Session != "b3" || session(t, e.srv, "b3").State == StateEnded {
+		t.Fatalf("the new session should take over and get the kickoff, got %d", n)
+	}
+	if e.srv.Hub.Online(bobAcc.ID) || slices.ContainsFunc(e.srv.Hub.Snapshot().Sessions, func(s *Session) bool { return s.ID == "b2" }) {
+		t.Fatal("the session it replaced should be gone")
+	}
+	bob.ok("POST", "/api/event", Event{Session: "b2", Kind: "session.end"}) // the old one's goodbye, late: nothing
+	if session(t, e.srv, "b3").State == StateEnded {
+		t.Fatal("the old session's late end shouldn't end the new one")
+	}
+	// another process (no launch id, or another one) is still refused
+	for _, l := range []string{"", "other"} {
+		if st, code := bob.failure("POST", "/api/event", Event{Session: "b4", Kind: "session.start", Launch: l, Task: task.ID}); st != http.StatusConflict || code != "account_busy" {
+			t.Fatalf("a session of another process (launch %q): want 409 account_busy, got %d %q", l, st, code)
+		}
+	}
+	// a member's session pruned while it was away, back with an ask first: it is the task's session again
+	e.srv.Hub.mu.Lock()
+	e.srv.Hub.dropSessionLocked("b3")
+	e.srv.Hub.mu.Unlock()
+	if _, err := e.srv.Hub.CreateAsk(AskRequest{Session: "b3", Kind: "permission", Tool: "Bash"}, e.srv.Hub.Account(bobAcc.ID)); err != nil {
+		t.Fatal(err)
+	}
+	if s := session(t, e.srv, "b3"); s.Task != task.ID || s.State != StateWaiting || e.srv.Hub.Online(bobAcc.ID) {
+		t.Fatalf("the pruned member session should come back as the task's, not the desk's: %+v", s)
 	}
 
 	// an old mod: no task in its events, but the launch id tells
@@ -982,5 +1082,146 @@ func TestTaskChat(t *testing.T) {
 	e.page.ok("POST", "/api/tasks/"+task.ID+"/end", nil)
 	if st, code := e.page.failure("POST", say, map[string]any{"text": "hi"}); st != http.StatusConflict || code != "task_ended" {
 		t.Fatalf("an ended task: %d %s", st, code)
+	}
+}
+
+func TestSplitMentions(t *testing.T) {
+	members := []string{"alice-T1", "bob-T1", "小 王-T1", "John Smith-T1", "al", "al ice"}
+	for _, tc := range []struct {
+		text    string
+		names   []string
+		unknown string
+		rest    string
+	}{
+		{"hello", nil, "", "hello"},
+		{"@alice-T1 hi", []string{"alice-T1"}, "", "hi"},
+		{"@alice-T1", []string{"alice-T1"}, "", ""},
+		{"@alice-T1：你好", []string{"alice-T1"}, "", "你好"},
+		{"@alice-T1:x", []string{"alice-T1"}, "", "x"},
+		{"@alice-T1,@bob-T1 x", []string{"alice-T1", "bob-T1"}, "", "x"},
+		{"@alice-T1， @bob-T1: x", []string{"alice-T1", "bob-T1"}, "", "x"},
+		{"@小 王-T1 你好", []string{"小 王-T1"}, "", "你好"},
+		{"@John Smith-T1,\n@小 王-T1：hi", []string{"John Smith-T1", "小 王-T1"}, "", "hi"},
+		{"@alice-T1 @bob-T1 @alice-T1 sync", []string{"alice-T1", "bob-T1"}, "", "sync"},
+		// the longest name that ends there wins; one that doesn't end there doesn't count
+		{"@al ice x", []string{"al ice"}, "", "x"},
+		{"@al icy x", []string{"al"}, "", "icy x"},
+		{"@alice-T1x hi", nil, "", "@alice-T1x hi"},
+		// a bare @, or one no member follows, is text and ends the mentions
+		{"@ hi", nil, "", "@ hi"},
+		{"@", nil, "", "@"},
+		{"@alice-T1 @dave hi", []string{"alice-T1"}, "", "@dave hi"},
+		{"@bob-T1 mail me @ home", []string{"bob-T1"}, "", "mail me @ home"},
+		// a name of the task's form that is no member's is unknown, wherever in the mentions
+		{"@carol-T1 hi", nil, "carol-T1", "@carol-T1 hi"},
+		{"@alice-T1 @carol-T1: hi", []string{"alice-T1"}, "carol-T1", "@carol-T1: hi"},
+		{"@Jon Smith-T1 hi", nil, "Jon Smith-T1", "@Jon Smith-T1 hi"},
+		{"@carol-T12 hi", nil, "", "@carol-T12 hi"},
+		{"@see\nnotes-T1 hi", nil, "", "@see\nnotes-T1 hi"},
+	} {
+		names, unknown, rest := splitMentions(tc.text, members, "-T1")
+		if !slices.Equal(names, tc.names) || unknown != tc.unknown || rest != tc.rest {
+			t.Errorf("%q: got %q %q %q, want %q %q %q", tc.text, names, unknown, rest, tc.names, tc.unknown, tc.rest)
+		}
+	}
+}
+
+// TestTaskChatMentions: members whose names have spaces can be mentioned, marks right after a name work without a
+// space, and a message that some of the members named didn't get says which.
+func TestTaskChatMentions(t *testing.T) {
+	e := newTaskEnv(t, "")
+	plain := e.folder(t, "plain")
+	bob, bobAcc := as(t, e.srv, e.base, "bob")
+	e.srv.Hub.setLast(bobAcc.ID, LaunchRequest{Dir: plain})
+	task := asTask(t, e.page.ok("POST", "/api/tasks", TaskRequest{Room: 1, Title: "t",
+		Members: []TaskMemberRequest{{Account: bobAcc.ID}, {Advisor: &AdvisorRequest{Name: "小 王", Dir: plain}}, {Advisor: &AdvisorRequest{Name: "John Smith", Dir: plain}}}}))
+	b, w, j := task.Members[0], task.Members[1], task.Members[2]
+	if w.Name != "小 王-"+task.ID || j.Name != "John Smith-"+task.ID {
+		t.Fatalf("the members' names: %+v %+v", w, j)
+	}
+	wang := e.modOf(t, w.Account)
+	bob.ok("POST", "/api/event", Event{Session: "b", Kind: "session.start", Launch: b.Launch, Task: task.ID})
+	wang.ok("POST", "/api/event", Event{Session: "w", Kind: "session.start", Launch: w.Launch, Task: task.ID})
+	inbox := func(c client, session string) []string {
+		var says []string
+		for _, it := range c.ok("GET", "/api/inbox?session="+session, nil)["items"].([]any) {
+			if it := it.(map[string]any); it["kind"] == "say" && it["origin"] != "task" {
+				says = append(says, it["text"].(string))
+			}
+		}
+		return says
+	}
+	inbox(bob, "b")
+	inbox(wang, "w")
+
+	say := "/api/tasks/" + task.ID + "/say"
+	m := e.page.ok("POST", say, map[string]any{"text": "@" + w.Name + "：你好"})
+	if m["text"] != "你好" || m["to"] != "w" || !slices.Equal(m["toNames"].([]any), []any{w.Name}) || m["missed"] != nil {
+		t.Fatalf("a name with a space and a mark right after it: %v", m)
+	}
+	if got := inbox(wang, "w"); !slices.Equal(got, []string{"你好"}) {
+		t.Fatalf("小 王 should get it: %v", got)
+	}
+	// John Smith has no session online: the others named get it, and the message says who didn't
+	m = e.page.ok("POST", say, map[string]any{"text": "@" + b.Name + ",@" + j.Name + " @" + w.Name + ": sync"})
+	if m["text"] != "sync" || m["toName"] != b.Name+" "+j.Name+" "+w.Name || !slices.Equal(m["missed"].([]any), []any{j.Name}) {
+		t.Fatalf("partial delivery: %v", m)
+	}
+	if got := inbox(bob, "b"); !slices.Equal(got, []string{"sync"}) {
+		t.Fatalf("bob should get it: %v", got)
+	}
+	if got := inbox(wang, "w"); !slices.Equal(got, []string{"sync"}) {
+		t.Fatalf("小 王 should get it: %v", got)
+	}
+	if msgs := e.srv.Hub.TaskChat(task.ID); !slices.Equal(msgs[len(msgs)-1].Missed, []string{j.Name}) {
+		t.Fatalf("the logged message should name who missed it: %+v", msgs[len(msgs)-1])
+	}
+	// an @ no member follows is text: it ends the mentions
+	m = e.page.ok("POST", say, map[string]any{"text": "@" + b.Name + " @everyone look"})
+	if m["text"] != "@everyone look" || !slices.Equal(m["toNames"].([]any), []any{b.Name}) {
+		t.Fatalf("an unmatched @ is text: %v", m)
+	}
+	if st, code := e.page.failure("POST", say, map[string]any{"text": "@" + j.Name + " hi"}); st != http.StatusConflict || code != "session_offline" {
+		t.Fatalf("only offline members named: %d %s", st, code)
+	}
+}
+
+// TestMessageLogKeepsTaskChats: the message log keeps keepMessages messages of each task the office shows besides as
+// many others, so desk chatter doesn't push a team chat out; a task gone from the office counts with the others.
+func TestMessageLogKeepsTaskChats(t *testing.T) {
+	h := NewHub()
+	h.tasks = []*Task{{ID: "T1", Status: TaskRunning}, {ID: "T2", Status: TaskFailed}, {ID: "T3", Status: TaskEnded}}
+	add := func(task string, n int) {
+		for range n {
+			h.pushMessageLocked(&Message{ID: newID(), Task: task})
+		}
+	}
+	count := func() map[string]int {
+		c := map[string]int{}
+		for _, m := range h.messages {
+			c[m.Task]++
+		}
+		return c
+	}
+	add("T1", 10)
+	add("T2", 5)
+	add("T3", 50)
+	add("", keepMessages)
+	if c := count(); c["T1"] != 10 || c["T2"] != 5 || c["T3"] != 0 || c[""] != keepMessages {
+		t.Fatalf("the shown tasks' messages stay; of the others the latest %d (the ended task's, older, go): %v", keepMessages, c)
+	}
+	add("T1", keepMessages+20)
+	if c := count(); c["T1"] != keepMessages || c["T2"] != 5 || c[""] != keepMessages {
+		t.Fatalf("a shown task keeps its latest %d: %v", keepMessages, c)
+	}
+	last := h.messages[len(h.messages)-1]
+	if last.Task != "T1" || len(h.messages) != 2*keepMessages+5 {
+		t.Fatalf("the log keeps its order and the latest message: %d", len(h.messages))
+	}
+	// once T1 is gone from the office, its messages count with the others
+	h.tasks[0].Status = TaskEnded
+	add("", 1)
+	if c := count(); c["T1"]+c[""] != keepMessages || c["T2"] != 5 {
+		t.Fatalf("an ended task's messages count with the others: %v", c)
 	}
 }

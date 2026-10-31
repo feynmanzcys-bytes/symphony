@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title data-i18n="office.title">Symphony Office</title>
 <style>
+  :root { --mono:ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }
   html, body { margin:0; height:100%; background:#2f2e2b; color:#f2efe8; font:13px/1.45 system-ui, sans-serif; overflow:hidden; }
   /* CJK fonts per language, so each gets its own glyph forms */
   body:lang(zh-CN) { font-family:system-ui, "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif; }
@@ -44,14 +45,15 @@
   #hud select.lang { width:104px; font:inherit; font-size:12px; background:#fffdf7; color:#2b2a28; border:2px solid #2b2a28; padding:0 2px;
     cursor:pointer; box-shadow:2px 2px 0 rgba(0,0,0,.3); }
   #hud .note { margin:8px auto 0; max-width:560px; padding:4px 8px; background:#fff3cf; border:2px solid #c9961a; color:#6b4a00; line-height:1.5; }
-  /* the tab under the HUD hides it and brings it back; while the HUD is away it shows how many asks wait */
-  #hud .tab { position:absolute; top:100%; left:50%; transform:translateX(-50%); display:flex; align-items:center; gap:5px; height:18px;
+  /* the tab under the HUD hides it and brings it back; while the HUD is away it shows how many asks wait. It hangs from
+     the HUD's right corner: in the middle it would cover the sign on the back wall once the HUD wraps to two lines */
+  #hud .tab { position:absolute; top:100%; right:14px; display:flex; align-items:center; gap:5px; height:18px;
     padding:0 12px; font:inherit; color:#2b2a28; background:#fffdf7; border:2px solid #2b2a28; border-top:0;
     box-shadow:4px 4px 0 rgba(0,0,0,.35); cursor:pointer; }
   #hud .tab:hover { background:#f2b705; }
   #hud .tab .ico { margin:0; width:14px; height:8px; background-image:var(--ico-up); }
   #hud.up .tab .ico { background-image:var(--ico-down); }
-  #hud .tab .badge { font:700 11px/14px ui-monospace, monospace; color:#fff; background:#d64541; padding:0 4px; }
+  #hud .tab .badge { font:700 11px/14px var(--mono); color:#fff; background:#d64541; padding:0 4px; }
   #hud .tab .badge[hidden], #hud:not(.up) .tab .badge { display:none; }
   .ico { display:inline-block; vertical-align:-1px; margin-right:6px; background:no-repeat center / contain; image-rendering:pixelated; }
   .ico.mail { width:18px; height:12px; background-image:var(--ico-mail); }
@@ -60,7 +62,7 @@
   #find { width:100%; box-sizing:border-box; font:inherit; font-size:12px; color:#2b2a28; border:2px solid #2b2a28; padding:3px 26px;
     background:#fff var(--ico-find) no-repeat 7px center / 14px 14px; box-shadow:inset 2px 2px 0 rgba(0,0,0,.08); image-rendering:pixelated; }
   #find:focus { outline:none; border-color:#f2b705; }
-  #hud .key { position:absolute; right:6px; top:50%; transform:translateY(-50%); pointer-events:none; font:11px/1.25 ui-monospace, monospace;
+  #hud .key { position:absolute; right:6px; top:50%; transform:translateY(-50%); pointer-events:none; font:11px/1.25 var(--mono);
     color:#8a867e; background:#f2efe8; border:1px solid #b9b3a8; border-bottom-width:2px; padding:0 4px; }
   #find:focus + .key, #find:not(:placeholder-shown) + .key { display:none; } /* the shortcut, while the box is idle */
   #find-list { position:absolute; z-index:1; left:0; top:calc(100% + 4px); min-width:240px; max-width:380px; background:#fffdf7; color:#2b2a28;
@@ -77,7 +79,7 @@
   .logpanel[hidden] { display:none; }
   .logpanel h2 { margin:0 0 4px; font-size:14px; }
   .logpanel .close { position:absolute; right:8px; top:4px; cursor:pointer; color:#8a867e; }
-  .logpanel .lines { overflow:auto; font:12px/1.6 ui-monospace, monospace; }
+  .logpanel .lines { overflow:auto; font:12px/1.6 var(--mono); }
   .logpanel .lines div { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .logpanel .lines:empty::before { content:attr(data-empty); color:#8a867e; }
   .dot { display:inline-block; width:8px; height:8px; margin-right:4px; vertical-align:0; }
@@ -95,6 +97,7 @@
   .emp-label .st { color:#6f6b64; }
   .emp-label.off { opacity:.55; }
   .emp-label.away .st { display:none; } /* away from the desk: the name only, so a sofa full of people stays readable */
+  .emp-label.tight .st { display:none; } /* too narrow a desk for the status to read: the name, and the color bar says the state */
   .emp-label.dim { opacity:.25; }
   .emp-label.match { outline:2px solid #f2b705; outline-offset:1px; }
   .emp-label.found { animation:found .4s steps(1) 8; }
@@ -111,12 +114,14 @@
   .room-plate.failed i { animation:nudge-light 1s steps(1) infinite; } /* a failed task: the light blinks and an "!" follows the id */
   @keyframes nudge-light { 50% { background:#5a2320; } }
   .room-plate .bang { color:#ff8a80; margin-left:2px; }
+  .room-plate.small { letter-spacing:0; font-size:10px; padding:0 4px 0 3px; } /* too narrow: a step smaller first (fitPlate) */
+  .room-plate.small i { margin-right:3px; }
   .room-plate.narrow .nm { display:none; } /* too narrow for the name beside the task id: the id alone (the name shows on hover) */
   .room-plate.click { cursor:pointer; }
   .room-plate.click:hover { border-color:#f2b705; }
-  .sign-text { position:absolute; transform:translate(-50%, -50%); color:#fffdf7; font:700 13px/1 ui-monospace, monospace; letter-spacing:3px; white-space:nowrap; }
+  .sign-text { position:absolute; transform:translate(-50%, -50%); color:#fffdf7; font:700 13px/1 var(--mono); letter-spacing:3px; white-space:nowrap; }
   .seat-add { position:absolute; transform:translate(-50%, -50%); pointer-events:auto; cursor:pointer; width:22px; height:22px; padding:0;
-    background:#fffdf7; color:#2b2a28; border:2px solid #2b2a28; font:700 16px/16px ui-monospace, monospace; box-shadow:2px 2px 0 rgba(0,0,0,.3); }
+    background:#fffdf7; color:#2b2a28; border:2px solid #2b2a28; font:700 16px/16px var(--mono); box-shadow:2px 2px 0 rgba(0,0,0,.3); }
   .seat-add:hover { background:#f2b705; }
   .bubble { position:absolute; transform:translate(-50%, -100%); box-sizing:border-box; /* placed above its tag, clear of the others (placeLabels) */ background:#fffdf7; color:#2b2a28; border:2px solid #2b2a28;
     padding:1px 6px; font-size:12px; max-width:220px; box-shadow:2px 2px 0 rgba(0,0,0,.3); }
@@ -147,8 +152,8 @@
   .chat .flow .empty { color:#8a867e; text-align:center; margin:auto; }
   .it { flex:none; max-width:min(82%, 820px); font-size:13px; line-height:1.5; } /* flex:none: the column never squeezes a row (an overflow:hidden row would shrink to nothing) */
   .it .body { white-space:pre-wrap; overflow-wrap:anywhere; }
-  .it .body pre { background:#2b2a28; color:#f2efe8; padding:6px 8px; margin:4px 0; font:12px/1.5 ui-monospace, monospace; overflow:auto; white-space:pre; }
-  .it .body code { background:rgba(0,0,0,.08); padding:0 3px; font:12px ui-monospace, monospace; }
+  .it .body pre { background:#2b2a28; color:#f2efe8; padding:6px 8px; margin:4px 0; font:12px/1.5 var(--mono); overflow:auto; white-space:pre; }
+  .it .body code { background:rgba(0,0,0,.08); padding:0 3px; font:12px var(--mono); }
   .it.user { align-self:flex-end; background:#2b2a28; color:#fffdf7; padding:6px 10px; border:2px solid #2b2a28; box-shadow:2px 2px 0 rgba(0,0,0,.3); }
   .it.user.queued { opacity:.6; }
   .it.user .body code { background:rgba(255,255,255,.18); }
@@ -172,7 +177,7 @@
   @keyframes dots { 33% { content:'··'; } 66% { content:'···'; } }
   .it.thinking.done summary, .it.thinking .bare { color:#a9790a; font-weight:400; font-size:12px; border-style:solid; border-color:#ead9b5; background:#fbf5e8; }
   .it.thinking .body { margin-top:4px; padding:6px 10px; background:#fff6e5; border:1px dashed #e0a24a; color:#6b4a00; font-size:12px; max-height:320px; overflow:auto; }
-  .it.tool { align-self:flex-start; font:12px/1.5 ui-monospace, monospace; color:#4a4742; padding:1px 8px; border-left:3px solid #b9b3a8; background:#edeae2; max-width:min(90%, 900px); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .it.tool { align-self:flex-start; font:12px/1.5 var(--mono); color:#4a4742; padding:1px 8px; border-left:3px solid #b9b3a8; background:#edeae2; max-width:min(90%, 900px); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .it.tool.ok { border-color:#2e9e5b; } .it.tool.error { border-color:#d64541; } .it.tool.denied { border-color:#d64541; color:#8a2a26; }
   .it.tool:not(.done) { border-color:#f2b705; }
   .it.tool b { color:#2b2a28; } .it.tool .sub { color:#8a867e; margin-right:4px; } .it.tool .res { color:#8a867e; margin-left:6px; }
@@ -204,7 +209,7 @@
   #asks .who { display:flex; gap:8px; align-items:baseline; margin-bottom:6px; }
   #asks .who .name { font-weight:700; }
   #asks .who .kind, #asks .meta { color:#8a867e; font-size:12px; }
-  #asks .tool { font:700 13px ui-monospace, monospace; }
+  #asks .tool { font:700 13px var(--mono); }
   #asks pre { background:#f2efe8; border:1px solid #d6d1c6; padding:6px 8px; max-height:200px; overflow:auto; white-space:pre-wrap; word-break:break-all; font-size:12px; margin:6px 0; }
   #asks .row { display:flex; gap:8px; align-items:center; margin-top:6px; }
   #asks .row input { flex:1; }
@@ -218,18 +223,19 @@
   #launch label { display:block; margin:8px 0 2px; font-size:12px; color:#6f6b64; }
   #launch input, #launch select { width:100%; box-sizing:border-box; font:inherit; color:#2b2a28; background:#fff; border:2px solid #2b2a28; padding:3px 6px; }
   #launch input[readonly] { background:#ece8df; }
+  :is(#launch, #task) :is(input:not([type=checkbox]), select, textarea):focus { outline:none; border-color:#f2b705; }
   #launch .row { display:flex; gap:6px; }
   #launch .row input { flex:1; }
   #launch .grid { display:grid; grid-template-columns:1fr 1fr; gap:0 10px; }
   :is(#launch, #task) .browser { border:2px solid #2b2a28; margin-top:6px; background:#fff; }
-  :is(#launch, #task) .browser .cur { padding:3px 6px; background:#ece8df; font:12px ui-monospace, monospace; word-break:break-all; }
+  :is(#launch, #task) .browser .cur { padding:3px 6px; background:#ece8df; font:12px var(--mono); word-break:break-all; }
   :is(#launch, #task) .browser ul { list-style:none; margin:0; padding:0; max-height:180px; overflow:auto; }
   :is(#launch, #task) .browser li { padding:2px 8px; cursor:pointer; font-size:13px; }
   :is(#launch, #task) .browser li:hover { background:#f2b705; }
   :is(#launch, #task) .browser .pick { margin:6px; }
   :is(#launch, #task) .recent { margin-top:4px; display:flex; flex-wrap:wrap; gap:4px; }
-  :is(#launch, #task) .recent span { font:11px ui-monospace, monospace; border:1px solid #b9b3a8; padding:0 5px; cursor:pointer; }
-  #launch pre { margin:10px 0 0; padding:6px 8px; background:#2b2a28; color:#f2efe8; font:12px/1.5 ui-monospace, monospace; white-space:pre-wrap; overflow-wrap:anywhere; }
+  :is(#launch, #task) .recent span { font:11px var(--mono); border:1px solid #b9b3a8; padding:0 5px; cursor:pointer; }
+  #launch pre { margin:10px 0 0; padding:6px 8px; background:#2b2a28; color:#f2efe8; font:12px/1.5 var(--mono); white-space:pre-wrap; overflow-wrap:anywhere; }
   :is(#launch, #task) .status { margin-top:8px; font-size:12px; white-space:pre-wrap; }
   :is(#launch, #task) .status.err { color:#c0392b; }
   /* the task dialog: the launch dialog's fields, the employees ticked in order and the advisors, numbered as the team */
@@ -251,7 +257,7 @@
   #task .over .ord { background:#c0392b; }
   #task .bad, #task input.bad { border-color:#c0392b; }
   #task input.bad { background:#fdecea; }
-  #task .ord { flex:none; min-width:16px; padding:0 3px; box-sizing:border-box; text-align:center; font:700 11px/16px ui-monospace, monospace; color:#fffdf7; background:#2b2a28; }
+  #task .ord { flex:none; min-width:16px; padding:0 3px; box-sizing:border-box; text-align:center; font:700 11px/16px var(--mono); color:#fffdf7; background:#2b2a28; }
   #task .ord:empty { background:none; }
   #task .lead-tag { display:none; flex:none; font-size:11px; line-height:16px; padding:0 5px; background:#f2b705; color:#2b2a28; white-space:nowrap; }
   #task .lead .lead-tag { display:inline-block; }
@@ -269,10 +275,12 @@
   #task .count { margin-right:auto; font-size:12px; color:#6f6b64; }
   #task .count.over { color:#c0392b; font-weight:700; }
   /* the task window: what the team is on, its members (a click opens one's window), the button to end it */
-  #taskwin .panel { position:relative; width:min(780px, calc(100vw - 32px)); }
+  #taskwin > .panel { position:relative; width:min(780px, calc(100vw - 32px)); height:min(90vh, 960px); display:flex; flex-direction:column; }
+  #taskwin > .panel > :not(.tchat) { flex:none; } /* (">": a docked member's window is inside #taskwin too) */
   #taskwin .close { position:absolute; right:10px; top:6px; cursor:pointer; color:#8a867e; font-size:14px; }
   #taskwin .top { display:flex; align-items:center; gap:10px; margin-right:24px; }
   #taskwin .top h2 { margin:0; }
+  #taskwin .top .actions { margin:0 0 0 auto; }
   #taskwin .top .status { font-size:12px; line-height:1.6; padding:0 8px 0 6px; border:2px solid #2b2a28; border-left:6px solid var(--c, #a9a49b); white-space:nowrap; }
   #taskwin .desc { margin-top:8px; padding:6px 10px; background:#f6f3ec; border:1px solid #d6d1c6; white-space:pre-wrap; overflow-wrap:anywhere; max-height:30vh; overflow:auto; }
   #taskwin .mode { margin-top:6px; font-size:12px; color:#6f6b64; }
@@ -288,26 +296,28 @@
   #taskwin .badge { flex:none; font-size:11px; padding:0 5px; white-space:nowrap; }
   #taskwin .badge.lead { background:#f2b705; }
   #taskwin .badge.adv { border:1px solid #b9b3a8; color:#6f6b64; }
-  #taskwin .where { flex:1; min-width:0; color:#6f6b64; font:12px ui-monospace, monospace; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #taskwin .where { flex:1; min-width:0; color:#6f6b64; font:12px var(--mono); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   #taskwin .chip { flex:none; font-size:11px; padding:0 6px; border:1px solid #d6d1c6; background:#f6f3ec; white-space:nowrap; }
   #taskwin .st { flex:none; color:#6f6b64; font-size:12px; white-space:nowrap; max-width:220px; overflow:hidden; text-overflow:ellipsis; }
   /* the task chat: the members' messages to each other (purple, as everywhere on the page) and yours (dark, on the right) */
-  #taskwin .tchat { margin-top:12px; }
+  #taskwin .tchat { flex:1; min-height:120px; display:flex; flex-direction:column; margin-top:12px; }
   #taskwin .tchat h3 { margin:0 0 4px; font-size:13px; }
-  #taskwin .tlist { display:flex; flex-direction:column; gap:8px; min-height:64px; max-height:35vh; overflow:auto; padding:8px; background:#f6f3ec; border:2px solid #2b2a28; }
+  #taskwin .tlist { flex:1; display:flex; flex-direction:column; gap:8px; min-height:64px; overflow:auto; padding:8px; background:#f6f3ec; border:2px solid #2b2a28; }
   #taskwin .tlist .empty { margin:auto; color:#8a867e; font-size:12px; text-align:center; }
   #taskwin .tmsg { flex:none; display:flex; align-items:flex-start; gap:6px; max-width:88%; align-self:flex-start; }
   #taskwin .tmsg.me { flex-direction:row-reverse; align-self:flex-end; }
   #taskwin .tmsg .av { flex:none; width:48px; height:24px; margin-top:4px; background-size:100% 100%; image-rendering:pixelated; }
   #taskwin .tmsg .bub { min-width:0; padding:4px 10px 6px; background:#7b4dc9; color:#fff; border:2px solid #4a2a86; box-shadow:2px 2px 0 rgba(0,0,0,.3); font-size:13px; line-height:1.5; }
   #taskwin .tmsg.me .bub { background:#2b2a28; border-color:#2b2a28; color:#fffdf7; }
-  #taskwin .tmsg .hd { display:flex; gap:8px; align-items:baseline; font-size:12px; }
-  #taskwin .tmsg .hd time { font-size:10px; opacity:.75; }
+  #taskwin .tmsg .hd { font-size:12px; }
+  #taskwin .tmsg time { display:block; margin-top:2px; font-size:10px; opacity:.75; }
+  #taskwin .tmsg.me time { text-align:right; }
   #taskwin .tmsg .body { white-space:pre-wrap; overflow-wrap:anywhere; }
   #taskwin .tmsg .body .to { color:#ffe08a; }
   #taskwin .tmsg.me .body .to { color:#f2b705; }
-  #taskwin .tmsg .body code { background:rgba(255,255,255,.18); padding:0 3px; font:12px ui-monospace, monospace; }
-  #taskwin .tmsg .body pre { background:rgba(0,0,0,.3); padding:6px 8px; margin:4px 0; font:12px/1.5 ui-monospace, monospace; overflow:auto; white-space:pre; }
+  #taskwin .tmsg .body .to s { color:#a9a49b; } /* a mentioned member that was offline and didn't get it */
+  #taskwin .tmsg .body code { background:rgba(255,255,255,.18); padding:0 3px; font:12px var(--mono); }
+  #taskwin .tmsg .body pre { background:rgba(0,0,0,.3); padding:6px 8px; margin:4px 0; font:12px/1.5 var(--mono); overflow:auto; white-space:pre; }
   #taskwin .tsay { display:flex; gap:8px; align-items:flex-end; margin-top:6px; }
   #taskwin .tbox { position:relative; flex:1; min-width:0; display:flex; }
   #taskwin .tsay textarea { flex:1; resize:none; font:inherit; color:#2b2a28; background:#fff; border:2px solid #2b2a28; padding:5px 8px; box-sizing:border-box; }
@@ -315,6 +325,7 @@
   #taskwin .tsay textarea:disabled { background:#ece8df; }
   #taskwin .tstatus { margin-top:4px; font-size:12px; color:#c0392b; white-space:pre-wrap; overflow-wrap:anywhere; }
   #taskwin .tstatus:empty { display:none; }
+  #taskwin .tstatus.note { color:#6f6b64; }
   /* the mention picker: the task's members, over the input while an @ is being typed (like the search box's list) */
   #taskwin .tpick { position:absolute; z-index:2; left:0; bottom:calc(100% + 4px); min-width:240px; max-width:380px; background:#fffdf7; color:#2b2a28;
     border:2px solid #2b2a28; box-shadow:4px 4px 0 rgba(0,0,0,.35); }
@@ -326,9 +337,7 @@
   /* a member's window docks to the right of the task window: the two side by side, centered as a pair, the task's chat
      as tall as the member's (on a narrow screen the member's window opens over the task window instead) */
   #taskwin.with-chat { padding:0 16px; }
-  #taskwin.with-chat > .panel { flex:0 1 720px; width:auto; min-width:0; height:min(90vh, 960px); display:flex; flex-direction:column; }
-  #taskwin.with-chat .tchat { flex:1; min-height:120px; display:flex; flex-direction:column; }
-  #taskwin.with-chat .tlist { flex:1; max-height:none; }
+  #taskwin.with-chat > .panel { flex:0 1 720px; width:auto; min-width:0; padding-bottom:8px; } /* its input level with the member's */
   #chat.docked:not([hidden]) { display:contents; }
   #chat.docked .panel.chat { flex:0 1 640px; width:auto; min-width:0; margin-left:-2px; }
   #chat.stacked { z-index:11; }
@@ -344,6 +353,9 @@
   .msg .meta { color:#8a867e; font-size:11px; }
   .msg .meta b { color:#2b2a28; }
   .msg .lost { color:#c0392b; }
+  .msg .txt { white-space:pre-wrap; overflow-wrap:anywhere; }
+  .msg .txt pre { margin:3px 0; padding:4px 6px; background:#2b2a28; color:#f2efe8; font:11px/1.5 var(--mono); white-space:pre-wrap; }
+  .msg .txt code { background:rgba(0,0,0,.08); padding:0 3px; font:11px var(--mono); }
 </style>
 </head>
 <body>
@@ -432,7 +444,7 @@
 <div class="modal" id="taskwin" hidden>
   <div class="panel">
     <span class="close">✕</span>
-    <div class="top"><h2></h2><span class="status"></span></div>
+    <div class="top"><h2></h2><span class="status"></span><div class="actions"></div></div>
     <div class="desc"></div>
     <div class="mode" data-i18n="task.flat" hidden></div>
     <div class="err" hidden></div>
@@ -446,7 +458,6 @@
       </form>
       <div class="tstatus"></div>
     </div>
-    <div class="actions"></div>
   </div>
 </div>
 
@@ -1961,6 +1972,7 @@ const setData = (el, key, value) => { if (el.dataset[key] !== value) el.dataset[
 // tag of an employee away in a task stays at its desk.
 function placeLabels(now) {
   const maxW = Math.max(60, COL_PITCH * S / dpr - 6), placed = [], loose = []
+  const tight = maxW < 70 // a desk's tag with room for a few letters of the status only: the name alone
   const box = (e, x, y) => ({ l:x - e.lw / 2, r:x + e.lw / 2, t:y - e.lh, b:y })
   for (const f of figs.values()) if (f.label.hidden === f.inside) { f.label.hidden = !f.inside; f.sized = false }
   const tagged = [...emps.values(), ...figs.values()].filter(e => e.desk || e.inside)
@@ -1968,6 +1980,7 @@ function placeLabels(now) {
     const el = e.label, away = e.inside && !e.atDesk, mw = e.member ? Math.max(90, maxW) : maxW // a member's tag has no desk to fit
     if (el.classList.contains('away') !== away) { el.classList.toggle('away', away); e.sized = false }
     if (e.maxW !== mw) { el.style.maxWidth = mw + 'px'; e.maxW = mw; e.sized = false }
+    if (el.classList.contains('tight') !== (tight && !e.member)) { el.classList.toggle('tight', tight && !e.member); e.sized = false }
   }
   for (const e of tagged) {
     if (!e.sized) { e.lw = e.label.offsetWidth; e.lh = e.label.offsetHeight; e.sized = true }
@@ -2004,6 +2017,13 @@ function placeLabels(now) {
     }
     placed.push(box(e, e.tx, e.ty))
   }
+  // the rooms' nameplates, which the bubbles keep off too
+  smalls.forEach((r, i) => {
+    const d = smallDoor(r), [x, y] = toCss(d.plateX, d.plateY), maxW = Math.max(40, (r.x + r.w - 4 - d.plateX) * S / dpr) + 'px', p = plates[i]
+    p.style.left = x + 'px'; p.style.top = y + 'px'
+    if (p.style.maxWidth !== maxW) { p.style.maxWidth = maxW; fitPlate(p) }
+    if (p.pw) placed.push({ l:x, r:x + p.pw, t:y - p.ph / 2, b:y + p.ph / 2 })
+  })
   // message bubbles, after the tags, the newest first: above the sender's tag, else beside it or higher, else below the
   // figure; inside the window and below the HUD. Where there's no room for one (it would cover a quarter of itself or
   // more), it doesn't show: the envelope and the message log have the message
@@ -2031,11 +2051,6 @@ function placeLabels(now) {
       : key === 'work' ? toCss(r.x + 3, r.y + r.h - 12) : toCss(r.x + 3, r.y + 3)
     el.style.left = x + 'px'; el.style.top = y + 'px'
   }
-  smalls.forEach((r, i) => {
-    const d = smallDoor(r), [x, y] = toCss(d.plateX, d.plateY), maxW = Math.max(40, (r.x + r.w - 4 - d.plateX) * S / dpr) + 'px'
-    plates[i].style.left = x + 'px'; plates[i].style.top = y + 'px'
-    if (plates[i].style.maxWidth !== maxW) { plates[i].style.maxWidth = maxW; fitPlate(plates[i]) }
-  })
   addBtn.hidden = addSeat < 0
   if (addSeat >= 0) {
     const d = deskOf(addSeat)
@@ -2217,10 +2232,14 @@ function syncPlates() {
     if (el.style.maxWidth) fitPlate(el)
   })
 }
-// a plate with a task too narrow for the id and the name shows the id alone
+// a plate too narrow for its text goes a step smaller; one with a task still too narrow for the id and the name shows the
+// id alone. Its size is kept for the bubbles, which keep off the plates
 function fitPlate(el) {
-  el.classList.remove('narrow')
-  if (el.dataset.task && el.scrollWidth > el.clientWidth) el.classList.add('narrow')
+  el.classList.remove('narrow', 'small')
+  const over = () => el.scrollWidth > el.clientWidth
+  if (over()) el.classList.add('small')
+  if (over() && el.dataset.task) { el.classList.replace('small', 'narrow'); if (over()) el.classList.add('small') }
+  el.pw = el.offsetWidth; el.ph = el.offsetHeight
 }
 function onRoomClick(r) {
   const task = roomTask(r.k)
@@ -2301,7 +2320,11 @@ function noteMessage(m) {
 // the names a message goes by; one you sent from a task's chat has no sender, and none to send to when it went to everyone
 const fromYou = m => m.origin === 'page' && !m.fromName
 const msgFrom = m => m.fromName || (fromYou(m) ? t('task.you') : '?')
-const msgTo = m => m.toName || (fromYou(m) && m.task ? t('task.chatAll') : '?')
+// (a task's member is named for its task already: bob-T2; everyone in it, or a page-sent message, gets the task's id)
+const msgTo = m => {
+  const to = m.toName || (fromYou(m) && m.task ? t('task.chatAll') : '?')
+  return m.task && !to.endsWith('-' + m.task) ? `${to} · ${m.task}` : to
+}
 function applyMessage(m) {
   const list = snapshot.messages, i = list.findIndex(x => x.id === m.id)
   if (i >= 0) list[i] = m
@@ -2378,7 +2401,7 @@ function openAsks(session = null) {
 const msgsPanel = document.getElementById('msgs-panel')
 function msgHTML(m) {
   return `<div class="msg"><div class="meta">${fmtTime(m.time)} · <b>${esc(msgFrom(m))}</b> → <b>${esc(msgTo(m))}</b>
-    ${m.delivered ? '' : `<span class="lost">${esc(t('msg.undelivered'))}</span>`}</div>${esc(m.text)}</div>`
+    ${m.delivered ? '' : `<span class="lost">${esc(t('msg.undelivered'))}</span>`}</div><div class="txt">${richText(m.text)}</div></div>`
 }
 // The panel shows the log newest first and is kept up to date in place: a new message is one element put in, an
 // updated one (paired, delivered) is replaced, the rest stay (300 long messages make 600 KB of HTML; rebuilding
@@ -2441,6 +2464,7 @@ function placeChat() {
   chatEl.classList.toggle('docked', docked)
   chatEl.classList.toggle('stacked', !!chatTask && !docked)
   taskWin.classList.toggle('with-chat', docked && !chatEl.hidden)
+  if (!taskWin.hidden) growTaskBox() // a new width: the placeholder may take more lines, or fewer
 }
 // the one way to a task member's window: the task window, with the member's beside it
 function openMember(task, m) {
@@ -2520,7 +2544,7 @@ function showChat(id) {
     chatItems.clear()
     flow.innerHTML = ''
     if (sid) loadChat(sid)
-    else flow.innerHTML = `<div class="empty">${esc(away ? t('task.inRoom', { room:taskRoom(away), id:away.id }) : t('chat.noSession'))}</div>`
+    else flow.innerHTML = `<div class="empty">${esc(t('chat.noSession'))}</div>`
   }
   const mine = snapshot.asks.filter(a => a.session === sid)
   const askKey = mine.map(a => a.id).join(',')
@@ -2616,7 +2640,7 @@ function itemEl(it, old) {
         break
       }
       // from the page
-      el.innerHTML = `${it.origin === 'page' ? `<div class="from">${esc(t('chat.fromPage'))}</div>` : ''}<div class="body">${richText(it.text)}</div>${timeOf(it)}`
+      el.innerHTML = `${it.origin === 'page' ? `<div class="from">${esc(t('task.you'))}</div>` : ''}<div class="body">${richText(it.text)}</div>${timeOf(it)}`
       break
     case 'thinking': {
       el.className = `it thinking${it.done ? ' done' : ''}`
@@ -2711,6 +2735,8 @@ async function loadLaunchOptions() {
 // why the page can't start sessions: the mod's problem, or no launcher at all
 const launchOffReason = () => launchOpts?.mod ? errorText(launchOpts.mod) : t('error.launch_disabled')
 
+// a folder field shows the end of its path, the folder's own name, rather than its start
+const showEnd = el => { el.scrollLeft = el.scrollWidth }
 // labels of the drop-downs, in this page's language; model names and effort levels stay as they are
 const optionLabel = {
   model:o => o.value ? o.label : t('option.default'),
@@ -2740,7 +2766,7 @@ async function openLaunch(accountId) {
   fill(field('permissionMode'), launchOpts.permissionModes, acc ? last.permissionMode : 'bypassPermissions')
   fill(field('resume'), launchOpts.resumes, '')
   form.querySelector('.recent').innerHTML = recent.map(d => `<span title="${esc(d)}">${esc(base(d))}</span>`).join('')
-  form.querySelectorAll('.recent span').forEach((el, i) => el.onclick = () => { field('dir').value = recent[i]; preview() })
+  form.querySelectorAll('.recent span').forEach((el, i) => el.onclick = () => { field('dir').value = recent[i]; showEnd(field('dir')); preview() })
   form.querySelector('.browser').hidden = true
   setStatus('')
   form.querySelector('.go').disabled = false
@@ -2749,6 +2775,7 @@ async function openLaunch(accountId) {
   closeChat()
   dlg.hidden = false
   ;(acc ? field('dir') : field('name')).focus()
+  showEnd(field('dir'))
 }
 
 function closeLaunch() { dlg.hidden = true; pendingLaunch = null }
@@ -2804,6 +2831,7 @@ form.addEventListener('change', preview)
 form.querySelector('.browse').onclick = () => browse(form.querySelector('.browser'), field('dir').value.trim(), reason => setStatus(reason, true))
 form.querySelector('.pick').onclick = () => {
   field('dir').value = form.querySelector('.browser').dataset.path
+  showEnd(field('dir'))
   form.querySelector('.browser').hidden = true
   preview()
 }
@@ -2932,8 +2960,8 @@ function addAdvisor() {
   const dir = row.querySelector('[name=dir]'), box = row.querySelector('.browser')
   dir.value = recent[0] || launchOpts?.home || ''
   row.querySelector('.browse').onclick = () => browse(box, dir.value.trim(), reason => setTaskStatus(reason, true))
-  box.querySelector('.pick').onclick = () => { dir.value = box.dataset.path; box.hidden = true }
-  row.querySelectorAll('.recent span').forEach((el, i) => el.onclick = () => { dir.value = recent[i] })
+  box.querySelector('.pick').onclick = () => { dir.value = box.dataset.path; box.hidden = true; showEnd(dir) }
+  row.querySelectorAll('.recent span').forEach((el, i) => el.onclick = () => { dir.value = recent[i]; showEnd(dir) })
   fill(row.querySelector('[name=model]'), launchOpts?.models || [], 'opus')
   fill(row.querySelector('[name=effort]'), launchOpts?.efforts || [], 'max')
   row.querySelector('.rm').onclick = () => { picks = picks.filter(x => x !== row); row.remove(); renderPicks() }
@@ -2941,6 +2969,7 @@ function addAdvisor() {
   picks.push(row)
   renderPicks()
   row.querySelector('[name=name]').focus()
+  showEnd(dir)
 }
 
 // the members' numbers, the lead's tag, the count of seats taken; Start only for 2 members up to the room's seats
@@ -3066,9 +3095,9 @@ const tBox = tSay.querySelector('textarea'), tStatus = taskWin.querySelector('.t
 let taskChatFor = null // the task the input's draft and status line belong to
 let taskChatStick = false // you just sent: follow the list down when it comes back, wherever it was scrolled
 const avatars = new Map() // what a figure is drawn from -> its picture, a CSS url()
-function avatar(key, draw) {
+function avatar(key, draw, w = 24, h = 12) {
   let a = avatars.get(key)
-  if (!a) { const was = hair; hair = 0; a = pixelArt(24, 12, draw); hair = was; avatars.set(key, a) }
+  if (!a) { const was = hair; hair = 0; a = pixelArt(w, h, draw); hair = was; avatars.set(key, a) }
   return a
 }
 // a member as it looks in the office: its size from the model, its arms from the effort, an advisor's visitor badge
@@ -3079,17 +3108,18 @@ function memberAvatar(m) {
     if (m?.advisor) solid(g, 13, 6, 2, 2, '#fbfbf8')
   })
 }
-// you: a person in a dark suit with a yellow tie
+// you: a person in a dark suit with a yellow tie, on a smaller canvas, so it shows as big as a member
 const YOU = ['...HHHHHH...', '...FFFFFF...', '...FEFFEF...', '...FFFFFF...', '....FFFF....', '.XXXXWWXXXX.', 'XXXXXYYXXXXX', 'XXXXXYYXXXXX']
 const YOU_COLOR = { H:'#2b2a28', F:'#f0c8a0', E:EYE, X:'#2b2a28', W:'#fffdf7', Y:YELLOW }
-const youAvatar = () => avatar('you', g => YOU.forEach((row, y) => [...row].forEach((c, x) => { if (c !== '.') rect(g, 6 + x, 3 + y, 1, 1, YOU_COLOR[c]) })))
+const youAvatar = () => avatar('you', g => YOU.forEach((row, y) => [...row].forEach((c, x) => { if (c !== '.') rect(g, 2 + x, y, 1, 1, YOU_COLOR[c]) })), 16, 8)
 function taskMsgHTML(task, m) {
   const me = fromYou(m), who = me ? null : task.members.find(x => (x.session && x.session === m.from) || x.name === m.fromName)
   const names = m.toNames?.length ? m.toNames : m.toName ? [m.toName] : [] // one or several members, or everyone
-  const to = names.length ? `<b class="to">${esc(names.map(n => '@' + n).join(' '))}</b> ` : ''
+  const missed = m.missed || [] // of those, the ones that were offline: struck through
+  const to = names.length ? `<b class="to">${names.map(n => missed.includes(n) ? `<s title="${esc(t('task.missed', { name:n }))}">@${esc(n)}</s>` : '@' + esc(n)).join(' ')}</b> ` : ''
   return `<div class="tmsg${me ? ' me' : ''}"><span class="av" style="background-image:${me ? youAvatar() : memberAvatar(who)}"></span>` +
-    `<div class="bub"><div class="hd"><b>${esc(msgFrom(m))}</b><time>${esc(new Date(m.time).toLocaleTimeString(lang))}</time></div>` +
-    `<div class="body">${to}${richText(m.text)}</div></div></div>`
+    `<div class="bub"><div class="hd"><b>${esc(msgFrom(m))}</b></div>` +
+    `<div class="body">${to}${richText(m.text)}</div><time>${esc(new Date(m.time).toLocaleTimeString(lang))}</time></div></div>`
 }
 // redrawn when the message log or the members' figures change; says whether the list should be scrolled to its end
 function renderTaskChat(task) {
@@ -3183,13 +3213,20 @@ tSay.addEventListener('submit', async ev => {
   const id = taskWinFor, text = tBox.value.trim()
   if (!id || !text) return
   tBox.value = ''; growTaskBox(); closePick()
-  tStatus.textContent = ''
+  tStatus.textContent = ''; tStatus.classList.remove('note')
   taskChatStick = true
   const r = await fetch(`/api/tasks/${id}/say`, { method:'POST', headers:{ 'content-type':'application/json' }, body:JSON.stringify({ text }) }).catch(() => null)
-  if (r?.ok || id !== taskChatFor) return
+  if (id !== taskChatFor) return
+  if (r?.ok) { // sent, though maybe not to every member it named: say who was offline
+    const missed = (await r.json().catch(() => null))?.missed
+    if (missed?.length && id === taskChatFor && !tStatus.textContent) {
+      tStatus.textContent = t('task.sentMissed', { names:missed.join(', ') }); tStatus.classList.add('note')
+    }
+    return
+  }
   taskChatStick = false
   if (!tBox.value) { tBox.value = text; growTaskBox() } // back in the box, to fix and send again
-  tStatus.textContent = errorText(r ? await r.json().catch(() => null) : null)
+  tStatus.textContent = t('task.sayFailed', { reason:errorText(r ? await r.json().catch(() => null) : null) })
 })
 taskWin.querySelector('.members').addEventListener('click', ev => {
   const row = ev.target.closest('.mrow'), task = taskById(taskWinFor) ?? taskWinData, m = row && task?.members[row.dataset.i]
