@@ -94,6 +94,8 @@ type Launcher struct {
 	Market    string
 	BridgeURL string // the address sessions use to reach the bridge
 	Term      Terminal
+	// Terms are the sessions' terminals when the bridge hosts them (Term is a ptyTerminal); nil with another backend
+	Terms *Terms
 	// OnlineTimeout is how long to wait for a session to come online
 	OnlineTimeout time.Duration
 	// ListPlugins runs `claude plugin list --json`; tests swap in a fake
@@ -106,7 +108,11 @@ type Launcher struct {
 }
 
 func NewLauncher(claude, modDir, bridgeURL string, term Terminal) *Launcher {
-	return &Launcher{Claude: claude, ModDir: modDir, BridgeURL: bridgeURL, Term: term, OnlineTimeout: 90 * time.Second}
+	l := &Launcher{Claude: claude, ModDir: modDir, BridgeURL: bridgeURL, Term: term, OnlineTimeout: 90 * time.Second}
+	if p, ok := term.(*ptyTerminal); ok {
+		l.Terms = p.Terms
+	}
+	return l
 }
 
 // ModStatus says whether started sessions will have the mod. When they won't, the page shows the

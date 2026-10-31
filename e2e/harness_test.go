@@ -55,11 +55,12 @@ func startBridge(t *testing.T, mod string) *testBridge {
 		srv.ServeHTTP(w, r)
 	}))
 	b.URL = "http://" + ts.Listener.Addr().String()
-	// the e2e watches terminals and answers "trust" through tmux, so it uses tmux on every platform
-	b.Launcher = bridge.NewLauncher("claude", mod, b.URL, bridge.NewTmux())
+	// sessions started from the page run on pseudo-terminals inside the bridge, as in the real thing
+	b.Launcher = bridge.NewLauncher("claude", mod, b.URL, bridge.NewPTYTerminal())
 	srv.SetLauncher(b.Launcher)
 	ts.Start()
 	t.Cleanup(ts.Close)
+	t.Cleanup(b.Launcher.Terms.KillAll)
 	ch, stop := hub.Subscribe()
 	t.Cleanup(stop)
 	go func() {

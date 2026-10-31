@@ -159,20 +159,20 @@ func TestIdle(t *testing.T) {
 		return !strings.Contains(tags()["alice"].Classes, "dim")
 	}, show)
 
-	// ---------- 3. a click calls bob back: his card opens, he walks to his desk and stays there ----------
+	// ---------- 3. a click calls bob back: his window opens, he walks to his desk and stays there ----------
 	clickLabel(t, office, b.account("bob").ID)
-	do(t, office, 10*time.Second, chromedp.WaitVisible(chromedp.CSS(`#card`)))
-	if got := get(t, office, 5*time.Second, chromedp.Evaluate[string](`document.querySelector('#card h2').textContent`)); got != "bob" {
-		t.Fatalf("clicking bob should open his card, got %q", got)
+	do(t, office, 10*time.Second, chromedp.WaitVisible(chromedp.CSS(`#chat`)))
+	if got := get(t, office, 5*time.Second, chromedp.Evaluate[string](`document.querySelector('#chat h2').textContent`)); got != "bob" {
+		t.Fatalf("clicking bob should open his window, got %q", got)
 	}
 	waitUntil(t, 30*time.Second, "bob is back at his desk, ready for work", func() bool {
 		b := tags()["bob"]
 		return b.Act == "ready" && b.Room == "desk" && b.Moving == "0"
 	}, show)
-	if line := get(t, office, 5*time.Second, chromedp.Evaluate[string](`document.querySelector('#card dd.state-line').textContent`)); !strings.Contains(line, "ready for work") {
-		t.Fatalf("bob's card should say he's ready for work: %q", line)
+	if line := get(t, office, 5*time.Second, chromedp.Evaluate[string](`document.querySelector('#chat .who .state').textContent`)); !strings.Contains(line, "ready for work") {
+		t.Fatalf("bob's window should say he's ready for work: %q", line)
 	}
-	do(t, office, 5*time.Second, chromedp.Click(chromedp.CSS(`#card .close`)))
+	do(t, office, 5*time.Second, chromedp.Click(chromedp.CSS(`#chat .close`)))
 
 	// ---------- 4. the search box: by folder, matches light up, Enter picks ----------
 	do(t, office, 10*time.Second, chromedp.SendKeys(chromedp.CSS(`#find`), "proj-car"))
@@ -182,16 +182,16 @@ func TestIdle(t *testing.T) {
 		return len(hits) == 1 && hits[0] == "carol" && strings.Contains(all["carol"].Classes, "match") && strings.Contains(all["dave"].Classes, "dim")
 	}, show)
 	screenshot(t, office, "idle-search.png")
-	do(t, office, 10*time.Second, chromedp.SendKeys(chromedp.CSS(`#find`), kb.Enter), chromedp.WaitVisible(chromedp.CSS(`#card`)))
-	if got := get(t, office, 5*time.Second, chromedp.Evaluate[string](`document.querySelector('#card h2').textContent`)); got != "carol" {
-		t.Fatalf("Enter in the search box should open carol's card, got %q", got)
+	do(t, office, 10*time.Second, chromedp.SendKeys(chromedp.CSS(`#find`), kb.Enter), chromedp.WaitVisible(chromedp.CSS(`#chat`)))
+	if got := get(t, office, 5*time.Second, chromedp.Evaluate[string](`document.querySelector('#chat h2').textContent`)); got != "carol" {
+		t.Fatalf("Enter in the search box should open carol's window, got %q", got)
 	}
 	waitUntil(t, 30*time.Second, "picking carol calls her back too, and the office lights up again", func() bool {
 		all := tags()
 		return all["carol"].Act == "ready" && all["carol"].Room == "desk" && !strings.Contains(all["dave"].Classes, "dim") &&
 			get(t, office, 5*time.Second, chromedp.Evaluate[bool](`document.getElementById('find').value === '' && document.getElementById('find-list').hidden`))
 	}, show)
-	do(t, office, 5*time.Second, chromedp.Click(chromedp.CSS(`#card .close`)))
+	do(t, office, 5*time.Second, chromedp.Click(chromedp.CSS(`#chat .close`)))
 
 	// ---------- 5. a long while later the others nap, bob and carol stay at their desks ----------
 	warp(510 * time.Second) // in the second nap of everyone's rhythm, whatever its offset

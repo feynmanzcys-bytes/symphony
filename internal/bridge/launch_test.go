@@ -3,6 +3,7 @@ package bridge
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -14,65 +15,113 @@ import (
 	"time"
 )
 
-// fakeTmux records tmux calls; capture-pane returns a preset screen.
-type fakeTmux struct {
+// fakeProc stands in for a process on a pseudo-terminal: the test writes its output and reads its input.
+type fakeProc struct {
+	out    *io.PipeReader
+	outW   *io.PipeWriter
+	mu     sync.Mutex
+	input  []byte
+	size   [2]int
+	exited chan struct{}
+	once   sync.Once
+	err    error
+}
+
+func newFakeProc() *fakeProc {
+	r, w := io.Pipe()
+	return &fakeProc{out: r, outW: w, exited: make(chan struct{})}
+}
+
+func (p *fakeProc) Read(b []byte) (int, error) { return p.out.Read(b) }
+func (p *fakeProc) Write(b []byte) (int, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.input = append(p.input, b...)
+	return len(b), nil
+}
+func (p *fakeProc) Resize(cols, rows int) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.size = [2]int{cols, rows}
+	return nil
+}
+func (p *fakeProc) Wait() error  { <-p.exited; return p.err }
+func (p *fakeProc) Close() error { return p.out.Close() }
+func (p *fakeProc) Kill() error  { p.exit(errors.New("killed")); return nil }
+func (p *fakeProc) exit(err error) {
+	p.once.Do(func() { p.err = err; p.outW.Close(); close(p.exited) })
+}
+func (p *fakeProc) typed() string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return string(p.input)
+}
+
+type start struct {
+	id, name, dir string
+	env, argv     []string
+}
+
+// fakeStarts records the sessions started on (fake) pseudo-terminals.
+type fakeStarts struct {
 	mu        sync.Mutex
-	calls     [][]string
-	screen    string
-	dead      bool
+	starts    []start
+	procs     map[string]*fakeProc
+	screen    string // what the process prints first
+	dead      bool   // the process exits at once
 	failStart bool
 }
 
-func (f *fakeTmux) run(name string, args ...string) ([]byte, error) {
+func (f *fakeStarts) start(id, name, dir string, env []string, argv []string) (*Term, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.calls = append(f.calls, append([]string{name}, args...))
-	switch args[0] {
-	case "capture-pane":
-		if f.dead {
-			return nil, os.ErrNotExist
-		}
-		return []byte(f.screen), nil
-	case "new-session":
-		if f.failStart {
-			return []byte("duplicate session"), errors.New("exit 1")
-		}
+	if f.failStart {
+		return nil, errors.New("fork/exec: no such file")
 	}
-	return nil, nil
+	f.starts = append(f.starts, start{id, name, dir, env, argv})
+	p := newFakeProc()
+	if f.procs == nil {
+		f.procs = map[string]*fakeProc{}
+	}
+	f.procs[id] = p
+	t := hostTerm(id, name, p)
+	if f.screen != "" {
+		go p.outW.Write([]byte(f.screen))
+	}
+	if f.dead {
+		go func() { time.Sleep(10 * time.Millisecond); p.exit(errors.New("exit status 1")) }()
+	}
+	return t, nil
 }
 
-func (f *fakeTmux) last(sub string) []string {
+func (f *fakeStarts) last() *start {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	for i := len(f.calls) - 1; i >= 0; i-- {
-		if c := f.calls[i]; len(c) > 1 && c[1] == sub {
-			return c
-		}
+	if len(f.starts) == 0 {
+		return nil
 	}
-	return nil
+	return &f.starts[len(f.starts)-1]
 }
 
-func (f *fakeTmux) count(sub string) int {
+func (f *fakeStarts) proc(id string) *fakeProc {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	n := 0
-	for _, c := range f.calls {
-		if len(c) > 1 && c[1] == sub {
-			n++
-		}
-	}
-	return n
+	return f.procs[id]
 }
 
-func newLaunchBridge(t *testing.T) (*Server, string, *fakeTmux) {
+func fakeTerminal(f *fakeStarts) *ptyTerminal {
+	return &ptyTerminal{Terms: &Terms{}, start: f.start, program: "symphony"}
+}
+
+func newLaunchBridge(t *testing.T) (*Server, string, *fakeStarts) {
 	t.Helper()
 	srv := NewServer(NewHub(), testWeb)
-	tmux := &fakeTmux{}
-	srv.SetLauncher(&Launcher{Claude: "claude", ModDir: "/mods/sb", BridgeURL: "http://127.0.0.1:7788",
-		Term: &tmuxTerminal{run: tmux.run}, OnlineTimeout: 3 * time.Second})
+	f := &fakeStarts{}
+	srv.SetLauncher(NewLauncher("claude", "/mods/sb", "http://127.0.0.1:7788", fakeTerminal(f)))
+	srv.Launcher.OnlineTimeout = 3 * time.Second
 	ts := httptest.NewServer(srv)
 	t.Cleanup(ts.Close)
-	return srv, ts.URL, tmux
+	return srv, ts.URL, f
 }
 
 func waitFor(t *testing.T, what string, cond func() bool) {
@@ -94,26 +143,24 @@ func flagValue(argv []string, flag string) string {
 	return ""
 }
 
-// tmuxEnv collects the -e NAME=value pairs of a tmux new-session call.
-func tmuxEnv(argv []string) map[string]string {
-	env := map[string]string{}
-	for i := 0; i+1 < len(argv) && argv[i] != "--"; i++ {
-		if argv[i] == "-e" {
-			k, v, _ := strings.Cut(argv[i+1], "=")
-			env[k] = v
-		}
+// envOf collects NAME=value pairs.
+func envMap(env []string) map[string]string {
+	m := map[string]string{}
+	for _, kv := range env {
+		k, v, _ := strings.Cut(kv, "=")
+		m[k] = v
 	}
-	return env
+	return m
 }
 
 func TestLaunchNewAccount(t *testing.T) {
-	srv, base, tmux := newLaunchBridge(t)
+	srv, base, starts := newLaunchBridge(t)
 	web := client{t: t, base: base}
 	dir := t.TempDir()
 
 	res := web.ok("POST", "/api/launch", LaunchRequest{Name: "前端小王", Dir: dir, Model: "sonnet", Effort: "high", PermissionMode: "manual", Resume: "continue"})
 	id := res["id"].(string)
-	if res["attach"] != "tmux attach -t sym-"+id || res["status"] != LaunchStarting {
+	if res["attach"] != "symphony attach "+id || res["status"] != LaunchStarting {
 		t.Fatalf("wrong response: %v", res)
 	}
 	accs := srv.Hub.Snapshot().Accounts
@@ -122,19 +169,21 @@ func TestLaunchNewAccount(t *testing.T) {
 	}
 	acc := srv.Hub.Account(accs[0].ID)
 
-	argv := tmux.last("new-session")
-	if flagValue(argv, "-c") != dir || flagValue(argv, "-s") != "sym-"+id {
-		t.Fatalf("wrong folder or tmux session name: %v", argv)
+	st := starts.last()
+	if st == nil || st.dir != dir || st.id != id || st.name != "前端小王" {
+		t.Fatalf("wrong folder, id or name: %+v", st)
 	}
-	cmd := argv[slices.Index(argv, "--")+1:]
 	want := []string{"claude", "--plugin-dir", "/mods/sb", "--name", "前端小王", "--model", "sonnet", "--effort", "high", "--permission-mode", "manual", "--continue"}
-	if !slices.Equal(cmd, want) {
-		t.Fatalf("wrong claude arguments:\n got %v\nwant %v", cmd, want)
+	if !slices.Equal(st.argv, want) {
+		t.Fatalf("wrong claude arguments:\n got %v\nwant %v", st.argv, want)
 	}
 	for _, env := range []string{"SYMPHONY_BRIDGE=http://127.0.0.1:7788", "SYMPHONY_LAUNCH=" + id, "SYMPHONY_TOKEN=" + acc.Token} {
-		if !slices.Contains(argv, env) {
-			t.Fatalf("missing environment variable %s: %v", env, argv)
+		if !slices.Contains(st.env, env) {
+			t.Fatalf("missing environment variable %s: %v", env, st.env)
 		}
+	}
+	if !srv.Launcher.Terms.Live(id) {
+		t.Fatal("the launch should have a live terminal")
 	}
 	if cmdText := res["command"].(string); !strings.Contains(cmdText, "--name 前端小王") || strings.Contains(cmdText, acc.Token) {
 		t.Fatalf("wrong command for people to read (needs the arguments, must hide the token): %v", cmdText)
@@ -143,12 +192,12 @@ func TestLaunchNewAccount(t *testing.T) {
 		t.Fatalf("the account should remember these launch options: %+v", acc.Last)
 	}
 
-	// the session comes online with the token and the launch id, which ties it to its tmux;
+	// the session comes online with the token and the launch id, which ties it to its terminal;
 	// until it reports its own model and effort, it shows the ones picked at launch
 	mod := client{t: t, base: base, header: map[string]string{"authorization": "Bearer " + acc.Token}}
 	mod.ok("POST", "/api/event", Event{Session: "s1", Kind: "session.start", Cwd: dir, Launch: id})
 	s := session(t, srv, "s1")
-	if s.Launch != id || s.Attach != "tmux attach -t sym-"+id || s.Model != "sonnet" || s.Effort != "high" {
+	if s.Launch != id || s.Attach != "symphony attach "+id || s.Model != "sonnet" || s.Effort != "high" {
 		t.Fatalf("the session wasn't matched to its launch: %+v", s)
 	}
 	waitFor(t, "the launch to come online", func() bool { return srv.Hub.launchStatus(id) == LaunchOnline })
@@ -164,14 +213,14 @@ func TestLaunchNewAccount(t *testing.T) {
 }
 
 func TestLaunchExistingAccountKeepsSeatAndToken(t *testing.T) {
-	srv, base, tmux := newLaunchBridge(t)
+	srv, base, starts := newLaunchBridge(t)
 	web := client{t: t, base: base}
 	_, _ = srv.Hub.CreateAccount("占位") // takes seat 0
 	acc, _ := srv.Hub.CreateAccount("后端老李")
 	web.ok("POST", "/api/launch", LaunchRequest{Account: acc.ID, Dir: t.TempDir()})
-	argv := tmux.last("new-session")
-	if !slices.Contains(argv, "SYMPHONY_TOKEN="+acc.Token) || flagValue(argv, "--name") != "后端老李" {
-		t.Fatalf("the launch should reuse this account's token and name: %v", argv)
+	st := starts.last()
+	if !slices.Contains(st.env, "SYMPHONY_TOKEN="+acc.Token) || flagValue(st.argv, "--name") != "后端老李" {
+		t.Fatalf("the launch should reuse this account's token and name: %+v", st)
 	}
 	if v := view(t, srv, acc.ID); v.Seat != 1 || len(srv.Hub.Snapshot().Accounts) != 2 {
 		t.Fatalf("no new account, and the seat stays: %+v", v)
@@ -182,12 +231,12 @@ func TestLaunchExistingAccountKeepsSeatAndToken(t *testing.T) {
 }
 
 func TestLaunchFailedStartDropsNewAccount(t *testing.T) {
-	srv, base, tmux := newLaunchBridge(t)
-	tmux.failStart = true
+	srv, base, starts := newLaunchBridge(t)
+	starts.failStart = true
 	st, body := client{t: t, base: base}.do("POST", "/api/launch", LaunchRequest{Name: "小美", Dir: t.TempDir()})
 	params, _ := body["params"].(map[string]any)
-	if detail, _ := params["detail"].(string); st != http.StatusInternalServerError || body["code"] != "tmux_start_failed" || !strings.Contains(detail, "duplicate session") {
-		t.Fatalf("a tmux that won't start should get 500 tmux_start_failed with its output, got %d %v", st, body)
+	if detail, _ := params["detail"].(string); st != http.StatusInternalServerError || body["code"] != "pty_start_failed" || !strings.Contains(detail, "no such file") || params["program"] != "claude" {
+		t.Fatalf("a claude that won't start should get 500 pty_start_failed with the reason, got %d %v", st, body)
 	}
 	if n := len(srv.Hub.Snapshot().Accounts); n != 0 {
 		t.Fatalf("the new account should be dropped when the start fails, found %d", n)
@@ -195,19 +244,20 @@ func TestLaunchFailedStartDropsNewAccount(t *testing.T) {
 }
 
 func TestLaunchAcceptsTrustPrompt(t *testing.T) {
-	_, base, tmux := newLaunchBridge(t)
-	tmux.screen = "Do you trust this folder?\n ❯ No, exit\n   Yes, I trust this folder"
-	client{t: t, base: base}.ok("POST", "/api/launch", LaunchRequest{Name: "a", Dir: t.TempDir()})
-	waitFor(t, "the trust prompt to be answered", func() bool { return tmux.count("send-keys") >= 2 })
+	_, base, starts := newLaunchBridge(t)
+	starts.screen = "\x1b[1mDo you \x1b[0mtrust this folder?\r\n ❯ No, exit\r\n   Yes, I trust this folder"
+	id := client{t: t, base: base}.ok("POST", "/api/launch", LaunchRequest{Name: "a", Dir: t.TempDir()})["id"].(string)
+	waitFor(t, "the trust prompt to be answered", func() bool { return starts.proc(id).typed() == "\x1b[B\r" })
 	time.Sleep(700 * time.Millisecond)
-	if n := tmux.count("send-keys"); n != 2 {
-		t.Fatalf("the trust prompt should be answered once (Down + Enter), got %d send-keys", n)
+	if typed := starts.proc(id).typed(); typed != "\x1b[B\r" {
+		t.Fatalf("the trust prompt should be answered once (Down + Enter), got %q", typed)
 	}
 }
 
 func TestLaunchFailsWhenProcessDies(t *testing.T) {
-	srv, base, tmux := newLaunchBridge(t)
-	tmux.dead = true
+	srv, base, starts := newLaunchBridge(t)
+	starts.dead = true
+	starts.screen = "claude: unknown option --nope\n"
 	c := client{t: t, base: base}
 	id := c.ok("POST", "/api/launch", LaunchRequest{Name: "a", Dir: t.TempDir()})["id"].(string)
 	waitFor(t, "the launch to be marked failed", func() bool { return srv.Hub.launchStatus(id) == LaunchFailed })
@@ -218,13 +268,14 @@ func TestLaunchFailsWhenProcessDies(t *testing.T) {
 			launch = l
 		}
 	}
-	if launch["errorCode"] != "launch_process_exited" {
-		t.Fatalf("the failed launch should carry errorCode launch_process_exited: %v", launch)
+	params, _ := launch["errorParams"].(map[string]any)
+	if launch["errorCode"] != "launch_process_exited" || params["detail"] != "exit status 1" || !strings.Contains(params["screen"].(string), "unknown option") {
+		t.Fatalf("the failed launch should carry errorCode launch_process_exited, the exit status and the screen: %v", launch)
 	}
 }
 
 func TestLaunchValidation(t *testing.T) {
-	_, base, tmux := newLaunchBridge(t)
+	_, base, starts := newLaunchBridge(t)
 	c := client{t: t, base: base}
 	dir := t.TempDir()
 	file := filepath.Join(dir, "f")
@@ -251,13 +302,13 @@ func TestLaunchValidation(t *testing.T) {
 	if params, _ := body["params"].(map[string]any); params["dir"] != missing {
 		t.Errorf("a missing folder should come back in params.dir: %v", body)
 	}
-	if tmux.last("new-session") != nil {
+	if starts.last() != nil {
 		t.Fatal("nothing should start with bad options")
 	}
 }
 
 func TestLaunchPassesLanguage(t *testing.T) {
-	_, base, tmux := newLaunchBridge(t)
+	_, base, starts := newLaunchBridge(t)
 	c := client{t: t, base: base}
 	for _, tc := range []struct{ lang, want string }{
 		{"zh-CN", "zh-CN"},
@@ -266,7 +317,7 @@ func TestLaunchPassesLanguage(t *testing.T) {
 		{"", ""},
 	} {
 		c.ok("POST", "/api/launch", LaunchRequest{Name: "lang " + tc.lang, Dir: t.TempDir(), Lang: tc.lang})
-		got, set := tmuxEnv(tmux.last("new-session"))["SYMPHONY_LANG"]
+		got, set := envMap(starts.last().env)["SYMPHONY_LANG"]
 		if got != tc.want || set != (tc.want != "") {
 			t.Errorf("Lang %q: want SYMPHONY_LANG %q, got %q (set: %v)", tc.lang, tc.want, got, set)
 		}
@@ -306,11 +357,11 @@ const installedMod = `[{"id":"cowork@synced","version":"1.0.0","scope":"synced",
 
 func TestLaunchUsesInstalledMod(t *testing.T) {
 	srv := NewServer(NewHub(), testWeb)
-	tmux := &fakeTmux{}
+	starts := &fakeStarts{}
 	plugins := &fakePlugins{out: `[]`}
 	now := time.Now()
 	srv.SetLauncher(&Launcher{Claude: "claude", Market: "/src/symphony", BridgeURL: "http://127.0.0.1:7788",
-		Term: &tmuxTerminal{run: tmux.run}, OnlineTimeout: 3 * time.Second, ListPlugins: plugins.list,
+		Term: fakeTerminal(starts), OnlineTimeout: 3 * time.Second, ListPlugins: plugins.list,
 		now: func() time.Time { return now }})
 	ts := httptest.NewServer(srv)
 	t.Cleanup(ts.Close)
@@ -329,7 +380,7 @@ func TestLaunchUsesInstalledMod(t *testing.T) {
 		body["code"] != "mod_not_installed" || body["fix"] != install {
 		t.Fatalf("a launch without the mod should get 412 mod_not_installed with the fix, got %d %v", st, body)
 	}
-	if len(srv.Hub.Snapshot().Accounts) != 0 || tmux.last("new-session") != nil {
+	if len(srv.Hub.Snapshot().Accounts) != 0 || starts.last() != nil {
 		t.Fatal("without the mod, no account and no session should be created")
 	}
 
@@ -343,8 +394,7 @@ func TestLaunchUsesInstalledMod(t *testing.T) {
 		t.Fatalf("once installed, page launches should be on: %v", opts)
 	}
 	res := c.ok("POST", "/api/launch", LaunchRequest{Name: "a", Dir: dir})
-	argv := tmux.last("new-session")
-	if cmd, want := argv[slices.Index(argv, "--")+1:], []string{"claude", "--name", "a"}; !slices.Equal(cmd, want) {
+	if cmd, want := starts.last().argv, []string{"claude", "--name", "a"}; !slices.Equal(cmd, want) {
 		t.Fatalf("wrong claude arguments:\n got %v\nwant %v", cmd, want)
 	}
 	if strings.Contains(res["command"].(string), "--plugin-dir") {

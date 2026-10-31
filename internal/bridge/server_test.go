@@ -578,11 +578,11 @@ func TestRecoverAfterRestart(t *testing.T) {
 		t.Fatalf("not restored: %+v", s)
 	}
 	// with page launches on, the launch id tells where to find the session's terminal
-	srv.SetLauncher(&Launcher{Term: &tmuxTerminal{}})
+	srv.SetLauncher(&Launcher{Term: NewPTYTerminal()})
 	c2, _ := as(t, srv, base, "b")
 	c2.ok("POST", "/api/event", Event{Session: "s2", Kind: "heartbeat", Launch: "def"})
-	if s := session(t, srv, "s2"); s.Attach != "tmux attach -t sym-def" {
-		t.Fatalf("no tmux command derived from the launch id: %+v", s)
+	if s := session(t, srv, "s2"); s.Attach != "symphony attach def" {
+		t.Fatalf("no attach command derived from the launch id: %+v", s)
 	}
 	if dirs := srv.Hub.recentDirs(8); len(dirs) != 1 {
 		t.Fatalf("recent folders: %v", dirs)

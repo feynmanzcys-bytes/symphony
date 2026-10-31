@@ -12,6 +12,7 @@ import (
 
 	"github.com/chromedp/chromedp"
 	"github.com/chromedp/chromedp/kb"
+	"github.com/feynmanzcys-bytes/symphony/internal/bridge"
 )
 
 // TestLayout checks the office's layout with made-up sessions (no tokens). In windows of a few sizes the building
@@ -32,11 +33,10 @@ func TestLayout(t *testing.T) {
 
 	browser := newBrowser(t)
 	office, _ := clockTab(t, browser, b.URL+"/?lang=en", 0)
-	later := func() { // the pending popup opens when the page does
-		waitUntil(t, 20*time.Second, "the office opens the pending popup", func() bool {
-			return get(t, office, 5*time.Second, chromedp.Evaluate[bool](`document.querySelectorAll('.emp-label').length === 2 && !document.getElementById('asks-modal').hidden`))
+	later := func() { // the page shows both employees, and the pending chip for alice's ask
+		waitUntil(t, 20*time.Second, "the office shows the employees and the pending chip", func() bool {
+			return get(t, office, 5*time.Second, chromedp.Evaluate[bool](`document.querySelectorAll('.emp-label').length === 2 && !!document.querySelector('#stats .chip.hot')`))
 		})
-		do(t, office, 10*time.Second, chromedp.Click(chromedp.CSS(`#asks-later`)), chromedp.WaitNotVisible(chromedp.CSS(`#asks-modal`)))
 	}
 	later()
 
@@ -143,14 +143,14 @@ func TestLayout(t *testing.T) {
 	}, show)
 	do(t, office, 10*time.Second, chromedp.SendKeys(chromedp.CSS(`#find`), kb.Escape))
 
-	// ---------- 4. a card opens below the HUD; the tab brings the HUD back down after it was put up ----------
+	// ---------- 4. an employee's window opens in the middle; the tab brings the HUD back down after it was put up ----------
 	clickLabel(t, office, b.account("bob").ID)
-	do(t, office, 10*time.Second, chromedp.WaitVisible(chromedp.CSS(`#card`)))
-	waitUntil(t, 10*time.Second, "the card starts below the HUD", func() bool {
+	do(t, office, 10*time.Second, chromedp.WaitVisible(chromedp.CSS(`#chat .panel`)))
+	waitUntil(t, 10*time.Second, "the window is centered and wide", func() bool {
 		return get(t, office, 5*time.Second, chromedp.Evaluate[bool](
-			`document.getElementById('card').getBoundingClientRect().top >= document.getElementById('hud').getBoundingClientRect().bottom`))
+			`(r => Math.abs((r.left + r.right) / 2 - innerWidth / 2) < 2 && r.width >= Math.min(1100, innerWidth * 0.9))(document.querySelector('#chat .panel').getBoundingClientRect())`))
 	}, show)
-	do(t, office, 10*time.Second, chromedp.Click(chromedp.CSS(`#card .close`)), chromedp.Click(chromedp.CSS(`#hud-tab`)))
+	do(t, office, 10*time.Second, chromedp.Click(chromedp.CSS(`#chat .close`)), chromedp.Click(chromedp.CSS(`#hud-tab`)))
 	waitUntil(t, 10*time.Second, "the HUD is up again", func() bool { return look().Hud.Bottom <= 0.5 }, show)
 	do(t, office, 10*time.Second, chromedp.Click(chromedp.CSS(`#hud-tab`)))
 	waitUntil(t, 10*time.Second, "the tab brings the HUD back down", func() bool { v := look(); return !v.Up && v.Hud.Top == 0 }, show)
@@ -212,17 +212,14 @@ func TestLayout(t *testing.T) {
 	}
 }
 
-// TestAsksPopup checks with made-up asks (no tokens) that the pending popup hangs from the top: a new ask goes in
-// below the others, so the card someone is about to click stays where it is. (Centered, the popup grew both ways,
-// and a click meant for one card could land on the next one's buttons.)
-func TestAsksPopup(t *testing.T) {
+// TestAsksDock checks with made-up asks (no tokens) that an employee window's asks hang from a fixed line over the
+// input: a new ask goes in below the others, so the card someone is about to click stays where it is.
+func TestAsksDock(t *testing.T) {
 	requireBrowser(t)
 	repo, _ := filepath.Abs("..")
 	b := startBridge(t, filepath.Join(repo, "mods", "symphony-bridge"))
 	alice, _ := b.Hub.CreateAccount("alice")
-	bob, _ := b.Hub.CreateAccount("bob")
 	b.post(t, alice.Token, "/api/event", map[string]any{"session": "s-alice", "kind": "session.start", "cwd": "/work/alice"})
-	b.post(t, bob.Token, "/api/event", map[string]any{"session": "s-bob", "kind": "session.start", "cwd": "/work/bob"})
 	b.post(t, alice.Token, "/api/ask", map[string]any{"session": "s-alice", "kind": "permission", "tool": "Bash", "input": map[string]any{"command": "ls"}})
 
 	browser := newBrowser(t)
@@ -230,27 +227,44 @@ func TestAsksPopup(t *testing.T) {
 	type box struct{ Top, Bottom float64 }
 	cards := func() []box {
 		var boxes []box
-		data := get(t, office, 5*time.Second, chromedp.Evaluate[string](`JSON.stringify([...document.querySelectorAll('#asks-modal:not([hidden]) #asks .card')]
+		data := get(t, office, 5*time.Second, chromedp.Evaluate[string](`JSON.stringify([...document.querySelectorAll('#chat:not([hidden]) .dock.asking #asks .card')]
 			.map(c => c.getBoundingClientRect()).map(r => ({ Top: r.top, Bottom: r.bottom })))`))
 		if err := json.Unmarshal([]byte(data), &boxes); err != nil {
 			t.Fatal(err)
 		}
 		return boxes
 	}
-	waitUntil(t, 20*time.Second, "the popup opens with alice's ask", func() bool { return len(cards()) == 1 })
+	waitUntil(t, 20*time.Second, "the office shows alice waiting", func() bool {
+		return get(t, office, 5*time.Second, chromedp.Evaluate[bool](`document.querySelectorAll('.emp-label').length === 1 && !!document.querySelector('#stats .chip.hot')`))
+	})
+	clickLabel(t, office, alice.ID)
+	waitUntil(t, 20*time.Second, "alice's window opens with her ask over the input", func() bool { return len(cards()) == 1 })
+	if shown := get(t, office, 5*time.Second, chromedp.Evaluate[bool](`getComputedStyle(document.querySelector('#chat .say')).display !== 'none'`)); shown {
+		t.Fatal("the input should be covered while an ask waits")
+	}
 	first := cards()[0]
 
-	b.post(t, bob.Token, "/api/ask", map[string]any{"session": "s-bob", "kind": "question", "questions": []map[string]any{{
+	b.post(t, alice.Token, "/api/ask", map[string]any{"session": "s-alice", "kind": "question", "questions": []map[string]any{{
 		"question": "Which color do you like?", "header": "Color",
 		"options": []map[string]any{{"label": "Red", "description": "warm"}, {"label": "Blue", "description": "cool"}},
 	}}})
 	var now []box
-	waitUntil(t, 10*time.Second, "bob's question joins the popup", func() bool { now = cards(); return len(now) == 2 })
-	screenshot(t, office, "asks-popup.png")
+	waitUntil(t, 10*time.Second, "the question joins the window", func() bool { now = cards(); return len(now) == 2 })
+	screenshot(t, office, "asks-dock.png")
 	if now[0] != first {
-		t.Fatalf("alice's card moved when bob's question came in: from %+v to %+v", first, now[0])
+		t.Fatalf("the first card moved when the question came in: from %+v to %+v", first, now[0])
 	}
 	if now[1].Top < now[0].Bottom {
-		t.Fatalf("bob's card should go in below alice's: %+v", now)
+		t.Fatalf("the question's card should go in below the first: %+v", now)
 	}
+	// once both are handled the input is back, and the chat keeps a line for each ask
+	for _, a := range b.Hub.Snapshot().Asks {
+		if err := b.Hub.Settle(a.ID, "", bridge.AskDone, map[string]any{"decision": "allow"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	waitUntil(t, 10*time.Second, "the input comes back", func() bool {
+		return get(t, office, 5*time.Second, chromedp.Evaluate[bool](
+			`!document.querySelector('#chat .dock.asking') && getComputedStyle(document.querySelector('#chat .say')).display !== 'none' && document.querySelectorAll('#chat .flow .it.ask').length === 2`))
+	})
 }

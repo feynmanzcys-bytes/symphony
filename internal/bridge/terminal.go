@@ -1,75 +1,32 @@
 package bridge
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"slices"
 	"strings"
 	"time"
 )
 
-// Terminal is a way to open an interactive terminal that runs claude; it differs per platform:
-//
-//	tmux     Linux (the default when tmux is installed), optional on macOS: runs in the background,
-//	         and the bridge can answer "trust this folder" for the user
-//	console  Windows: starts claude directly in a new console window
-//	script   macOS Terminal.app, or a graphical terminal on Linux without tmux: the terminal runs a one-off script
+// Terminal is how sessions started from the page run. The bridge hosts them itself (ptyTerminal): claude runs on
+// a pseudo-terminal the bridge owns, nothing opens on the screen, and a window attaches on demand. Tests swap in
+// fakes.
 type Terminal interface {
 	Name() string
-	// Start opens a terminal in dir that runs argv; env holds extra environment variables.
+	// Start runs argv in dir with env as extra environment variables.
 	Start(l *Launch, dir string, env map[string]string, argv []string) error
-	// Watch follows the new terminal until the session comes online, the process exits or time runs out.
+	// Watch follows the new session until it comes online, the process exits or time runs out; it answers
+	// "trust this folder" when a new folder asks.
 	Watch(hub *Hub, l *Launch, timeout time.Duration)
-	// Attach tells people where to find the session's terminal: a tmux command, or AttachWindow / AttachConsole.
+	// Attach tells people how to reach the session's terminal: the command to run.
 	Attach(launchID string) string
-	// TrustHint is true when the first start in a new folder needs a click on "trust this folder" in the window.
+	// TrustHint is true when the first start in a new folder needs a click in a window.
 	TrustHint() bool
 }
 
-// Attach values that are not commands; the page shows them as a sentence in its own language.
-const (
-	AttachWindow  = "window"  // the terminal window that opened, titled with the employee's name
-	AttachConsole = "console" // the console window that opened, titled with the employee's name
-)
-
 // LookPath finds an executable; tests swap in a fake.
 type LookPath func(file string) (string, error)
-
-// PickTerminal picks a terminal backend for the platform and the -terminal flag: auto | tmux | window.
-func PickTerminal(goos, kind string, look LookPath) (Terminal, error) {
-	has := func(bin string) bool { _, err := look(bin); return err == nil }
-	if kind == "auto" {
-		kind = "window"
-		if goos == "linux" && has("tmux") {
-			kind = "tmux"
-		}
-	}
-	switch kind {
-	case "tmux":
-		if !has("tmux") {
-			return nil, newError("terminal_no_tmux", "tmux not found")
-		}
-		return NewTmux(), nil
-	case "window":
-		switch goos {
-		case "windows":
-			return &consoleTerminal{}, nil
-		case "darwin":
-			return &scriptTerminal{opener: []string{"open", "-a", "Terminal"}}, nil
-		default:
-			for _, o := range [][]string{{"x-terminal-emulator", "-e"}, {"gnome-terminal", "--"}, {"konsole", "-e"}, {"xterm", "-e"}} {
-				if has(o[0]) {
-					return &scriptTerminal{opener: o}, nil
-				}
-			}
-			return nil, newError("terminal_none", "no tmux and no graphical terminal found (x-terminal-emulator / gnome-terminal / konsole / xterm)")
-		}
-	}
-	return nil, newError("terminal_unknown", fmt.Sprintf("unknown terminal type %q (auto | tmux | window)", kind), "kind", kind)
-}
 
 func sortedKeys(env map[string]string) []string {
 	keys := make([]string, 0, len(env))
@@ -80,114 +37,147 @@ func sortedKeys(env map[string]string) []string {
 	return keys
 }
 
-// waitOnline waits for the session to come online with its launch id; a value on exited means the
-// process is gone (pass nil when that can't be known). timeoutCode names the error for running out
-// of time, which tells people where to look.
-func waitOnline(hub *Hub, l *Launch, timeout time.Duration, exited <-chan error, timeoutCode string) {
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		if hub.launchStatus(l.ID) != LaunchStarting {
-			return
+// ---------- the bridge's own terminals ----------
+
+type ptyTerminal struct {
+	Terms *Terms
+	// start makes a terminal; tests swap in a fake
+	start func(id, name, dir string, env []string, argv []string) (*Term, error)
+	// program is how people are told to attach by hand (symphony attach <id>)
+	program string
+}
+
+// NewPTYTerminal hosts sessions on pseudo-terminals inside the bridge.
+func NewPTYTerminal() *ptyTerminal {
+	return &ptyTerminal{Terms: &Terms{}, start: newTerm, program: "symphony"}
+}
+
+func (t *ptyTerminal) Name() string    { return "pty" }
+func (t *ptyTerminal) TrustHint() bool { return false }
+func (t *ptyTerminal) Attach(launchID string) string {
+	return t.program + " attach " + launchID
+}
+
+// childEnv is the bridge's environment plus the session's variables; a terminal type when none is set (a bridge
+// started at login has none).
+func childEnv(extra map[string]string) []string {
+	var env []string
+	set := map[string]bool{}
+	for _, kv := range os.Environ() {
+		k, v, _ := strings.Cut(kv, "=")
+		if (k == "TERM" || k == "COLORTERM") && v == "" {
+			continue
 		}
-		select {
-		case err := <-exited:
-			hub.failLaunch(l.ID, newError("launch_exited_early",
-				fmt.Sprintf("claude exited before it came online (%v); check the options", err), "detail", fmt.Sprint(err)))
-			return
-		case <-time.After(500 * time.Millisecond):
+		set[k] = true
+		env = append(env, kv)
+	}
+	for _, k := range sortedKeys(extra) {
+		env = append(env, k+"="+extra[k])
+	}
+	if !set["TERM"] {
+		env = append(env, "TERM=xterm-256color")
+	}
+	if !set["COLORTERM"] {
+		env = append(env, "COLORTERM=truecolor")
+	}
+	return env
+}
+
+func (t *ptyTerminal) Start(l *Launch, dir string, env map[string]string, argv []string) error {
+	term, err := t.start(l.ID, l.Name, dir, childEnv(env), argv)
+	if err != nil {
+		program := argv[0]
+		if i := strings.LastIndexAny(program, `/\`); i >= 0 {
+			program = program[i+1:]
 		}
+		return newError("pty_start_failed", fmt.Sprintf("can't start %s on a pseudo-terminal: %v", program, err), "program", program, "detail", err.Error())
 	}
-	hub.failLaunch(l.ID, newError(timeoutCode,
-		"not online after "+timeout.String()+"; the first start in a folder needs a click on \"trust this folder\" in the window that opened",
-		"timeout", timeout.String()))
-}
-
-// ---------- tmux ----------
-
-type tmuxTerminal struct {
-	run func(name string, args ...string) ([]byte, error)
-}
-
-func NewTmux() Terminal {
-	return &tmuxTerminal{run: func(name string, args ...string) ([]byte, error) {
-		return exec.Command(name, args...).CombinedOutput()
-	}}
-}
-
-func (t *tmuxTerminal) Name() string                  { return "tmux" }
-func (t *tmuxTerminal) TrustHint() bool               { return false }
-func (t *tmuxTerminal) Attach(launchID string) string { return "tmux attach -t " + tmuxName(launchID) }
-
-func tmuxName(launchID string) string { return "sym-" + launchID }
-
-// tmuxArgs builds the arguments of tmux new-session: the command follows --, without a shell.
-func tmuxArgs(launchID, dir string, env map[string]string, argv []string) []string {
-	args := []string{"new-session", "-d", "-s", tmuxName(launchID), "-x", "200", "-y", "50", "-c", dir}
-	for _, k := range sortedKeys(env) {
-		args = append(args, "-e", k+"="+env[k])
-	}
-	return append(append(args, "--"), argv...)
-}
-
-func (t *tmuxTerminal) Start(l *Launch, dir string, env map[string]string, argv []string) error {
-	if out, err := t.run("tmux", tmuxArgs(l.ID, dir, env, argv)...); err != nil {
-		detail := strings.TrimSpace(fmt.Sprintf("%v %s", err, out))
-		return newError("tmux_start_failed", "tmux failed to start: "+detail, "detail", detail)
-	}
+	t.Terms.put(term)
 	return nil
 }
 
-// Watch answers "trust this folder" when a new folder asks (the user picked the folder in the page).
-func (t *tmuxTerminal) Watch(hub *Hub, l *Launch, timeout time.Duration) {
-	name := tmuxName(l.ID)
+// Watch answers "trust this folder" when a new folder asks, and fails the launch when the process exits or
+// time runs out before the session reports in.
+func (t *ptyTerminal) Watch(hub *Hub, l *Launch, timeout time.Duration) {
+	term := t.Terms.Get(l.ID)
+	if term == nil {
+		return
+	}
 	deadline := time.Now().Add(timeout)
 	trusted := false
 	for time.Now().Before(deadline) {
 		if hub.launchStatus(l.ID) != LaunchStarting {
 			return
 		}
-		out, err := t.run("tmux", "capture-pane", "-p", "-t", name)
-		if err != nil {
-			hub.failLaunch(l.ID, newError("launch_process_exited", "the claude process exited; check the options"))
+		select {
+		case <-term.Exited():
+			screen := term.Screen(8)
+			hub.failLaunch(l.ID, newError("launch_process_exited",
+				fmt.Sprintf("the claude process exited (%v); check the options. Last lines of the terminal:\n%s", term.ExitErr(), screen),
+				"detail", fmt.Sprint(term.ExitErr()), "screen", screen))
 			return
+		case <-time.After(500 * time.Millisecond):
 		}
-		if !trusted && strings.Contains(string(out), "trust this folder") {
-			_, _ = t.run("tmux", "send-keys", "-t", name, "Down")
+		if !trusted && hasTrustPrompt(term.Screen(12)) {
+			_ = term.Write([]byte("\x1b[B")) // Down: "Yes, I trust this folder"
 			time.Sleep(200 * time.Millisecond)
-			_, _ = t.run("tmux", "send-keys", "-t", name, "Enter")
+			_ = term.Write([]byte("\r"))
 			trusted = true
 		}
-		time.Sleep(500 * time.Millisecond)
 	}
-	out, _ := t.run("tmux", "capture-pane", "-p", "-t", name)
-	screen := lastLines(string(out), 8)
-	hub.failLaunch(l.ID, newError("launch_timeout_tmux",
+	screen := term.Screen(8)
+	hub.failLaunch(l.ID, newError("launch_timeout_pty",
 		"not online after "+timeout.String()+"; last lines of the terminal:\n"+screen, "timeout", timeout.String(), "screen", screen))
 }
 
-// ---------- one-off script in a graphical terminal (macOS Terminal.app, Linux terminals) ----------
+// ---------- opening a window on demand ----------
 
-type scriptTerminal struct {
-	opener []string // the command that opens a terminal; the script path goes last
-	// spawn runs opener; tests swap in a fake
+// Window opens a terminal window on this machine that runs a command (symphony attach): Terminal.app on macOS,
+// a graphical terminal on Linux, a new console on Windows.
+type Window struct {
+	GOOS string
+	Look LookPath
+	Env  func(string) string
+	// spawn starts the opener; tests swap in a fake
 	spawn func(argv []string) error
 }
 
-func (t *scriptTerminal) Name() string         { return "window:" + t.opener[0] }
-func (t *scriptTerminal) TrustHint() bool      { return true }
-func (t *scriptTerminal) Attach(string) string { return AttachWindow }
-func (t *scriptTerminal) Watch(hub *Hub, l *Launch, timeout time.Duration) {
-	waitOnline(hub, l, timeout, nil, "launch_timeout_window")
+func NewWindow(goos string, look LookPath, env func(string) string) *Window {
+	return &Window{GOOS: goos, Look: look, Env: env, spawn: func(argv []string) error {
+		cmd := exec.Command(argv[0], argv[1:]...)
+		newConsole(cmd)
+		if err := cmd.Start(); err != nil {
+			return err
+		}
+		go cmd.Wait()
+		return nil
+	}}
 }
 
-// scriptBody is the script the terminal runs: it deletes itself first (it holds the token), then
-// enters the folder and becomes claude with the environment variables.
-func scriptBody(dir string, env map[string]string, argv []string) string {
-	var b strings.Builder
-	b.WriteString("#!/bin/sh\nrm -f -- \"$0\"\ncd " + shellQuote(dir) + " || exit 1\nexec env")
-	for _, k := range sortedKeys(env) {
-		b.WriteString(" " + shellQuote(k+"="+env[k]))
+// opener is the command that opens a window running the script (macOS) or the command itself (Linux);
+// an error says why none is available.
+func (w *Window) opener() ([]string, error) {
+	switch w.GOOS {
+	case "windows":
+		return nil, nil
+	case "darwin":
+		return []string{"open", "-a", "Terminal"}, nil
 	}
+	if w.Env("DISPLAY") == "" && w.Env("WAYLAND_DISPLAY") == "" {
+		return nil, newError("window_no_display", "no graphical session: open the terminal by hand with the attach command")
+	}
+	for _, o := range [][]string{{"x-terminal-emulator", "-e"}, {"gnome-terminal", "--"}, {"konsole", "-e"}, {"xterm", "-e"}} {
+		if _, err := w.Look(o[0]); err == nil {
+			return o, nil
+		}
+	}
+	return nil, newError("terminal_none", "no graphical terminal found (x-terminal-emulator / gnome-terminal / konsole / xterm)")
+}
+
+// attachScript is the one-off script Terminal.app runs: it deletes itself, names the window and becomes the command.
+func attachScript(title string, argv []string) string {
+	var b strings.Builder
+	b.WriteString("#!/bin/sh\nrm -f -- \"$0\"\nprintf '\\033]0;%s\\007' " + shellQuote(title) + "\nexec")
 	for _, a := range argv {
 		b.WriteString(" " + shellQuote(a))
 	}
@@ -195,86 +185,40 @@ func scriptBody(dir string, env map[string]string, argv []string) string {
 	return b.String()
 }
 
-func (t *scriptTerminal) Start(l *Launch, dir string, env map[string]string, argv []string) error {
-	f, err := os.CreateTemp("", "symphony-*.command")
+// Open opens a window titled title that runs argv.
+func (w *Window) Open(title string, argv []string) error {
+	opener, err := w.opener()
 	if err != nil {
 		return err
 	}
-	path := f.Name()
-	_, err = f.WriteString(scriptBody(dir, env, argv))
-	if cerr := f.Close(); err == nil {
-		err = cerr
-	}
-	if err == nil {
-		err = os.Chmod(path, 0o700)
-	}
-	if err == nil {
-		spawn := t.spawn
-		if spawn == nil {
-			spawn = func(argv []string) error { return exec.Command(argv[0], argv[1:]...).Start() }
+	var run []string
+	switch w.GOOS {
+	case "windows":
+		run = argv
+	case "darwin":
+		f, err := os.CreateTemp("", "symphony-*.command")
+		if err != nil {
+			return err
 		}
-		err = spawn(append(slices.Clone(t.opener), path))
+		path := f.Name()
+		_, err = f.WriteString(attachScript(title, argv))
+		if cerr := f.Close(); err == nil {
+			err = cerr
+		}
+		if err == nil {
+			err = os.Chmod(path, 0o700)
+		}
+		if err != nil {
+			_ = os.Remove(path)
+			return err
+		}
+		run = append(slices.Clone(opener), path)
+	default:
+		run = append(slices.Clone(opener), argv...)
 	}
-	if err != nil {
-		_ = os.Remove(path)
-		return newError("window_open_failed", fmt.Sprintf("can't open a terminal window (%s): %v", t.opener[0], err),
-			"opener", t.opener[0], "detail", err.Error())
-	}
-	return nil
-}
-
-// ---------- Windows console ----------
-
-type consoleTerminal struct {
-	// start starts the process; tests swap in a fake
-	start func(cmd *exec.Cmd) error
-	exits map[string]chan error
-}
-
-func (t *consoleTerminal) Name() string         { return "console" }
-func (t *consoleTerminal) TrustHint() bool      { return true }
-func (t *consoleTerminal) Attach(string) string { return AttachConsole }
-
-// consoleCmd starts claude directly (no cmd.exe, so non-ASCII names and spaces need no escaping)
-// in a new console window.
-func consoleCmd(dir string, env map[string]string, argv []string) *exec.Cmd {
-	cmd := exec.Command(argv[0], argv[1:]...)
-	cmd.Dir = dir
-	cmd.Env = os.Environ()
-	for _, k := range sortedKeys(env) {
-		cmd.Env = append(cmd.Env, k+"="+env[k])
-	}
-	newConsole(cmd)
-	return cmd
-}
-
-func (t *consoleTerminal) Start(l *Launch, dir string, env map[string]string, argv []string) error {
-	cmd := consoleCmd(dir, env, argv)
-	start := t.start
-	if start == nil {
-		start = (*exec.Cmd).Start
-	}
-	if err := start(cmd); err != nil {
-		program := filepath.Base(argv[0])
-		return newError("console_start_failed", fmt.Sprintf("can't start %s: %v", program, err), "program", program, "detail", err.Error())
-	}
-	exited := make(chan error, 1)
-	if t.exits == nil {
-		t.exits = map[string]chan error{}
-	}
-	t.exits[l.ID] = exited
-	if cmd.Process != nil {
-		go func() {
-			err := cmd.Wait()
-			if err == nil {
-				err = errors.New("exit 0")
-			}
-			exited <- err
-		}()
+	if err := w.spawn(run); err != nil {
+		return newError("window_open_failed", fmt.Sprintf("can't open a terminal window (%s): %v", run[0], err),
+			"opener", run[0], "detail", err.Error())
 	}
 	return nil
-}
-
-func (t *consoleTerminal) Watch(hub *Hub, l *Launch, timeout time.Duration) {
-	waitOnline(hub, l, timeout, t.exits[l.ID], "launch_timeout_console")
 }

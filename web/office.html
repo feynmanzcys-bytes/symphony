@@ -71,11 +71,15 @@
   #find-list .hit small { color:#6f6b64; margin-left:8px; }
   #find-list .none { padding:2px 8px; color:#8a867e; }
   #hud .note code { display:block; margin-top:4px; padding:2px 6px; background:#2b2a28; color:#fffdf7; user-select:all; word-break:break-all; }
-  /* the activity log, bottom left: on a dark backing, since the office fills the window behind it */
-  #log { position:fixed; left:12px; bottom:12px; z-index:3; font:12px/1.6 ui-monospace, monospace; color:#e9e5dc; max-width:min(560px, calc(100vw - 40px));
-    pointer-events:none; background:rgba(43,42,40,.8); padding:2px 8px; }
-  #log:empty { display:none; }
-  #log div { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  /* the activity log: a panel at the bottom left, hidden until its HUD button opens it */
+  .logpanel { position:fixed; left:12px; bottom:12px; z-index:4; width:min(560px, calc(100vw - 24px)); max-height:40vh; display:flex; flex-direction:column;
+    background:#fffdf7; color:#2b2a28; border:2px solid #2b2a28; box-shadow:4px 4px 0 rgba(0,0,0,.35); padding:8px 12px; box-sizing:border-box; }
+  .logpanel[hidden] { display:none; }
+  .logpanel h2 { margin:0 0 4px; font-size:14px; }
+  .logpanel .close { position:absolute; right:8px; top:4px; cursor:pointer; color:#8a867e; }
+  .logpanel .lines { overflow:auto; font:12px/1.6 ui-monospace, monospace; }
+  .logpanel .lines div { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .logpanel .lines:empty::before { content:attr(data-empty); color:#8a867e; }
   .dot { display:inline-block; width:8px; height:8px; margin-right:4px; vertical-align:0; }
   button.px { background:#fffdf7; color:#2b2a28; border:2px solid #2b2a28; padding:2px 10px; font:inherit; cursor:pointer; box-shadow:2px 2px 0 rgba(0,0,0,.3); }
   button.px.primary { background:#2b2a28; color:#fffdf7; }
@@ -115,10 +119,64 @@
     border:2px solid #2b2a28; box-shadow:4px 4px 0 rgba(0,0,0,.35); padding:14px 16px; box-sizing:border-box; }
   .panel h2 { margin:0 0 10px; font-size:15px; }
   .panel .actions { display:flex; justify-content:flex-end; gap:8px; margin-top:12px; }
-  /* the pending popup hangs from the top: a new card goes in below the others, so the one being clicked never moves
-     (centered, the popup grew both ways and a click could land on the next card's buttons) */
-  #asks-modal { align-items:flex-start; padding-top:max(16px, 8vh); box-sizing:border-box; }
-  #asks-modal .panel { max-height:calc(100vh - max(16px, 8vh) - 16px); }
+  /* the employee window: the employee at the top, the session as a chat below, the input at the bottom */
+  .panel.chat { position:relative; width:min(1100px, 94vw); height:min(90vh, 960px); max-height:none; padding:0; display:flex; flex-direction:column; overflow:hidden; }
+  .chat .head { padding:10px 16px 8px; border-bottom:2px solid #2b2a28; background:#fffdf7; }
+  .chat .head .close { position:absolute; right:10px; top:6px; cursor:pointer; color:#8a867e; font-size:14px; }
+  .chat .who { display:flex; align-items:center; gap:8px; }
+  .chat .who .dot { width:10px; height:10px; margin:0; }
+  .chat .who h2 { margin:0; font-size:16px; }
+  .chat .who .state { color:#6f6b64; font-size:12px; }
+  .chat .meta { display:flex; flex-wrap:wrap; gap:4px 6px; margin-top:6px; }
+  .chat .meta span { font-size:11px; line-height:1.5; padding:0 6px; border:1px solid #d6d1c6; background:#f6f3ec; color:#2b2a28; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .chat .meta span b { color:#8a867e; font-weight:400; margin-right:4px; }
+  .chat .btns { display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
+  .chat .btns button { font-size:12px; }
+  .chat .flow { flex:1; overflow:auto; padding:12px 16px; background:#f6f3ec; display:flex; flex-direction:column; gap:8px; }
+  .chat .flow .empty { color:#8a867e; text-align:center; margin:auto; }
+  .it { max-width:min(82%, 820px); font-size:13px; line-height:1.5; }
+  .it .body { white-space:pre-wrap; overflow-wrap:anywhere; }
+  .it .body pre { background:#2b2a28; color:#f2efe8; padding:6px 8px; margin:4px 0; font:12px/1.5 ui-monospace, monospace; overflow:auto; white-space:pre; }
+  .it .body code { background:rgba(0,0,0,.08); padding:0 3px; font:12px ui-monospace, monospace; }
+  .it.user { align-self:flex-end; background:#2b2a28; color:#fffdf7; padding:6px 10px; border:2px solid #2b2a28; box-shadow:2px 2px 0 rgba(0,0,0,.3); }
+  .it.user.queued { opacity:.6; }
+  .it.user .body code { background:rgba(255,255,255,.18); }
+  .it.user .from { font-size:11px; color:#b9b3a8; margin-bottom:2px; }
+  .it.text { align-self:flex-start; background:#fff; color:#2b2a28; padding:6px 10px; border:2px solid #2b2a28; box-shadow:2px 2px 0 rgba(0,0,0,.2); }
+  /* thinking: folded by default, orange "thinking…" with three dots in turn while it goes on */
+  .it.thinking { align-self:flex-start; }
+  .it.thinking summary { cursor:pointer; color:#e07b00; font-weight:700; font-size:12px; list-style:none; }
+  .it.thinking summary::-webkit-details-marker { display:none; }
+  .it.thinking:not(.done) summary .dots::after { content:'·'; display:inline-block; width:1.4em; text-align:left; animation:dots 1.2s steps(1) infinite; }
+  @keyframes dots { 33% { content:'··'; } 66% { content:'···'; } }
+  .it.thinking.done summary { color:#c9961a; font-weight:400; }
+  .it.thinking .body { margin-top:4px; padding:6px 10px; background:#fff6e5; border:1px dashed #e0a24a; color:#6b4a00; font-size:12px; max-height:320px; overflow:auto; }
+  .it.tool { align-self:flex-start; font:12px/1.5 ui-monospace, monospace; color:#4a4742; padding:1px 8px; border-left:3px solid #b9b3a8; background:#edeae2; max-width:min(90%, 900px); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .it.tool.ok { border-color:#2e9e5b; } .it.tool.error { border-color:#d64541; } .it.tool.denied { border-color:#d64541; color:#8a2a26; }
+  .it.tool:not(.done) { border-color:#f2b705; }
+  .it.tool b { color:#2b2a28; } .it.tool .sub { color:#8a867e; margin-right:4px; } .it.tool .res { color:#8a867e; margin-left:6px; }
+  /* messages from and to other sessions: purple */
+  .it.message { align-self:flex-start; background:#7b4dc9; color:#fff; padding:6px 10px; border:2px solid #4a2a86; box-shadow:2px 2px 0 rgba(0,0,0,.3); }
+  .it.message.out { align-self:flex-end; background:#a58ad8; color:#1d1133; }
+  .it.message .from { font-size:11px; opacity:.85; margin-bottom:2px; font-weight:700; }
+  .it.ask { align-self:center; font-size:12px; color:#8a867e; background:#edeae2; padding:1px 10px; max-width:90%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .it.ask.pending { color:#d64541; font-weight:700; }
+  .it.ask.deny, .it.ask.cancelled { color:#8a2a26; }
+  .it.notice { align-self:center; font-size:11px; color:#8a867e; }
+  .it time { display:block; font-size:10px; color:#8a867e; margin-top:2px; }
+  .it.user time { color:#b9b3a8; text-align:right; }
+  /* the dock: the input; while asks wait, their cards rise over it from the bottom and must be handled first.
+     They hang from a fixed line, so a new card goes in below and never moves the one being clicked. */
+  .chat .dock { border-top:2px solid #2b2a28; background:#fffdf7; padding:8px 12px; }
+  .chat .dock.asking { position:absolute; left:0; right:0; top:42%; bottom:0; overflow:auto; box-shadow:0 -4px 0 rgba(0,0,0,.2); animation:rise .2s ease-out; }
+  @keyframes rise { from { transform:translateY(30%); opacity:.4; } }
+  .chat .dock.asking .say, .chat .dock.asking .offline { display:none; }
+  .chat .say { display:flex; gap:8px; align-items:flex-end; }
+  .chat .say textarea { flex:1; resize:none; font:inherit; color:#2b2a28; background:#fff; border:2px solid #2b2a28; padding:5px 8px; box-sizing:border-box; }
+  .chat .say textarea:focus { outline:none; border-color:#f2b705; }
+  .chat .say[hidden] { display:none; }
+  .chat .offline { color:#8a867e; font-size:12px; padding:4px 0; }
+  .chat .offline[hidden] { display:none; }
   /* pending cards (built by asks.js) */
   #asks .card { border:2px solid #2b2a28; padding:10px 12px; margin-bottom:10px; background:#fff; }
   #asks .who { display:flex; gap:8px; align-items:baseline; margin-bottom:6px; }
@@ -152,7 +210,7 @@
   #launch pre { margin:10px 0 0; padding:6px 8px; background:#2b2a28; color:#f2efe8; font:12px/1.5 ui-monospace, monospace; white-space:pre-wrap; overflow-wrap:anywhere; }
   #launch .status { margin-top:8px; font-size:12px; white-space:pre-wrap; }
   #launch .status.err { color:#c0392b; }
-  /* employee card and message log: side panels */
+  /* the message log: a side panel */
   .side { position:fixed; right:12px; top:calc(var(--hud-h, 0px) + 12px); bottom:12px; z-index:5; width:min(340px, calc(100vw - 24px)); overflow:auto; background:#fffdf7; color:#2b2a28;
     border:2px solid #2b2a28; box-shadow:4px 4px 0 rgba(0,0,0,.35); padding:10px 12px; box-sizing:border-box; }
   .side[hidden] { display:none; }
@@ -160,12 +218,10 @@
   .side .close { position:absolute; right:8px; top:4px; cursor:pointer; color:#8a867e; }
   .side dl { margin:0; display:grid; grid-template-columns:auto 1fr; gap:2px 10px; font-size:12px; }
   .side dt { color:#8a867e; } .side dd { margin:0; word-break:break-all; }
-  .side .btns { display:flex; gap:6px; flex-wrap:wrap; margin-top:10px; }
   .msg { border-bottom:1px dashed #d6d1c6; padding:5px 0; font-size:12px; }
   .msg .meta { color:#8a867e; font-size:11px; }
   .msg .meta b { color:#2b2a28; }
   .msg .lost { color:#c0392b; }
-  .side h3 { font-size:13px; margin:12px 0 4px; }
 </style>
 </head>
 <body>
@@ -178,6 +234,7 @@
     <div class="stats" id="stats" data-i18n="office.nobody"></div>
     <div class="group btns">
       <button class="px" id="open-msgs"><i class="ico mail"></i><span data-i18n="office.messages"></span></button>
+      <button class="px" id="open-log" data-i18n="office.log"></button>
       <button class="px" id="new-emp" data-i18n="office.newEmployee" hidden></button>
     </div>
     <div class="group prefs"></div>
@@ -185,13 +242,26 @@
   <div class="note" id="launch-note" hidden></div>
   <button class="tab" id="hud-tab"><i class="ico"></i><b class="badge" hidden></b></button>
 </div>
-<div id="log"></div>
+<div class="logpanel" id="log" hidden><span class="close">✕</span><h2 data-i18n="office.log"></h2><div class="lines"></div></div>
 
-<div class="modal" id="asks-modal" hidden>
-  <div class="panel">
-    <h2 id="asks-title"></h2>
-    <div id="asks"></div>
-    <div class="actions"><button class="px" id="asks-later" data-i18n="asks.later"></button></div>
+<!-- the employee window: who they are, and the session as a chat -->
+<div class="modal" id="chat" hidden>
+  <div class="panel chat">
+    <div class="head">
+      <span class="close">✕</span>
+      <div class="who"><span class="dot"></span><h2></h2><span class="state"></span></div>
+      <div class="meta"></div>
+      <div class="btns"></div>
+    </div>
+    <div class="flow"></div>
+    <div class="dock">
+      <div id="asks"></div>
+      <form class="say" autocomplete="off">
+        <textarea rows="2" data-i18n-placeholder="chat.placeholder"></textarea>
+        <button type="submit" class="px primary" data-i18n="chat.send"></button>
+      </form>
+      <div class="offline" data-i18n="chat.offline" hidden></div>
+    </div>
   </div>
 </div>
 
@@ -216,7 +286,6 @@
   </form>
 </div>
 
-<div class="side" id="card" hidden><span class="close">✕</span><h2></h2><dl></dl><div class="btns"></div><h3 data-i18n="card.recentMessages"></h3><div class="msgs"></div></div>
 <div class="side" id="msgs-panel" hidden><span class="close">✕</span><h2 data-i18n="office.messages"></h2><div class="msgs"></div></div>
 
 <script type="module">
@@ -283,8 +352,6 @@ function statusText(s) {
   if (s.state === 'tool' && s.tool) return t('state.working', { tool:s.tool })
   return t('state.' + s.state)
 }
-// where a session's terminal is: a tmux command as it is, or a sentence for the window kinds
-const attachText = a => a === 'window' ? t('attach.window') : a === 'console' ? t('attach.console') : (a || '')
 
 // ================= characters: size follows the model, muscles follow the effort =================
 // Modeled on the little fellow in the terminal banner (▐▛███▜▌ / ▝▜█████▛▘ / ▘▘ ▝▝): a square body,
@@ -1437,7 +1504,7 @@ function frame(now) {
   }
   placeLabels(now)
   if (!findList.hidden && now - (frame.listed || 0) > 500) { frame.listed = now; renderFind() } // what they're doing changes
-  refreshCardLine()
+  refreshChatLine()
 }
 
 // one employee in the building, as a depth-sorted item: its pose follows its state, where it is and what it does there
@@ -1654,7 +1721,8 @@ findList.addEventListener('mousedown', ev => { // mousedown, so the box keeps it
 })
 addEventListener('keydown', ev => { // "/" jumps to the search box; Esc lets go of a state chip
   if (ev.key === 'Escape' && chipOn) { chipOn = null; renderStats() }
-  if (ev.key !== '/' || ev.ctrlKey || ev.metaKey || ev.altKey || !asksModal.hidden || !dlg.hidden) return
+  if (ev.key === 'Escape' && !chatEl.hidden && !dock.classList.contains('asking')) closeChat()
+  if (ev.key !== '/' || ev.ctrlKey || ev.metaKey || ev.altKey || !chatEl.hidden || !dlg.hidden) return
   if (/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName)) return
   ev.preventDefault()
   if (hud.classList.contains('up')) setHud(false)
@@ -1751,13 +1819,25 @@ function syncPlates() {
 }
 
 // ================= data =================
-const logEl = document.getElementById('log')
+// the activity log: hidden until its HUD button opens it (the page remembers), the last 200 lines
+const logEl = document.getElementById('log'), logLines = logEl.querySelector('.lines'), LOG_STORE = 'symphony.log'
+logLines.dataset.empty = t('log.empty')
 function log(text) {
   const d = document.createElement('div')
   d.textContent = `${new Date().toLocaleTimeString(lang)}  ${text}`
-  logEl.appendChild(d)
-  while (logEl.children.length > 6) logEl.firstChild.remove()
+  const atEnd = logLines.scrollTop + logLines.clientHeight >= logLines.scrollHeight - 4
+  logLines.appendChild(d)
+  while (logLines.children.length > 200) logLines.firstChild.remove()
+  if (atEnd) logLines.scrollTop = logLines.scrollHeight
 }
+function setLog(open) {
+  logEl.hidden = !open
+  try { localStorage.setItem(LOG_STORE, open ? 'open' : 'closed') } catch {}
+  if (open) logLines.scrollTop = logLines.scrollHeight
+}
+document.getElementById('open-log').onclick = () => setLog(logEl.hidden)
+logEl.querySelector('.close').onclick = () => setLog(false)
+setLog((() => { try { return localStorage.getItem(LOG_STORE) === 'open' } catch { return false } })())
 
 const empBySession = id => [...emps.values()].find(e => e.s && e.s.id === id)
 
@@ -1779,7 +1859,6 @@ function showMessage(m) {
 
 let first = true
 const seenMessages = new Set()
-const seenAsks = new Set()
 const KEEP_MESSAGES = 300
 let messagesVersion = 0 // goes up whenever the message log changes; the panels redraw only then
 // The message log: a full snapshot (the first one, /api/state) carries it; the ones pushed on every change don't,
@@ -1802,7 +1881,6 @@ function applyMessage(m) {
   messagesVersion++
   noteMessage(m)
   if (!msgsPanel.hidden) renderMessages()
-  if (cardFor) showCard(cardFor)
 }
 let catchingUp = false
 function catchUpMessages() {
@@ -1826,15 +1904,10 @@ function applySnapshot(snap) {
   }
   layout()
   for (const acc of snap.accounts) updateEmployee(emps.get(acc.id), acc, !first)
-  // new pending asks open the popup right away (not while the launch dialog is open; the HUD has a button)
-  const fresh = snap.asks.filter(a => !seenAsks.has(a.id))
-  fresh.forEach(a => seenAsks.add(a.id))
-  if (fresh.length && dlg.hidden) openAsks()
-  renderAsks()
   first = false
 
   renderStats()
-  if (cardFor) showCard(cardFor)
+  if (chatFor) showChat(chatFor)
   if (!msgsPanel.hidden) renderMessages()
   if (!findList.hidden) renderFind()
   watchLaunch()
@@ -1847,24 +1920,17 @@ function applyEvent(ev, name) {
   else if (ev.kind === 'session.end') log(`${who}  ${t('log.offDuty')}`)
 }
 
-// ================= pending popup =================
-const asksModal = document.getElementById('asks-modal')
-let asksFilter = null // show only this session's asks
+// ================= pending asks =================
+// They are handled in the employee window: the HUD's red chip opens the window of the first employee waiting.
 function askWho(a) {
   const acc = snapshot.accounts.find(x => x.id === a.account)
   return `<div class="who"><span class="name">${esc(acc?.name ?? a.session.slice(0, 6))}</span>
     <span class="kind">${a.agentId ? esc(t('common.subagent')) + ' · ' : ''}${esc(t(a.kind === 'question' ? 'asks.question' : 'asks.permission'))}</span></div>`
 }
-function renderAsks() {
-  let asks = snapshot.asks
-  if (asksFilter && asks.some(a => a.session === asksFilter)) asks = asks.filter(a => a.session === asksFilter)
-  syncCards(document.getElementById('asks'), asks, askWho)
-  document.getElementById('asks-title').textContent = t('asks.title', { n:snapshot.asks.length })
-  if (!snapshot.asks.length) asksModal.hidden = true
+function openAsks(session = null) {
+  const a = snapshot.asks.find(x => !session || x.session === session) || snapshot.asks[0]
+  if (a) openChat(a.account)
 }
-function openAsks(session = null) { asksFilter = session; renderAsks(); if (snapshot.asks.length) asksModal.hidden = false }
-document.getElementById('asks-later').onclick = () => { asksModal.hidden = true }
-asksModal.addEventListener('click', ev => { if (ev.target === asksModal) asksModal.hidden = true })
 
 // ================= message log =================
 const msgsPanel = document.getElementById('msgs-panel')
@@ -1899,66 +1965,206 @@ function renderMessages() {
 document.getElementById('open-msgs').onclick = () => { renderMessages(); msgsPanel.hidden = false }
 msgsPanel.querySelector('.close').onclick = () => { msgsPanel.hidden = true }
 
-// ================= employee card =================
-const card = document.getElementById('card')
-let cardFor = null
-card.querySelector('.close').onclick = () => { card.hidden = true; cardFor = null }
+// ================= the employee window =================
+// Who they are at the top; below, the session as a chat: the prompts, the model's thinking (folded) and answers as they
+// stream, the tool calls, the messages between sessions (purple), and the asks, whose cards rise over the input until
+// they're handled. The log comes from the bridge when the window opens; while it's open, each change comes as a chat event.
+const chatEl = document.getElementById('chat'), chatPanel = chatEl.querySelector('.panel')
+const flow = chatEl.querySelector('.flow'), dock = chatEl.querySelector('.dock'), sayForm = chatEl.querySelector('.say'), sayBox = sayForm.querySelector('textarea')
+let chatFor = null // the account whose window is open
+let chatSession = null // the session whose log the flow shows
+const chatItems = new Map() // item id -> item, of chatSession
+const chatShown = { meta:'', btns:'', asks:'' }
+chatEl.querySelector('.close').onclick = closeChat
+chatEl.addEventListener('click', ev => { if (ev.target === chatEl) closeChat() })
+function closeChat() { chatEl.hidden = true; chatFor = null }
 
-// a click on an employee: the pending popup if it waits for you; otherwise its card, and an idle one goes back
-// to its desk and waits there for its next turn
+// a click on an employee opens its window, and an idle one goes back to its desk and waits there for its next turn
 function onEmployeeClick(id) {
   const acc = snapshot.accounts.find(a => a.id === id)
   const s = acc && sessionOf(acc), e = emps.get(id)
-  if (s && s.state === 'waiting') return openAsks(s.id)
   if (e?.inside && s?.state === 'idle') {
     e.summon = { session:s.id, since:s.stateSince, at:Date.now() }
     e.popAt = performance.now()
   }
-  showCard(id)
+  openChat(id)
+}
+function openChat(id) {
+  showChat(id)
+  if (!chatEl.hidden && dock.classList.contains('asking')) dock.querySelector('#asks input, #asks button')?.focus()
+  else if (!chatEl.hidden && !sayBox.disabled) sayBox.focus()
 }
 
-const cardShown = { dl:'', btns:'', msgs:'' } // what the card shows, so an unchanged part isn't rebuilt
-function showCard(id) {
+function showChat(id) {
   const acc = snapshot.accounts.find(a => a.id === id), e = emps.get(id)
-  if (!acc || !e) { card.hidden = true; cardFor = null; return }
-  cardFor = id
+  if (!acc || !e) { closeChat(); return }
+  chatFor = id
   const s = sessionOf(acc), online = !!s && s.state !== 'ended'
-  card.querySelector('h2').textContent = acc.name
-  const rows = [['seat', t('card.seatNo', { n:acc.seat + 1 })], ['state', stateLine(e)], ['model', online ? buildText(s) : ''],
-    ['tool', online ? s.tool : ''], ['dir', s?.cwd || acc.last?.dir], ['prompt', online ? s.prompt : ''], ['tools', online ? s.tools : ''],
-    ['subagents', online ? Object.keys(s.agents || {}).length || '' : ''], ['terminal', online ? attachText(s.attach) : ''],
-    ['login', s?.login], ['session', online ? s.id : '']]
-  const dl = rows.filter(r => r[1] !== undefined && r[1] !== '' && r[1] !== null)
-    .map(([k, v]) => `<dt>${esc(t('card.' + k))}</dt><dd${k === 'state' ? ' class="state-line"' : ''}>${esc(v)}</dd>`).join('')
-  if (dl !== cardShown.dl) { cardShown.dl = dl; card.querySelector('dl').innerHTML = dl }
-  const btnKey = `${id}|${online}|${online && s.state === 'waiting'}|${!!launchOpts?.enabled}`
-  if (btnKey !== cardShown.btns) {
-    cardShown.btns = btnKey
-    const btns = card.querySelector('.btns')
+  const head = chatEl.querySelector('.head')
+  head.querySelector('h2').textContent = acc.name
+  head.querySelector('.dot').style.background = STATE_COLOR[online ? s.state : 'ended'] ?? GRAY
+  refreshChatLine()
+  const chips = [['seat', t('card.seatNo', { n:acc.seat + 1 })], ['model', online ? buildText(s) : ''], ['session', s?.title],
+    ['dir', s?.cwd || acc.last?.dir], ['subagents', online ? Object.keys(s.agents || {}).length || '' : ''], ['tools', online ? s.tools : ''],
+    ['login', s?.login]]
+  const meta = chips.filter(c => c[1] !== undefined && c[1] !== '' && c[1] !== null)
+    .map(([k, v]) => `<span title="${esc(v)}"><b>${esc(t('card.' + k))}</b>${esc(v)}</span>`).join('')
+  if (meta !== chatShown.meta) { chatShown.meta = meta; head.querySelector('.meta').innerHTML = meta }
+  const busy = online && (s.state === 'thinking' || s.state === 'tool' || s.state === 'waiting')
+  const btnKey = `${id}|${online}|${busy}|${online && !!s.launch}|${!!launchOpts?.enabled}`
+  if (btnKey !== chatShown.btns) {
+    chatShown.btns = btnKey
+    const btns = head.querySelector('.btns')
     btns.innerHTML = ''
-    const add = (text, cls, fn) => { const b = document.createElement('button'); b.className = 'px ' + cls; b.textContent = text; b.onclick = fn; btns.appendChild(b) }
-    if (online && s.state === 'waiting') add(t('card.handle'), 'alert', () => openAsks(s.id))
+    const add = (text, cls, fn, title) => { const b = document.createElement('button'); b.className = 'px ' + cls; b.textContent = text; b.onclick = fn; if (title) b.title = title; btns.appendChild(b) }
+    if (online && s.launch) add(t('chat.terminal'), 'terminal', () => openTerminal(s), t('chat.terminalTitle'))
+    if (busy) add(t('chat.stop'), 'stop', () => post(`/api/abort/${s.id}`, {}), t('chat.stopTitle'))
     if (!online && launchOpts?.enabled) add(t('launch.go'), 'primary go-work', () => openLaunch(acc.id))
     if (!online) add(t('card.delete'), '', async () => {
       if (!confirm(t('card.deleteConfirm', { name:acc.name }))) return
       const r = await fetch(`/api/accounts/${acc.id}`, { method:'DELETE' })
       if (!r.ok) alert(t('card.deleteFailed', { reason:errorText(await r.json().catch(() => null)) }))
-      card.hidden = true; cardFor = null
+      closeChat()
     })
   }
-  const msgKey = `${id}|${messagesVersion}`
-  if (msgKey !== cardShown.msgs) {
-    cardShown.msgs = msgKey
-    const mine = snapshot.messages.filter(m => m.fromName === acc.name || m.toName === acc.name)
-    card.querySelector('.msgs').innerHTML = mine.slice(-10).reverse().map(msgHTML).join('') || `<div class="msg">${esc(t('card.noMessages'))}</div>`
+  // the chat follows the account's current session; an employee off duty keeps the last one's log while the bridge has it
+  const sid = s?.id || null
+  if (sid !== chatSession) {
+    chatSession = sid
+    chatItems.clear()
+    flow.innerHTML = ''
+    if (sid) loadChat(sid)
+    else flow.innerHTML = `<div class="empty">${esc(t('chat.noSession'))}</div>`
   }
-  card.hidden = false
+  const mine = snapshot.asks.filter(a => a.session === sid)
+  const askKey = mine.map(a => a.id).join(',')
+  if (askKey !== chatShown.asks) {
+    chatShown.asks = askKey
+    syncCards(document.getElementById('asks'), mine, askWho)
+    dock.classList.toggle('asking', mine.length > 0)
+  }
+  sayBox.disabled = !online
+  sayForm.hidden = !online
+  dock.querySelector('.offline').hidden = online
+  chatEl.hidden = false
 }
-// the status line of an open card follows what the employee is doing
-function refreshCardLine() {
-  const e = cardFor && !card.hidden && emps.get(cardFor), dd = e && card.querySelector('dd.state-line')
-  if (dd && dd.textContent !== stateLine(e)) dd.textContent = stateLine(e)
+// the status line follows what the employee is doing
+function refreshChatLine() {
+  const e = chatFor && !chatEl.hidden && emps.get(chatFor), el = e && chatEl.querySelector('.who .state')
+  if (el && el.textContent !== stateLine(e)) el.textContent = stateLine(e)
 }
+
+async function post(path, body) {
+  const r = await fetch(path, { method:'POST', headers:{ 'content-type':'application/json' }, body:JSON.stringify(body) })
+  if (!r.ok) alert(errorText(await r.json().catch(() => null)))
+  return r.ok
+}
+// the session's terminal: the bridge opens a window on this machine attached to it (closing it changes nothing)
+async function openTerminal(s) {
+  const r = await fetch(`/api/terminal/${s.launch}/open`, { method:'POST' })
+  const data = await r.json().catch(() => null)
+  if (!r.ok) alert(errorText(data) + (data?.params?.command ? '\n' + data.params.command : ''))
+}
+
+async function loadChat(sid) {
+  let items = []
+  try { items = (await (await fetch(`/api/chat/${sid}`)).json()).items || [] } catch {}
+  if (sid !== chatSession) return
+  for (const it of items) chatItems.set(it.id, it)
+  renderFlow()
+}
+function renderFlow() {
+  flow.innerHTML = ''
+  const items = [...chatItems.values()].sort((a, b) => a.seq - b.seq)
+  if (!items.length) flow.innerHTML = `<div class="empty">${esc(t('chat.empty'))}</div>`
+  for (const it of items) flow.appendChild(itemEl(it))
+  flow.scrollTop = flow.scrollHeight
+}
+// a chat event: a whole item (new or changed), or text to append to a streaming one
+function applyChat(msg) {
+  if (msg.session !== chatSession) return
+  const nearEnd = flow.scrollTop + flow.clientHeight >= flow.scrollHeight - 40
+  if (msg.delta) {
+    const it = chatItems.get(msg.delta.id)
+    if (!it) { loadChat(chatSession); return } // a block we missed: fetch the log again
+    it.text += msg.delta.text
+    const el = flow.querySelector(`.it[data-id="${it.id}"] .body`)
+    if (el) el.innerHTML = richText(it.text)
+  } else if (msg.item) {
+    const it = msg.item, old = flow.querySelector(`.it[data-id="${it.id}"]`)
+    chatItems.set(it.id, it)
+    const el = itemEl(it, old)
+    if (old) old.replaceWith(el)
+    else { flow.querySelector('.empty')?.remove(); flow.appendChild(el) }
+  }
+  if (nearEnd) flow.scrollTop = flow.scrollHeight
+}
+// text with a little shape: fenced code, `code`, **bold**; everything is escaped first
+function richText(text) {
+  const parts = String(text ?? '').split(/(```[\s\S]*?(?:```|$))/)
+  return parts.map((p, i) => i % 2
+    ? `<pre>${esc(p.replace(/^```[^\n]*\n?/, '').replace(/```$/, ''))}</pre>`
+    : esc(p).replace(/`([^`\n]+)`/g, '<code>$1</code>').replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>')).join('')
+}
+const timeOf = it => `<time>${new Date(it.time).toLocaleTimeString(lang)}</time>`
+function itemEl(it, old) {
+  const el = document.createElement('div')
+  el.dataset.id = it.id
+  const sub = it.agentId ? `<span class="sub">${esc(t('common.subagent'))}</span>` : ''
+  switch (it.kind) {
+    case 'user':
+      el.className = `it user ${it.status || ''}`
+      el.innerHTML = `${it.origin === 'page' ? `<div class="from">${esc(t('chat.fromPage'))}</div>` : ''}<div class="body">${richText(it.text)}</div>${timeOf(it)}`
+      break
+    case 'thinking': {
+      el.className = `it thinking${it.done ? ' done' : ''}`
+      const open = old?.querySelector('details')?.open ? ' open' : '' // stays unfolded while it streams
+      el.innerHTML = `<details${open}><summary>${esc(t(it.done ? 'chat.thought' : 'chat.thinking'))}<span class="dots"></span></summary><div class="body">${richText(it.text)}</div></details>`
+      break
+    }
+    case 'text':
+      el.className = 'it text'
+      el.innerHTML = `<div class="body">${richText(it.text)}</div>${it.done ? timeOf(it) : ''}`
+      break
+    case 'tool':
+      el.className = `it tool ${it.status || ''}${it.done ? ' done' : ''}`
+      el.innerHTML = `${sub}<b>${esc(it.tool)}</b> ${esc(it.summary || '')}` +
+        (it.done ? `<span class="res">${esc(t('chat.tool.' + (it.status || 'ok')))}</span>` : '')
+      el.title = it.summary || ''
+      break
+    case 'message': {
+      const acc = snapshot.accounts.find(a => a.id === chatFor)
+      const out = acc && it.from === acc.name
+      el.className = `it message${out ? ' out' : ''}`
+      el.innerHTML = `<div class="from">${esc(out ? t('chat.msgTo', { name:it.to || '?' }) : t('chat.msgFrom', { name:it.from || '?' }))}</div><div class="body">${richText(it.text)}</div>${timeOf(it)}`
+      break
+    }
+    case 'ask':
+      el.className = `it ask ${it.status || ''}`
+      el.innerHTML = `${sub}${esc(t(it.askKind === 'question' ? 'asks.question' : 'asks.permission'))}${esc(t('common.colon'))}` +
+        `${esc(it.tool ? it.tool + ' ' : '')}${esc(it.summary || '')} · ${esc(t('chat.ask.' + (it.status || 'pending')))}${it.text ? esc(' · ' + it.text) : ''}`
+      el.title = (it.summary || '') + (it.text ? '\n' + it.text : '')
+      break
+    default:
+      el.className = 'it notice'
+      el.textContent = t('chat.notice.' + it.text)
+  }
+  return el
+}
+
+// sending: Enter sends, Shift+Enter makes a new line; the bridge queues it for the session's mod, and the chat shows it
+// as queued until the mod has submitted it
+sayForm.addEventListener('submit', async ev => {
+  ev.preventDefault()
+  const text = sayBox.value.trim()
+  if (!text || !chatSession) return
+  sayBox.value = ''
+  if (!(await post(`/api/say/${chatSession}`, { text }))) sayBox.value = text
+  sayBox.focus()
+})
+sayBox.addEventListener('keydown', ev => {
+  if (ev.key === 'Enter' && !ev.shiftKey && !ev.isComposing) { ev.preventDefault(); sayForm.requestSubmit() }
+})
 
 // a click on a character, or else on a desk, is a click on that employee
 cv.addEventListener('click', ev => {
@@ -2016,9 +2222,10 @@ async function openLaunch(accountId) {
   field('name').readOnly = !!acc
   const recent = launchOpts.recentDirs || []
   field('dir').value = last.dir || recent[0] || launchOpts.home || ''
-  fill(field('model'), launchOpts.models, last.model)
-  fill(field('effort'), launchOpts.efforts, last.effort)
-  fill(field('permissionMode'), launchOpts.permissionModes, last.permissionMode)
+  // a new employee starts with everything allowed, Opus and the most thinking; an old one as it last worked
+  fill(field('model'), launchOpts.models, acc ? last.model : 'opus')
+  fill(field('effort'), launchOpts.efforts, acc ? last.effort : 'max')
+  fill(field('permissionMode'), launchOpts.permissionModes, acc ? last.permissionMode : 'bypassPermissions')
   fill(field('resume'), launchOpts.resumes, '')
   form.querySelector('.recent').innerHTML = recent.map(d => `<span title="${esc(d)}">${esc(base(d))}</span>`).join('')
   form.querySelectorAll('.recent span').forEach((el, i) => el.onclick = () => { field('dir').value = recent[i]; preview() })
@@ -2027,13 +2234,12 @@ async function openLaunch(accountId) {
   form.querySelector('.go').disabled = false
   pendingLaunch = null
   preview()
-  asksModal.hidden = true
-  card.hidden = true; cardFor = null
+  closeChat()
   dlg.hidden = false
   ;(acc ? field('dir') : field('name')).focus()
 }
 
-function closeLaunch() { dlg.hidden = true; pendingLaunch = null; if (snapshot.asks.length) openAsks() }
+function closeLaunch() { dlg.hidden = true; pendingLaunch = null }
 function setStatus(text, err) {
   const el = form.querySelector('.status')
   el.textContent = text
@@ -2103,9 +2309,7 @@ form.addEventListener('submit', async ev => {
     const data = await res.json()
     if (!res.ok) throw new Error(errorText(data) + (data.fix ? '\n' + data.fix : ''))
     pendingLaunch = data.id
-    setStatus(launchOpts.trustHint
-      ? t('launch.waitingWindow')
-      : t('launch.startingIn', { where:attachText(data.attach) }))
+    setStatus(t('launch.startingBg'))
     watchLaunch()
   } catch (err) {
     setStatus(t('launch.failed', { reason:err.message }), true)
@@ -2119,8 +2323,9 @@ function watchLaunch() {
   const l = (snapshot.launches || []).find(x => x.id === pendingLaunch)
   if (!l) return
   if (l.status === 'online') {
-    log(t('log.started', { name:l.name, where:attachText(l.attach) }))
+    log(t('log.started', { name:l.name }))
     closeLaunch()
+    openChat(l.account)
   } else if (l.status === 'failed') {
     setStatus(t('launch.failed', { reason:errorText({ code:l.errorCode, params:l.errorParams, error:l.error }) }), true)
     form.querySelector('.go').disabled = false
@@ -2181,6 +2386,7 @@ es.onmessage = m => {
   if (msg.type === 'snapshot') applySnapshot(msg)
   else if (msg.type === 'event') applyEvent(msg.event, msg.title)
   else if (msg.type === 'message') applyMessage(msg.message)
+  else if (msg.type === 'chat') applyChat(msg)
 }
 let resizing = false
 addEventListener('resize', () => { // one layout per frame, however many events a drag sends

@@ -187,12 +187,11 @@ func TestOffice(t *testing.T) {
 	paneC.say(`Use Bash to run touch fallback.txt, only that one command.`)
 	paneE.say(`Use Bash to run touch outsider.txt, only that one command.`)
 
-	// ---------- 4. handled in the office's popup ----------
+	// ---------- 4. handled in the employees' windows ----------
 	handled := map[string]bool{}
 	var answeredQuestion, deniedB, allowedA bool
 	// press clicks a card's button like a person, and counts it once the answer has reached the bridge and the card
-	// has left the popup: only then do the cards stop moving for the next click. A click that went nowhere is tried
-	// again, a few times.
+	// has left the window. A click that went nowhere is tried again, a few times.
 	press := func(id, button string) {
 		t.Helper()
 		gone := func() bool {
@@ -204,20 +203,22 @@ func TestOffice(t *testing.T) {
 				return
 			}
 			if try == 3 || !b.pending(id) {
-				t.Fatalf("%s was clicked %d times, but ask %s is still in the popup (pending in the bridge: %v)", button, try, id, b.pending(id))
+				t.Fatalf("%s was clicked %d times, but ask %s is still in the window (pending in the bridge: %v)", button, try, id, b.pending(id))
 			}
 		}
 	}
-	waitUntil(t, 4*time.Minute, "the popup handles A's question, B's denial and A's permission", func() bool {
+	waitUntil(t, 4*time.Minute, "the employees' windows handle A's question, B's denial and A's permission", func() bool {
 		for _, a := range b.Hub.Snapshot().Asks {
 			if handled[a.ID] {
 				continue
 			}
-			card := fmt.Sprintf(`#asks-modal #asks .card[data-id="%s"]`, a.ID)
+			// a click on the waiting employee opens its window, where the ask's card rises over the input
+			clickLabel(t, office, a.Account)
+			card := fmt.Sprintf(`#chat:not([hidden]) #asks .card[data-id="%s"]`, a.ID)
 			do(t, office, 20*time.Second, chromedp.WaitVisible(chromedp.CSS(card)))
 			switch {
 			case a.Session == sidA && a.Kind == "question":
-				screenshot(t, office, "office-popup.png")
+				screenshot(t, office, "office-chat-ask.png")
 				// the model writes the option labels; pick "Blue" whatever its case
 				picked := get(t, office, 10*time.Second, chromedp.Evaluate[bool](fmt.Sprintf(
 					`(b => b ? (b.click(), true) : false)([...document.querySelectorAll('%s input')].find(i => i.value.trim().toLowerCase() === 'blue'))`, card)))
@@ -240,6 +241,17 @@ func TestOffice(t *testing.T) {
 		}
 		return answeredQuestion && deniedB && allowedA
 	}, dumpAll)
+	// A's window shows the session as a chat: the prompt that was typed in the terminal, its thinking and answer
+	// as the mod streamed them, the Bash call and the settled asks
+	clickLabel(t, office, accA.ID)
+	waitUntil(t, 2*time.Minute, "A's window shows the prompt, the streamed answer, the tool call and the asks", func() bool {
+		kinds := get(t, office, 5*time.Second, chromedp.Evaluate[string](`[...document.querySelectorAll('#chat:not([hidden]) .flow .it')].map(e => e.className).join(' ')`))
+		return strings.Contains(kinds, "it user") && strings.Contains(kinds, "it text") && strings.Contains(kinds, "it tool ok done") && strings.Contains(kinds, "it ask answered")
+	}, func() string {
+		return get(t, office, 5*time.Second, chromedp.Evaluate[string](`document.querySelector('#chat .flow')?.innerText ?? ''`))
+	})
+	screenshot(t, office, "office-chat.png")
+	do(t, office, 10*time.Second, chromedp.Click(chromedp.CSS(`#chat .close`)))
 
 	// ---------- 5. results ----------
 	waitUntil(t, 2*time.Minute, "A writes the popup's answer to answer.txt: blue", func() bool {
@@ -323,16 +335,13 @@ func TestOffice(t *testing.T) {
 	)
 	screenshot(t, office, "office-launch.png")
 	do(t, office, 10*time.Second, chromedp.Click(chromedp.CSS(`#launch .go`)))
-	var tmuxD string
-	waitUntil(t, 2*time.Minute, "the new employee comes online, matched with its tmux window", func() bool {
+	var launchD string
+	waitUntil(t, 2*time.Minute, "the new employee comes online, matched with its terminal inside the bridge", func() bool {
 		d := b.online(nameD)
-		if d == nil || d.Launch == "" || !strings.HasPrefix(d.Attach, "tmux attach -t ") {
+		if d == nil || d.Launch == "" || d.Attach != "symphony attach "+d.Launch || !b.Launcher.Terms.Live(d.Launch) {
 			return false
 		}
-		if tmuxD == "" {
-			tmuxD = "sym-" + d.Launch
-			t.Cleanup(func() { _ = exec.Command("tmux", "kill-session", "-t", tmuxD).Run() })
-		}
+		launchD = d.Launch
 		return d.Cwd == dirD
 	}, func() string { data, _ := json.Marshal(b.Hub.Snapshot().Launches); return string(data) })
 	if acc := b.account(nameD); acc == nil || acc.Seat != 2 {
@@ -344,10 +353,40 @@ func TestOffice(t *testing.T) {
 			t.Fatalf("the launch should carry the page's language: %s", l.Command)
 		}
 	}
-	waitUntil(t, 10*time.Second, "the launch dialog closes by itself", func() bool {
-		return get(t, office, 5*time.Second, chromedp.Evaluate[bool](`document.getElementById('launch').hidden`))
+	waitUntil(t, 10*time.Second, "the launch dialog closes by itself and the new employee's window opens", func() bool {
+		return get(t, office, 5*time.Second, chromedp.Evaluate[bool](`document.getElementById('launch').hidden && !document.getElementById('chat').hidden`))
 	})
 	screenshot(t, office, "office-launched.png")
+	// ---------- 7b. the page talks to D through its window: the prompt reaches the session, the answer streams back ----------
+	do(t, office, 10*time.Second,
+		chromedp.SetValue(chromedp.CSS(`#chat .say textarea`), "Reply with exactly the word pineapple and nothing else."),
+		chromedp.Click(chromedp.CSS(`#chat .say button`)))
+	waitUntil(t, 3*time.Minute, "D's window shows the page's prompt as sent, and the streamed answer", func() bool {
+		return get(t, office, 5*time.Second, chromedp.Evaluate[bool](
+			`!!document.querySelector('#chat .flow .it.user.sent') && [...document.querySelectorAll('#chat .flow .it.text .body')].some(e => e.textContent.toLowerCase().includes('pineapple'))`))
+	}, func() string {
+		return get(t, office, 5*time.Second, chromedp.Evaluate[string](`document.querySelector('#chat .flow')?.innerText ?? ''`))
+	})
+	// the bridge's log of D's chat has the page's prompt, sent by the mod, and the answer that streamed
+	var sent, answered bool
+	for _, it := range b.Hub.Chat(b.online(nameD).ID) {
+		sent = sent || it.Kind == bridge.ChatUser && it.Origin == "page" && it.Status == "sent" && strings.Contains(it.Text, "pineapple")
+		answered = answered || it.Kind == bridge.ChatText && it.Done && strings.Contains(strings.ToLower(it.Text), "pineapple")
+	}
+	if !sent || !answered {
+		t.Fatalf("the chat log should hold the page's prompt as sent and the finished answer: sent=%v answered=%v", sent, answered)
+	}
+	screenshot(t, office, "office-chat-say.png")
+	// the terminal inside the bridge shows the same conversation, and a window could attach to it
+	termD := b.Launcher.Terms.Get(launchD)
+	waitUntil(t, 30*time.Second, "D's terminal shows the answer", func() bool { return strings.Contains(strings.ToLower(termD.Screen(40)), "pineapple") },
+		func() string { return termD.Screen(40) })
+	history, _, detach := termD.Attach(120, 40)
+	detach()
+	if len(history) == 0 {
+		t.Fatal("attaching to D's terminal should give its history")
+	}
+	do(t, office, 10*time.Second, chromedp.Click(chromedp.CSS(`#chat .close`)))
 
 	// ---------- 8. B goes off duty, then back to work from its card: same seat ----------
 	seatB := b.account(nameB).Seat
@@ -360,8 +399,8 @@ func TestOffice(t *testing.T) {
 	waitUntil(t, 30*time.Second, "B is off duty after /exit", func() bool { return b.online(nameB) == nil }, paneB.dump)
 	clickLabel(t, office, accB.ID) // B may still be walking out of the door
 	do(t, office, 20*time.Second,
-		chromedp.WaitVisible(chromedp.CSS(`#card .go-work`)),
-		chromedp.Click(chromedp.CSS(`#card .go-work`)),
+		chromedp.WaitVisible(chromedp.CSS(`#chat .go-work`)),
+		chromedp.Click(chromedp.CSS(`#chat .go-work`)),
 		chromedp.WaitVisible(chromedp.CSS(`#launch form`)),
 	)
 	if name := get(t, office, 5*time.Second, chromedp.Evaluate[string](`document.querySelector('#launch input[name=name]').value`)); name != nameB {
@@ -372,15 +411,10 @@ func TestOffice(t *testing.T) {
 		chromedp.SetValue(chromedp.CSS(`#launch select[name=model]`), model),
 		chromedp.SetValue(chromedp.CSS(`#launch select[name=permissionMode]`), "manual"),
 		chromedp.Click(chromedp.CSS(`#launch .go`)))
-	var tmuxB string
 	waitUntil(t, 2*time.Minute, "B is back at work in the same seat", func() bool {
 		s := b.online(nameB)
 		if s == nil || s.Launch == "" {
 			return false
-		}
-		if tmuxB == "" {
-			tmuxB = "sym-" + s.Launch
-			t.Cleanup(func() { _ = exec.Command("tmux", "kill-session", "-t", tmuxB).Run() })
 		}
 		return s.ID != sidB && b.account(nameB).Seat == seatB && s.Cwd == dirB
 	}, func() string { data, _ := json.Marshal(b.Hub.Snapshot().Launches); return string(data) })

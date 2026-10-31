@@ -55,7 +55,7 @@ func TestT(t *testing.T) {
 	if Lang() != "zh-CN" {
 		t.Fatalf("SetLang should match the tag, got %q", Lang())
 	}
-	if got := T("log.launch_on", "terminal", "tmux"); got != "页面启动会话：用 tmux 开终端" {
+	if got := T("log.launch_off_claude", "claude", "cc"); got != "页面启动会话关闭：找不到 cc" {
 		t.Fatalf("zh-CN message: %q", got)
 	}
 	SetLang("en")
@@ -128,7 +128,7 @@ func TestWebKeysInUse(t *testing.T) {
 	if err := json.Unmarshal(data, &en); err != nil {
 		t.Fatal(err)
 	}
-	literal := regexp.MustCompile("['\"`]((?:common|office|hud|pixels|room|state|idle|search|stats|log|asks|msg|card|attach|launch|option|approve|error)\\.[A-Za-z0-9_.]*[A-Za-z0-9_])['\"`]")
+	literal := regexp.MustCompile("['\"`]((?:common|office|hud|pixels|room|state|idle|search|stats|log|asks|msg|card|chat|launch|option|approve|error)\\.[A-Za-z0-9_.]*[A-Za-z0-9_])['\"`]")
 	attr := regexp.MustCompile(`data-i18n(?:-placeholder|-title)?="([^"]+)"`)
 	used := 0
 	for _, name := range []string{"office.html", "approve.html", "asks.js", "i18n.js"} {

@@ -1,5 +1,5 @@
 // symphony bridge: go run ./cmd/bridge [-addr 127.0.0.1:7788] [-data folder] [-web web] [-lang en] [-open=false]
-// [-autostart on|off] [-background] [-version]
+// [-autostart on|off] [-background] [-version]; symphony attach [-addr host:port] <launch id> shows a session's terminal.
 // Releases ship it as the symphony program (.github/release.sh).
 package main
 
@@ -15,10 +15,12 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"runtime"
 	"runtime/debug"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/feynmanzcys-bytes/symphony/internal/autostart"
@@ -48,12 +50,16 @@ func main() {
 	if l := langArg(os.Args[1:]); l != "" {
 		i18n.SetLang(l)
 	}
+	if len(os.Args) > 1 && os.Args[1] == "attach" {
+		attach(os.Args[2:])
+		return
+	}
 	addr := flag.String("addr", "127.0.0.1:7788", i18n.T("flag.addr"))
 	dataDir := flag.String("data", defaultDataDir(), i18n.T("flag.data"))
 	webDir := flag.String("web", "", i18n.T("flag.web"))
 	modDir := flag.String("mod", "", i18n.T("flag.mod"))
 	claude := flag.String("claude", "claude", i18n.T("flag.claude"))
-	terminal := flag.String("terminal", "auto", i18n.T("flag.terminal"))
+	flag.String("terminal", "", i18n.T("flag.terminal")) // ignored since 0.6 (sessions run inside the bridge); kept so older -autostart entries still start
 	flag.String("lang", i18n.Lang(), i18n.T("flag.lang", "langs", strings.Join(i18n.Langs, ", ")))
 	open := flag.Bool("open", true, i18n.T("flag.open"))
 	auto := flag.String("autostart", "", i18n.T("flag.autostart"))
@@ -111,8 +117,20 @@ func main() {
 	if named {
 		srv.AllowedHosts = append(srv.AllowedHosts, host)
 	}
-	if l := launcher(*modDir, *claude, *terminal, base); l != nil {
+	if l := launcher(*modDir, *claude, base); l != nil {
 		srv.SetLauncher(l)
+		srv.Window = bridge.NewWindow(runtime.GOOS, exec.LookPath, os.Getenv)
+		if exe, err := os.Executable(); err == nil {
+			srv.AttachCommand = func(id string) []string { return []string{exe, "attach", "-addr", *addr, id} }
+		}
+		// the sessions are the bridge's children: stopping it ends them, cleanly rather than by surprise
+		stop := make(chan os.Signal, 1)
+		signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+		go func() {
+			<-stop
+			l.Terms.KillAll()
+			os.Exit(0)
+		}()
 	}
 	go func() {
 		for range time.Tick(time.Minute) {
@@ -222,7 +240,7 @@ func autostartArgs(set map[string]string, dataDir string) []string {
 		return p
 	}
 	args := []string{"-data=" + abs(dataDir)}
-	for _, name := range []string{"addr", "web", "mod", "claude", "terminal", "lang"} {
+	for _, name := range []string{"addr", "web", "mod", "claude", "lang"} {
 		v, ok := set[name]
 		if !ok {
 			continue
@@ -336,10 +354,9 @@ func errorText(err error) string {
 	return err.Error()
 }
 
-// launcher prepares what starting sessions from the page needs; without claude or a usable terminal
-// the feature stays off. A missing mod doesn't turn it off: the page tells how to install it, and a
-// reload after installing is enough.
-func launcher(modDir, claude, terminal, bridgeURL string) *bridge.Launcher {
+// launcher prepares what starting sessions from the page needs; without claude the feature stays off. A
+// missing mod doesn't turn it off: the page tells how to install it, and a reload after installing is enough.
+func launcher(modDir, claude, bridgeURL string) *bridge.Launcher {
 	var abs string
 	if modDir != "" {
 		var err error
@@ -356,13 +373,8 @@ func launcher(modDir, claude, terminal, bridgeURL string) *bridge.Launcher {
 		log.Print(i18n.T("log.launch_off_claude", "claude", claude))
 		return nil
 	}
-	term, err := bridge.PickTerminal(runtime.GOOS, terminal, exec.LookPath)
-	if err != nil {
-		log.Print(i18n.T("log.launch_off", "reason", errorText(err)))
-		return nil
-	}
-	log.Print(i18n.T("log.launch_on", "terminal", term.Name()))
-	l := bridge.NewLauncher(claudePath, abs, bridgeURL, term)
+	log.Print(i18n.T("log.launch_on"))
+	l := bridge.NewLauncher(claudePath, abs, bridgeURL, bridge.NewPTYTerminal())
 	// run from the repository, install hints use it as a local plugin marketplace
 	if wd, err := os.Getwd(); err == nil {
 		if _, err := os.Stat(filepath.Join(wd, ".claude-plugin", "marketplace.json")); err == nil {

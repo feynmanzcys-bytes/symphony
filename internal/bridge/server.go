@@ -28,6 +28,10 @@ type Server struct {
 	Launcher *Launcher
 	// AllowedHosts are the host names a request's Host may carry, against DNS rebinding; only this machine by default
 	AllowedHosts []string
+	// Window opens a terminal window on this machine (the employee window's "open terminal"); nil means none can be opened
+	Window *Window
+	// AttachCommand is the command such a window runs to attach to a launch's terminal (symphony attach ...)
+	AttachCommand func(launchID string) []string
 
 	web fs.FS
 	mux *http.ServeMux
@@ -56,6 +60,7 @@ func NewServer(hub *Hub, web fs.FS) *Server {
 	s.mux.HandleFunc("POST /api/ask", s.ask)
 	s.mux.HandleFunc("GET /api/wait/{id}", s.wait)
 	s.mux.HandleFunc("POST /api/cancel/{id}", s.cancel)
+	s.mux.HandleFunc("GET /api/inbox", s.inbox)
 
 	// called by the page: answers, accounts, starting sessions
 	s.mux.HandleFunc("POST /api/answer/{id}", s.answer)
@@ -64,6 +69,14 @@ func NewServer(hub *Hub, web fs.FS) *Server {
 	s.mux.HandleFunc("GET /api/launch/options", s.launchOptions)
 	s.mux.HandleFunc("GET /api/dirs", s.dirs)
 	s.mux.HandleFunc("POST /api/launch", s.launch)
+	// the employee window: the chat, and the session's terminal
+	s.mux.HandleFunc("GET /api/chat/{session}", s.chat)
+	s.mux.HandleFunc("POST /api/say/{session}", s.say)
+	s.mux.HandleFunc("POST /api/abort/{session}", s.abort)
+	s.mux.HandleFunc("GET /api/terminal/{id}/stream", s.termStream)
+	s.mux.HandleFunc("POST /api/terminal/{id}/input", s.termInput)
+	s.mux.HandleFunc("POST /api/terminal/{id}/resize", s.termResize)
+	s.mux.HandleFunc("POST /api/terminal/{id}/open", s.termOpen)
 	return s
 }
 
@@ -110,8 +123,10 @@ func writeErr(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, ErrUnknownAsk), errors.Is(err, ErrUnknownAccount):
 		status = http.StatusNotFound
-	case errors.Is(err, ErrSettled), errors.Is(err, ErrAccountBusy), errors.Is(err, ErrNameTaken):
+	case errors.Is(err, ErrSettled), errors.Is(err, ErrAccountBusy), errors.Is(err, ErrNameTaken), errors.Is(err, ErrSessionOffline), errors.Is(err, ErrTermEnded):
 		status = http.StatusConflict
+	case errors.Is(err, ErrTermUnknown):
+		status = http.StatusNotFound
 	case errors.Is(err, ErrWrongAccount):
 		status = http.StatusForbidden
 	}

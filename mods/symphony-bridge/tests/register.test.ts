@@ -19,6 +19,7 @@ function world(
   mock.env(on, env)
   const clock = mock.clock(on)
   const reqs: Req[] = []
+  const polls: Req[] = [] // the inbox long polls, apart from the reports
   const toasts: string[] = []
   const runs: string[][] = []
   on('process.run', (_$, e) => {
@@ -31,7 +32,7 @@ function world(
     const headers = (e.init?.headers ?? {}) as Record<string, string>
     const body = typeof e.init?.body === 'string' ? JSON.parse(e.init.body) : undefined
     const r: Req = { url: e.url, method: e.init?.method, auth: headers.authorization, body }
-    reqs.push(r)
+    ;(r.url.includes('/api/inbox') ? polls : reqs).push(r)
     const answer = reply(r)
     if (answer === 'down') return { deny: 'connection refused' }
     const { status, text } = answer
@@ -45,7 +46,7 @@ function world(
   on('session.model', () => ({ value: 'claude-sonnet-5-5' }))
   on('fs.read', () => ({ deny: 'tests read no files' }))
   on('session.start', (_$, e) => ({ cwd: e.cwd }))
-  return { reqs, toasts, runs, clock }
+  return { reqs, polls, toasts, runs, clock }
 }
 
 const start = { cwd: '/work', surface: 'terminal', isInteractive: true } as const
@@ -80,6 +81,7 @@ test('a session with a token: reports itself online with the token, then a heart
   await w.clock.advance(15_000)
   await w.clock.settle()
   expect(w.reqs.at(-1)?.body).toEqual(expect.objectContaining({ kind: 'heartbeat' }))
+  expect(w.polls.length).toBeGreaterThan(0) // and it listens for what the page sends
   expect(w.toasts).toEqual([])
 })
 
@@ -99,8 +101,8 @@ test('the bridge rejects the token: one message, approvals stay in the terminal,
 
 test('a tool call is reported before and after, in order, without waiting for the bridge', async ($, on) => {
   let answered = 0
-  const w = world(on, { SYMPHONY_TOKEN: 'tok' }, () => {
-    answered++
+  const w = world(on, { SYMPHONY_TOKEN: 'tok' }, r => {
+    if (!r.url.includes('/api/inbox')) answered++
     return { status: 200, text: '{}' }
   })
   on('tool.call', () => ({ result: {} }))
@@ -213,4 +215,151 @@ test('the reason sent back to the model when the page decides is in the session 
   const verdict = await $.tool.check(bash)
   expect(verdict).toEqual(expect.objectContaining({ decision: 'deny', reason: 'symphony: auf der Webseite abgelehnt' }))
   expect(w.toasts).toEqual([])
+})
+
+// ---------- the chat: what the employee window shows ----------
+
+const step = { turnId: 't1', index: 0, model: 'claude-opus-5-5', messageCount: 3 } as const
+const stepResult = { turnId: 't1', index: 0, answer: 'Hello there', toolUses: [], stopReason: 'end_turn', usage: null } as const
+
+test('the response streams to the chat: thinking and text in batches, then a stop', async ($, on) => {
+  const w = world(on, { SYMPHONY_TOKEN: 'tok' })
+  on('turn.step', async function* () {
+    yield { kind: 'thinking', index: 0, text: 'Let me ' }
+    yield { kind: 'thinking', index: 0, text: 'think.' }
+    yield { kind: 'text', index: 1, text: 'Hello ' }
+    yield { kind: 'text', index: 1, text: 'there' }
+    return stepResult
+  })
+
+  await $.session.start(start)
+  const stream = $.turn.step(step)
+  const seen: string[] = []
+  let result
+  for (;;) {
+    const n = await stream.next()
+    if (n.done) {
+      result = n.value
+      break
+    }
+    seen.push(n.value.kind)
+  }
+  expect(seen).toEqual(['thinking', 'thinking', 'text', 'text']) // every chunk passes through
+  expect(result?.answer).toBe('Hello there')
+  await w.clock.advance(200)
+  await w.clock.settle()
+  const kinds = w.reqs.map(r => r.body?.kind)
+  expect(kinds).toEqual(['session.start', 'session.model', 'chat.delta', 'chat.stop'])
+  expect(w.reqs[2].body).toEqual(
+    expect.objectContaining({
+      turnId: 't1',
+      step: 0,
+      blocks: [
+        { i: 0, kind: 'thinking', text: 'Let me think.' },
+        { i: 1, kind: 'text', text: 'Hello there' },
+      ],
+    }),
+  )
+  expect(w.reqs[3].body).toEqual(expect.objectContaining({ turnId: 't1', step: 0 }))
+})
+
+test('a subagent\'s steps pass through without reaching the chat', async ($, on) => {
+  const w = world(on, { SYMPHONY_TOKEN: 'tok' })
+  on('turn.step', async function* () {
+    yield { kind: 'text', index: 0, text: 'sub' }
+    return { ...stepResult, answer: 'sub' }
+  })
+
+  await $.session.start(start)
+  for await (const _ of $.turn.step({ ...step, agentId: 'agent-1' })) {
+    // consumed
+  }
+  await w.clock.advance(200)
+  await w.clock.settle()
+  expect(w.reqs.map(r => r.body?.kind)).toEqual(['session.start'])
+})
+
+test('without a token nothing streams', async ($, on) => {
+  const w = world(on, {})
+  on('turn.step', async function* () {
+    yield { kind: 'text', index: 0, text: 'x' }
+    return stepResult
+  })
+
+  await $.session.start(start)
+  for await (const _ of $.turn.step(step)) {
+    // consumed
+  }
+  await w.clock.advance(200)
+  expect(w.reqs).toEqual([])
+})
+
+test('a prompt that enters is reported to the chat with where it came from', async ($, on) => {
+  const w = world(on, { SYMPHONY_TOKEN: 'tok' })
+  on('prompt.submit', (_$, e) => ({ text: e.text }))
+
+  await $.session.start(start)
+  await $.prompt.submit({ text: 'fix the tests' })
+  await w.clock.settle()
+  const user = w.reqs.find(r => r.body?.kind === 'chat.user')
+  expect(user?.body).toEqual(expect.objectContaining({ text: 'fix the tests', session: 'sess-1' }))
+})
+
+test('the page sends text: the mod polls the inbox, submits it as the person\'s prompt and reports it sent', async ($, on) => {
+  let polls = 0
+  const w = world(on, { SYMPHONY_TOKEN: 'tok' }, r => {
+    if (r.url.includes('/api/inbox?session=sess-1')) {
+      polls++
+      return { status: 200, text: polls === 1 ? '{"items":[{"kind":"say","text":"run the build"}]}' : '{"items":[]}' }
+    }
+    return { status: 200, text: '{}' }
+  })
+  const submitted: Record<string, unknown>[] = []
+  on('prompt.submit', (_$, e) => {
+    submitted.push({ text: e.text, origin: e.origin })
+    return { text: e.text }
+  })
+
+  await $.session.start(start)
+  await w.clock.advance(100)
+  await w.clock.settle()
+  expect(submitted.length).toBe(1)
+  expect(submitted[0].text).toBe('run the build')
+  const sent = w.reqs.find(r => r.body?.kind === 'chat.sent')
+  expect(sent?.body).toEqual(expect.objectContaining({ text: 'run the build' }))
+  expect(polls).toBeGreaterThan(1) // the poll goes on after an item
+  expect(w.polls[0]).toEqual(expect.objectContaining({ auth: 'Bearer tok' }))
+})
+
+test('the page stops the running turn: the mod aborts the main turn', async ($, on) => {
+  let polls = 0
+  const w = world(on, { SYMPHONY_TOKEN: 'tok' }, r => {
+    if (r.url.includes('/api/inbox')) {
+      polls++
+      return { status: 200, text: polls === 2 ? '{"items":[{"kind":"abort"}]}' : '{"items":[]}' }
+    }
+    return { status: 200, text: '{}' }
+  })
+  const aborted: string[] = []
+  on('turn.abort', (_$, e) => {
+    aborted.push(e.turnId)
+    return { value: undefined }
+  })
+  on('turn.start', (_$, e) => ({ turnId: e.turnId }))
+
+  await $.session.start(start)
+  await $.turn.start({ turnId: 'turn-9', text: 'go' })
+  await w.clock.advance(200)
+  await w.clock.settle()
+  expect(aborted).toEqual(['turn-9'])
+})
+
+test('a tool call carries its main argument for the chat', async ($, on) => {
+  const w = world(on, { SYMPHONY_TOKEN: 'tok' })
+  on('tool.call', () => ({ result: {} }))
+
+  await $.session.start(start)
+  await $.tool.call({ tool: 'Bash', command: 'go test ./...' })
+  await w.clock.settle()
+  expect(w.reqs[1].body).toEqual(expect.objectContaining({ kind: 'tool.start', tool: 'Bash', summary: 'go test ./...' }))
 })

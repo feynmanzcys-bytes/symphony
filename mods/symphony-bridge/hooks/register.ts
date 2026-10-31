@@ -15,10 +15,17 @@ import { type Lang, matchLang, message } from './messages'
 // own terminal interaction; the session never hangs.
 // Reports (events, the heartbeat) go out one after another in the background: a hook never waits for the bridge,
 // and a report that gets no answer in time is given up. Only asks wait, for the page's answer.
+// The employee window in the page shows the session as a chat: the mod streams the model's thinking and text
+// (turn.step, in batches), reports the prompts that enter (prompt.submit) and the tool calls, and polls the bridge
+// for what the page sends (its inbox): text to submit as the person's prompt, or a stop of the running turn.
 const DEFAULT_BRIDGE = 'http://127.0.0.1:7788'
 // how long a report, or putting an ask on the bridge, may take; a hanging bridge holds nothing up for longer
 const REPORT_TIMEOUT = 5_000
 const ASK_TIMEOUT = 10_000
+// how often the pieces of a streamed response go to the bridge, at most
+const STREAM_FLUSH = 150
+// after a failed inbox poll, how long before the next
+const INBOX_RETRY = 3_000
 
 type Answer =
   | { decision: 'allow' | 'deny'; reason?: string }
@@ -41,6 +48,11 @@ let refused = false
 let queue: Promise<unknown> = Promise.resolve()
 // calls the web page denied. A denied tool reaches tool.call as an error result, not { deny }, so we remember them.
 const deniedByWeb = new Set<string>()
+// the main loop's running turn, for a stop from the page
+let mainTurn: string | undefined
+// the session ended: the inbox poll stops
+let ended = false
+let polling = false
 
 // The Claude login is in $CLAUDE_CONFIG_DIR/.claude.json, or in the home folder when that isn't set (Windows has no HOME; use USERPROFILE).
 async function loginEmail($: EngineInterface) {
@@ -211,6 +223,92 @@ async function titleFromTranscript($: EngineInterface) {
   }
 }
 
+// summary is a tool call's main argument, for the chat: the command, the file, the pattern, the prompt (the
+// tool's input fields sit on the event itself).
+function summary(input: unknown): string {
+  if (!input || typeof input !== 'object') return ''
+  const m = input as Record<string, unknown>
+  for (const k of ['command', 'file_path', 'notebook_path', 'pattern', 'url', 'query', 'description', 'prompt', 'skill', 'path']) {
+    const v = m[k]
+    if (typeof v === 'string' && v.trim()) return v.trim().slice(0, 300)
+  }
+  return ''
+}
+
+// A step's response in pieces: thinking and text chunks are gathered by block and sent every STREAM_FLUSH ms,
+// and end closes the blocks.
+function stepStream($: EngineInterface, turnId: string, step: number) {
+  const blocks = new Map<number, { kind: string; text: string }>()
+  let timer: { cancel: () => void } | undefined
+  const flush = () => {
+    timer?.cancel()
+    timer = undefined
+    if (!blocks.size) return
+    const list = [...blocks].map(([i, b]) => ({ i, kind: b.kind, text: b.text }))
+    blocks.clear()
+    report($, 'chat.delta', { turnId, step, blocks: list })
+  }
+  return {
+    add(index: number, kind: 'thinking' | 'text', text: string) {
+      if (!text) return
+      const b = blocks.get(index)
+      if (b) b.text += text
+      else blocks.set(index, { kind, text })
+      timer ??= $.clock.after(STREAM_FLUSH, flush)
+    },
+    end() {
+      flush()
+      report($, 'chat.stop', { turnId, step })
+    },
+  }
+}
+
+// the inbox: what the page sent to this session. One long poll at a time, for as long as the session runs.
+type InboxItem = { kind: 'say'; text: string } | { kind: 'abort' }
+
+function pollInbox($: EngineInterface) {
+  if (polling) return
+  polling = true
+  const again = (ms: number) => {
+    $.clock.after(ms, () => {
+      polling = false
+      pollInbox($)
+    })
+  }
+  void (async () => {
+    if (ended || refused || !(await ident($))) {
+      polling = false
+      return
+    }
+    let items: InboxItem[] = []
+    try {
+      const res = await call($, `/api/inbox?session=${encodeURIComponent(await sid($))}`)
+      if (res.status === 401) {
+        refused = true
+        polling = false
+        return
+      }
+      if (!res.ok) return again(INBOX_RETRY)
+      items = (JSON.parse(res.text).items ?? []) as InboxItem[]
+    } catch {
+      return again(INBOX_RETRY)
+    }
+    for (const it of items) {
+      try {
+        if (it.kind === 'say' && it.text) {
+          await $.prompt.submit({ text: it.text, asUser: true })
+          report($, 'chat.sent', { text: it.text.slice(0, 4000) })
+        } else if (it.kind === 'abort' && mainTurn) {
+          await $.turn.abort({ turnId: mainTurn })
+        }
+      } catch {
+        // a prompt that couldn't enter, or a turn already over: nothing to do
+      }
+    }
+    again(items.length ? 0 : 50)
+  })()
+}
+
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const started = await next(e)
@@ -220,6 +318,8 @@ export const register: Register = on => {
     sticky = { cwd: e.cwd, launch: (await $.env.get('SYMPHONY_LAUNCH')) || undefined }
     const model = await $.session.model()
     reported = { model, effort: '' }
+    ended = false
+    mainTurn = undefined
     const online = { interactive: e.isInteractive, login: id.login, model }
     let res = await emit($, 'session.start', online, ASK_TIMEOUT)
     if (!res && (await startBridge($, id.bridge))) {
@@ -237,14 +337,40 @@ export const register: Register = on => {
       heartbeat = $.clock.every(15_000, () => {
         report($, 'heartbeat')
       })
+      if (res?.ok) pollInbox($)
     }
     return started
   })
 
-  // on every model request, note the model and effort actually used (main session only)
+  // on every model request, note the model and effort actually used, and stream the response's thinking and
+  // text to the chat (main session only; subagents pass through)
   on('turn.step', async function* ($, e, next) {
-    if (!('agentId' in e && e.agentId)) reportModel($, e.model, e.effort)
-    return yield* next(e)
+    const stream = next(e)
+    if ('agentId' in e && e.agentId) return yield* stream
+    reportModel($, e.model, e.effort)
+    const office = !refused && (await ident($))
+    const chat = office ? stepStream($, e.turnId, e.index) : undefined
+    try {
+      for (;;) {
+        const n = await stream.next()
+        if (n.done) return n.value
+        const c = n.value
+        if (chat && (c.kind === 'thinking' || c.kind === 'text')) chat.add(c.index, c.kind, c.text)
+        yield c
+      }
+    } finally {
+      chat?.end()
+    }
+  })
+
+  // a prompt that enters the session (typed, a command, a notification); messages from other sessions have
+  // their own events, and a prompt this mod submits for the page is reported as chat.sent
+  on('prompt.submit', async ($, e, next) => {
+    const entered = await next(e)
+    if (!('drop' in entered)) {
+      report($, 'chat.user', { text: e.text.slice(0, 4000), origin: e.origin?.kind, command: e.command?.name })
+    }
+    return entered
   })
 
   // the session name (from --name or /rename): sent at start or resume and with every prompt;
@@ -293,12 +419,14 @@ export const register: Register = on => {
 
   on('session.end', async ($, e, next) => {
     heartbeat?.cancel()
+    ended = true
     report($, 'session.end')
     await queue // the goodbye, and whatever was still on its way, before the session goes
     return next(e)
   })
 
   on('turn.start', async ($, e, next) => {
+    if (!('agentId' in e && e.agentId)) mainTurn = e.turnId
     report($, 'turn.start', {
       turnId: e.turnId,
       text: e.text.slice(0, 200),
@@ -308,6 +436,7 @@ export const register: Register = on => {
   })
 
   on('turn.complete', async ($, e, next) => {
+    if (!('agentId' in e && e.agentId) && mainTurn === e.turnId) mainTurn = undefined
     report($, 'turn.complete', {
       turnId: e.turnId,
       durationMs: e.durationMs,
@@ -344,8 +473,8 @@ export const register: Register = on => {
   // AskUserQuestion: no terminal dialog; the answer from the web page becomes the tool result.
   // Other tools are only reported.
   on('tool.call', async ($, e, next) => {
-    const call = { tool: e.tool, agentId: e.agentId }
-    report($, 'tool.start', call)
+    const call = { tool: e.tool, agentId: e.agentId, toolUseId: e.tool_use_id }
+    report($, 'tool.start', { ...call, summary: summary(e) })
 
     let ran: Awaited<ReturnType<typeof next>> | undefined
     if (e.tool === 'AskUserQuestion') {

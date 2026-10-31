@@ -2,6 +2,15 @@
 
 What changed in each release of symphony. The program (the bridge) and the mod share one version number. A release's notes start with its section here: the release workflow stops before building when the section is missing.
 
+## v0.6.0 (2026-10-31)
+
+- **Every session as a chat**: a click on an employee opens its window in the middle of the page (it replaces the card on the right and the pending popup): the employee at the top, and below it the session as a chat: the prompts, the model's thinking (folded, "Thinking…" in orange with three dots while it goes on), its answers as they stream, the tool calls with their outcome, messages from other sessions in purple, and the asks with how they were settled. Write at the bottom and it reaches the session as your prompt (Enter sends, Shift+Enter breaks a line); Stop interrupts the running turn. The mod (0.6.0) streams the response, reports the prompts that enter and polls the bridge for what the page sends: `claude plugin update symphony-bridge@symphony`.
+- **Asks in the employee's window**: permission requests and questions rise over the input of that employee's window as cards and must be handled before you can write; nothing pops up by itself any more. The red count in the bar at the top opens the first waiting employee's window.
+- **No more windows, no tmux**: sessions started from the page run on a pseudo-terminal inside the bridge (`/dev/ptmx` on macOS and Linux, ConPTY on Windows): nothing opens on the screen and nothing takes your focus, and the bridge answers "trust this folder" on every platform. "Open terminal" in the employee's window opens a terminal window attached to the session (`symphony attach <id>` does the same anywhere; `Ctrl-]` or closing the window detaches, and the session goes on). The sessions are the bridge's children, so stopping the bridge ends them. `-terminal` is accepted and ignored.
+- A new employee starts with everything allowed (`bypassPermissions`), Opus and the most thinking (`max`); an old one as it last worked.
+- The activity log at the bottom left is a panel now, hidden until the bar's button opens it (the page remembers).
+- Once a launch is online the new employee's window opens.
+
 ## v0.5.0 (2026-10-31)
 
 - Lighter traffic between the bridge and the pages: a change pushes the message log no more (the first snapshot and `/api/state` carry it; new messages come as events, and a page that missed one fetches the log again), each push is encoded once for all pages, and a pending ask's long input strings reach the page cut to 4 KiB with a note. With 300 long messages a tool call used to send every page two snapshots of about 650 KiB.

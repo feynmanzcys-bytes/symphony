@@ -1,10 +1,19 @@
 {
   "name": "symphony-bridge",
-  "version": "0.5.0",
-  "description": "Brings Claude Code sessions into the symphony office: permission requests and AskUserQuestion are handled in the office web page, and session activity is reported there. Only affects sessions started with SYMPHONY_TOKEN.",
-  "author": { "name": "feynmanzcys-bytes", "url": "https://github.com/feynmanzcys-bytes" },
+  "version": "0.6.0",
+  "description": "Brings Claude Code sessions into the symphony office: each session shows as a chat in the office web page, which also takes prompts and handles permission requests and AskUserQuestion, and session activity is reported there. Only affects sessions started with SYMPHONY_TOKEN.",
+  "author": {
+    "name": "feynmanzcys-bytes",
+    "url": "https://github.com/feynmanzcys-bytes"
+  },
   "homepage": "https://github.com/feynmanzcys-bytes/symphony",
   "repository": "https://github.com/feynmanzcys-bytes/symphony",
   "license": "MIT",
-  "keywords": ["symphony", "multi-session", "approval", "dashboard", "i18n"]
+  "keywords": [
+    "symphony",
+    "multi-session",
+    "approval",
+    "dashboard",
+    "i18n"
+  ]
 }

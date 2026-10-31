@@ -84,46 +84,58 @@ func TestI18n(t *testing.T) {
 	})
 }
 
-// checkOffice walks the office in one language: the pending popup, the message log, an online and an
-// offline employee's card, and the launch dialog. Its tab is closed afterwards.
+// checkOffice walks the office in one language: the pending asks in the waiting employee's window, the message
+// log, an online and an offline employee's window, and the launch dialog. Its tab is closed afterwards.
 func checkOffice(t *testing.T, b *testBridge, browser context.Context, lang string) {
 	t.Helper()
 	office, closeTab := openTab(t, browser, b.URL+"/?lang="+lang)
 	defer closeTab()
 	var texts []string
 	read := func() { texts = append(texts, get(t, office, 5*time.Second, chromedp.Evaluate[string](pageText))) }
-	waitUntil(t, 20*time.Second, lang+": the office shows three employees and opens the pending popup", func() bool {
+	waitUntil(t, 20*time.Second, lang+": the office shows three employees and the red pending chip", func() bool {
 		return get(t, office, 5*time.Second, chromedp.Evaluate[bool](
-			`document.querySelectorAll('.emp-label').length === 3 && !document.getElementById('asks-modal').hidden && document.querySelectorAll('#asks .card').length === 2`))
+			`document.querySelectorAll('.emp-label').length === 3 && !!document.querySelector('#stats .chip.hot[data-group=waiting]')`))
+	})
+	// the red chip opens the waiting employee's window, with both asks' cards over the input
+	do(t, office, 10*time.Second, chromedp.Click(chromedp.CSS(`#stats .chip.hot[data-group=waiting]`)))
+	waitUntil(t, 10*time.Second, lang+": alice's window shows her two asks", func() bool {
+		return get(t, office, 5*time.Second, chromedp.Evaluate[bool](
+			`!document.getElementById('chat').hidden && document.querySelector('#chat h2').textContent === 'alice' && document.querySelectorAll('#chat .dock.asking #asks .card').length === 2`))
 	})
 	if got := get(t, office, 5*time.Second, chromedp.Evaluate[string](`document.documentElement.lang`)); got != lang {
 		t.Fatalf("%s: the page says lang=%q", lang, got)
 	}
 	read()
 	screenshot(t, office, "i18n-"+lang+"-asks.png")
-	// "Later" closes the popup; the red pending chip in the HUD opens it again
-	do(t, office, 10*time.Second, chromedp.Click(chromedp.CSS(`#asks-later`)), chromedp.WaitNotVisible(chromedp.CSS(`#asks-modal`)),
-		chromedp.Click(chromedp.CSS(`#stats .chip.hot[data-group=waiting]`)), chromedp.WaitVisible(chromedp.CSS(`#asks-modal`)),
-		chromedp.Click(chromedp.CSS(`#asks-later`)), chromedp.Click(chromedp.CSS(`#open-msgs`)), chromedp.WaitVisible(chromedp.CSS(`#msgs-panel`)))
+	// the window closes; the message log and the activity log open from the HUD
+	do(t, office, 10*time.Second, chromedp.Click(chromedp.CSS(`#chat .close`)), chromedp.WaitNotVisible(chromedp.CSS(`#chat`)),
+		chromedp.Click(chromedp.CSS(`#open-msgs`)), chromedp.WaitVisible(chromedp.CSS(`#msgs-panel`)),
+		chromedp.Click(chromedp.CSS(`#open-log`)), chromedp.WaitVisible(chromedp.CSS(`#log`)))
 	read()
-	do(t, office, 10*time.Second, chromedp.Click(chromedp.CSS(`#msgs-panel .close`)))
-	for _, name := range []string{"bob", "carol"} { // an online card and an offline one
+	do(t, office, 10*time.Second, chromedp.Click(chromedp.CSS(`#msgs-panel .close`)), chromedp.Click(chromedp.CSS(`#log .close`)))
+	for _, name := range []string{"bob", "carol"} { // an online employee's window (with the chat) and an offline one's
 		clickLabel(t, office, b.account(name).ID)
-		do(t, office, 10*time.Second, chromedp.WaitVisible(chromedp.CSS(`#card`)))
+		do(t, office, 10*time.Second, chromedp.WaitVisible(chromedp.CSS(`#chat`)))
+		if name == "bob" {
+			waitUntil(t, 10*time.Second, lang+": bob's chat shows alice's message in purple", func() bool {
+				return get(t, office, 5*time.Second, chromedp.Evaluate[bool](`!!document.querySelector('#chat .flow .it.message')`))
+			})
+		}
 		read()
+		do(t, office, 10*time.Second, chromedp.Click(chromedp.CSS(`#chat .close`)))
 	}
-	// the search box: "bo" finds bob alone, and Enter opens his card
-	do(t, office, 10*time.Second, chromedp.Click(chromedp.CSS(`#card .close`)), chromedp.SendKeys(chromedp.CSS(`#find`), "bo"))
+	// the search box: "bo" finds bob alone, and Enter opens his window
+	do(t, office, 10*time.Second, chromedp.SendKeys(chromedp.CSS(`#find`), "bo"))
 	waitUntil(t, 10*time.Second, lang+": the search lists bob alone", func() bool {
 		return get(t, office, 5*time.Second, chromedp.Evaluate[bool](
 			`(h => h.length === 1 && h[0].textContent.includes('bob'))(document.querySelectorAll('#find-list:not([hidden]) .hit'))`))
 	})
 	read()
-	do(t, office, 10*time.Second, chromedp.SendKeys(chromedp.CSS(`#find`), kb.Enter), chromedp.WaitVisible(chromedp.CSS(`#card`)))
-	if got := get(t, office, 5*time.Second, chromedp.Evaluate[string](`document.querySelector('#card h2').textContent`)); got != "bob" {
-		t.Fatalf("%s: Enter in the search box should open bob's card, got %q", lang, got)
+	do(t, office, 10*time.Second, chromedp.SendKeys(chromedp.CSS(`#find`), kb.Enter), chromedp.WaitVisible(chromedp.CSS(`#chat`)))
+	if got := get(t, office, 5*time.Second, chromedp.Evaluate[string](`document.querySelector('#chat h2').textContent`)); got != "bob" {
+		t.Fatalf("%s: Enter in the search box should open bob's window, got %q", lang, got)
 	}
-	do(t, office, 10*time.Second, chromedp.Click(chromedp.CSS(`#card .close`)),
+	do(t, office, 10*time.Second, chromedp.Click(chromedp.CSS(`#chat .close`)),
 		chromedp.Click(chromedp.CSS(`#new-emp`)), chromedp.WaitVisible(chromedp.CSS(`#launch form`)))
 	read()
 	screenshot(t, office, "i18n-"+lang+"-launch.png")

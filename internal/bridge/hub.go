@@ -48,9 +48,10 @@ const (
 )
 
 var (
-	ErrUnknownAsk   = newError("ask_unknown", "unknown ask")
-	ErrSettled      = newError("ask_settled", "ask already settled")
-	ErrWrongAccount = newError("ask_wrong_account", "belongs to another account")
+	ErrUnknownAsk     = newError("ask_unknown", "unknown ask")
+	ErrSettled        = newError("ask_settled", "ask already settled")
+	ErrWrongAccount   = newError("ask_wrong_account", "belongs to another account")
+	ErrSessionOffline = newError("session_offline", "the session is not online")
 )
 
 type Agent struct {
@@ -139,6 +140,10 @@ type Event struct {
 	TurnID      string  `json:"turnId,omitempty"`
 	ToolUseID   string  `json:"toolUseId,omitempty"`
 	Interactive bool    `json:"interactive,omitempty"`
+	// the chat: a tool call's main argument (tool.start), and the model's response in pieces (chat.delta / chat.stop)
+	Summary string      `json:"summary,omitempty"`
+	Step    int         `json:"step,omitempty"`
+	Blocks  []ChatDelta `json:"blocks,omitempty"`
 }
 
 // Snapshot is the whole state as the pages see it. Messages is the message log in a full snapshot (the first one a
@@ -178,6 +183,8 @@ type Hub struct {
 	asks     map[string]*Ask
 	messages []*Message
 	launches map[string]*Launch
+	chats    map[string]*chatLog // by session id
+	inboxes  map[string]*inbox   // by session id
 	subs     map[chan *Push]struct{}
 	now      func() time.Time
 	msgSave  saver // writes the message log in the background
@@ -191,6 +198,8 @@ func NewHub() *Hub {
 		sessions: map[string]*Session{},
 		asks:     map[string]*Ask{},
 		launches: map[string]*Launch{},
+		chats:    map[string]*chatLog{},
+		inboxes:  map[string]*inbox{},
 		subs:     map[chan *Push]struct{}{},
 		now:      time.Now,
 	}
@@ -319,7 +328,7 @@ func (h *Hub) sessionLocked(id string, acc *Account) (s *Session, fresh bool, er
 	// an account keeps the record of its current session only
 	for sid, old := range h.sessions {
 		if old.Account == acc.ID && sid != id {
-			delete(h.sessions, sid)
+			h.dropSessionLocked(sid)
 		}
 	}
 	now := h.now()
@@ -380,6 +389,23 @@ func (h *Hub) Apply(ev Event, acc *Account) error {
 	if ev.Kind == "heartbeat" && !fresh {
 		return nil // a heartbeat only keeps the session alive; nothing to tell the page
 	}
+	// the chat's own events change nothing in the office: they go to the pages as chat events, without a snapshot
+	chatOnly := true
+	switch ev.Kind {
+	case "chat.delta":
+		h.chatStreamLocked(s, ev.TurnID, ev.Step, ev.Blocks)
+	case "chat.stop":
+		h.chatStopLocked(s, ev.TurnID, ev.Step)
+	case "chat.user":
+		h.chatUserLocked(s, ev)
+	case "chat.sent":
+		h.chatSentLocked(s, ev.Text)
+	default:
+		chatOnly = false
+	}
+	if chatOnly && !fresh {
+		return nil
+	}
 
 	before := s.State
 
@@ -403,6 +429,7 @@ func (h *Hub) Apply(ev Event, acc *Account) error {
 	switch ev.Kind {
 	case "session.end":
 		s.State, s.Tool = StateEnded, ""
+		h.chatNoticeLocked(s.ID, "ended")
 	case "session.title":
 		// a new session's SessionStart carries no name; don't clear the known one
 		title := strings.TrimSpace(ev.Title)
@@ -422,21 +449,28 @@ func (h *Hub) Apply(ev Event, acc *Account) error {
 			setState(StateDone, "")
 		} else {
 			setState(StateIdle, "")
+			if ev.IsAborted {
+				h.chatNoticeLocked(s.ID, "aborted")
+			}
 		}
 	case "tool.start":
 		setState(StateTool, ev.Tool)
 		s.Tools++
+		h.chatToolLocked(s, ev, false)
 	case "tool.end":
 		setState(StateThinking, "")
+		h.chatToolLocked(s, ev, true)
 	case "message.receive":
 		if m := h.receiveLocked(s, ev); m != nil {
 			extra = map[string]any{"type": "message", "message": m}
 			h.saveMessagesLocked()
+			h.chatMessageLocked(s.ID, m)
 		}
 	case "message.send":
 		if m := h.sendLocked(s, ev); m != nil {
 			extra = map[string]any{"type": "message", "message": m}
 			h.saveMessagesLocked()
+			h.chatMessageLocked(s.ID, m)
 		}
 	}
 	h.refreshWaitingLocked(s)
@@ -484,6 +518,13 @@ func (h *Hub) Reap() {
 	}
 }
 
+// dropSessionLocked forgets a session: its record, its chat and its inbox.
+func (h *Hub) dropSessionLocked(id string) {
+	delete(h.sessions, id)
+	delete(h.chats, id)
+	delete(h.inboxes, id)
+}
+
 // Prune drops long-ended sessions and long-settled asks, so a bridge that runs for days doesn't pile them up.
 func (h *Hub) Prune() {
 	h.mu.Lock()
@@ -492,7 +533,7 @@ func (h *Hub) Prune() {
 	changed := false
 	for id, s := range h.sessions {
 		if s.State == StateEnded && s.Updated.Before(cut) {
-			delete(h.sessions, id)
+			h.dropSessionLocked(id)
 			changed = true
 		}
 	}
@@ -711,6 +752,7 @@ func (h *Hub) CreateAsk(req AskRequest, acc *Account) (string, error) {
 	}
 	a.preview, a.InputTruncated = trimInput(req.Input)
 	h.asks[a.ID] = a
+	h.chatAskLocked(a)
 	before := s.State
 	h.refreshWaitingLocked(s)
 	h.markStateLocked(s, before)
@@ -766,6 +808,7 @@ func (h *Hub) Settle(id, account, status string, answer map[string]any) error {
 	}
 	a.Status, a.Answer = status, answer
 	close(a.done)
+	h.chatSettledLocked(a)
 	if s := h.sessions[a.Session]; s != nil {
 		before := s.State
 		h.refreshWaitingLocked(s)
