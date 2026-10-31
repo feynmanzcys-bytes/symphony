@@ -238,7 +238,10 @@ func TestAsksDock(t *testing.T) {
 		return get(t, office, 5*time.Second, chromedp.Evaluate[bool](`document.querySelectorAll('.emp-label').length === 1 && !!document.querySelector('#stats .chip.hot')`))
 	})
 	clickLabel(t, office, alice.ID)
-	waitUntil(t, 20*time.Second, "alice's window opens with her ask over the input", func() bool { return len(cards()) == 1 })
+	// the dock rises with a short animation: measure once it has settled
+	waitUntil(t, 20*time.Second, "alice's window opens with her ask over the input", func() bool {
+		return len(cards()) == 1 && get(t, office, 5*time.Second, chromedp.Evaluate[bool](`document.querySelector('#chat .dock').getAnimations().length === 0`))
+	})
 	if shown := get(t, office, 5*time.Second, chromedp.Evaluate[bool](`getComputedStyle(document.querySelector('#chat .say')).display !== 'none'`)); shown {
 		t.Fatal("the input should be covered while an ask waits")
 	}
