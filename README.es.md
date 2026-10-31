@@ -131,7 +131,7 @@ Si nada responde en la dirección del bridge en esta máquina, la sesión lo ini
 | Sistema | Terminal para las sesiones abiertas desde la página | Pruebas |
 | --- | --- | --- |
 | Linux | tmux si está instalado; si no, una terminal gráfica | Pruebas de extremo a extremo completas |
-| macOS | Terminal.app por defecto; `-terminal tmux` para usar tmux | Solo compilación cruzada y pruebas unitarias |
+| macOS | Terminal.app por defecto; `-terminal tmux` para usar tmux | Compilación cruzada y pruebas unitarias; `-autostart` probado también de extremo a extremo |
 | Windows | Una ventana de consola nueva | Solo compilación cruzada y pruebas unitarias |
 
 Solo tmux puede aceptar "confiar en esta carpeta" por ti. Con una ventana de terminal, la primera sesión en una carpeta nueva necesita que hagas un clic en esa ventana.

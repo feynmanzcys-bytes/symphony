@@ -131,7 +131,7 @@ When nothing answers at the bridge's address on this machine, the session starts
 | System | Terminal for sessions started from the page | Tested |
 | --- | --- | --- |
 | Linux | tmux when installed, otherwise a graphical terminal | Full end-to-end tests |
-| macOS | Terminal.app by default; `-terminal tmux` for tmux | Cross-compiled and unit-tested only |
+| macOS | Terminal.app by default; `-terminal tmux` for tmux | Cross-compiled and unit-tested; `-autostart` tested end to end |
 | Windows | A new console window | Cross-compiled and unit-tested only |
 
 Only tmux can answer "trust this folder" for you. With a terminal window, the first session in a new folder needs one click in that window.

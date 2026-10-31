@@ -227,7 +227,9 @@ func TestAutostartRefuses(t *testing.T) {
 			t.Errorf("%q: want a failure saying %q, got %v:\n%s", c.cmd.Args, c.want, err, out)
 		}
 	}
-	for _, dir := range []string{filepath.Join(home, ".config", "systemd"), filepath.Join(home, "Library")} {
+	// where the entry would go: the go command keeps its telemetry in the config folder too (~/.config/go on Linux,
+	// ~/Library/Application Support/go on macOS), so not the whole of it
+	for _, dir := range []string{filepath.Join(home, ".config", "systemd"), filepath.Join(home, "Library", "LaunchAgents")} {
 		if _, err := os.Stat(dir); err == nil {
 			t.Errorf("a refused -autostart wrote %s", dir)
 		}
