@@ -13,7 +13,12 @@ import { type Lang, matchLang, message } from './messages'
 // (symphony -background, if it's on PATH; SYMPHONY_DATA, if set, tells it where the accounts are).
 // When the bridge is unreachable, rejects the token or the account is busy, everything falls back to Claude Code's
 // own terminal interaction; the session never hangs.
+// Reports (events, the heartbeat) go out one after another in the background: a hook never waits for the bridge,
+// and a report that gets no answer in time is given up. Only asks wait, for the page's answer.
 const DEFAULT_BRIDGE = 'http://127.0.0.1:7788'
+// how long a report, or putting an ask on the bridge, may take; a hanging bridge holds nothing up for longer
+const REPORT_TIMEOUT = 5_000
+const ASK_TIMEOUT = 10_000
 
 type Answer =
   | { decision: 'allow' | 'deny'; reason?: string }
@@ -30,6 +35,10 @@ let sticky: { cwd?: string; launch?: string } = {}
 // the model and effort last reported to the bridge; reported again only when they change
 let reported = { model: '', effort: '' }
 let heartbeat: { cancel: () => void } | undefined
+// the bridge doesn't know the token (401): nothing more goes to it in this session
+let refused = false
+// reports go out in this order, one at a time
+let queue: Promise<unknown> = Promise.resolve()
 // calls the web page denied. A denied tool reaches tool.call as an error result, not { deny }, so we remember them.
 const deniedByWeb = new Set<string>()
 
@@ -82,6 +91,23 @@ async function call($: EngineInterface, path: string, body?: unknown) {
   })
 }
 
+// the value of p, or undefined once ms have passed or p fails (the request itself isn't stopped, just not waited for)
+function within<T>($: EngineInterface, ms: number, p: Promise<T>): Promise<T | undefined> {
+  return new Promise(resolve => {
+    const timer = $.clock.after(ms, () => resolve(undefined))
+    p.then(
+      v => {
+        timer.cancel()
+        resolve(v)
+      },
+      () => {
+        timer.cancel()
+        resolve(undefined)
+      },
+    )
+  })
+}
+
 // a bridge on this machine, which the mod may start itself: http://127.0.0.1:7788 and the like
 const LOCAL_BRIDGE = /^http:\/\/(127\.0\.0\.1|localhost|\[::1\]):(\d+)\/?$/
 
@@ -101,14 +127,20 @@ async function startBridge($: EngineInterface, bridge: string) {
   }
 }
 
-// reports an event to the office page; a failure is ignored and never affects the session.
-async function emit($: EngineInterface, kind: string, data: object = {}) {
-  if (!(await ident($))) return undefined
+// reports an event to the office page and waits for the answer (at most timeout); a failure is ignored and never
+// affects the session.
+async function emit($: EngineInterface, kind: string, data: object = {}, timeout = REPORT_TIMEOUT) {
+  if (refused || !(await ident($))) return undefined
   try {
-    return await call($, '/api/event', { session: await sid($), kind, ...sticky, ...data })
+    return await within($, timeout, call($, '/api/event', { session: await sid($), kind, ...sticky, ...data }))
   } catch {
     return undefined
   }
+}
+
+// report queues an event: the hook goes on at once, and the events reach the bridge in the order they happened.
+function report($: EngineInterface, kind: string, data: object = {}) {
+  queue = queue.then(() => emit($, kind, data))
 }
 
 // puts a pending ask on the bridge and long-polls for the page's answer.
@@ -118,11 +150,11 @@ async function ask(
   signal: AbortSignal,
   payload: object,
 ): Promise<Answer | undefined> {
-  if (!(await ident($))) return undefined
+  if (refused || !(await ident($))) return undefined
   let id: string | undefined
   const create = async () => {
-    const created = await call($, '/api/ask', { session: await sid($), ...payload })
-    return created.ok ? (JSON.parse(created.text).id as string) : undefined
+    const created = await within($, ASK_TIMEOUT, call($, '/api/ask', { session: await sid($), ...payload }))
+    return created?.ok ? (JSON.parse(created.text).id as string) : undefined
   }
   try {
     id = await create()
@@ -144,16 +176,16 @@ async function ask(
     return undefined
   }
   // the terminal interrupted (Esc and the like): tell the bridge to withdraw the card
-  if (id) await call($, `/api/cancel/${id}`, {}).catch(() => {})
+  if (id) await within($, ASK_TIMEOUT, call($, `/api/cancel/${id}`, {}))
   return undefined
 }
 
 // the model and thinking effort set the character's size in the office; reported only when they change.
-async function reportModel($: EngineInterface, model: string, effort?: string | number) {
+function reportModel($: EngineInterface, model: string, effort?: string | number) {
   const level = typeof effort === 'number' ? String(effort) : (effort ?? '')
   if (model === reported.model && level === reported.effort) return
   reported = { model, effort: level }
-  await emit($, 'session.model', { model, effort: level || undefined })
+  report($, 'session.model', { model, effort: level || undefined })
 }
 
 // /rename without an argument makes up a name that the command's result doesn't include, so we look for the last
@@ -189,25 +221,29 @@ export const register: Register = on => {
     const model = await $.session.model()
     reported = { model, effort: '' }
     const online = { interactive: e.isInteractive, login: id.login, model }
-    let res = await emit($, 'session.start', online)
+    let res = await emit($, 'session.start', online, ASK_TIMEOUT)
     if (!res && (await startBridge($, id.bridge))) {
-      res = await emit($, 'session.start', online)
+      res = await emit($, 'session.start', online, ASK_TIMEOUT)
       if (res?.ok) $.ui.toast(message(id.lang, 'started', { bridge: id.bridge }))
     }
     if (!res) $.ui.toast(message(id.lang, 'unreachable', { bridge: id.bridge }))
-    else if (res.status === 401) $.ui.toast(message(id.lang, 'badToken'))
-    else if (res.status === 409) $.ui.toast(message(id.lang, 'busy'))
+    else if (res.status === 401) {
+      refused = true // the token won't change while the session runs: don't knock again
+      $.ui.toast(message(id.lang, 'badToken'))
+    } else if (res.status === 409) $.ui.toast(message(id.lang, 'busy'))
     // heartbeat: after 45 seconds without any message the bridge takes the session as off duty (say the terminal was closed)
     heartbeat?.cancel()
-    heartbeat = $.clock.every(15_000, () => {
-      void emit($, 'heartbeat')
-    })
+    if (!refused) {
+      heartbeat = $.clock.every(15_000, () => {
+        report($, 'heartbeat')
+      })
+    }
     return started
   })
 
   // on every model request, note the model and effort actually used (main session only)
   on('turn.step', async function* ($, e, next) {
-    if (!('agentId' in e && e.agentId)) await reportModel($, e.model, e.effort)
+    if (!('agentId' in e && e.agentId)) reportModel($, e.model, e.effort)
     return yield* next(e)
   })
 
@@ -215,28 +251,28 @@ export const register: Register = on => {
   // /rename itself is caught too, so a new name shows right away.
   on('classic.SessionStart', async ($, e, next) => {
     transcriptPath = e.transcript_path
-    await emit($, 'session.title', { title: e.session_title })
+    report($, 'session.title', { title: e.session_title })
     return next(e)
   })
 
   on('classic.UserPromptSubmit', async ($, e, next) => {
     transcriptPath = e.transcript_path
-    await emit($, 'session.title', { title: e.session_title })
+    report($, 'session.title', { title: e.session_title })
     return next(e)
   })
 
   on('command.run', { command: 'rename' }, async ($, e, next) => {
     const ran = await next(e)
-    if (!(await ident($))) return ran
+    if (refused || !(await ident($))) return ran
     const title = e.args.trim() || (await titleFromTranscript($))
-    await emit($, 'session.title', { title })
+    report($, 'session.title', { title })
     return ran
   })
 
   // messages between sessions (SendMessage / the agent team mailbox): sending and receiving are reported once each; the bridge pairs them.
   on('session.send', async ($, e, next) => {
     const sent = await next(e)
-    await emit($, 'message.send', {
+    report($, 'message.send', {
       to: e.to,
       text: e.text.slice(0, 2000),
       origin: e.origin.kind,
@@ -247,7 +283,7 @@ export const register: Register = on => {
   })
 
   on('session.receive', async ($, e, next) => {
-    await emit($, 'message.receive', {
+    report($, 'message.receive', {
       text: e.text.slice(0, 2000),
       origin: e.origin,
       agentId: e.agentId,
@@ -257,12 +293,13 @@ export const register: Register = on => {
 
   on('session.end', async ($, e, next) => {
     heartbeat?.cancel()
-    await emit($, 'session.end')
+    report($, 'session.end')
+    await queue // the goodbye, and whatever was still on its way, before the session goes
     return next(e)
   })
 
   on('turn.start', async ($, e, next) => {
-    await emit($, 'turn.start', {
+    report($, 'turn.start', {
       turnId: e.turnId,
       text: e.text.slice(0, 200),
       agentId: 'agentId' in e ? e.agentId : undefined,
@@ -271,7 +308,7 @@ export const register: Register = on => {
   })
 
   on('turn.complete', async ($, e, next) => {
-    await emit($, 'turn.complete', {
+    report($, 'turn.complete', {
       turnId: e.turnId,
       durationMs: e.durationMs,
       isAborted: e.isAborted,
@@ -308,7 +345,7 @@ export const register: Register = on => {
   // Other tools are only reported.
   on('tool.call', async ($, e, next) => {
     const call = { tool: e.tool, agentId: e.agentId }
-    await emit($, 'tool.start', call)
+    report($, 'tool.start', call)
 
     let ran: Awaited<ReturnType<typeof next>> | undefined
     if (e.tool === 'AskUserQuestion') {
@@ -324,7 +361,7 @@ export const register: Register = on => {
     ran ??= await next(e)
 
     const denied = ran.deny !== undefined || (e.tool_use_id !== undefined && deniedByWeb.delete(e.tool_use_id))
-    await emit($, 'tool.end', { ...call, denied, isError: ran.isError === true })
+    report($, 'tool.end', { ...call, denied, isError: ran.isError === true })
     return ran
   })
 }

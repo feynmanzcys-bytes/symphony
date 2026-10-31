@@ -102,6 +102,7 @@ type Launcher struct {
 	modMu sync.Mutex
 	mod   ModStatus
 	modAt time.Time
+	now   func() time.Time // tests move the clock
 }
 
 func NewLauncher(claude, modDir, bridgeURL string, term Terminal) *Launcher {
@@ -125,18 +126,33 @@ func modProblem(err *Error, fix string) ModStatus {
 	return ModStatus{Error: err.Text, Code: err.Code, Params: err.Params, Fix: fix}
 }
 
-// Mod checks whether the mod is installed. A good answer is kept for a minute; a bad one is checked
-// again every time, so after installing, reloading the page is enough and the bridge needs no restart.
+// How long an answer of Mod is kept: a good one for a minute; a bad one briefly, so after installing, reloading
+// the page is enough and the bridge needs no restart, but opening the page doesn't run claude every time.
+const (
+	modGoodTTL = time.Minute
+	modBadTTL  = 10 * time.Second
+)
+
+// Mod checks whether the mod is installed (claude plugin list --json, which takes half a second or more); the
+// answer is kept for a while (modGoodTTL, modBadTTL).
 func (l *Launcher) Mod(ctx context.Context) ModStatus {
 	if l.ModDir != "" {
 		return ModStatus{OK: true, Dev: true}
 	}
+	now := time.Now
+	if l.now != nil {
+		now = l.now
+	}
 	l.modMu.Lock()
 	defer l.modMu.Unlock()
-	if l.mod.OK && time.Since(l.modAt) < time.Minute {
+	ttl := modBadTTL
+	if l.mod.OK {
+		ttl = modGoodTTL
+	}
+	if !l.modAt.IsZero() && now().Sub(l.modAt) < ttl {
 		return l.mod
 	}
-	l.mod, l.modAt = l.checkMod(ctx), time.Now()
+	l.mod, l.modAt = l.checkMod(ctx), now()
 	return l.mod
 }
 

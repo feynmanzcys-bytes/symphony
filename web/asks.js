@@ -42,6 +42,7 @@ export function askCard(a, who) {
       <div class="tool">${esc(a.tool)}</div>
       ${a.reason ? `<div class="meta">${esc(a.reason)}</div>` : ''}
       <pre>${esc(JSON.stringify(a.input, null, 2))}</pre>
+      ${a.inputTruncated ? `<div class="meta">${esc(t('asks.truncated'))}</div>` : ''}
       <div class="row">
         <input type="text" class="reason" placeholder="${esc(t('asks.reason'))}">
         <button class="allow">${esc(t('asks.allow'))}</button><button class="deny">${esc(t('asks.deny'))}</button>

@@ -35,8 +35,8 @@ async function load(l) {
   if (!r.ok) throw new Error(`/locales/${l}.json: ${r.status}`)
   return r.json()
 }
-const en = await load('en')
-const dict = lang === 'en' ? en : await load(lang).catch(() => en)
+const [en, own] = await Promise.all([load('en'), lang === 'en' ? null : load(lang).catch(() => null)])
+const dict = own ?? en
 
 // Keys a page asked for that its language lacks; the end-to-end test checks that this stays empty.
 window.__i18nMissing = window.__i18nMissing || []

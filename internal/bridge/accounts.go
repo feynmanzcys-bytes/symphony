@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 )
@@ -126,7 +127,15 @@ func (h *Hub) saveLocked() error {
 	return saveAccounts(filepath.Join(h.dataDir, "accounts.json"), list)
 }
 
-// saveMessagesLocked writes the message log to disk, so it survives a bridge restart.
+// saver writes the message log in the background: the hub's lock is held while the log is encoded, never while
+// the disk is written; writes that pile up collapse into the latest.
+type saver struct {
+	mu      sync.Mutex
+	pending []byte        // the latest log to write, nil when written
+	idle    chan struct{} // closed when the writer is done; nil while none runs
+}
+
+// saveMessagesLocked hands the message log to the background writer, so it survives a bridge restart.
 func (h *Hub) saveMessagesLocked() {
 	if h.dataDir == "" {
 		return
@@ -136,8 +145,41 @@ func (h *Hub) saveMessagesLocked() {
 		return
 	}
 	path := filepath.Join(h.dataDir, "messages.json")
-	if os.WriteFile(path+".tmp", data, 0o600) == nil {
-		_ = os.Rename(path+".tmp", path)
+	s := &h.msgSave
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.pending = data
+	if s.idle == nil {
+		s.idle = make(chan struct{})
+		go s.write(path)
+	}
+}
+
+func (s *saver) write(path string) {
+	for {
+		s.mu.Lock()
+		data := s.pending
+		s.pending = nil
+		if data == nil {
+			close(s.idle)
+			s.idle = nil
+			s.mu.Unlock()
+			return
+		}
+		s.mu.Unlock()
+		if os.WriteFile(path+".tmp", data, 0o600) == nil {
+			_ = os.Rename(path+".tmp", path)
+		}
+	}
+}
+
+// Flush waits until the message log is on disk.
+func (h *Hub) Flush() {
+	h.msgSave.mu.Lock()
+	idle := h.msgSave.idle
+	h.msgSave.mu.Unlock()
+	if idle != nil {
+		<-idle
 	}
 }
 

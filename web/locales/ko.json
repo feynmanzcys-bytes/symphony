@@ -102,6 +102,7 @@
   "asks.allow": "허용",
   "asks.deny": "거부",
   "asks.submitFailed": "제출하지 못했습니다: {reason}",
+  "asks.truncated": "긴 값은 여기서 잘렸습니다. 세션에는 전체 입력이 있습니다.",
 
   "msg.undelivered": "(전달되지 않음)",
   "msg.none": "아직 메시지가 없습니다",

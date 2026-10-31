@@ -102,6 +102,7 @@
   "asks.allow": "Permitir",
   "asks.deny": "Negar",
   "asks.submitFailed": "Não foi possível enviar: {reason}",
+  "asks.truncated": "Valores longos são cortados aqui; a sessão tem a entrada completa.",
 
   "msg.undelivered": "(não entregue)",
   "msg.none": "Nenhuma mensagem ainda",

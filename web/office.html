@@ -754,12 +754,20 @@ let smalls = []            // the small meeting rooms: { x, y, w, h, north (door
 let halls = []             // the halls between their rows: { x0, x1, y }
 let walls = []             // walls between rows of rooms: { x0, x1, y }
 let addSeat = -1           // the empty seat with the "+", -1 for none
+let layoutKey = ''         // what the last layout was made for; the same again means nothing to do
 const bgCanvas = document.createElement('canvas')
 const buf = document.createElement('canvas')
 const big = document.createElement('canvas') // the frame at a whole scale, for drawing it at a fractional one
+const bgCtx = bgCanvas.getContext('2d'), bufCtx = buf.getContext('2d'), bigCtx = big.getContext('2d')
 
 function deskOf(seat) {
   return { x:workX + (seat % COLS) * COL_PITCH + 8, y:rowsY + Math.floor(seat / COLS) * ROW_PITCH }
+}
+// an employee's desk and chair, by its seat
+function seatEmployee(e) {
+  const d = deskOf(e.acc.seat)
+  e.desk = d
+  e.seat = { x:d.x + 16, y:d.y - 2 }
 }
 
 // a row of small meeting rooms side by side from x0 to x1, a wall between each two
@@ -771,10 +779,15 @@ function roomRow(x0, x1, y, h, north) {
   })
 }
 
+// layout lays the building out for the team and the window, and draws the background. Every snapshot calls it,
+// but it only works when something it depends on changed: the seats, the "+", the window, the pixel size.
 function layout() {
   const taken = new Set(snapshot.accounts.map(a => a.seat))
   addSeat = -1
   if (launchOpts?.enabled) { addSeat = 0; while (taken.has(addSeat)) addSeat++ }
+  const made = `${[...taken].sort((a, b) => a - b).join(',')}|${addSeat}|${innerWidth}x${innerHeight}@${devicePixelRatio}|${detail}`
+  if (made === layoutKey) return
+  layoutKey = made
   const seats = Math.max(addSeat + 1, ...snapshot.accounts.map(a => a.seat + 1), 1)
   const team = Math.max(MIN_ROWS, Math.ceil(seats / COLS)), sideMin = ECOR + RIGHT_MIN + 4
   fitScreen(OFFICE_W + 2 * sideMin, Math.max(officeBottom(team) + STRIP_MIN + 6, WALL_H + MEET_H + GLASS + LOUNGE_MIN + 6))
@@ -821,11 +834,7 @@ function layout() {
     navKey = key
     for (const e of emps.values()) if (e.inside) e.fresh = true
   }
-  for (const e of emps.values()) {
-    const d = deskOf(e.acc.seat)
-    e.desk = d
-    e.seat = { x:d.x + 16, y:d.y - 2 }
-  }
+  for (const e of emps.values()) seatEmployee(e)
   const [l] = toCss(rooms.work.x, 0), [rr] = toCss(rooms.work.x + rooms.work.w, 0)
   cv.dataset.office = `${l.toFixed(1)},${rr.toFixed(1)}` // for the tests and the curious: the open office, left to right
   drawBackground()
@@ -965,7 +974,7 @@ window.__routes = () => [...spots.values()].flatMap(s => nav.seats.map((n, seat)
 function drawBackground() {
   bgCanvas.width = W * D; bgCanvas.height = H * D
   buf.width = W * D; buf.height = H * D
-  const g = bgCanvas.getContext('2d')
+  const g = bgCtx
   g.setTransform(D, 0, 0, D, 0, 0)
   hair = drawHair
   // floors: light tiles in the corridors, each room its own
@@ -1093,9 +1102,9 @@ function updateEmployee(e, acc, walkIn) {
   e.label.classList.toggle('off', !online)
   e.label.dataset.state = state
   const status = statusText(online ? e.s : null)
-  e.label.innerHTML = `<div class="nm">${esc(acc.name)}</div><div class="st">${dot(state)}${esc(status)}</div>`
+  const html = `<div class="nm">${esc(acc.name)}</div><div class="st">${dot(state)}${esc(status)}</div>`
+  if (html !== e.labelHTML) { e.labelHTML = html; e.label.innerHTML = html; e.sized = false } // measured again next frame
   e.status = `${acc.name} · ${status}`
-  e.sized = false
 }
 
 function dropEmployee(e) { e.label.remove(); e.bubble?.remove(); emps.delete(e.acc.id) }
@@ -1344,12 +1353,14 @@ const toCss = (x, y) => [(offX + x * S) / dpr, (offY + y * S) / dpr]
 const flights = [] // envelopes in flight { from, to, t, toAcc }
 const mailAt = new Map() // account id -> when mail arrived; it shows above the head for a while
 
+const FRAME_MS = 1000 / 30 // frames a second: enough for pixel art, and half the work of a 60 Hz screen
 function frame(now) {
   requestAnimationFrame(frame) // first, so one bad frame doesn't stop the office
-  const dt = Math.min((now - (frame.last || now)) / 1000, 0.1)
+  if (frame.last !== undefined && now - frame.last < FRAME_MS - 2) return // (a little under, so a 60 Hz screen gets every other frame)
+  const dt = Math.min((now - (frame.last ?? now)) / 1000, 0.1)
   frame.last = now
   const at = Date.now()
-  const g = buf.getContext('2d')
+  const g = bufCtx
   g.setTransform(1, 0, 0, 1, 0, 0)
   g.drawImage(bgCanvas, 0, 0)
   g.setTransform(D, 0, 0, D, 0, 0)
@@ -1414,7 +1425,7 @@ function frame(now) {
     ctx.imageSmoothingEnabled = false
     ctx.drawImage(buf, 0, 0, bw, bh, offX, offY, W * S, H * S)
   } else if (k > 1) { // up by whole pixels first, then smoothly the rest of the way, so all pixels come out the same size
-    const n = D === 1 ? Math.ceil(k) : Math.floor(k), bg = big.getContext('2d') // a drawing at D is big already
+    const n = D === 1 ? Math.ceil(k) : Math.floor(k), bg = bigCtx // a drawing at D is big already
     if (big.width !== bw * n || big.height !== bh * n) { big.width = bw * n; big.height = bh * n }
     bg.imageSmoothingEnabled = false
     bg.drawImage(buf, 0, 0, bw * n, bh * n)
@@ -1524,12 +1535,18 @@ const setData = (el, key, value) => { if (el.dataset[key] !== value) el.dataset[
 function placeLabels(now) {
   const maxW = Math.max(60, COL_PITCH * S / dpr - 6), placed = [], loose = []
   const box = (e, y) => ({ l:e.lx - e.lw / 2, r:e.lx + e.lw / 2, t:y - e.lh, b:y })
-  for (const e of emps.values()) {
+  for (const e of emps.values()) { // what changes a tag's size, written first; the sizes are read below, all at once
     if (!e.desk) continue
     const el = e.label, away = e.inside && !e.atDesk
     if (el.classList.contains('away') !== away) { el.classList.toggle('away', away); e.sized = false }
     if (e.maxW !== maxW) { el.style.maxWidth = maxW + 'px'; e.maxW = maxW; e.sized = false }
-    if (!e.sized) { e.lw = el.offsetWidth; e.lh = el.offsetHeight; e.sized = true }
+  }
+  for (const e of emps.values()) {
+    if (e.desk && !e.sized) { e.lw = e.label.offsetWidth; e.lh = e.label.offsetHeight; e.sized = true }
+  }
+  for (const e of emps.values()) {
+    if (!e.desk) continue
+    const el = e.label, away = e.inside && !e.atDesk
     const h = headOf(e)
     ;[e.lx, e.ly] = toCss(h.x, h.y - 2)
     e.ty = e.ly
@@ -1763,21 +1780,52 @@ function showMessage(m) {
 let first = true
 const seenMessages = new Set()
 const seenAsks = new Set()
+const KEEP_MESSAGES = 300
+let messagesVersion = 0 // goes up whenever the message log changes; the panels redraw only then
+// The message log: a full snapshot (the first one, /api/state) carries it; the ones pushed on every change don't,
+// and each new or updated message comes as a "message" event instead. The snapshot names the latest message, so a
+// page that missed one (it fell behind) fetches the whole log again.
+function takeMessages(list) {
+  snapshot.messages = list
+  messagesVersion++
+  for (const m of list) noteMessage(m)
+}
+function noteMessage(m) {
+  if (seenMessages.has(m.id)) return
+  seenMessages.add(m.id)
+  if (!first) { showMessage(m); log(`${m.fromName || '?'} → ${m.toName || '?'}${t('common.colon')}${m.text}`) }
+}
+function applyMessage(m) {
+  const list = snapshot.messages, i = list.findIndex(x => x.id === m.id)
+  if (i >= 0) list[i] = m
+  else { list.push(m); if (list.length > KEEP_MESSAGES) list.splice(0, list.length - KEEP_MESSAGES) }
+  messagesVersion++
+  noteMessage(m)
+  if (!msgsPanel.hidden) renderMessages()
+  if (cardFor) showCard(cardFor)
+}
+let catchingUp = false
+function catchUpMessages() {
+  if (catchingUp) return
+  catchingUp = true
+  fetch('/api/state').then(r => r.json()).then(s => { if (Array.isArray(s.messages)) { takeMessages(s.messages); if (!msgsPanel.hidden) renderMessages() } })
+    .catch(() => {}).finally(() => { catchingUp = false })
+}
+
 function applySnapshot(snap) {
+  const messages = Array.isArray(snap.messages) ? snap.messages : snapshot.messages
   snapshot = snap
+  snapshot.messages = messages
+  if (Array.isArray(snap.messages)) takeMessages(snap.messages)
+  else if (snap.messageTail && !messages.some(m => m.id === snap.messageTail)) catchUpMessages()
   const live = new Set(snap.accounts.map(a => a.id))
   for (const [id, e] of emps) if (!live.has(id)) dropEmployee(e)
   for (const acc of snap.accounts) {
-    if (!emps.has(acc.id)) emps.set(acc.id, makeEmployee(acc))
+    if (!emps.has(acc.id)) { const e = makeEmployee(acc); emps.set(acc.id, e); seatEmployee(e) }
     emps.get(acc.id).acc = acc
   }
   layout()
   for (const acc of snap.accounts) updateEmployee(emps.get(acc.id), acc, !first)
-  for (const m of snap.messages) {
-    if (seenMessages.has(m.id)) continue
-    seenMessages.add(m.id)
-    if (!first) { showMessage(m); log(`${m.fromName || '?'} → ${m.toName || '?'}${t('common.colon')}${m.text}`) }
-  }
   // new pending asks open the popup right away (not while the launch dialog is open; the HUD has a button)
   const fresh = snap.asks.filter(a => !seenAsks.has(a.id))
   fresh.forEach(a => seenAsks.add(a.id))
@@ -1824,8 +1872,29 @@ function msgHTML(m) {
   return `<div class="msg"><div class="meta">${fmtTime(m.time)} · <b>${esc(m.fromName || '?')}</b> → <b>${esc(m.toName || '?')}</b>
     ${m.delivered ? '' : `<span class="lost">${esc(t('msg.undelivered'))}</span>`}</div>${esc(m.text)}</div>`
 }
+// The panel shows the log newest first and is kept up to date in place: a new message is one element put in, an
+// updated one (paired, delivered) is replaced, the rest stay (300 long messages make 600 KB of HTML; rebuilding
+// them all on every message took a good part of a second)
+let msgsRendered = -1 // the messagesVersion the panel shows
+const msgEls = new Map() // message id -> { el, sig }: its element, and what it was drawn from
+const msgSig = m => `${m.fromName}|${m.toName}|${m.delivered}|${m.received}|${m.text.length}`
+const element = html => { const tpl = document.createElement('template'); tpl.innerHTML = html; return tpl.content.firstElementChild }
 function renderMessages() {
-  msgsPanel.querySelector('.msgs').innerHTML = [...snapshot.messages].reverse().map(msgHTML).join('') || `<div class="msg">${esc(t('msg.none'))}</div>`
+  if (msgsRendered === messagesVersion) return
+  msgsRendered = messagesVersion
+  const box = msgsPanel.querySelector('.msgs'), list = snapshot.messages, ids = new Set(list.map(m => m.id))
+  for (const [id, r] of msgEls) if (!ids.has(id)) { r.el.remove(); msgEls.delete(id) }
+  box.querySelector('.none')?.remove()
+  let prev = null
+  for (let i = list.length - 1; i >= 0; i--) {
+    const m = list[i], sig = msgSig(m)
+    let r = msgEls.get(m.id)
+    if (!r) { r = { el:element(msgHTML(m)), sig }; msgEls.set(m.id, r) }
+    else if (r.sig !== sig) { const el = element(msgHTML(m)); r.el.replaceWith(el); r.el = el; r.sig = sig }
+    if ((prev ? prev.nextSibling : box.firstChild) !== r.el) { if (prev) prev.after(r.el); else box.prepend(r.el) }
+    prev = r.el
+  }
+  if (!list.length) box.insertAdjacentHTML('beforeend', `<div class="msg none">${esc(t('msg.none'))}</div>`)
 }
 document.getElementById('open-msgs').onclick = () => { renderMessages(); msgsPanel.hidden = false }
 msgsPanel.querySelector('.close').onclick = () => { msgsPanel.hidden = true }
@@ -1848,6 +1917,7 @@ function onEmployeeClick(id) {
   showCard(id)
 }
 
+const cardShown = { dl:'', btns:'', msgs:'' } // what the card shows, so an unchanged part isn't rebuilt
 function showCard(id) {
   const acc = snapshot.accounts.find(a => a.id === id), e = emps.get(id)
   if (!acc || !e) { card.hidden = true; cardFor = null; return }
@@ -1858,21 +1928,30 @@ function showCard(id) {
     ['tool', online ? s.tool : ''], ['dir', s?.cwd || acc.last?.dir], ['prompt', online ? s.prompt : ''], ['tools', online ? s.tools : ''],
     ['subagents', online ? Object.keys(s.agents || {}).length || '' : ''], ['terminal', online ? attachText(s.attach) : ''],
     ['login', s?.login], ['session', online ? s.id : '']]
-  card.querySelector('dl').innerHTML = rows.filter(r => r[1] !== undefined && r[1] !== '' && r[1] !== null)
+  const dl = rows.filter(r => r[1] !== undefined && r[1] !== '' && r[1] !== null)
     .map(([k, v]) => `<dt>${esc(t('card.' + k))}</dt><dd${k === 'state' ? ' class="state-line"' : ''}>${esc(v)}</dd>`).join('')
-  const btns = card.querySelector('.btns')
-  btns.innerHTML = ''
-  const add = (text, cls, fn) => { const b = document.createElement('button'); b.className = 'px ' + cls; b.textContent = text; b.onclick = fn; btns.appendChild(b) }
-  if (online && s.state === 'waiting') add(t('card.handle'), 'alert', () => openAsks(s.id))
-  if (!online && launchOpts?.enabled) add(t('launch.go'), 'primary go-work', () => openLaunch(acc.id))
-  if (!online) add(t('card.delete'), '', async () => {
-    if (!confirm(t('card.deleteConfirm', { name:acc.name }))) return
-    const r = await fetch(`/api/accounts/${acc.id}`, { method:'DELETE' })
-    if (!r.ok) alert(t('card.deleteFailed', { reason:errorText(await r.json().catch(() => null)) }))
-    card.hidden = true; cardFor = null
-  })
-  const mine = snapshot.messages.filter(m => m.fromName === acc.name || m.toName === acc.name)
-  card.querySelector('.msgs').innerHTML = mine.slice(-10).reverse().map(msgHTML).join('') || `<div class="msg">${esc(t('card.noMessages'))}</div>`
+  if (dl !== cardShown.dl) { cardShown.dl = dl; card.querySelector('dl').innerHTML = dl }
+  const btnKey = `${id}|${online}|${online && s.state === 'waiting'}|${!!launchOpts?.enabled}`
+  if (btnKey !== cardShown.btns) {
+    cardShown.btns = btnKey
+    const btns = card.querySelector('.btns')
+    btns.innerHTML = ''
+    const add = (text, cls, fn) => { const b = document.createElement('button'); b.className = 'px ' + cls; b.textContent = text; b.onclick = fn; btns.appendChild(b) }
+    if (online && s.state === 'waiting') add(t('card.handle'), 'alert', () => openAsks(s.id))
+    if (!online && launchOpts?.enabled) add(t('launch.go'), 'primary go-work', () => openLaunch(acc.id))
+    if (!online) add(t('card.delete'), '', async () => {
+      if (!confirm(t('card.deleteConfirm', { name:acc.name }))) return
+      const r = await fetch(`/api/accounts/${acc.id}`, { method:'DELETE' })
+      if (!r.ok) alert(t('card.deleteFailed', { reason:errorText(await r.json().catch(() => null)) }))
+      card.hidden = true; cardFor = null
+    })
+  }
+  const msgKey = `${id}|${messagesVersion}`
+  if (msgKey !== cardShown.msgs) {
+    cardShown.msgs = msgKey
+    const mine = snapshot.messages.filter(m => m.fromName === acc.name || m.toName === acc.name)
+    card.querySelector('.msgs').innerHTML = mine.slice(-10).reverse().map(msgHTML).join('') || `<div class="msg">${esc(t('card.noMessages'))}</div>`
+  }
   card.hidden = false
 }
 // the status line of an open card follows what the employee is doing
@@ -2101,8 +2180,14 @@ es.onmessage = m => {
   const msg = JSON.parse(m.data)
   if (msg.type === 'snapshot') applySnapshot(msg)
   else if (msg.type === 'event') applyEvent(msg.event, msg.title)
+  else if (msg.type === 'message') applyMessage(msg.message)
 }
-addEventListener('resize', layout)
+let resizing = false
+addEventListener('resize', () => { // one layout per frame, however many events a drag sends
+  if (resizing) return
+  resizing = true
+  requestAnimationFrame(() => { resizing = false; layout() })
+})
 requestAnimationFrame(frame)
 </script>
 </body>

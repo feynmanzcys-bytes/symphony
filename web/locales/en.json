@@ -102,6 +102,7 @@
   "asks.allow": "Allow",
   "asks.deny": "Deny",
   "asks.submitFailed": "Couldn't submit: {reason}",
+  "asks.truncated": "Long values are cut here; the session has the whole input.",
 
   "msg.undelivered": "(not delivered)",
   "msg.none": "No messages yet",

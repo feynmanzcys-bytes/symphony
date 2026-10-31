@@ -83,13 +83,34 @@ test('a session with a token: reports itself online with the token, then a heart
   expect(w.toasts).toEqual([])
 })
 
-test('the bridge rejects the token: one message, approvals stay in the terminal', async ($, on) => {
+test('the bridge rejects the token: one message, approvals stay in the terminal, and nothing more is sent', async ($, on) => {
   const w = world(on, { SYMPHONY_TOKEN: 'bad' }, () => ({ status: 401, text: '{"error":"no valid account token"}' }))
   on('tool.check', () => ({ decision: 'ask' }))
+  on('tool.call', () => ({ result: {} }))
 
   await $.session.start(start)
   expect(w.toasts).toEqual(["symphony: the bridge doesn't know this SYMPHONY_TOKEN; approvals stay in the terminal"])
   expect((await $.tool.check(bash)).decision).toBe('ask')
+  await $.tool.call({ tool: 'Bash', command: 'ls' })
+  await w.clock.advance(60_000)
+  await w.clock.settle()
+  expect(w.reqs.length).toBe(1)
+})
+
+test('a tool call is reported before and after, in order, without waiting for the bridge', async ($, on) => {
+  let answered = 0
+  const w = world(on, { SYMPHONY_TOKEN: 'tok' }, () => {
+    answered++
+    return { status: 200, text: '{}' }
+  })
+  on('tool.call', () => ({ result: {} }))
+
+  await $.session.start(start)
+  await $.tool.call({ tool: 'Bash', command: 'ls' })
+  await w.clock.settle()
+  expect(w.reqs.map(r => r.body?.kind)).toEqual(['session.start', 'tool.start', 'tool.end'])
+  expect(w.reqs[1].body).toEqual(expect.objectContaining({ tool: 'Bash', session: 'sess-1', cwd: '/work' }))
+  expect(answered).toBe(3)
 })
 
 test('the bridge is unreachable and symphony is not installed: one message, approvals in the terminal for now', async ($, on) => {

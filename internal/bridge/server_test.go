@@ -169,7 +169,7 @@ func TestStateSince(t *testing.T) {
 		t.Fatalf("the state changed, so StateSince should move: %v", got)
 	}
 	for msg := range ch {
-		if snap, ok := msg.(Snapshot); ok {
+		if snap, ok := msg.Value.(Snapshot); ok {
 			if !snap.Sessions[0].StateSince.Equal(now) {
 				t.Fatalf("the pushed snapshot has a stale StateSince: %v", snap.Sessions[0].StateSince)
 			}
@@ -451,6 +451,7 @@ func TestMessagesPairEitherOrderAndPersist(t *testing.T) {
 		}
 	}
 	// the log is on disk and survives a restart
+	hub.Flush()
 	again := NewHub()
 	if err := again.Open(dir); err != nil {
 		t.Fatal(err)

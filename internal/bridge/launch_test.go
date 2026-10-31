@@ -308,8 +308,10 @@ func TestLaunchUsesInstalledMod(t *testing.T) {
 	srv := NewServer(NewHub(), testWeb)
 	tmux := &fakeTmux{}
 	plugins := &fakePlugins{out: `[]`}
+	now := time.Now()
 	srv.SetLauncher(&Launcher{Claude: "claude", Market: "/src/symphony", BridgeURL: "http://127.0.0.1:7788",
-		Term: &tmuxTerminal{run: tmux.run}, OnlineTimeout: 3 * time.Second, ListPlugins: plugins.list})
+		Term: &tmuxTerminal{run: tmux.run}, OnlineTimeout: 3 * time.Second, ListPlugins: plugins.list,
+		now: func() time.Time { return now }})
 	ts := httptest.NewServer(srv)
 	t.Cleanup(ts.Close)
 	c := client{t: t, base: ts.URL}
@@ -331,8 +333,10 @@ func TestLaunchUsesInstalledMod(t *testing.T) {
 		t.Fatal("without the mod, no account and no session should be created")
 	}
 
-	// once installed, no bridge restart is needed; sessions use the installed mod, without --plugin-dir
+	// once installed, no bridge restart is needed (the bad answer is kept only briefly); sessions use the installed
+	// mod, without --plugin-dir
 	plugins.set(installedMod)
+	now = now.Add(modBadTTL)
 	opts = c.ok("GET", "/api/launch/options", nil)
 	if mod, _ := opts["mod"].(map[string]any); opts["enabled"] != true || mod["ok"] != true || mod["code"] != nil ||
 		mod["id"] != "symphony-bridge@symphony" || mod["version"] != "0.2.0" {
@@ -394,15 +398,24 @@ func TestModStatus(t *testing.T) {
 		t.Fatalf("development mode should be ready without a check: %+v (checked %d times)", m, f.calls)
 	}
 
-	// a bad answer is checked again every time (install, then reload the page); a good one is kept for a while
+	// a bad answer is kept briefly (opening the page doesn't run claude every time), then checked again (install,
+	// then reload the page); a good one is kept for a minute
+	now := time.Now()
 	f = &fakePlugins{out: `[]`}
-	l = &Launcher{ListPlugins: f.list}
+	l = &Launcher{ListPlugins: f.list, now: func() time.Time { return now }}
 	l.Mod(ctx)
 	l.Mod(ctx)
-	f.set(installedMod)
-	if !l.Mod(ctx).OK {
-		t.Fatal("the install should be noticed right away")
+	if f.calls != 1 {
+		t.Fatalf("a bad answer should be kept for a moment, got %d checks", f.calls)
 	}
+	f.set(installedMod)
+	now = now.Add(modBadTTL)
+	if !l.Mod(ctx).OK {
+		t.Fatal("the install should be noticed once the bad answer has aged")
+	}
+	now = now.Add(modGoodTTL - time.Second)
+	l.Mod(ctx)
+	now = now.Add(2 * time.Second)
 	l.Mod(ctx)
 	if f.calls != 3 {
 		t.Fatalf("want 3 checks, got %d", f.calls)

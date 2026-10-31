@@ -79,9 +79,9 @@ func TestI18n(t *testing.T) {
 	if lang := get(t, odd, 10*time.Second, chromedp.Evaluate[string](`document.documentElement.lang`)); lang != "en" {
 		t.Fatalf("?lang=xx should fall back to English, got %q", lang)
 	}
-	if strings.TrimSpace(get(t, odd, 10*time.Second, chromedp.Evaluate[string](`document.getElementById('open-msgs').textContent`))) != "Message log" {
-		t.Fatal("the English page should label the message log button")
-	}
+	waitUntil(t, 10*time.Second, "the English page labels the message log button", func() bool { // once the catalogs are loaded
+		return strings.TrimSpace(get(t, odd, 10*time.Second, chromedp.Evaluate[string](`document.getElementById('open-msgs').textContent`))) == "Message log"
+	})
 }
 
 // checkOffice walks the office in one language: the pending popup, the message log, an online and an

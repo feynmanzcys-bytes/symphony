@@ -64,7 +64,7 @@ func startBridge(t *testing.T, mod string) *testBridge {
 	t.Cleanup(stop)
 	go func() {
 		for msg := range ch {
-			if m, ok := msg.(map[string]any); ok && m["type"] == "event" {
+			if m, ok := msg.Value.(map[string]any); ok && m["type"] == "event" {
 				b.mu.Lock()
 				b.events = append(b.events, m["event"].(bridge.Event))
 				b.mu.Unlock()

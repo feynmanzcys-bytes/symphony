@@ -102,6 +102,7 @@
   "asks.allow": "Autoriser",
   "asks.deny": "Refuser",
   "asks.submitFailed": "Impossible d’envoyer : {reason}",
+  "asks.truncated": "Les valeurs longues sont tronquées ici ; la session a l'entrée complète.",
 
   "msg.undelivered": "(non remis)",
   "msg.none": "Aucun message pour l’instant",

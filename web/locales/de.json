@@ -102,6 +102,7 @@
   "asks.allow": "Erlauben",
   "asks.deny": "Ablehnen",
   "asks.submitFailed": "Senden fehlgeschlagen: {reason}",
+  "asks.truncated": "Lange Werte sind hier gekürzt; die Sitzung hat die vollständige Eingabe.",
 
   "msg.undelivered": "(nicht zugestellt)",
   "msg.none": "Noch keine Nachrichten",

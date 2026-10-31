@@ -1,6 +1,8 @@
 package bridge
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -260,11 +262,7 @@ func (s *Server) stream(w http.ResponseWriter, r *http.Request) {
 		case <-r.Context().Done():
 			return
 		case msg := <-ch:
-			data, err := json.Marshal(msg)
-			if err != nil {
-				continue
-			}
-			if _, err := fmt.Fprintf(w, "data: %s\n\n", data); err != nil {
+			if _, err := fmt.Fprintf(w, "data: %s\n\n", msg.JSON()); err != nil {
 				return
 			}
 		case <-keepalive.C:
@@ -290,8 +288,16 @@ func (s *Server) file(name string) http.HandlerFunc {
 			http.NotFound(w, r)
 			return
 		}
-		w.Header().Set("content-type", ctype)
+		// no-cache means "ask again": with the ETag an unchanged page is a 304, not a download
+		sum := sha256.Sum256(data)
+		etag := `"` + hex.EncodeToString(sum[:8]) + `"`
+		w.Header().Set("etag", etag)
 		w.Header().Set("cache-control", "no-cache")
+		if strings.Contains(r.Header.Get("if-none-match"), etag) {
+			w.WriteHeader(http.StatusNotModified)
+			return
+		}
+		w.Header().Set("content-type", ctype)
 		_, _ = w.Write(data)
 	}
 }

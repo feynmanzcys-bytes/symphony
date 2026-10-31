@@ -6,12 +6,15 @@ package bridge
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"regexp"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 )
 
 // session states
@@ -33,6 +36,9 @@ const (
 
 const (
 	keepMessages = 300
+	// inputPreview: a string longer than this in a pending ask's input reaches the page cut to this length (a Write of a
+	// whole file would otherwise ride along with every snapshot until the ask is settled)
+	inputPreview = 4096
 	// how long an ended session is kept (accounts and seats stay)
 	endedTTL = 10 * time.Minute
 	// a sent and a received message pair up by content within this window
@@ -87,8 +93,11 @@ type Ask struct {
 	Status    string         `json:"status"`
 	Answer    map[string]any `json:"answer,omitempty"`
 	Created   time.Time      `json:"created"`
+	// InputTruncated says that the Input the page gets is a preview: long strings in it are cut (inputPreview)
+	InputTruncated bool `json:"inputTruncated,omitempty"`
 
-	done chan struct{}
+	preview any // Input as the page gets it
+	done    chan struct{}
 }
 
 // Message is one internal message between sessions (SendMessage / the agent team mailbox).
@@ -132,6 +141,9 @@ type Event struct {
 	Interactive bool    `json:"interactive,omitempty"`
 }
 
+// Snapshot is the whole state as the pages see it. Messages is the message log in a full snapshot (the first one a
+// subscriber gets, and /api/state) and null in the ones pushed on every change: the page keeps its own log and gets
+// each new or updated message as a "message" event, so a tool call doesn't carry 300 messages along.
 type Snapshot struct {
 	Type     string        `json:"type"`
 	Accounts []AccountView `json:"accounts"`
@@ -139,6 +151,22 @@ type Snapshot struct {
 	Asks     []*Ask        `json:"asks"`
 	Messages []*Message    `json:"messages"`
 	Launches []*Launch     `json:"launches"`
+	// MessageTail is the latest message's id, in every snapshot: a page that doesn't have it fell behind and
+	// fetches the log again (/api/state)
+	MessageTail string `json:"messageTail,omitempty"`
+}
+
+// Push is one message for the subscribers: an event or a snapshot, encoded once for all of them.
+type Push struct {
+	Value any
+	once  sync.Once
+	data  []byte
+}
+
+// JSON is the message encoded, the same bytes for every subscriber.
+func (p *Push) JSON() []byte {
+	p.once.Do(func() { p.data, _ = json.Marshal(p.Value) })
+	return p.data
 }
 
 // Hub holds all the state.
@@ -150,8 +178,9 @@ type Hub struct {
 	asks     map[string]*Ask
 	messages []*Message
 	launches map[string]*Launch
-	subs     map[chan any]struct{}
+	subs     map[chan *Push]struct{}
 	now      func() time.Time
+	msgSave  saver // writes the message log in the background
 	// AttachHint tells, by launch id, where to find a session's terminal; the current terminal backend provides it
 	AttachHint func(launchID string) string
 }
@@ -162,7 +191,7 @@ func NewHub() *Hub {
 		sessions: map[string]*Session{},
 		asks:     map[string]*Ask{},
 		launches: map[string]*Launch{},
-		subs:     map[chan any]struct{}{},
+		subs:     map[chan *Push]struct{}{},
 		now:      time.Now,
 	}
 }
@@ -175,12 +204,13 @@ func newID() string {
 
 // ---------- subscriptions ----------
 
-// Subscribe returns a channel that first gets a snapshot, then an event and a new snapshot on every change.
-func (h *Hub) Subscribe() (<-chan any, func()) {
-	ch := make(chan any, 64)
+// Subscribe returns a channel that first gets a full snapshot, then an event and a new snapshot (without the
+// message log) on every change.
+func (h *Hub) Subscribe() (<-chan *Push, func()) {
+	ch := make(chan *Push, 64)
 	h.mu.Lock()
 	h.subs[ch] = struct{}{}
-	ch <- h.snapshotLocked()
+	ch <- &Push{Value: h.snapshotLocked(true)}
 	h.mu.Unlock()
 	return ch, func() {
 		h.mu.Lock()
@@ -190,13 +220,20 @@ func (h *Hub) Subscribe() (<-chan any, func()) {
 }
 
 // broadcastLocked pushes an event (optional), then the latest snapshot; a subscriber that falls behind misses
-// messages and catches up with the next snapshot.
+// messages and catches up with the next snapshot. Each is encoded once, however many subscribers there are.
 func (h *Hub) broadcastLocked(extra any) {
-	snap := h.snapshotLocked()
+	if len(h.subs) == 0 {
+		return
+	}
+	var ev *Push
+	if extra != nil {
+		ev = &Push{Value: extra}
+	}
+	snap := &Push{Value: h.snapshotLocked(false)}
 	for ch := range h.subs {
-		if extra != nil {
+		if ev != nil {
 			select {
-			case ch <- extra:
+			case ch <- ev:
 			default:
 			}
 		}
@@ -207,14 +244,16 @@ func (h *Hub) broadcastLocked(extra any) {
 	}
 }
 
+// Snapshot is the whole state, message log included.
 func (h *Hub) Snapshot() Snapshot {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	return h.snapshotLocked()
+	return h.snapshotLocked(true)
 }
 
-func (h *Hub) snapshotLocked() Snapshot {
-	snap := Snapshot{Type: "snapshot", Accounts: []AccountView{}, Sessions: []*Session{}, Asks: []*Ask{}, Messages: []*Message{}, Launches: []*Launch{}}
+// snapshotLocked builds a snapshot; a full one carries the message log, the others leave it null.
+func (h *Hub) snapshotLocked(full bool) Snapshot {
+	snap := Snapshot{Type: "snapshot", Accounts: []AccountView{}, Sessions: []*Session{}, Asks: []*Ask{}, Launches: []*Launch{}}
 	for _, a := range h.accounts {
 		v := AccountView{ID: a.ID, Name: a.Name, Seat: a.Seat, Last: a.Last}
 		if s := h.onlineLocked(a.ID); s != nil {
@@ -236,13 +275,20 @@ func (h *Hub) snapshotLocked() Snapshot {
 	for _, a := range h.asks {
 		if a.Status == AskPending {
 			cp := *a
+			cp.Input = a.preview
 			snap.Asks = append(snap.Asks, &cp)
 		}
 	}
 	sort.Slice(snap.Asks, func(i, j int) bool { return snap.Asks[i].Created.Before(snap.Asks[j].Created) })
-	for _, m := range h.messages {
-		cp := *m
-		snap.Messages = append(snap.Messages, &cp)
+	if n := len(h.messages); n > 0 {
+		snap.MessageTail = h.messages[n-1].ID
+	}
+	if full {
+		snap.Messages = make([]*Message, 0, len(h.messages))
+		for _, m := range h.messages {
+			cp := *m
+			snap.Messages = append(snap.Messages, &cp)
+		}
 	}
 	for _, l := range h.launches {
 		cp := *l
@@ -595,6 +641,51 @@ func (h *Hub) sendLocked(from *Session, ev Event) *Message {
 
 // ---------- pending asks ----------
 
+// trimInput is v with every string longer than inputPreview cut to that length (a note at the end says so), and
+// whether anything was cut. Maps and lists are copied as far as needed; v itself is left alone.
+func trimInput(v any) (any, bool) {
+	switch x := v.(type) {
+	case string:
+		if utf8.RuneCountInString(x) <= inputPreview {
+			return x, false
+		}
+		runes := []rune(x)
+		return string(runes[:inputPreview]) + "… [+" + strconv.Itoa(len(runes)-inputPreview) + "]", true
+	case map[string]any:
+		var out map[string]any
+		for k, val := range x {
+			if t, cut := trimInput(val); cut {
+				if out == nil {
+					out = make(map[string]any, len(x))
+					for k2, v2 := range x {
+						out[k2] = v2
+					}
+				}
+				out[k] = t
+			}
+		}
+		if out == nil {
+			return x, false
+		}
+		return out, true
+	case []any:
+		var out []any
+		for i, val := range x {
+			if t, cut := trimInput(val); cut {
+				if out == nil {
+					out = append([]any(nil), x...)
+				}
+				out[i] = t
+			}
+		}
+		if out == nil {
+			return x, false
+		}
+		return out, true
+	}
+	return v, false
+}
+
 type AskRequest struct {
 	Session   string `json:"session"`
 	Kind      string `json:"kind"`
@@ -618,6 +709,7 @@ func (h *Hub) CreateAsk(req AskRequest, acc *Account) (string, error) {
 		Tool: req.Tool, Input: req.Input, Reason: req.Reason, Questions: req.Questions,
 		AgentID: req.AgentID, Status: AskPending, Created: h.now(), done: make(chan struct{}),
 	}
+	a.preview, a.InputTruncated = trimInput(req.Input)
 	h.asks[a.ID] = a
 	before := s.State
 	h.refreshWaitingLocked(s)

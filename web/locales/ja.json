@@ -102,6 +102,7 @@
   "asks.allow": "許可",
   "asks.deny": "拒否",
   "asks.submitFailed": "送信できませんでした：{reason}",
+  "asks.truncated": "長い値はここでは省略されています。セッションには完全な入力があります。",
 
   "msg.undelivered": "（未配達）",
   "msg.none": "まだメッセージはありません",

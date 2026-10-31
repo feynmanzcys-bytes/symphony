@@ -102,6 +102,7 @@
   "asks.allow": "允许",
   "asks.deny": "拒绝",
   "asks.submitFailed": "提交失败：{reason}",
+  "asks.truncated": "较长的内容在这里被截断了，会话里是完整的输入。",
 
   "msg.undelivered": "（没送到）",
   "msg.none": "还没有消息",

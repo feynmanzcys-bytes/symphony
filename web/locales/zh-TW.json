@@ -102,6 +102,7 @@
   "asks.allow": "允許",
   "asks.deny": "拒絕",
   "asks.submitFailed": "送出失敗：{reason}",
+  "asks.truncated": "較長的內容在這裡被截斷了，工作階段裡是完整的輸入。",
 
   "msg.undelivered": "（未送達）",
   "msg.none": "還沒有訊息",
