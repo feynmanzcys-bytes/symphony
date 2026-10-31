@@ -2,7 +2,7 @@
 
 What changed in each release of symphony. The program (the bridge) and the mod share one version number. A release's notes start with its section here: the release workflow stops before building when the section is missing.
 
-## v0.5.0 (unreleased)
+## v0.5.0 (2026-10-31)
 
 - Lighter traffic between the bridge and the pages: a change pushes the message log no more (the first snapshot and `/api/state` carry it; new messages come as events, and a page that missed one fetches the log again), each push is encoded once for all pages, and a pending ask's long input strings reach the page cut to 4 KiB with a note. With 300 long messages a tool call used to send every page two snapshots of about 650 KiB.
 - The office page does less per change: the building is laid out and its background drawn only when the seats, the window or the pixel size change (not on every event), the message panel and the employee card only when the messages change, name tags only when their text changes; it draws 30 frames a second, and a window drag lays out once per frame.
