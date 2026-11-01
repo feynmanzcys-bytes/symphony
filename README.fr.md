@@ -29,7 +29,7 @@ symphony a deux parties et a besoin des deux :
 uname -sm                 # Linux/macOS : choisit l’archive ci-dessous (x86_64 → amd64 ; arm64/aarch64 → arm64)
 claude --version          # il faut Claude Code 2.1.x (testé avec 2.1.316)
 git --version             # seulement pour les tâches en équipe ; s’il manque, le noter dans le compte rendu sans s’arrêter
-symphony -version         # déjà installé ? affiche "symphony v0.7.1 (darwin/arm64)"
+symphony -version         # déjà installé ? affiche "symphony v0.8.0 (darwin/arm64)"
 curl -s http://127.0.0.1:7788/api/state | head -c 40   # un bridge tourne déjà ? affiche {"type":"snapshot",...
 claude plugin list --json # le mod est déjà installé ? cherchez "id":"symphony-bridge@symphony"
 ```
@@ -73,7 +73,7 @@ Choisissez un dossier déjà présent dans le `PATH` de l’utilisateur et acces
 tar xzf /tmp/symphony-dl/symphony_<os>_<arch>.tar.gz -C /tmp/symphony-dl
 install -m 755 /tmp/symphony-dl/symphony ~/.local/bin/symphony
 xattr -d com.apple.quarantine ~/.local/bin/symphony 2>/dev/null || true   # macOS : le binaire n’est pas signé
-symphony -version          # affiche "symphony v0.7.1 (linux/amd64)" : la version et la plateforme
+symphony -version          # affiche "symphony v0.8.0 (linux/amd64)" : la version et la plateforme
 ```
 
 Sous Windows : `Expand-Archive symphony_windows_<arch>.zip -DestinationPath "$env:LOCALAPPDATA\Programs\symphony"`, puis ajoutez ce dossier au `Path` de l’utilisateur (`[Environment]::SetEnvironmentVariable('Path', "$([Environment]::GetEnvironmentVariable('Path','User'));$env:LOCALAPPDATA\Programs\symphony", 'User')`) et ouvrez un nouveau shell. SmartScreen peut afficher un avertissement au premier lancement : « Informations complémentaires », puis « Exécuter quand même ».
@@ -117,7 +117,7 @@ Vérifiez toute la chaîne avec une seule requête :
 curl -s http://127.0.0.1:7788/api/launch/options
 ```
 
-La réponse contient `"enabled":true` et `"mod":{"ok":true,"id":"symphony-bridge@symphony","version":"0.7.1"}` : le bridge tourne, il a trouvé `claude`, et le mod est installé là où les sessions le chargeront. Avec `"enabled":false`, `mod.code` dit ce qui ne va pas et `mod.fix` donne la commande qui le corrige : `mod_not_installed` ou `mod_project_scope` (retour à l’étape 4), `mod_disabled` (activez-le), `mod_check_failed` (`claude plugin list --json` a échoué, donc Claude Code est probablement trop ancien). `"mod":null` veut dire que le bridge n’a pas du tout trouvé `claude` dans son `PATH` (son journal le signale) : ajoutez-le au PATH, ou démarrez le bridge avec `-claude /path/to/claude`.
+La réponse contient `"enabled":true` et `"mod":{"ok":true,"id":"symphony-bridge@symphony","version":"0.8.0"}` : le bridge tourne, il a trouvé `claude`, et le mod est installé là où les sessions le chargeront. Avec `"enabled":false`, `mod.code` dit ce qui ne va pas et `mod.fix` donne la commande qui le corrige : `mod_not_installed` ou `mod_project_scope` (retour à l’étape 4), `mod_disabled` (activez-le), `mod_check_failed` (`claude plugin list --json` a échoué, donc Claude Code est probablement trop ancien). `"mod":null` veut dire que le bridge n’a pas du tout trouvé `claude` dans son `PATH` (son journal le signale) : ajoutez-le au PATH, ou démarrez le bridge avec `-claude /path/to/claude`.
 
 Le journal du bridge est `bridge.log` dans le dossier de données (`~/.config/symphony` sous Linux, `~/Library/Application Support/symphony` sous macOS, `%AppData%\symphony` sous Windows) ; démarré à l’ouverture de session, il journalise dans `journalctl --user -u symphony` sous Linux et dans `~/Library/Logs/symphony.log` sous macOS.
 

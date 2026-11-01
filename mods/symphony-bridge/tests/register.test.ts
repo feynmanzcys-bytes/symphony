@@ -435,3 +435,210 @@ test('a tool call carries its main argument for the chat', async ($, on) => {
   await w.clock.settle()
   expect(w.reqs[1].body).toEqual(expect.objectContaining({ kind: 'tool.start', tool: 'Bash', summary: 'go test ./...' }))
 })
+
+// ---------- everything else the engine tells the mod about the session ----------
+
+const kinds = (w: { reqs: Req[] }) => w.reqs.map(r => r.body?.kind)
+const find = (w: { reqs: Req[] }, kind: string) => w.reqs.find(r => r.body?.kind === kind)?.body
+
+test('the start names the engine, the mod, the repository and the surface; the tools follow', async ($, on) => {
+  const w = world(on, { SYMPHONY_TOKEN: 'tok' })
+  on('session.version', () => ({ value: { version: '2.1.316', base: '2.1.316', builtAt: '2026-10-01T00:00:00Z' } }))
+  on('session.repo', () => ({ value: { root: '/work', remote: 'git@github.com:x/y.git', internal: false, name: 'y' } }))
+  on('tool.list', () => ({
+    value: [
+      { name: 'Bash', description: '', mcp: false },
+      { name: 'mcp__github__list_issues', description: '', mcp: true },
+      { name: 'mcp__github__get_issue', description: '', mcp: true },
+      { name: 'mcp__slack__send', description: '', mcp: true },
+    ],
+  }))
+
+  await $.session.start(start)
+  await w.clock.settle()
+  expect(w.reqs[0].body).toEqual(
+    expect.objectContaining({
+      kind: 'session.start',
+      surface: 'terminal',
+      engine: { version: '2.1.316', base: '2.1.316' },
+      repo: { root: '/work', remote: 'git@github.com:x/y.git', name: 'y', internal: false },
+    }),
+  )
+  expect(w.reqs[0].body?.mod).toBeUndefined() // the tests read no files: the manifest's version stays unknown
+  expect(find(w, 'session.tools')).toEqual(expect.objectContaining({ toolCount: 4, mcp: ['github', 'slack'] }))
+})
+
+test('without a repository or an engine that answers, the start goes out without them', async ($, on) => {
+  const w = world(on, { SYMPHONY_TOKEN: 'tok' })
+  on('session.repo', () => ({ value: null }))
+  on('session.version', () => ({ deny: 'not here' }))
+
+  await $.session.start(start)
+  await w.clock.settle()
+  expect(w.reqs[0].body?.repo).toBeUndefined()
+  expect(w.reqs[0].body?.engine).toBeUndefined()
+  expect(kinds(w)).toEqual(['session.start'])
+})
+
+test('the usage figures go out coalesced: the latest ones, at most every 2 seconds', async ($, on) => {
+  const w = world(on, { SYMPHONY_TOKEN: 'tok' })
+  on('session.measure', (_$, e) => ({ changed: e.changed }))
+  const measure = (tokens: number, usd: number) =>
+    $.session.measure({ context: { tokens, window: 200_000, percent: tokens / 2000 }, rateLimits: [{ kind: 'five_hour', percentUsed: 12 }], cost: { usd }, changed: ['context', 'cost'] })
+
+  await $.session.start(start)
+  await measure(1000, 0.1)
+  await measure(2000, 0.2)
+  await w.clock.advance(500)
+  await w.clock.settle()
+  expect(kinds(w)).toEqual(['session.start']) // not yet
+  await measure(3000, 0.3)
+  await w.clock.advance(2000)
+  await w.clock.settle()
+  const usage = w.reqs.filter(r => r.body?.kind === 'session.usage')
+  expect(usage.length).toBe(1)
+  expect(usage[0].body?.usage).toEqual({
+    context: { tokens: 3000, window: 200_000, percent: 1.5 },
+    rateLimits: [{ kind: 'five_hour', percentUsed: 12, resetsAt: undefined }],
+    cost: { usd: 0.3 },
+  })
+})
+
+test('the stop of a response carries its tokens and why the model stopped', async ($, on) => {
+  const w = world(on, { SYMPHONY_TOKEN: 'tok' })
+  const usage = { input_tokens: 100, output_tokens: 20, cache_read_input_tokens: 1000, cache_creation_input_tokens: 5, model: 'claude-opus-5-5' }
+  on('turn.step', async function* () {
+    yield { kind: 'text', index: 0, text: 'ok' }
+    yield { kind: 'stop', stopReason: 'end_turn', usage }
+    return { ...stepResult, answer: 'ok', usage }
+  })
+
+  await $.session.start(start)
+  for await (const _ of $.turn.step(step)) {
+    // consumed
+  }
+  await w.clock.advance(200)
+  await w.clock.settle()
+  expect(find(w, 'chat.stop')).toEqual(
+    expect.objectContaining({
+      turnId: 't1',
+      step: 0,
+      stopReason: 'end_turn',
+      tokens: { input: 100, output: 20, cacheRead: 1000, cacheWrite: 5, model: 'claude-opus-5-5' },
+    }),
+  )
+})
+
+test('a turn that ends says why: a refusal with the API\'s reason, and an API error', async ($, on) => {
+  const w = world(on, { SYMPHONY_TOKEN: 'tok' })
+  on('turn.complete', () => ({ text: '' }))
+  on('classic.StopFailure', () => ({}))
+
+  await $.session.start(start)
+  await $.turn.complete({ turnId: 't1', answer: '', durationMs: 10, isAborted: false, reason: 'refusal', refusal: { category: 'harm', explanation: null } })
+  await $.classic.StopFailure({ error: 'rate_limit', error_details: 'try later' })
+  await $.turn.complete({ turnId: 't2', answer: '', durationMs: 10, isAborted: false, reason: 'error' })
+  await w.clock.settle()
+  expect(find(w, 'turn.complete')).toEqual(expect.objectContaining({ reason: 'refusal', refusal: { category: 'harm' } }))
+  expect(find(w, 'turn.error')).toEqual(expect.objectContaining({ text: 'rate_limit', details: 'try later' }))
+  expect(kinds(w)).toEqual(['session.start', 'turn.complete', 'turn.error', 'turn.complete'])
+})
+
+test('a subagent is reported by name once spawned, and its end too', async ($, on) => {
+  const w = world(on, { SYMPHONY_TOKEN: 'tok' })
+  on('agent.spawn', () => ({ model: 'claude-haiku-5-5', agentId: 'agent-7' }))
+  on('classic.SubagentStop', () => ({}))
+
+  await $.session.start(start)
+  await $.agent.spawn({ prompt: 'find the tests', description: 'Find the tests', subagentType: 'Explore' })
+  await $.classic.SubagentStop({ stop_hook_active: false, agent_id: 'agent-7', agent_transcript_path: '/t', agent_type: 'Explore' })
+  await w.clock.settle()
+  expect(find(w, 'agent.start')).toEqual(
+    expect.objectContaining({ agentId: 'agent-7', agentType: 'Explore', description: 'Find the tests', model: 'claude-haiku-5-5' }),
+  )
+  expect(find(w, 'agent.end')).toEqual(expect.objectContaining({ agentId: 'agent-7', agentType: 'Explore' }))
+})
+
+test('the classic hooks the office listens to: tasks, notifications, compaction, a model switch, a folder change, background work', async ($, on) => {
+  const w = world(on, { SYMPHONY_TOKEN: 'tok' })
+  for (const ev of ['TaskCreated', 'TaskCompleted', 'Notification', 'PostCompact', 'PostModelSwitch', 'CwdChanged', 'Stop'] as const) on(`classic.${ev}`, () => ({}))
+
+  await $.session.start(start)
+  await $.classic.TaskCreated({ task_id: '1', task_subject: 'write tests', teammate_name: 'bob' })
+  await $.classic.TaskCompleted({ task_id: '1', task_subject: 'write tests' })
+  await $.classic.Notification({ message: 'Claude is waiting for your input', notification_type: 'idle_prompt' })
+  await $.classic.PostCompact({ trigger: 'auto', compact_summary: '...' })
+  await $.classic.PostModelSwitch({
+    from_model: 'claude-sonnet-5-5', to_model: 'claude-opus-5-5', requested_model: 'opus', source: 'command', context_tokens: 100,
+    prompt_cache_warm: false, cache_ttl: '5m', estimated_cache_write_usd: 0, pricing: 'catalog',
+  })
+  await $.classic.CwdChanged({ old_cwd: '/work', new_cwd: '/work/sub' })
+  await $.classic.Stop({ stop_hook_active: false, background_tasks: [{ id: 'b1', type: 'shell', status: 'running' }], session_crons: [] })
+  await $.classic.Stop({ stop_hook_active: false, background_tasks: [{ id: 'b1', type: 'shell', status: 'running' }], session_crons: [] }) // unchanged: not reported again
+  await w.clock.settle()
+  expect(kinds(w)).toEqual([
+    'session.start', 'todo.create', 'todo.done', 'session.notify', 'session.compact', 'session.model', 'session.cwd', 'session.background',
+  ])
+  expect(find(w, 'todo.create')).toEqual(expect.objectContaining({ todo: '1', subject: 'write tests', teammate: 'bob' }))
+  expect(find(w, 'session.notify')).toEqual(expect.objectContaining({ notifyType: 'idle_prompt', text: 'Claude is waiting for your input' }))
+  expect(find(w, 'session.compact')).toEqual(expect.objectContaining({ trigger: 'auto' }))
+  expect(find(w, 'session.model')).toEqual(expect.objectContaining({ model: 'claude-opus-5-5', from: 'claude-sonnet-5-5', source: 'command' }))
+  expect(find(w, 'session.cwd')).toEqual(expect.objectContaining({ cwd: '/work/sub' }))
+  expect(w.reqs.at(-1)?.body).toEqual(expect.objectContaining({ kind: 'session.background', bgTasks: 1, bgCrons: 0, cwd: '/work/sub' }))
+})
+
+test('a slash command is reported with its arguments', async ($, on) => {
+  const w = world(on, { SYMPHONY_TOKEN: 'tok' })
+  on('command.run', () => ({ text: '' }))
+
+  await $.session.start(start)
+  await $.command.run({ command: 'compact', args: ' keep the API ', origin: { kind: 'composer' }, presentation: { fullscreen: false } })
+  await w.clock.settle()
+  expect(find(w, 'command.run')).toEqual(expect.objectContaining({ command: 'compact', args: 'keep the API' }))
+})
+
+test('a tool call reports how long it took, and a failure or a denial its reason', async ($, on) => {
+  const w = world(on, { SYMPHONY_TOKEN: 'tok' })
+  on('tool.call', async () => {
+    await w.clock.advance(1234) // the call takes 1234 ms of the mocked clock
+    return { deny: 'exit 1' }
+  })
+  on('classic.PostToolUseFailure', () => ({}))
+  on('classic.PermissionDenied', () => ({}))
+
+  await $.session.start(start)
+  await $.tool.call({ tool: 'Bash', command: 'false', tool_use_id: 'tu-9' })
+  await $.classic.PostToolUseFailure({ tool_name: 'Bash', tool_input: { command: 'false' }, tool_use_id: 'tu-9', error: 'exit 1' })
+  await $.classic.PermissionDenied({ tool_name: 'Edit', tool_input: {}, tool_use_id: 'tu-10', reason: 'a deny rule' })
+  await w.clock.settle()
+  expect(find(w, 'tool.end')).toEqual(expect.objectContaining({ tool: 'Bash', toolUseId: 'tu-9', denied: true, durationMs: 1234 }))
+  const fails = w.reqs.filter(r => r.body?.kind === 'tool.fail').map(r => r.body)
+  expect(fails).toEqual([
+    expect.objectContaining({ tool: 'Bash', toolUseId: 'tu-9', text: 'exit 1' }),
+    expect.objectContaining({ tool: 'Edit', toolUseId: 'tu-10', text: 'a deny rule', denied: true }),
+  ])
+})
+
+test('the end says why the session ended', async ($, on) => {
+  const w = world(on, { SYMPHONY_TOKEN: 'tok' })
+  on('session.end', (_$, e) => ({ sessionId: e.sessionId }))
+
+  await $.session.start(start)
+  await $.session.end({ reason: 'clear', sessionId: 'sess-1', resume: { id: 'sess-1' } })
+  expect(w.reqs.at(-1)?.body).toEqual(expect.objectContaining({ kind: 'session.end', reason: 'clear' }))
+})
+
+test('without a token none of it is reported', async ($, on) => {
+  const w = world(on, {})
+  on('session.measure', (_$, e) => ({ changed: e.changed }))
+  on('agent.spawn', () => ({ model: 'm', agentId: 'a' }))
+  on('classic.PostCompact', () => ({}))
+
+  await $.session.start(start)
+  await $.session.measure({ context: { window: 1 }, rateLimits: [], changed: ['context'] })
+  await $.agent.spawn({ prompt: 'x' })
+  await $.classic.PostCompact({ trigger: 'manual', compact_summary: '' })
+  await w.clock.advance(5000)
+  await w.clock.settle()
+  expect(w.reqs).toEqual([])
+})

@@ -114,6 +114,12 @@ func (h *Hub) Open(dir string) error {
 			return fmt.Errorf("messages.json: %w", err)
 		}
 	}
+	var ledger []*LedgerRow
+	if data, err := os.ReadFile(filepath.Join(dir, "ledger.json")); err == nil {
+		if err := json.Unmarshal(data, &ledger); err != nil {
+			return fmt.Errorf("ledger.json: %w", err)
+		}
+	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.dataDir = dir
@@ -121,6 +127,7 @@ func (h *Hub) Open(dir string) error {
 		h.accounts[a.ID] = a
 	}
 	h.messages = msgs
+	h.ledger = ledger
 	return h.openTasksLocked(dir)
 }
 
@@ -194,11 +201,12 @@ func (s *saver) wait() {
 	}
 }
 
-// Flush waits until the tasks being ended are done, and the message log and the tasks are on disk.
+// Flush waits until the tasks being ended are done, and the message log, the tasks and the ledger are on disk.
 func (h *Hub) Flush() {
 	h.taskJobs.wait()
 	h.msgSave.wait()
 	h.taskSave.wait()
+	h.ledgerSave.wait()
 }
 
 // CreateAccount creates an account in the lowest free seat. Names are unique (sessions message each other by name).

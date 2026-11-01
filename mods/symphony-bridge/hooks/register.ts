@@ -19,12 +19,19 @@ import { type Lang, matchLang, message } from './messages'
 // The employee window in the page shows the session as a chat: the mod streams the model's thinking and text
 // (turn.step, in batches), reports the prompts that enter (prompt.submit) and the tool calls, and polls the bridge
 // for what the page sends (its inbox): text to submit as the person's prompt, or a stop of the running turn.
+// Besides the chat, the mod reports everything the engine tells it about the session, for the pages to show as they
+// like: the engine's version and the repository at the start, the context window's fill, the rate limits and the cost
+// (session.measure, coalesced), each response's tokens (the stop chunk of turn.step), why a turn ended, subagents by
+// name, the agent team's tasks, notifications, compactions, model switches, folder changes, slash commands, tool
+// durations and failures, the surfaces attached, the MCP servers connected and why the session ended.
 const DEFAULT_BRIDGE = 'http://127.0.0.1:7788'
 // how long a report, or putting an ask on the bridge, may take; a hanging bridge holds nothing up for longer
 const REPORT_TIMEOUT = 5_000
 const ASK_TIMEOUT = 10_000
 // how often the pieces of a streamed response go to the bridge, at most
 const STREAM_FLUSH = 150
+// how often the usage figures go to the bridge, at most (the context fill moves on every response)
+const USAGE_FLUSH = 2_000
 // after a failed inbox poll, how long before the next
 const INBOX_RETRY = 3_000
 
@@ -54,8 +61,14 @@ let mainTurn: string | undefined
 // the session ended: the inbox poll stops
 let ended = false
 let polling = false
+// the latest usage figures waiting to go out, and the timer that sends them
+let usagePending: object | undefined
+let usageTimer: { cancel: () => void } | undefined
+// the background work last reported (classic.Stop comes at every turn's end; only a change is worth a report)
+let background = { tasks: -1, crons: -1 }
 
 // The Claude login is in $CLAUDE_CONFIG_DIR/.claude.json, or in the home folder when that isn't set (Windows has no HOME; use USERPROFILE).
+// ($.session.identity() answers { deny } to a mod the organization's managed settings didn't install, so the file it is.)
 async function loginEmail($: EngineInterface) {
   const dir =
     (await $.env.get('CLAUDE_CONFIG_DIR')) ?? (await $.env.get('HOME')) ?? (await $.env.get('USERPROFILE'))
@@ -64,6 +77,16 @@ async function loginEmail($: EngineInterface) {
     const config = JSON.parse(await $.fs.read(`${dir}/.claude.json`))
     const email = config?.oauthAccount?.emailAddress
     return typeof email === 'string' && email ? email : undefined
+  } catch {
+    return undefined
+  }
+}
+
+// the mod's own version, from its manifest; the bridge compares it with the one it expects
+async function modVersion($: EngineInterface) {
+  try {
+    const manifest = JSON.parse(await $.fs.read(`${$.plugin.root}/.claude-plugin/plugin.json`))
+    return typeof manifest?.version === 'string' ? (manifest.version as string) : undefined
   } catch {
     return undefined
   }
@@ -92,6 +115,20 @@ async function ident($: EngineInterface) {
 
 async function sid($: EngineInterface) {
   return (sessionId ??= await $.session.id())
+}
+
+// office says whether this session reports to the bridge at all (a token, and not refused)
+async function office($: EngineInterface) {
+  return !refused && !!(await ident($))
+}
+
+// the value of p, or undefined when it fails (an engine op this build lacks, a folder without git)
+async function safe<T>(p: Promise<T>): Promise<T | undefined> {
+  try {
+    return await p
+  } catch {
+    return undefined
+  }
 }
 
 // only called for office sessions (emit and ask check ident first)
@@ -202,11 +239,12 @@ async function ask(
 }
 
 // the model and thinking effort set the character's size in the office; reported only when they change.
-function reportModel($: EngineInterface, model: string, effort?: string | number) {
+// A switch (/model, the picker, a fallback) also names the model it came from and what switched it.
+function reportModel($: EngineInterface, model: string, effort?: string | number, extra: object = {}) {
   const level = typeof effort === 'number' ? String(effort) : (effort ?? '')
   if (model === reported.model && level === reported.effort) return
   reported = { model, effort: level }
-  report($, 'session.model', { model, effort: level || undefined })
+  report($, 'session.model', { model, effort: level || undefined, ...extra })
 }
 
 // /rename without an argument makes up a name that the command's result doesn't include, so we look for the last
@@ -244,8 +282,17 @@ function summary(input: unknown): string {
   return ''
 }
 
+// tokens is what a response or a turn cost, as the bridge keeps it
+type ApiUsage = { input_tokens: number; output_tokens: number; cache_read_input_tokens: number; cache_creation_input_tokens: number; model?: string }
+function tokens(u: ApiUsage | null | undefined) {
+  if (!u) return undefined
+  return { input: u.input_tokens, output: u.output_tokens, cacheRead: u.cache_read_input_tokens, cacheWrite: u.cache_creation_input_tokens, model: u.model }
+}
+
+type Stop = { stopReason: string | null; usage: ApiUsage | null }
+
 // A step's response in pieces: thinking and text chunks are gathered by block and sent every STREAM_FLUSH ms,
-// and end closes the blocks.
+// and end closes the blocks, with what the response cost and why the model stopped.
 function stepStream($: EngineInterface, turnId: string, step: number) {
   const blocks = new Map<number, { kind: string; text: string }>()
   let timer: { cancel: () => void } | undefined
@@ -266,11 +313,41 @@ function stepStream($: EngineInterface, turnId: string, step: number) {
       else blocks.set(index, { kind, text })
       timer ??= $.clock.after(STREAM_FLUSH, flush)
     },
-    end() {
+    end(stop?: Stop) {
       flush()
-      report($, 'chat.stop', { turnId, step })
+      report($, 'chat.stop', { turnId, step, tokens: tokens(stop?.usage), stopReason: stop?.stopReason ?? undefined })
     },
   }
+}
+
+// the usage figures (the context window's fill, the rate limits, the cost) go out at most every USAGE_FLUSH ms, the
+// latest ones: the fill moves on every response, and each report is one request through the queue
+function reportUsage($: EngineInterface, usage: object) {
+  usagePending = usage
+  usageTimer ??= $.clock.after(USAGE_FLUSH, () => {
+    usageTimer = undefined
+    const u = usagePending
+    usagePending = undefined
+    if (u) report($, 'session.usage', { usage: u })
+  })
+}
+
+// the tools the session has: how many, and the MCP servers among them (mcp__<server>__<tool>)
+async function reportTools($: EngineInterface) {
+  const list = await safe($.tool.list())
+  if (!list) return
+  const mcp = new Set<string>()
+  for (const t of list) {
+    const m = /^mcp__(.+?)__/.exec(t.name)
+    if (t.mcp && m) mcp.add(m[1])
+  }
+  report($, 'session.tools', { toolCount: list.length, mcp: [...mcp].sort() })
+}
+
+// the surfaces the session draws on: the terminal, the desktop app, a phone
+async function reportSurfaces($: EngineInterface) {
+  const surfaces = await safe($.session.surfaces())
+  if (surfaces) report($, 'session.surfaces', { surfaces: [...surfaces] })
 }
 
 // the inbox: what the page sent to this session. One long poll at a time, for as long as the session runs.
@@ -328,9 +405,20 @@ export const register: Register = on => {
     sticky = { cwd: e.cwd, launch: (await $.env.get('SYMPHONY_LAUNCH')) || undefined, task: (await $.env.get('SYMPHONY_TASK')) || undefined }
     const model = await $.session.model()
     reported = { model, effort: '' }
+    background = { tasks: -1, crons: -1 }
     ended = false
     mainTurn = undefined
-    const online = { interactive: e.isInteractive, login: id.login, model }
+    // what the engine knows of itself and the folder: its version, the mod's, the repository, where it draws
+    const [engine, mod, repo] = await Promise.all([safe($.session.version()), modVersion($), safe($.session.repo())])
+    const online = {
+      interactive: e.isInteractive,
+      login: id.login,
+      model,
+      surface: e.surface ?? undefined,
+      engine: engine ? { version: engine.version, base: engine.base } : undefined,
+      mod,
+      repo: repo ? { root: repo.root, remote: repo.remote ?? undefined, name: repo.name ?? undefined, internal: repo.internal } : undefined,
+    }
     let res = await emit($, 'session.start', online, ASK_TIMEOUT)
     if (!res && (await startBridge($, id.bridge))) {
       res = await emit($, 'session.start', online, ASK_TIMEOUT)
@@ -347,29 +435,43 @@ export const register: Register = on => {
       heartbeat = $.clock.every(15_000, () => {
         report($, 'heartbeat')
       })
+      void reportTools($)
     }
     return started
   })
 
   // on every model request, note the model and effort actually used, and stream the response's thinking and
-  // text to the chat (main session only; subagents pass through)
+  // text to the chat (main session only; subagents pass through); the stop chunk says what the response cost
   on('turn.step', async function* ($, e, next) {
     const stream = next(e)
     if ('agentId' in e && e.agentId) return yield* stream
     reportModel($, e.model, e.effort)
-    const office = !refused && (await ident($))
-    const chat = office ? stepStream($, e.turnId, e.index) : undefined
+    const chat = (await office($)) ? stepStream($, e.turnId, e.index) : undefined
+    let stop: Stop | undefined
     try {
       for (;;) {
         const n = await stream.next()
         if (n.done) return n.value
         const c = n.value
         if (chat && (c.kind === 'thinking' || c.kind === 'text')) chat.add(c.index, c.kind, c.text)
+        else if (c.kind === 'stop') stop = { stopReason: c.stopReason, usage: c.usage }
         yield c
       }
     } finally {
-      chat?.end()
+      chat?.end(stop)
     }
+  })
+
+  // the context window's fill, the rate limits and the cost, whenever one of them moves (coalesced)
+  on('session.measure', async ($, e, next) => {
+    if (await office($)) {
+      reportUsage($, {
+        context: { tokens: e.context.tokens, window: e.context.window, percent: e.context.percent },
+        rateLimits: e.rateLimits.map(r => ({ kind: r.kind, percentUsed: r.percentUsed, resetsAt: r.resetsAt })),
+        cost: e.cost ? { usd: e.cost.usd } : undefined,
+      })
+    }
+    return next(e)
   })
 
   // a prompt that enters the session (typed, a command, a notification); messages from other sessions have
@@ -396,9 +498,15 @@ export const register: Register = on => {
     return next(e)
   })
 
+  // every slash command, for the chat; /rename also for the name
+  on('command.run', async ($, e, next) => {
+    report($, 'command.run', { command: e.command, args: e.args.trim().slice(0, 200) })
+    return next(e)
+  })
+
   on('command.run', { command: 'rename' }, async ($, e, next) => {
     const ran = await next(e)
-    if (refused || !(await ident($))) return ran
+    if (!(await office($))) return ran
     const title = e.args.trim() || (await titleFromTranscript($))
     report($, 'session.title', { title })
     return ran
@@ -428,8 +536,9 @@ export const register: Register = on => {
 
   on('session.end', async ($, e, next) => {
     heartbeat?.cancel()
+    usageTimer?.cancel()
     ended = true
-    report($, 'session.end')
+    report($, 'session.end', { reason: e.reason })
     await queue // the goodbye, and whatever was still on its way, before the session goes
     return next(e)
   })
@@ -444,14 +553,121 @@ export const register: Register = on => {
     return next(e)
   })
 
+  // why the turn ended (answered, interrupted, refused, an API error) and what it cost
   on('turn.complete', async ($, e, next) => {
     if (!('agentId' in e && e.agentId) && mainTurn === e.turnId) mainTurn = undefined
     report($, 'turn.complete', {
       turnId: e.turnId,
       durationMs: e.durationMs,
       isAborted: e.isAborted,
+      reason: e.reason,
+      refusal: e.reason === 'refusal' ? { category: e.refusal.category ?? undefined, explanation: e.refusal.explanation ?? undefined } : undefined,
+      tokens: tokens(e.usage),
       agentId: 'agentId' in e ? e.agentId : undefined,
     })
+    return next(e)
+  })
+
+  // an API error ended the turn (retries exhausted, the context limit)
+  on('classic.StopFailure', async ($, e, next) => {
+    report($, 'turn.error', { text: String(e.error), details: e.error_details?.slice(0, 500) })
+    return next(e)
+  })
+
+  // subagents by name: what they were asked, their type and model; the id is on the spawn's result
+  on('agent.spawn', async ($, e, next) => {
+    const spawned = await next(e)
+    if (spawned.agentId) {
+      report($, 'agent.start', {
+        agentId: spawned.agentId,
+        agentType: e.subagentType,
+        description: (e.description ?? '').slice(0, 200),
+        model: spawned.model,
+        background: e.background,
+      })
+    }
+    return spawned
+  })
+
+  on('classic.SubagentStop', async ($, e, next) => {
+    report($, 'agent.end', { agentId: e.agent_id, agentType: e.agent_type })
+    return next(e)
+  })
+
+  // the agent team's task list (TaskCreate / TaskUpdate): "todo" here, as "task" is the office's collaborative task
+  on('classic.TaskCreated', async ($, e, next) => {
+    report($, 'todo.create', { todo: e.task_id, subject: e.task_subject.slice(0, 200), teammate: e.teammate_name })
+    return next(e)
+  })
+
+  on('classic.TaskCompleted', async ($, e, next) => {
+    report($, 'todo.done', { todo: e.task_id, subject: e.task_subject.slice(0, 200) })
+    return next(e)
+  })
+
+  // what the engine would show the person as a notification (idle, an error, a permission prompt in the terminal)
+  on('classic.Notification', async ($, e, next) => {
+    report($, 'session.notify', { notifyType: e.notification_type, title: e.title, text: e.message.slice(0, 500) })
+    return next(e)
+  })
+
+  // the conversation was compacted (by hand or automatically): the context fill drops
+  on('classic.PostCompact', async ($, e, next) => {
+    report($, 'session.compact', { trigger: e.trigger })
+    return next(e)
+  })
+
+  // the model changed (/model, the picker, a fallback): the character changes size, and the chat says so
+  on('classic.PostModelSwitch', async ($, e, next) => {
+    reportModel($, e.to_model, reported.effort || undefined, { from: e.from_model, source: e.source })
+    return next(e)
+  })
+
+  // the session moved to another folder: every later event carries it
+  on('classic.CwdChanged', async ($, e, next) => {
+    sticky = { ...sticky, cwd: e.new_cwd }
+    report($, 'session.cwd')
+    return next(e)
+  })
+
+  // the surfaces the session draws on (a phone attached, the desktop app connected)
+  on('session.attach', async ($, e, next) => {
+    const attached = await next(e)
+    void reportSurfaces($)
+    return attached
+  })
+
+  on('session.detach', async ($, e, next) => {
+    const detached = await next(e)
+    void reportSurfaces($)
+    return detached
+  })
+
+  // the tools changed (an MCP server added, a plugin enabled)
+  on('classic.ConfigChange', async ($, e, next) => {
+    void reportTools($)
+    return next(e)
+  })
+
+  // the end of a turn says what runs on in the background: tasks and scheduled runs; reported when it changes
+  on('classic.Stop', async ($, e, next) => {
+    const tasks = (e.background_tasks ?? []).length
+    const crons = (e.session_crons ?? []).length
+    if (tasks !== background.tasks || crons !== background.crons) {
+      background = { tasks, crons }
+      report($, 'session.background', { bgTasks: tasks, bgCrons: crons })
+    }
+    return next(e)
+  })
+
+  // a tool call failed, or a permission was denied (in the terminal or by a rule): the reason, for the chat's tool row
+  on('classic.PostToolUseFailure', async ($, e, next) => {
+    report($, 'tool.fail', { tool: e.tool_name, toolUseId: e.tool_use_id, text: e.error.slice(0, 500) })
+    return next(e)
+  })
+
+  on('classic.PermissionDenied', async ($, e, next) => {
+    report($, 'tool.fail', { tool: e.tool_name, toolUseId: e.tool_use_id, text: e.reason.slice(0, 500), denied: true })
     return next(e)
   })
 
@@ -480,10 +696,11 @@ export const register: Register = on => {
   })
 
   // AskUserQuestion: no terminal dialog; the answer from the web page becomes the tool result.
-  // Other tools are only reported.
+  // Other tools are only reported, with how long they took.
   on('tool.call', async ($, e, next) => {
     const call = { tool: e.tool, agentId: e.agentId, toolUseId: e.tool_use_id }
     report($, 'tool.start', { ...call, summary: summary(e) })
+    const t0 = (await office($)) ? await $.clock.now() : undefined
 
     let ran: Awaited<ReturnType<typeof next>> | undefined
     if (e.tool === 'AskUserQuestion') {
@@ -499,7 +716,8 @@ export const register: Register = on => {
     ran ??= await next(e)
 
     const denied = ran.deny !== undefined || (e.tool_use_id !== undefined && deniedByWeb.delete(e.tool_use_id))
-    report($, 'tool.end', { ...call, denied, isError: ran.isError === true })
+    const durationMs = t0 === undefined ? undefined : Math.max(0, (await $.clock.now()) - t0)
+    report($, 'tool.end', { ...call, denied, isError: ran.isError === true, durationMs })
     return ran
   })
 }

@@ -2,6 +2,14 @@
 
 What changed in each release of symphony. The program (the bridge) and the mod share one version number. A release's notes start with its section here: the release workflow stops before building when the section is missing.
 
+## v0.8.0 (2026-11-01)
+
+- **The mod reports everything the engine tells it about a session**, and the bridge keeps it for the pages (the pixel office shows little of it yet; the themes to come are designed on it, see `docs/plan-protocol-themes.md`): the engine's version, the mod's version, the git repository and the surface at the start; the context window's fill, the rate-limit windows and the cost (`session.measure`, coalesced to one report every 2 seconds, pushed to the pages as a `usage` message without a snapshot); each response's tokens and stop reason (summed by model in the session's `usage.totals`); why a turn ended (a refusal with the API's reason, an API error), subagents by name (type, description, model), the agent team's task list (`todos`), notifications, compactions, model switches, folder changes, every slash command, each tool call's duration and the reason it failed or was denied, the surfaces attached, the MCP servers connected, background tasks and scheduled runs, and why the session ended. `claude plugin update symphony-bridge@symphony`.
+- The bridge keeps a **ledger** (`ledger.json`, 90 days): the cost, tokens, turns and tool calls of each account's sessions by day; the snapshot carries today's rows, `GET /api/ledger` every day kept. It also keeps an **activity log** of the last 500 things that happened (sessions coming and going, tool calls, asks and their outcomes, messages, errors, launches), `GET /api/activity`, so a page that opens late sees the same timeline.
+- The snapshot carries `protocol: 1` (the version of what the bridge gives the pages) and `started` (when the bridge started).
+- The employee window shows how long a tool call took, a failure's reason in the row's tooltip, the slash commands that ran, and notices for a refusal, an API error, a compaction, a model switch and the engine's notifications.
+- A plan for the next versions, `docs/plan-protocol-themes.md`: the page protocol and theme framework (v0.9.0), then three themes.
+
 ## v0.7.1 (2026-11-01)
 
 - The README now starts with a runbook for AI agents: paste "Install https://github.com/feynmanzcys-bytes/symphony for me" into Claude Code and it installs the program, the mod and the bridge at login, checking each step. The nine translations follow it.

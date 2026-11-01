@@ -27,7 +27,8 @@ const (
 	ChatTool     = "tool"     // a tool call: its name, main argument and how it ended
 	ChatMessage  = "message"  // a message from or to another session
 	ChatAsk      = "ask"      // a permission request or question, and how it was settled
-	ChatNotice   = "notice"   // the session's own events: interrupted, off duty
+	ChatNotice   = "notice"   // the session's own events: interrupted, off duty, compacted, an error (Text is the code, Summary the detail)
+	ChatCommand  = "command"  // a slash command that ran: /name and its arguments
 )
 
 type ChatItem struct {
@@ -46,6 +47,7 @@ type ChatItem struct {
 	Ask     string    `json:"ask,omitempty"`    // ask: its id; kind: permission|question in Status until settled
 	AskKind string    `json:"askKind,omitempty"`
 	Secs    int       `json:"secs,omitempty"` // thinking: how long it took, once done
+	Ms      int       `json:"ms,omitempty"`   // tool: how long it took
 	Time    time.Time `json:"time"`
 	key     string    // streamed blocks: turn/step/block; tools: the tool_use id; asks: the ask id
 }
@@ -167,8 +169,9 @@ func (h *Hub) chatToolLocked(s *Session, ev Event, end bool) {
 			return
 		}
 		it.Done = true
+		it.Ms = int(ev.DurationMs)
 		switch {
-		case ev.Denied:
+		case ev.Denied || it.Status == "denied": // a tool.fail may have named the denial first
 			it.Status = "denied"
 		case ev.IsError:
 			it.Status = "error"
@@ -179,6 +182,41 @@ func (h *Hub) chatToolLocked(s *Session, ev Event, end bool) {
 		return
 	}
 	h.chatAppendLocked(s.ID, &ChatItem{Kind: ChatTool, Tool: ev.Tool, Summary: cutRunes(ev.Summary, 300), AgentID: ev.AgentID, key: key})
+}
+
+// chatToolFailLocked puts the reason a tool call failed, or a permission was denied, on its row (either side may
+// come first).
+func (h *Hub) chatToolFailLocked(s *Session, ev Event) {
+	if ev.ToolUseID == "" {
+		return
+	}
+	c := h.chatLocked(s.ID)
+	it := c.byKey["tool/"+ev.ToolUseID]
+	if it == nil {
+		return
+	}
+	it.Text = cutRunes(strings.TrimSpace(ev.Text), 500)
+	if ev.Denied {
+		it.Status = "denied"
+	} else if it.Done && it.Status == "ok" {
+		it.Status = "error"
+	}
+	h.pushChatLocked(s.ID, it, "")
+}
+
+// chatCommandLocked records a slash command that ran, unless the prompt bubble just before it is that command typed
+// (prompt.submit reports it first): then the bubble is enough.
+func (h *Hub) chatCommandLocked(s *Session, ev Event) {
+	if ev.Command == "" {
+		return
+	}
+	c := h.chatLocked(s.ID)
+	if n := len(c.items); n > 0 {
+		if last := c.items[n-1]; last.Kind == ChatUser && strings.HasPrefix(last.Text, "/"+ev.Command) {
+			return
+		}
+	}
+	h.chatAppendLocked(s.ID, &ChatItem{Kind: ChatCommand, Text: "/" + ev.Command, Summary: cutRunes(ev.Args, 200), Done: true})
 }
 
 // chatUserLocked records a prompt that entered the session.
@@ -263,6 +301,12 @@ func (h *Hub) chatSettledLocked(a *Ask) {
 
 func (h *Hub) chatNoticeLocked(session, text string) {
 	h.chatAppendLocked(session, &ChatItem{Kind: ChatNotice, Text: text, Done: true})
+}
+
+// chatNoticeDetailLocked is a notice with a detail the page shows after the translated code (an error's text, the
+// models of a switch).
+func (h *Hub) chatNoticeDetailLocked(session, code, detail string) {
+	h.chatAppendLocked(session, &ChatItem{Kind: ChatNotice, Text: code, Summary: cutRunes(detail, 300), Done: true})
 }
 
 // Chat is a session's chat log.

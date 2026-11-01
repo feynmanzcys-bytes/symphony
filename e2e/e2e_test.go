@@ -264,6 +264,22 @@ func TestOffice(t *testing.T) {
 	} else {
 		t.Logf("A's model and effort: %s · %s", s.Model, s.Effort)
 	}
+	// what else the mod reports: the engine's version, the mod's, the response tokens summed by model, the context
+	// window's fill, the turn count, the tool's duration in the chat
+	waitUntil(t, time.Minute, "the mod reports the engine, the usage figures and the turn", func() bool {
+		s := b.session(sidA)
+		return s.Engine != nil && s.Engine.Version != "" && s.Usage != nil && len(s.Usage.Totals) > 0 && s.Usage.Context != nil && s.Usage.Context.Window > 0 && s.Turns >= 1
+	}, func() string { data, _ := json.Marshal(b.session(sidA)); return string(data) })
+	if s := b.session(sidA); !installed && s.Mod == "" {
+		t.Fatalf("the mod should report its version from the repository's manifest: %+v", s)
+	} else {
+		t.Logf("A's engine %s, mod %q, totals %v, context %v, cost %v", s.Engine.Version, s.Mod, s.Usage.Totals, s.Usage.Context, s.Usage.Cost)
+	}
+	if !b.hasEvent(func(ev bridge.Event) bool {
+		return ev.Session == sidA && ev.Kind == "tool.end" && ev.Tool == "Bash" && ev.DurationMs > 0
+	}) {
+		t.Fatal("A's Bash call should carry its duration")
+	}
 	waitUntil(t, time.Minute, "the bridge hears that B's Bash was denied", func() bool {
 		return b.hasEvent(func(ev bridge.Event) bool {
 			return ev.Session == sidB && ev.Kind == "tool.end" && ev.Tool == "Bash" && ev.Denied

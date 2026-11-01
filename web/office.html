@@ -2656,11 +2656,18 @@ function itemEl(it, old) {
       el.className = `it text${it.done ? ' done' : ''}`
       el.innerHTML = `<div class="body">${richText(it.text)}</div>${it.done ? timeOf(it) : ''}`
       break
-    case 'tool':
+    case 'tool': {
       el.className = `it tool ${it.status || ''}${it.done ? ' done' : ''}`
+      // the outcome, and how long it took once it is done (the mod clocks the call); a failure's reason is in the tooltip
+      const took = it.done && it.ms >= 1000 ? ` ${(it.ms / 1000).toFixed(it.ms < 10000 ? 1 : 0)}s` : ''
       el.innerHTML = `${sub}<b>${esc(it.tool)}</b> ${esc(it.summary || '')}` +
-        (it.done ? `<span class="res">${esc(t('chat.tool.' + (it.status || 'ok')))}</span>` : '')
-      el.title = it.summary || ''
+        (it.done ? `<span class="res">${esc(t('chat.tool.' + (it.status || 'ok')) + took)}</span>` : '')
+      el.title = (it.summary || '') + (it.text ? '\n' + it.text : '')
+      break
+    }
+    case 'command': // a slash command that ran, as a tool row
+      el.className = 'it tool done'
+      el.innerHTML = `<b>${esc(it.text)}</b> ${esc(it.summary || '')}`
       break
     case 'message': {
       const out = !!chatName && it.from === chatName // a task session sends as its member's name
@@ -2674,9 +2681,9 @@ function itemEl(it, old) {
         `${esc(it.tool ? it.tool + ' ' : '')}${esc(it.summary || '')} · ${esc(t('chat.ask.' + (it.status || 'pending')))}${it.text ? esc(' · ' + it.text) : ''}`
       el.title = (it.summary || '') + (it.text ? '\n' + it.text : '')
       break
-    default:
+    default: // a notice: the code translated, then the detail the bridge adds (an error's text, the models of a switch)
       el.className = 'it notice'
-      el.textContent = t('chat.notice.' + it.text)
+      el.textContent = t('chat.notice.' + it.text) + (it.summary ? `${t('common.colon')}${it.summary}` : '')
   }
   return el
 }

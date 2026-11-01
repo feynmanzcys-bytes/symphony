@@ -58,6 +58,12 @@ type Agent struct {
 	ID    string `json:"id"`
 	State string `json:"state"`
 	Tool  string `json:"tool,omitempty"`
+	// from agent.start: what the subagent was asked, its type and model (an older mod reports none of it)
+	Type        string     `json:"type,omitempty"`
+	Description string     `json:"description,omitempty"`
+	Model       string     `json:"model,omitempty"`
+	Background  bool       `json:"background,omitempty"`
+	Started     *time.Time `json:"started,omitempty"`
 }
 
 type Session struct {
@@ -80,6 +86,25 @@ type Session struct {
 	Updated time.Time         `json:"updated"`
 	// StateSince is when the current state began (the page uses it to tell how long a session idles; long idlers fall asleep)
 	StateSince time.Time `json:"stateSince"`
+	// what the mod reports besides the state and the chat (usage.go); every field is optional, an older mod sends none
+	Surface     string      `json:"surface,omitempty"`  // where the session draws: terminal, desktop, vscode, mobile
+	Surfaces    []string    `json:"surfaces,omitempty"` // every surface attached (a phone, the desktop app)
+	Engine      *EngineInfo `json:"engine,omitempty"`
+	Mod         string      `json:"mod,omitempty"` // the mod's version
+	Repo        *RepoInfo   `json:"repo,omitempty"`
+	Usage       *Usage      `json:"usage,omitempty"`
+	Turns       int         `json:"turns"`                 // main-loop turns completed
+	Compactions int         `json:"compactions,omitempty"` // times the conversation was compacted
+	Todos       []*Todo     `json:"todos,omitempty"`       // the agent team's open tasks
+	BgTasks     int         `json:"bgTasks,omitempty"`     // background tasks running at the last turn's end
+	BgCrons     int         `json:"bgCrons,omitempty"`     // scheduled runs
+	ToolCount   int         `json:"toolCount,omitempty"`   // tools the session has
+	MCP         []string    `json:"mcp,omitempty"`         // the MCP servers among them
+	ToolMs      float64     `json:"toolMs,omitempty"`      // time spent in tool calls, milliseconds
+	LastError   string      `json:"lastError,omitempty"`   // the last API error that ended a turn
+	EndReason   string      `json:"endReason,omitempty"`   // why the session ended (clear, logout, ...)
+	Notify      *Notify     `json:"notify,omitempty"`      // the last notification
+	costSeen    float64     // the session's cost at the last report, for the ledger's difference
 }
 
 type Ask struct {
@@ -149,6 +174,33 @@ type Event struct {
 	Summary string      `json:"summary,omitempty"`
 	Step    int         `json:"step,omitempty"`
 	Blocks  []ChatDelta `json:"blocks,omitempty"`
+	// what else the mod reports (usage.go): all optional
+	Surface     string      `json:"surface,omitempty"`    // session.start
+	Surfaces    []string    `json:"surfaces,omitempty"`   // session.surfaces
+	Engine      *EngineInfo `json:"engine,omitempty"`     // session.start
+	Mod         string      `json:"mod,omitempty"`        // session.start: the mod's version
+	Repo        *RepoInfo   `json:"repo,omitempty"`       // session.start
+	Usage       *Usage      `json:"usage,omitempty"`      // session.usage: context, rateLimits, cost
+	Tokens      *Tokens     `json:"tokens,omitempty"`     // chat.stop: the response's; turn.complete: the turn's
+	StopReason  string      `json:"stopReason,omitempty"` // chat.stop
+	Reason      string      `json:"reason,omitempty"`     // turn.complete: answer | aborted | refusal | error; session.end: why
+	Refusal     *Refusal    `json:"refusal,omitempty"`    // turn.complete
+	Details     string      `json:"details,omitempty"`    // turn.error
+	AgentType   string      `json:"agentType,omitempty"`  // agent.start / agent.end
+	Description string      `json:"description,omitempty"`
+	Background  bool        `json:"background,omitempty"`
+	Todo        string      `json:"todo,omitempty"` // todo.create / todo.done: the item's id
+	Subject     string      `json:"subject,omitempty"`
+	Teammate    string      `json:"teammate,omitempty"`
+	NotifyType  string      `json:"notifyType,omitempty"` // session.notify
+	Trigger     string      `json:"trigger,omitempty"`    // session.compact: manual | auto
+	From        string      `json:"from,omitempty"`       // session.model: the model switched from
+	Source      string      `json:"source,omitempty"`     // session.model: what switched it
+	Command     string      `json:"command,omitempty"`    // command.run: the slash command's name
+	BgTasks     int         `json:"bgTasks,omitempty"`    // session.background
+	BgCrons     int         `json:"bgCrons,omitempty"`
+	ToolCount   int         `json:"toolCount,omitempty"` // session.tools
+	MCP         []string    `json:"mcp,omitempty"`
 }
 
 // Snapshot is the whole state as the pages see it. Messages is the message log in a full snapshot (the first one a
@@ -156,6 +208,8 @@ type Event struct {
 // each new or updated message as a "message" event, so a tool call doesn't carry 300 messages along.
 type Snapshot struct {
 	Type     string        `json:"type"`
+	Protocol int           `json:"protocol"` // Protocol: what the pages may expect of the bridge
+	Started  time.Time     `json:"started"`  // when the bridge started
 	Accounts []AccountView `json:"accounts"`
 	Sessions []*Session    `json:"sessions"`
 	Asks     []*Ask        `json:"asks"`
@@ -165,6 +219,8 @@ type Snapshot struct {
 	// MessageTail is the latest message's id, in every snapshot: a page that doesn't have it fell behind and
 	// fetches the log again (/api/state)
 	MessageTail string `json:"messageTail,omitempty"`
+	// Ledger is today's rows: what each account's sessions cost today (/api/ledger has every day kept)
+	Ledger []*LedgerRow `json:"ledger"`
 }
 
 // Push is one message for the subscribers: an event or a snapshot, encoded once for all of them.
@@ -182,23 +238,27 @@ func (p *Push) JSON() []byte {
 
 // Hub holds all the state.
 type Hub struct {
-	mu       sync.Mutex
-	accounts map[string]*Account
-	dataDir  string // accounts and the message log are stored here; empty means nothing goes to disk (tests)
-	sessions map[string]*Session
-	asks     map[string]*Ask
-	messages []*Message
-	launches map[string]*Launch
-	chats    map[string]*chatLog // by session id
-	inboxes  map[string]*inbox   // by session id
-	subs     map[chan *Push]struct{}
-	now      func() time.Time
-	msgSave  saver   // writes the message log in the background
-	tasks    []*Task // the record, oldest first (tasks.json)
-	taskNext int     // the next task's number
-	taskSave saver   // writes tasks.json in the background
-	taskJobs jobs    // tasks being ended
-	stopping bool    // the bridge is on its way out (Stop)
+	mu         sync.Mutex
+	accounts   map[string]*Account
+	dataDir    string // accounts and the message log are stored here; empty means nothing goes to disk (tests)
+	sessions   map[string]*Session
+	asks       map[string]*Ask
+	messages   []*Message
+	launches   map[string]*Launch
+	chats      map[string]*chatLog // by session id
+	inboxes    map[string]*inbox   // by session id
+	subs       map[chan *Push]struct{}
+	now        func() time.Time
+	msgSave    saver   // writes the message log in the background
+	tasks      []*Task // the record, oldest first (tasks.json)
+	taskNext   int     // the next task's number
+	taskSave   saver   // writes tasks.json in the background
+	taskJobs   jobs    // tasks being ended
+	stopping   bool    // the bridge is on its way out (Stop)
+	started    time.Time
+	ledger     []*LedgerRow // cost and tokens by account and day (ledger.json)
+	ledgerSave saver
+	activity   []*Activity // the last keepActivity things that happened
 	// gitLocks let one task at a time make or tidy up the repositories of a folder tree (tasks may share a folder)
 	gitLocks treeLocks
 	// AttachHint tells, by launch id, where to find a session's terminal; the current terminal backend provides it
@@ -217,6 +277,7 @@ func NewHub() *Hub {
 		inboxes:  map[string]*inbox{},
 		subs:     map[chan *Push]struct{}{},
 		now:      time.Now,
+		started:  time.Now(),
 	}
 }
 
@@ -277,7 +338,7 @@ func (h *Hub) Snapshot() Snapshot {
 
 // snapshotLocked builds a snapshot; a full one carries the message log, the others leave it null.
 func (h *Hub) snapshotLocked(full bool) Snapshot {
-	snap := Snapshot{Type: "snapshot", Accounts: []AccountView{}, Sessions: []*Session{}, Asks: []*Ask{}, Launches: []*Launch{}, Tasks: h.tasksLocked()}
+	snap := Snapshot{Type: "snapshot", Protocol: Protocol, Started: h.started, Accounts: []AccountView{}, Sessions: []*Session{}, Asks: []*Ask{}, Launches: []*Launch{}, Tasks: h.tasksLocked(), Ledger: h.ledgerTodayLocked()}
 	for _, a := range h.accounts {
 		v := AccountView{ID: a.ID, Name: a.Name, Seat: a.Seat, Advisor: a.Advisor, Last: a.Last, Dir: a.Dir}
 		if s := h.onlineLocked(a.ID); s != nil {
@@ -292,6 +353,10 @@ func (h *Hub) snapshotLocked(full bool) Snapshot {
 		for k, v := range s.Agents {
 			a := *v
 			cp.Agents[k] = &a
+		}
+		if s.Usage != nil {
+			u := *s.Usage
+			cp.Usage = &u
 		}
 		snap.Sessions = append(snap.Sessions, &cp)
 	}
@@ -417,6 +482,19 @@ func (h *Hub) Apply(ev Event, acc *Account) error {
 			_ = h.saveLocked()
 		}
 	}
+	// what the mod knows of the engine and the folder at the start; a session that moves reports its folder again
+	if ev.Engine != nil {
+		s.Engine = ev.Engine
+	}
+	if ev.Mod != "" {
+		s.Mod = ev.Mod
+	}
+	if ev.Repo != nil {
+		s.Repo = ev.Repo
+	}
+	if ev.Surface != "" {
+		s.Surface = ev.Surface
+	}
 	if ev.Launch != "" && s.Launch == "" {
 		s.Launch = ev.Launch
 		if h.AttachHint != nil {
@@ -441,17 +519,27 @@ func (h *Hub) Apply(ev Event, acc *Account) error {
 	if ev.Kind == "heartbeat" && !fresh {
 		return nil // a heartbeat only keeps the session alive; nothing to tell the page
 	}
-	// the chat's own events change nothing in the office: they go to the pages as chat events, without a snapshot
+	// the chat's own events change nothing in the office: they go to the pages as chat events, without a snapshot;
+	// so do the usage figures (a "usage" push), as they move on every response
 	chatOnly := true
 	switch ev.Kind {
 	case "chat.delta":
 		h.chatStreamLocked(s, ev.TurnID, ev.Step, ev.Blocks)
 	case "chat.stop":
 		h.chatStopLocked(s, ev.TurnID, ev.Step)
+		h.countTokensLocked(s, ev.Tokens)
 	case "chat.user":
 		h.chatUserLocked(s, ev)
 	case "chat.sent":
 		h.chatSentLocked(s, ev.Text)
+	case "session.usage":
+		if ev.Usage != nil {
+			h.usageLocked(s, ev.Usage)
+		}
+	case "command.run":
+		h.chatCommandLocked(s, ev)
+	case "tool.fail":
+		h.chatToolFailLocked(s, ev)
 	default:
 		chatOnly = false
 	}
@@ -479,9 +567,20 @@ func (h *Hub) Apply(ev Event, acc *Account) error {
 
 	var extra any = map[string]any{"type": "event", "event": ev, "title": acc.Name}
 	switch ev.Kind {
+	case "session.start":
+		h.noteLocked(s, "start", "")
 	case "session.end":
 		s.State, s.Tool = StateEnded, ""
+		s.EndReason = ev.Reason
 		h.chatNoticeLocked(s.ID, "ended")
+		h.noteLocked(s, "end", ev.Reason)
+	case "session.model":
+		// a switch (/model, the picker, a fallback) is worth a line in the chat; the model itself was set above
+		if ev.From != "" && ev.From != ev.Model {
+			h.chatNoticeDetailLocked(s.ID, "modelSwitched", ev.From+" → "+ev.Model)
+		}
+	case "session.cwd", "session.surfaces", "session.tools", "session.background", "session.compact", "session.notify", "todo.create", "todo.done", "agent.start", "agent.end", "turn.error":
+		h.detailsLocked(s, ev, target)
 	case "session.title":
 		// a new session's SessionStart carries no name; don't clear the known one
 		title := strings.TrimSpace(ev.Title)
@@ -501,16 +600,32 @@ func (h *Hub) Apply(ev Event, acc *Account) error {
 			setState(StateDone, "")
 		} else {
 			setState(StateIdle, "")
-			if ev.IsAborted {
+			s.Turns++
+			h.ledgerRowLocked(s.Account).Turns++
+			h.saveLedgerLocked()
+			switch {
+			case ev.IsAborted || ev.Reason == "aborted":
 				h.chatNoticeLocked(s.ID, "aborted")
+			case ev.Reason == "refusal":
+				detail := ""
+				if ev.Refusal != nil {
+					detail = strings.TrimSpace(ev.Refusal.Category + " " + ev.Refusal.Explanation)
+				}
+				h.chatNoticeDetailLocked(s.ID, "refused", detail)
+				// an API error (reason: error) gets its notice from turn.error, which names it
 			}
 		}
 	case "tool.start":
 		setState(StateTool, ev.Tool)
 		s.Tools++
+		if target == nil {
+			h.ledgerRowLocked(s.Account).Tools++
+		}
 		h.chatToolLocked(s, ev, false)
+		h.noteLocked(s, "tool", strings.TrimSpace(ev.Tool+" "+ev.Summary))
 	case "tool.end":
 		setState(StateThinking, "")
+		s.ToolMs += ev.DurationMs
 		h.chatToolLocked(s, ev, true)
 	case "message.receive":
 		if m := h.receiveLocked(s, ev); m != nil {
@@ -532,6 +647,45 @@ func (h *Hub) Apply(ev Event, acc *Account) error {
 		h.checkTaskLocked(s.Task) // the last member gone ends the task
 	}
 	return nil
+}
+
+// detailsLocked takes the events that only fill in what the pages may show of a session: its folder (already set
+// above), the surfaces attached, the tools, the background work, a compaction, a notification, the agent team's
+// tasks, a subagent's name, an API error.
+func (h *Hub) detailsLocked(s *Session, ev Event, target *Agent) {
+	switch ev.Kind {
+	case "session.surfaces":
+		s.Surfaces = ev.Surfaces
+	case "session.tools":
+		s.ToolCount, s.MCP = ev.ToolCount, ev.MCP
+	case "session.background":
+		s.BgTasks, s.BgCrons = ev.BgTasks, ev.BgCrons
+	case "session.compact":
+		s.Compactions++
+		h.chatNoticeLocked(s.ID, "compacted")
+	case "session.notify":
+		s.Notify = &Notify{Type: ev.NotifyType, Title: ev.Title, Text: ev.Text, Time: h.now()}
+		if ev.NotifyType != "idle_prompt" { // "waiting for your input" every minute is no news for the chat
+			h.chatNoticeDetailLocked(s.ID, "notify", strings.TrimSpace(ev.Title+" "+ev.Text))
+		}
+	case "todo.create":
+		h.todoLocked(s, ev, false)
+	case "todo.done":
+		h.todoLocked(s, ev, true)
+	case "agent.start":
+		if target != nil {
+			now := h.now()
+			target.Type, target.Description, target.Model, target.Background, target.Started = ev.AgentType, ev.Description, ev.Model, ev.Background, &now
+		}
+	case "agent.end":
+		if target != nil {
+			target.State, target.Tool = StateDone, ""
+		}
+	case "turn.error":
+		s.LastError = strings.TrimSpace(ev.Text + " " + ev.Details)
+		h.chatNoticeDetailLocked(s.ID, "error", s.LastError)
+		h.noteLocked(s, "error", s.LastError)
+	}
 }
 
 // markStateLocked records when the state changes.
@@ -705,6 +859,10 @@ func messageTask(from, to *Session) string {
 // desks, of tasks gone); the oldest go first.
 func (h *Hub) pushMessageLocked(m *Message) {
 	h.messages = append(h.messages, m)
+	h.noteLocked(h.sessions[m.From], "message", m.FromName+" → "+m.ToName+": "+m.Text) // once per message, whichever half came first
+	if m.Task != "" {
+		h.activity[len(h.activity)-1].Task = m.Task
+	}
 	if len(h.messages) <= keepMessages {
 		return
 	}
@@ -876,6 +1034,11 @@ func (h *Hub) CreateAsk(req AskRequest, acc *Account) (string, error) {
 	a.preview, a.InputTruncated = trimInput(req.Input)
 	h.asks[a.ID] = a
 	h.chatAskLocked(a)
+	if req.Kind == "question" {
+		h.noteLocked(s, "ask", strings.TrimSpace("question "+askSummary(req.Questions)))
+	} else {
+		h.noteLocked(s, "ask", strings.TrimSpace(req.Tool+" "+toolSummary(req.Tool, req.Input)))
+	}
 	before := s.State
 	h.refreshWaitingLocked(s)
 	h.markStateLocked(s, before)
@@ -932,11 +1095,17 @@ func (h *Hub) Settle(id, account, status string, answer map[string]any) error {
 	a.Status, a.Answer = status, answer
 	close(a.done)
 	h.chatSettledLocked(a)
-	if s := h.sessions[a.Session]; s != nil {
+	s := h.sessions[a.Session]
+	if s != nil {
 		before := s.State
 		h.refreshWaitingLocked(s)
 		h.markStateLocked(s, before)
 	}
+	outcome := status
+	if d, _ := answer["decision"].(string); d != "" {
+		outcome = d
+	}
+	h.noteLocked(s, "settled", strings.TrimSpace(outcome+" "+a.Tool))
 	h.broadcastLocked(map[string]any{"type": "settled", "id": id, "status": status})
 	return nil
 }
@@ -947,6 +1116,7 @@ func (h *Hub) addLaunch(l *Launch) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.launches[l.ID] = l
+	h.noteLocked(nil, "launch", strings.TrimSpace(l.Name+" "+l.Dir))
 	h.broadcastLocked(map[string]any{"type": "launch", "id": l.ID})
 }
 
@@ -964,6 +1134,7 @@ func (h *Hub) failLaunch(id string, why *Error) {
 	defer h.mu.Unlock()
 	if l := h.launches[id]; l != nil && l.Status == LaunchStarting {
 		l.Status, l.Error, l.ErrorCode, l.ErrorParams = LaunchFailed, why.Text, why.Code, why.Params
+		h.noteLocked(nil, "launchFailed", strings.TrimSpace(l.Name+" "+why.Text))
 		h.broadcastLocked(map[string]any{"type": "launch", "id": id})
 		if l.Task != "" {
 			// a member that never reported in won't: its process goes (it would keep the task running for nothing)

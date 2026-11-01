@@ -54,6 +54,10 @@ func NewServer(hub *Hub, web fs.FS) *Server {
 	s.mux.HandleFunc("GET /locales/{file}", s.locale)
 	s.mux.HandleFunc("GET /api/state", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, 200, hub.Snapshot()) })
 	s.mux.HandleFunc("GET /api/stream", s.stream)
+	s.mux.HandleFunc("GET /api/activity", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, 200, map[string]any{"items": hub.Activity()})
+	})
+	s.mux.HandleFunc("GET /api/ledger", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, 200, map[string]any{"rows": hub.Ledger()}) })
 
 	// called by the mod, with the account's token
 	s.mux.HandleFunc("POST /api/event", s.event)
