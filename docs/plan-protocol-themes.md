@@ -1,6 +1,8 @@
 # Plan: everything the mod can report, a page protocol, and themes
 
-Status: draft for approval, 2026-11-01. Design only; no code changes come with it. Implementation follows the repository's rules: a branch and worktree per change, full tests before any commit, the mod's version bumped (it is the project's version) and a `CHANGELOG.md` section per release.
+**Status (2026-11-01): shipped.** v0.8.0 (the mod reports everything, the ledger and the activity log), v0.9.0 (the protocol, `symphony.js`, `ui/*`, themes, tasks loose from the rooms), v0.10.0 (HQ), v0.11.0 (Messenger) and v0.12.0 (Mission Control) are in `dev`. Deferred, each noted where it belongs below: the asks' cards inline in the chat flow (`chat.js` `asks: 'inline'`, §3.2), an in-page terminal view (`terminal.js`, §2.3 and §3.2), `prompt.compose` office context and "remember this allow" (§1.4), MCP Elicitation as a third ask kind (§1.4), the performance tests on the new themes (§2.6; they drive the pixel office), a light mode for Mission Control (§3.3). The pixel office's keys stay in the shared catalogs (§2.4).
+
+Written as a draft for approval, 2026-11-01. Design only; no code changes come with it. Implementation follows the repository's rules: a branch and worktree per change, full tests before any commit, the mod's version bumped (it is the project's version) and a `CHANGELOG.md` section per release.
 
 Three deliverables, in this order, each its own release:
 
@@ -243,6 +245,7 @@ A NASA-style control room: the whole screen a wall of panels, one per session, w
 - **Header**: mission time (since the bridge's `started`), sessions online / headcount, alarms, cost today (the ledger), the theme picker and the language picker.
 - **Tasks**: a task's members' tiles share a colored stripe with the task id; the stripe opens the task window; "New employee" and "New task" are buttons in the header.
 - An optional sound on a new alarm (off by default; `audio` is the page's, not the mod's).
+- *Shipped in v0.12.0 dark only (the room's look); the light mode the common ground promises is still to do.*
 - New strings: about 35 keys. Big type, high contrast, color plus a word for every state (color-blind safe).
 
 ## 4. Risks and open points

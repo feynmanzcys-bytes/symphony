@@ -6,11 +6,13 @@ Put a team of Claude Code sessions in a pixel-art office: see at a glance who is
 
 ![The office](docs/office.png)
 
-The page comes in themes: the pixel office above, the **HQ console**, a management console with a KPI strip, the roster, an approvals queue, a projects board and an activity timeline, and the **Messenger**, the sessions as coworkers in a messaging app, their faces showing what they do, the conversation in the middle, the profile and the computer on the right. Pick one in the bar at the top; the bridge remembers it.
+The page comes in themes: the pixel office above, the **HQ console**, a management console with a KPI strip, the roster, an approvals queue, a projects board and an activity timeline, the **Messenger**, the sessions as coworkers in a messaging app, their faces showing what they do, the conversation in the middle, the profile and the computer on the right, and **Mission Control**, a control room's wall for a second screen: a telemetry tile per session, the asks as alarms, the activity as a ticker. Pick one in the bar at the top; the bridge remembers it.
 
 ![The HQ console](docs/hq.png)
 
 ![The Messenger](docs/messenger.png)
+
+![Mission Control](docs/mission.png)
 
 ## Install
 
@@ -35,7 +37,7 @@ symphony has two parts and needs both:
 uname -sm                 # Linux/macOS: picks the archive below (x86_64 → amd64; arm64/aarch64 → arm64)
 claude --version          # needs Claude Code 2.1.x (tested with 2.1.316)
 git --version             # only for collaborative tasks; note it in the report if missing, don't stop
-symphony -version         # already installed? prints "symphony v0.11.0 (darwin/arm64)"
+symphony -version         # already installed? prints "symphony v0.12.0 (darwin/arm64)"
 curl -s http://127.0.0.1:7788/api/state | head -c 40   # a bridge already runs? prints {"type":"snapshot",...
 claude plugin list --json # the mod already installed? look for "id":"symphony-bridge@symphony"
 ```
@@ -79,7 +81,7 @@ Pick a folder that is already on the user's `PATH` and writable without `sudo`: 
 tar xzf /tmp/symphony-dl/symphony_<os>_<arch>.tar.gz -C /tmp/symphony-dl
 install -m 755 /tmp/symphony-dl/symphony ~/.local/bin/symphony
 xattr -d com.apple.quarantine ~/.local/bin/symphony 2>/dev/null || true   # macOS: the binary isn't signed
-symphony -version          # prints "symphony v0.11.0 (linux/amd64)": the version and the platform
+symphony -version          # prints "symphony v0.12.0 (linux/amd64)": the version and the platform
 ```
 
 On Windows: `Expand-Archive symphony_windows_<arch>.zip -DestinationPath "$env:LOCALAPPDATA\Programs\symphony"`, then add that folder to the user's `Path` (`[Environment]::SetEnvironmentVariable('Path', "$([Environment]::GetEnvironmentVariable('Path','User'));$env:LOCALAPPDATA\Programs\symphony", 'User')`) and open a new shell. SmartScreen may warn on the first run: "More info", then "Run anyway".
@@ -123,7 +125,7 @@ Verify the whole chain with one request:
 curl -s http://127.0.0.1:7788/api/launch/options
 ```
 
-The answer holds `"enabled":true` and `"mod":{"ok":true,"id":"symphony-bridge@symphony","version":"0.11.0"}`: the bridge runs, it found `claude`, and the mod is installed where sessions will load it. With `"enabled":false`, `mod.code` says what is wrong and `mod.fix` the command that fixes it: `mod_not_installed` or `mod_project_scope` (back to step 4), `mod_disabled` (enable it), `mod_check_failed` (`claude plugin list --json` failed, so Claude Code is probably too old). `"mod":null` means the bridge didn't find `claude` on its `PATH` at all (its log says so): put it there, or start the bridge with `-claude /path/to/claude`.
+The answer holds `"enabled":true` and `"mod":{"ok":true,"id":"symphony-bridge@symphony","version":"0.12.0"}`: the bridge runs, it found `claude`, and the mod is installed where sessions will load it. With `"enabled":false`, `mod.code` says what is wrong and `mod.fix` the command that fixes it: `mod_not_installed` or `mod_project_scope` (back to step 4), `mod_disabled` (enable it), `mod_check_failed` (`claude plugin list --json` failed, so Claude Code is probably too old). `"mod":null` means the bridge didn't find `claude` on its `PATH` at all (its log says so): put it there, or start the bridge with `-claude /path/to/claude`.
 
 The bridge's log is `bridge.log` in the data folder (`~/.config/symphony` on Linux, `~/Library/Application Support/symphony` on macOS, `%AppData%\symphony` on Windows); started at login, it logs to `journalctl --user -u symphony` on Linux and `~/Library/Logs/symphony.log` on macOS.
 

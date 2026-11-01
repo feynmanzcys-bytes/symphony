@@ -1,0 +1,22 @@
+{
+  "name": "mission",
+  "title": {
+    "en": "Mission Control", "zh-CN": "任务控制中心", "zh-TW": "任務控制中心", "ja": "ミッションコントロール", "ko": "미션 컨트롤",
+    "es": "Control de misión", "fr": "Contrôle de mission", "de": "Mission Control", "pt-BR": "Controle de missão", "ru": "Центр управления"
+  },
+  "description": {
+    "en": "A control room's wall: one telemetry panel per session with gauges for the context window and the rate limits and a sparkline of the tokens, the asks as alarms, the activity as a ticker; made for a second screen.",
+    "zh-CN": "控制室的大屏墙：每个会话一块遥测面板，上下文和速率限制做成仪表，token 做成火花线，审批是告警，动态是底部滚动条；适合挂在副屏上。",
+    "zh-TW": "控制室的大螢幕牆：每個工作階段一塊遙測面板，上下文和速率限制做成儀表，token 做成火花線，審批是警報，動態是底部跑馬燈；適合掛在副螢幕上。",
+    "ja": "管制室の壁：セッションごとにテレメトリパネル、コンテキストとレート制限はゲージ、トークンはスパークライン、要求はアラーム、アクティビティはティッカー。サブ画面向け。",
+    "ko": "관제실 벽: 세션마다 텔레메트리 패널, 컨텍스트와 속도 제한은 게이지, 토큰은 스파크라인, 요청은 알람, 활동은 티커. 보조 화면용.",
+    "es": "La pared de una sala de control: un panel de telemetría por sesión con indicadores de contexto y límites y una línea de tokens, las peticiones como alarmas, la actividad como un rótulo; para una segunda pantalla.",
+    "fr": "Le mur d'une salle de contrôle : un panneau de télémétrie par session avec jauges de contexte et de limites et une ligne de jetons, les demandes en alarmes, l'activité en bandeau ; pour un second écran.",
+    "de": "Die Wand eines Kontrollraums: pro Sitzung ein Telemetriepanel mit Anzeigen für Kontext und Limits und einer Tokenlinie, die Anfragen als Alarme, die Aktivität als Ticker; für einen zweiten Bildschirm.",
+    "pt-BR": "A parede de uma sala de controle: um painel de telemetria por sessão com medidores de contexto e limites e uma linha de tokens, os pedidos como alarmes, a atividade como um ticker; para uma segunda tela.",
+    "ru": "Стена центра управления: панель телеметрии на каждую сессию с индикаторами контекста и лимитов и линией токенов, запросы как тревоги, активность бегущей строкой; для второго экрана."
+  },
+  "version": "0.12.0",
+  "since": 2,
+  "icon": "radar"
+}

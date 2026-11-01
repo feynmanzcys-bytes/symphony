@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en" data-theme="mission">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title data-i18n="mc.title">Symphony Mission Control</title>
+<link rel="stylesheet" href="/ui/ui.css">
+<link rel="stylesheet" href="/t/mission/mission.css">
+</head>
+<body>
+<header class="bar">
+  <div class="brand"><span class="radar"></span><h1 data-i18n="mc.title"></h1></div>
+  <div class="stat"><span class="lbl" data-i18n="mc.mission"></span><b id="mission-time">T+00:00:00</b></div>
+  <div class="stat"><span class="lbl" data-i18n="mc.sessions"></span><b id="stat-sessions">0/0</b></div>
+  <button class="stat alarm" id="stat-alarms"><span class="lbl" data-i18n="mc.alarms"></span><b>0</b></button>
+  <div class="stat"><span class="lbl" data-i18n="mc.cost"></span><b id="stat-cost">$0.00</b></div>
+  <div class="spacer"></div>
+  <div class="find"><input id="find" type="search" autocomplete="off" spellcheck="false" data-i18n-placeholder="mc.search"></div>
+  <button class="px" id="new-emp" data-i18n="office.newEmployee" hidden></button>
+  <button class="px" id="new-task" data-i18n="office.newTask" hidden></button>
+  <button class="px icon" id="sound" data-i18n-title="mc.sound"></button>
+  <div class="prefs"></div>
+</header>
+<div class="note" id="launch-note" hidden></div>
+<main class="wall" id="wall"></main>
+<footer class="ticker" id="ticker"><div class="track" id="ticker-track"></div></footer>
+<script type="module" src="/t/mission/mission.js"></script>
+</body>
+</html>
