@@ -133,9 +133,9 @@ func TestMessenger(t *testing.T) {
 	waitUntil(t, 10*time.Second, "alice's profile shows the figures", func() bool {
 		return p.is(`document.getElementById('profile').textContent.includes('34%') && document.getElementById('profile').textContent.includes('$1.25') && document.getElementById('profile').textContent.includes('github') && document.getElementById('profile').textContent.includes('Explore') && document.querySelector('#profile .computer .now.on') !== null`)
 	})
-	if !p.is(`document.querySelector('#chat .flow').textContent.includes('make test')`) {
-		t.Fatalf("alice's conversation should show her answer: %s", p.js(`document.querySelector('#chat .flow').innerText`))
-	}
+	waitUntil(t, 10*time.Second, "alice's conversation shows her answer (the log is fetched when the window opens)", func() bool {
+		return p.is(`document.querySelector('#chat .flow').textContent.includes('make test')`)
+	}, func() string { return p.js(`document.querySelector('#chat .flow').innerText`) })
 	p.shot("conversation-alice")
 	p.check()
 
