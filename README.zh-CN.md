@@ -39,14 +39,14 @@ symphony 分两部分，两部分都要装：
 uname -sm                 # Linux/macOS：据此选下面的压缩包（x86_64 → amd64；arm64/aarch64 → arm64）
 claude --version          # 要 Claude Code 2.1.x（在 2.1.316 上验证过）
 git --version             # 只有协作任务要用；没有的话在汇报里写明，不用停下
-symphony -version         # 已经装了？会输出 "symphony v1.0.0 (darwin/arm64)"
+symphony -version         # 已经装了？会输出 "symphony v1.1.0 (darwin/arm64)"
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:7788/api/state   # 有 bridge 在跑吗？401：symphony 1.x；200：旧版的；000：没有
-claude plugin list --json # mod 已经装了？找 "id":"symphony-bridge@symphony"
+claude plugin list --json # mod 已经装了？找有 "id": "symphony-bridge@symphony" 的那一项
 ```
 
 Windows 上用 PowerShell：`$env:PROCESSOR_ARCHITECTURE` 是 `AMD64` 或 `ARM64`。
 
-没有 `claude` 的话，停下来，告诉用户先装 Claude Code。程序和 mod 都已经装好的话，改去看下面的“更新”。已经在跑的 bridge 用的一直是它启动时的那个程序：有 bridge 在跑的话，第 5 步之前要先把它停掉。
+没有 `claude` 的话，停下来，告诉用户先装 Claude Code。程序和 mod 都已经装好的话，改去看下面的“更新”。只装了其中一个的话，就补做另一个的步骤：程序是第 2、3 步（`symphony -version` 已经输出最新版本的话就不用做），mod 是第 4 步，然后做第 5 步。已经在跑的 bridge 用的一直是它启动时的那个程序：有 bridge 在跑的话，第 5 步之前要先把它停掉。
 
 #### 第 2 步：拿到程序
 
@@ -58,10 +58,9 @@ Linux 和 macOS 上：
 d=$(mktemp -d)   # 一个只有你能读的新目录
 echo "$d"        # 记下来：第 3 步要从这里安装
 cd "$d"
-curl -fLO https://github.com/feynmanzcys-bytes/symphony/releases/latest/download/symphony_<os>_<arch>.tar.gz
-curl -fLO https://github.com/feynmanzcys-bytes/symphony/releases/latest/download/checksums.txt
-sha256sum -c --ignore-missing checksums.txt      # Linux：必须输出 "symphony_<os>_<arch>.tar.gz: OK"
-shasum -a 256 -c --ignore-missing checksums.txt  # macOS：同样的校验
+curl -fsSLO https://github.com/feynmanzcys-bytes/symphony/releases/latest/download/symphony_<os>_<arch>.tar.gz
+curl -fsSLO https://github.com/feynmanzcys-bytes/symphony/releases/latest/download/checksums.txt
+if command -v sha256sum >/dev/null; then sha256sum -c --ignore-missing checksums.txt; else shasum -a 256 -c --ignore-missing checksums.txt; fi   # 必须输出 "symphony_<os>_<arch>.tar.gz: OK"
 tar xzf symphony_<os>_<arch>.tar.gz              # 程序现在就是 "$d/symphony"
 ```
 
@@ -109,7 +108,7 @@ cd "$d/src" && go build -o "$d/symphony" ./cmd/bridge   # 程序现在就是 "$d
 ```bash
 install -m 755 "$d/symphony" ~/.local/bin/symphony
 xattr -d com.apple.quarantine ~/.local/bin/symphony 2>/dev/null || true   # macOS：程序没有签名
-symphony -version          # 输出 "symphony v1.0.0 (linux/amd64)"：版本号和平台
+symphony -version          # 输出 "symphony v1.1.0 (linux/amd64)"：版本号和平台
 ```
 
 这些目录一个都不在 `PATH` 里的话，动手改之前先问用户。用户同意，就建一个 `~/.local/bin`，把它加进 shell 的 rc 文件（`~/.zshrc` 或 `~/.bashrc`），并在汇报里说明；用户不同意，就把程序装到用户指定的地方，并告诉用户：`symphony` 不在他们 Claude Code 会话的 `PATH` 里时，mod 没法自己把 bridge 拉起来（第 5 步的随登录启动照样能用）。
@@ -119,7 +118,7 @@ Windows 上，把它解压到一个专门的目录（`$d` 和 `$zip` 来自第 2
 ```powershell
 $dest = Join-Path $env:LOCALAPPDATA 'Programs\symphony'
 Expand-Archive -LiteralPath (Join-Path $d $zip) -DestinationPath $dest -Force
-& (Join-Path $dest 'symphony.exe') -version   # 输出 "symphony v1.0.0 (windows/amd64)"
+& (Join-Path $dest 'symphony.exe') -version   # 输出 "symphony v1.1.0 (windows/amd64)"
 ```
 
 把这个目录加进用户的 `Path` 是一项长期的改动：先问用户。用户同意，就运行下面这行，再开一个新的 shell；用户不同意，就用完整路径。第一次运行时 SmartScreen 可能会警告：点“更多信息”，再点“仍要运行”。
@@ -141,11 +140,11 @@ claude plugin install symphony-bridge --marketplace feynmanzcys-bytes/symphony
 检查：
 
 ```bash
-claude plugin list --json   # 其中一项有 "id":"symphony-bridge@symphony", "scope":"user", "enabled":true
+claude plugin list --json   # 其中一项有 "id": "symphony-bridge@symphony", "scope": "user", "enabled": true
 ```
 
-- `"scope":"project"` 或 `"local"`：mod 只会在一个目录里加载。先运行 `claude plugin uninstall symphony-bridge@symphony`，再加上 `--scope user` 重新安装。
-- `"enabled":false`：运行 `claude plugin enable symphony-bridge@symphony`。
+- `"scope": "project"` 或 `"local"`：mod 只会在一个目录里加载。先运行 `claude plugin uninstall symphony-bridge@symphony`，再加上 `--scope user` 重新安装。
+- `"enabled": false`：运行 `claude plugin enable symphony-bridge@symphony`。
 
 #### 第 5 步：起 bridge
 
@@ -171,28 +170,29 @@ symphony now starts when you log in (<where>); it's running at http://127.0.0.1:
 symphony -background -open=false
 ```
 
-这会在后台启动 bridge，脱离终端（机器重启后它不会再启动），并输出：
+这会在后台启动 bridge，脱离终端（机器重启后它不会再启动），并在标准错误上输出（前面带着日期和时间）：
 
 ```
 the symphony bridge runs in the background at http://127.0.0.1:7788/?key=<key>; its log: <data folder>/bridge.log
 ```
 
-已经有这个版本的 bridge 在跑时，它输出的是 `a symphony bridge is already running at http://127.0.0.1:7788/?key=<key>`；这没问题，别再起一个。`<key>` 是页面密钥，浏览器靠它登录办公室：别把它贴到别的地方。如果程序回答 `127.0.0.1:7788 is taken: another program, or a symphony bridge with another data folder, answers there`，就告诉用户那里是什么在应答（旧版的 symphony bridge 也算：照“更新”里的办法把它停掉），没问过用户之前别换别的地址。
+已经有这个版本的 bridge 在跑时，它（以同样的方式）输出的是 `a symphony bridge is already running at http://127.0.0.1:7788/?key=<key>`；这没问题，别再起一个。`<key>` 是页面密钥，浏览器靠它登录办公室：别把它贴到别的地方。如果程序回答 `127.0.0.1:7788 is taken: another program, or a symphony bridge with another data folder, answers there`，就告诉用户那里是什么在应答（旧版的 symphony bridge 也算：照“更新”里的办法把它停掉），没问过用户之前别换别的地址。
 
 用一个请求检查整条链路，请求里出示数据目录里的页面密钥（经标准输入传进去，这样密钥不会出现在别的用户看得到的命令行上）：
 
 ```bash
-printf 'X-Symphony-Key: %s\n' "$(cat ~/.config/symphony/key)" | curl -s -H @- http://127.0.0.1:7788/api/launch/options                         # Linux
-printf 'X-Symphony-Key: %s\n' "$(cat ~/"Library/Application Support/symphony/key")" | curl -s -H @- http://127.0.0.1:7788/api/launch/options   # macOS
+printf 'X-Symphony-Key: %s\n' "$(cat "${SYMPHONY_DATA:-${XDG_CONFIG_HOME:-$HOME/.config}/symphony}/key")" | curl -s -H @- http://127.0.0.1:7788/api/launch/options      # Linux
+printf 'X-Symphony-Key: %s\n' "$(cat "${SYMPHONY_DATA:-$HOME/Library/Application Support/symphony}/key")" | curl -s -H @- http://127.0.0.1:7788/api/launch/options   # macOS
 ```
 
 ```powershell
-(Invoke-WebRequest -UseBasicParsing -Headers @{ 'X-Symphony-Key' = (Get-Content "$env:APPDATA\symphony\key") } -Uri http://127.0.0.1:7788/api/launch/options).Content
+$data = if ($env:SYMPHONY_DATA) { $env:SYMPHONY_DATA } else { Join-Path $env:APPDATA 'symphony' }
+(Invoke-WebRequest -UseBasicParsing -Headers @{ 'X-Symphony-Key' = (Get-Content (Join-Path $data 'key')) } -Uri http://127.0.0.1:7788/api/launch/options).Content
 ```
 
 数据目录：Linux 上是 `~/.config/symphony`（设了 `$XDG_CONFIG_HOME` 时是 `$XDG_CONFIG_HOME/symphony`），macOS 上是 `~/Library/Application Support/symphony`，Windows 上是 `%AppData%\symphony`；设了 `SYMPHONY_DATA` 的话就是它。
 
-返回里有 `"enabled":true` 和 `"mod":{"ok":true,"id":"symphony-bridge@symphony","version":"1.0.0"}`：说明 bridge 在跑、找到了 `claude`，mod 也装在会话会加载的地方。如果是 `"enabled":false`，`mod.code` 说明哪里不对，`mod.fix` 给出修复的命令：`mod_not_installed` 或 `mod_project_scope`（回到第 4 步），`mod_disabled`（启用它），`mod_check_failed`（`claude plugin list --json` 失败了，多半是 Claude Code 太旧）。`"mod":null` 说明 bridge 在它的 `PATH` 里根本没找到 `claude`（日志里会写）：把它放进去，或者用 `-claude /path/to/claude` 启动 bridge。返回里有 `"code":"page_key"` 的话，说明这个密钥文件不是正在跑的那个 bridge 的：那个 bridge 是用另一个数据目录启动的。
+返回里有 `"enabled":true` 和 `"mod":{"ok":true,"id":"symphony-bridge@symphony","version":"1.1.0"}`：说明 bridge 在跑、找到了 `claude`，mod 也装在会话会加载的地方。如果是 `"enabled":false`，`mod.code` 说明哪里不对，`mod.fix` 给出修复的命令：`mod_not_installed` 或 `mod_project_scope`（回到第 4 步），`mod_disabled`（启用它），`mod_check_failed`（`claude plugin list --json` 失败了，多半是 Claude Code 太旧）。`"mod":null` 说明 bridge 在它的 `PATH` 里根本没找到 `claude`（日志里会写）：把它放进去，或者用 `-claude /path/to/claude` 启动 bridge。返回里有 `"code":"page_key"` 的话，说明请求没出示密钥，或者出示的不对：检查 `cat` 有没有找到密钥文件（数据目录见上面）；找到了的话，就是正在跑的那个 bridge 是用另一个数据目录启动的。
 
 bridge 的日志是数据目录里的 `bridge.log`；随登录启动的话，Linux 上日志用 `journalctl --user -u symphony` 看，macOS 上在 `~/Library/Logs/symphony.log`。
 
@@ -209,14 +209,11 @@ bridge 的日志是数据目录里的 `bridge.log`；随登录启动的话，Lin
 - 装了什么、装在哪：程序的路径，mod 装在用户级别，bridge 是随登录启动还是在后台启动，`PATH` 或 rc 文件有没有改动，你替用户做了哪些选择，没有 `git` 的话也要说。
 - 怎么全部撤销：见下面的“卸载”。
 
-规矩：bridge 只在本机监听（别的地址它一律不接受，所以 `-addr` 保持 `127.0.0.1:7788`），别用 `sudo` 运行它，也别在同一个地址再起第二个 bridge。
+规矩：bridge 只在本机监听（不是本机的地址它一律不接受；除非用户选了别的端口，否则保持默认的 `127.0.0.1:7788`），别用 `sudo` 运行它，也别在同一个地址、或者用同一个数据目录再起第二个 bridge（symphony 会拒绝，并说出正在跑的是哪一个）。
 
 #### 更新
 
-照第 2 步下载新版。正在跑的 bridge 重启之前还是旧程序（而且 Windows 上没法替换正在运行的程序），所以先停掉它，按第 3 步替换程序，再把它启动起来。停掉 bridge 会结束它开的会话，所以先跟用户说一声：
-
-- 随登录启动的：`symphony -autostart off`（Linux 和 macOS 上这也会停掉它；Windows 上还要关掉 bridge 的控制台窗口，或者运行 `Stop-Process -Name symphony`），替换程序，然后 `symphony -autostart on -open=false`。
-- 用 `-background` 启动的：它没有停止命令。结束它的进程：Linux 和 macOS 上用 `pkill -x symphony`（这也会结束所有 `symphony attach`），Windows 上用 `Stop-Process -Name symphony`。替换程序，然后 `symphony -background -open=false`。
+照第 2 步下载新版。正在跑的 bridge 重启之前还是旧程序（而且 Windows 上没法替换正在运行的程序），所以先用 `symphony -stop` 停掉它，按第 3 步替换程序，再照它原来的方式启动起来：随登录启动的用 `symphony -autostart on -open=false`（这也会马上启动它），否则用 `symphony -background -open=false`。如果 bridge 跑的时候用了非默认的 `-addr` 或 `-data`，这几条命令都要带上同样的参数：`-stop` 只停那个数据目录的 bridge（在 `-addr` 上，或者在那个目录的 bridge 实际运行的地方），没有 bridge 应答时会说 `nothing to stop`。停掉 bridge 会结束它开的会话，所以先跟用户说一声。（`-stop` 是 v1.1.0 才有的；要停 v1.0.0 的 bridge，就结束它的进程：Linux 和 macOS 上用 `pkill -x symphony`，Windows 上用 `Stop-Process -Name symphony`。）
 
 mod 用 `claude plugin update symphony-bridge@symphony` 跟着更新（用 clone 当插件市场的话，改成在那里 `git pull`）。
 
@@ -225,8 +222,8 @@ mod 用 `claude plugin update symphony-bridge@symphony` 跟着更新（用 clone
 #### 卸载
 
 ```bash
-symphony -autostart off                           # 以后登录不再启动它，并停掉 bridge 和它的会话
-pkill -x symphony                                 # 停掉用 -background 启动的 bridge
+symphony -stop                                    # 停掉 bridge 和它的会话，不管它是怎么启动的（-addr 和 -data 不是默认值的话，要带上）
+symphony -autostart off                           # 以后登录不再启动它（本来就没设的话会说明）
 claude plugin uninstall symphony-bridge@symphony  # mod
 claude plugin marketplace remove symphony         # 插件市场条目
 rm ~/.local/bin/symphony                          # 程序，第 3 步放在哪就删哪
@@ -235,8 +232,8 @@ rm ~/.local/bin/symphony                          # 程序，第 3 步放在哪�
 第 3 步把 `~/.local/bin` 加进了 shell 的 rc 文件的话，把那一行也删掉。Windows 上，在 PowerShell 里：
 
 ```powershell
+symphony -stop                                               # 停掉 bridge 和它的会话（-addr 和 -data 不是默认值的话，要带上）
 symphony -autostart off                                      # 以后登录不再启动它
-Stop-Process -Name symphony -ErrorAction SilentlyContinue    # 停掉 bridge
 claude plugin uninstall symphony-bridge@symphony
 claude plugin marketplace remove symphony
 $dest = Join-Path $env:LOCALAPPDATA 'Programs\symphony'
@@ -245,7 +242,7 @@ $p = ([Environment]::GetEnvironmentVariable('Path', 'User') -split ';' | Where-O
 [Environment]::SetEnvironmentVariable('Path', $p, 'User')    # 第 3 步加进去的那个 Path 条目
 ```
 
-数据目录（账号和 token、页面密钥、消息记录、任务）会留着；想删得一干二净，就把它也删掉。删掉它也就删掉了页面密钥：下次启动会生成一个新的，每个浏览器都得重新登录。Linux 上浏览器是 snap 或 flatpak 的话，`open.html` 在那个浏览器自己的目录里（`~/snap/<snap>/common` 或 `~/.var/app/<app id>`），也一起删掉。
+数据目录（账号和 token、页面密钥、消息记录、用量账本、任务，还有 `lock`、`bridge.addr` 或者被挪到一边的 `*.corrupt-<time>` 这类文件）会留着；想删得一干二净，就把它也删掉。删掉它也就删掉了页面密钥：下次启动会生成一个新的，每个浏览器都得重新登录。Linux 上浏览器是 snap 或 flatpak 的话，`open.html` 在那个浏览器自己的目录里（`~/snap/<snap>/common` 或 `~/.var/app/<app id>`），也一起删掉。
 
 ## 能做什么
 
@@ -275,7 +272,7 @@ $p = ([Environment]::GetEnvironmentVariable('Path', 'User') -split ';' | Where-O
 | 参数 | 默认 | 说明 |
 | --- | --- | --- |
 | `-addr` | `127.0.0.1:7788` | 监听地址。主机只能是 `127.0.0.1`、`localhost` 或 `::1`（例如 `[::1]:7788`），别的 bridge 一律不接受 |
-| `-data` | `$SYMPHONY_DATA`，没有就用系统配置目录下的 `symphony` | 数据目录：账号和 token（`accounts.json`）、页面密钥（`key`）和 `open.html`、消息记录（`messages.json`）、任务（`tasks.json`），还有 `-background` 的日志（`bridge.log`） |
+| `-data` | `$SYMPHONY_DATA`，没有就用系统配置目录下的 `symphony` | 数据目录：账号和 token（`accounts.json`）、页面密钥（`key`）和 `open.html`、消息记录（`messages.json`）、用量账本（`ledger.json`）、任务（`tasks.json`）、`-background` 的日志（`bridge.log`）、`lock` 和 `bridge.addr`（哪个 bridge 在用它、在哪个地址），还有损坏后被挪到一边的消息记录或用量账本（`*.corrupt-<time>`） |
 | `-claude` | `claude` | claude 可执行文件 |
 | `-lang` | 系统语言，没有就是 `en` | bridge 提示用的语言（默认值看 `SYMPHONY_LANG`、`LC_ALL`、`LC_MESSAGES` 或 `LANG`） |
 | `-mod` | 空 | 开发用：用 `--plugin-dir` 带上这个目录里的 mod，盖过装好的版本 |
@@ -283,11 +280,12 @@ $p = ([Environment]::GetEnvironmentVariable('Path', 'User') -split ';' | Where-O
 | `-open` | `true` | bridge 启动后在浏览器里打开办公室；`-addr` 上已经有用这个数据目录的 bridge 在跑的话，只打开它的办公室 |
 | `-autostart` | — | `on`：以后每次登录都自动启动 bridge（带上一起给的其它参数），并且马上启动；`off`：取消 |
 | `-background` | — | 在后台启动 bridge：脱离终端，日志写到数据目录的 `bridge.log`，等它能响应了就返回 |
+| `-stop` | — | 停掉用这个数据目录的 bridge（在 `-addr` 上，不在的话就在它实际运行的地方），不管它是怎么启动的（它的会话会结束），等它退出了才返回；它只向能证明自己有页面密钥的 bridge 出示这个密钥 |
 | `-version` | — | 显示版本号后退出 |
 
-`-addr` 上应答的是别的东西（别的程序、用另一个数据目录的 bridge，或者旧版的 symphony bridge）时，symphony 会说明情况，然后停下；它只向能证明自己有页面密钥的 bridge 出示这个密钥。
+`-addr` 上应答的是别的东西（别的程序、用另一个数据目录的 bridge，或者旧版的 symphony bridge）时，symphony 会说明情况，然后停下；它只向能证明自己有页面密钥的 bridge 出示这个密钥。一个数据目录同一时间只归一个 bridge 用：如果用的数据目录已经有 bridge 在别的地址上跑着，symphony 会说出它在哪儿跑、打开它的办公室，然后停下（要再起一个 bridge，就给它单独的 `-data`）。
 
-**随登录启动**：`symphony -autostart on` 让 bridge 以后每次登录都自动启动（一起给的参数也会带上，比如 `-addr`），并且马上启动；`symphony -autostart off` 取消。Linux 上是 systemd 用户服务（日志用 `journalctl --user -u symphony` 看），macOS 上是 launchd 代理（日志在 `~/Library/Logs/symphony.log`），Windows 上是注册表 Run 键里的一项（bridge 跑在一个控制台窗口里，关掉窗口它就停到下次登录）。这要用 symphony 程序本身，`go run` 不行。
+**随登录启动**：`symphony -autostart on` 让 bridge 以后每次登录都自动启动（一起给的参数也会带上，比如 `-addr`），并且马上启动；`symphony -autostart off` 取消。Linux 上是 systemd 用户服务（日志用 `journalctl --user -u symphony` 看），macOS 上是 launchd 代理（日志在 `~/Library/Logs/symphony.log`），Windows 上是注册表 Run 键里的一项（bridge 跑在一个控制台窗口里，关掉窗口它就停到下次登录）。`symphony -stop` 能停掉 bridge，不管它是怎么启动的，一直停到它再被启动（随登录启动的，就是到下次登录）。这要用 symphony 程序本身，`go run` 不行。
 
 **从源码跑**，要 Go 1.27 以上：`git clone https://github.com/feynmanzcys-bytes/symphony.git && cd symphony && go run ./cmd/bridge`。
 
@@ -311,12 +309,14 @@ SYMPHONY_TOKEN=<token> claude --name frontend-alice --permission-mode manual
 | 消息 | 意思 |
 | --- | --- |
 | `连不上 bridge（...）` / `can't reach the bridge` | bridge 的地址上没有应答，拉起 bridge 也没用（或者这个地址不在本机）。 |
+| `启动 bridge（...）失败：<reason>` / `couldn't start the bridge ...: <reason>` | 没有应答，`symphony -background` 也失败了，原因就是显示的那个（比如这个数据目录的 bridge 在别的地址上跑着：把 `SYMPHONY_BRIDGE` 设成那个地址）。 |
 | `bridge 不认这个 SYMPHONY_TOKEN` / `the bridge doesn't know this SYMPHONY_TOKEN` | bridge 里没有带这个 token 的账号：账号被删了，或者 bridge 用的是另一个数据目录。 |
 | `不是本会话能信任的 symphony bridge` / `isn't a symphony bridge this session can trust` | 那个地址上有东西应答，但证明不了它认识这个 token：是别的程序，或者是比 mod 旧的 symphony（更新它）。token 不会发出去。 |
 | `SYMPHONY_BRIDGE（...）必须在本机或使用 https` / `SYMPHONY_BRIDGE ... must be on this machine or use https` | 这个地址 mod 不接受；bridge 根本不会被联系。 |
 | `这个账号已经有会话在线` / `this account already has a session online` | 一个账号同一时间只能给一个会话用；给这个会话另建一个账号。 |
+| `正在等你在办公室网页（...）上回复` / `waiting for your answer in the office page` | 权限审批或提问在办公室网页上等着，不在终端里；去那里回复，或者按 Esc 取消。每个会话只提示一次。 |
 
-本机上 bridge 的地址没有应答时，会话会自己用 `symphony -background -open=false -addr <that address>` 把 bridge 拉起来（前提是 `symphony` 在 PATH 里），并告诉你（`已在后台启动 bridge（...）` / `started the bridge ... in the background`）；会话结束后 bridge 还会继续跑。账号不在默认数据目录的话，设好 `SYMPHONY_DATA`。
+本机上 bridge 的地址没有应答时，会话会自己用 `symphony -background -open=false -addr <that address>` 把 bridge 拉起来（前提是 `symphony` 在 PATH 里），并告诉你（`已在后台启动 bridge（...）` / `started the bridge ... in the background`）；会话结束后 bridge 还会继续跑。账号不在默认数据目录的话，设好 `SYMPHONY_DATA`。这个数据目录的 bridge 已经在别的地址上跑着的话，会话会说明情况，然后退回终端：把 `SYMPHONY_BRIDGE` 设成那个地址。
 
 ## 协作任务
 
@@ -358,7 +358,7 @@ SYMPHONY_TOKEN=<token> claude --name frontend-alice --permission-mode manual
 页面上能开会话，等于能在本机执行命令，所以 bridge 会把好谁能连上它这道关：
 
 - **页面密钥**：办公室和它的 API 都要页面密钥，这是一个 cookie，浏览器打开 `symphony` 给的那个链接时拿到。密钥就是数据目录里的 `key` 文件，只有你能读；程序在请求头 `X-Symphony-Key` 里出示它。
-- **只限本机**：bridge 只在本机监听，也只接受本机的连接。发给别的主机名的请求（DNS rebinding），还有别的网站借你的浏览器发来的写请求，它都会拒掉；别的网站也没法把它的页面嵌进框架里。页面只加载 bridge 自己的文件（Content Security Policy）。
+- **只限本机**：bridge 只在本机监听，也只接受本机的连接。发给别的主机名的请求（DNS rebinding），还有别的网站借你的浏览器发来的写请求，它都会拒掉；浏览器标明来自别的网站或别的端口的请求，它的 API 一概不回答，哪怕只是点开一个链接。别的网站也没法把它的页面嵌进框架里。页面只加载 bridge 自己的文件（Content Security Policy）。
 - **mod 先验证 bridge**，再发出 token；`symphony` 程序也是先验证 bridge，再出示页面密钥。所以在 bridge 地址上监听的别的东西，token 和密钥哪个都拿不到。
 - **防不住的**：以你自己的用户身份跑的程序，能读到数据目录里的页面密钥和 token，跟你的其它文件一样。另外，浏览器会把一个站点的 cookie 发给这个站点的每一个端口：这台机器的其他用户在 `127.0.0.1` 上跑的服务器，在你的浏览器打开它时，或者在 bridge 停着、办公室还开在某个标签页里时占了 bridge 的端口，就能拿到页面密钥的 cookie。在跟别人共用的机器上，先关掉办公室再停 bridge；密钥可能已经泄露的话，删掉数据目录里的 `key` 文件（下次启动会生成一个新的）。
 - 程序没有签名。用浏览器下载的话，macOS 可能因为“无法验证开发者”而拒绝打开：到“系统设置 → 隐私与安全性”里点“仍要打开”，或者运行一次 `xattr -d com.apple.quarantine symphony`。Windows 的 SmartScreen 也可能警告：点“更多信息”，再点“仍要运行”。Release 里的 `checksums.txt` 有每个压缩包的 SHA-256；安装的第 2 步会校验它。

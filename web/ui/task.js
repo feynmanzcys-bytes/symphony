@@ -12,7 +12,7 @@
 //   tasks.render()                  draw the window again (on every snapshot and message)
 //   tasks.windowFor                 the task whose window is open, or null
 //   tasks.dialog, tasks.win         the elements
-import { t, lang, esc, errorText, base, lower, dot, fill, browse, showEnd, statusText, richText, TASK_COLOR, GRAY, button } from '/ui/common.js'
+import { t, lang, esc, errorText, base, lower, dot, fill, browse, showEnd, statusText, richText, TASK_COLOR, GRAY, button, deferWhilePressed } from '/ui/common.js'
 
 const MAX_MEMBERS = 5 // the bridge's cap (taskMaxMembers)
 
@@ -208,7 +208,8 @@ export function createTaskUI(sym, {
   win.querySelector('.close').onclick = () => tasks.closeWindow()
   win.addEventListener('click', ev => { if (ev.target === win) tasks.closeWindow() })
 
-  function render() {
+  // (not while a pointer is down: a member's row replaced under a press would lose its click)
+  const render = deferWhilePressed(() => {
     if (!windowFor) return
     const known = sym.taskById(windowFor)
     if (known) windowData = null
@@ -256,7 +257,7 @@ export function createTaskUI(sym, {
     win.hidden = false
     if (shown.grow) { shown.grow = false; growBox() }
     if (stick) tList.scrollTop = tList.scrollHeight // once it shows: a hidden list has no height to scroll
-  }
+  })
 
   // The task chat: the messages between the task's members and yours to them, oldest first, each with its sender's
   // figure. "@bob-T1 …" goes to that member only, anything else to every member online; the bridge sends them on.
@@ -265,7 +266,7 @@ export function createTaskUI(sym, {
     const names = m.toNames?.length ? m.toNames : m.toName ? [m.toName] : [] // one or several members, or everyone
     const missed = m.missed || [] // of those, the ones that were offline: struck through
     const to = names.length ? `<b class="to">${names.map(n => missed.includes(n) ? `<s title="${esc(t('task.missed', { name: n }))}">@${esc(n)}</s>` : '@' + esc(n)).join(' ')}</b> ` : ''
-    return `<div class="tmsg${me ? ' me' : ''}"><span class="av" style="background-image:${me ? youAvatar() : memberAvatar(who)}"></span>` +
+    return `<div class="tmsg${me ? ' me' : ''}"><span class="av" style="background-image:${esc(me ? youAvatar() : memberAvatar(who))}"></span>` +
       `<div class="bub"><div class="hd"><b>${esc(msgFrom(m))}</b></div>` +
       `<div class="body">${to}${richText(m.text)}</div><time>${esc(new Date(m.time).toLocaleTimeString(lang))}</time></div></div>`
   }

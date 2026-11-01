@@ -20,8 +20,10 @@ import (
 
 // gitCommitter is who the commits the bridge makes itself are by, so they work without a git identity set up; they
 // are never signed (a signing prompt would hang) and skip the hooks (a pre-commit hook must not keep a member's
-// work from being saved).
-var gitCommitter = []string{"-c", "user.name=symphony", "-c", "user.email=symphony@localhost", "-c", "commit.gpgsign=false"}
+// work from being saved): --no-verify leaves some out (prepare-commit-msg), so they get a hooks folder that isn't one,
+// whatever core.hooksPath the user's config gives (/dev/null on Windows too: a folder no drive has).
+var gitCommitter = []string{"-c", "user.name=symphony", "-c", "user.email=symphony@localhost", "-c", "commit.gpgsign=false",
+	"-c", "core.hooksPath=/dev/null"}
 
 // symphonyDir is where a folder's task worktrees live (<folder>/.symphony/worktrees/...), listed in the repository's
 // own exclude file
@@ -35,10 +37,11 @@ var (
 	errNoCommit = errors.New("the repository has no commit yet")
 )
 
-// gitEnv is the bridge's environment without what would point git at another repository than the folder's.
+// gitEnv is the bridge's environment without what would point git at another repository than the folder's, and
+// without a session's variables (a bridge started by hand inside a session has them; git and its hooks needn't).
 func gitEnv() []string {
 	var env []string
-	for _, kv := range os.Environ() {
+	for _, kv := range StripSessionEnv(os.Environ()) {
 		k, _, _ := strings.Cut(kv, "=")
 		switch k {
 		case "GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR", "GIT_OBJECT_DIRECTORY", "GIT_PREFIX":
@@ -64,6 +67,7 @@ func gitOutput(dir string, args ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), gitTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...)
+	hideConsole(cmd)
 	cmd.Env = gitEnv()
 	cmd.WaitDelay = 5 * time.Second // what it started may hold its output open
 	var out, stderr bytes.Buffer
@@ -95,7 +99,7 @@ func gitOutput(dir string, args ...string) (string, error) {
 // one (it may become one), symlinks resolved.
 func gitLockKey(dir string) string {
 	key := dir
-	if gitInWorkTree(dir) {
+	if in, _ := gitInWorkTree(dir); in {
 		if root, _, err := gitRoot(dir); err == nil {
 			key = filepath.FromSlash(root)
 		}
@@ -156,9 +160,35 @@ func gitFailed(dir string, err error) *Error {
 }
 
 // gitInWorkTree says whether dir is inside a repository's work tree (a folder in a repository is not made one again).
-func gitInWorkTree(dir string) bool {
+// When git can't tell, it says why: a .git in dir or a folder above it is a repository git can't read or won't trust
+// (dubious ownership, a .git file pointing nowhere, a newer format), and dir must not become one of its own inside
+// it. Only without one is a failure git's "not a git repository" (which it says in the user's language).
+func gitInWorkTree(dir string) (bool, error) {
 	out, err := runGit(dir, "rev-parse", "--is-inside-work-tree")
-	return err == nil && out == "true"
+	if err == nil {
+		return out == "true", nil
+	}
+	if real, rerr := filepath.EvalSymlinks(dir); rerr == nil {
+		dir = real // git looks from the folder itself, not from the way to it
+	}
+	for p := dir; ; p = filepath.Dir(p) {
+		if _, serr := os.Lstat(filepath.Join(p, ".git")); serr == nil {
+			return false, fmt.Errorf("%w (%s is there)", err, filepath.Join(p, ".git"))
+		}
+		if filepath.Dir(p) == p {
+			return false, nil
+		}
+	}
+}
+
+// gitPlain says whether dir is a plain folder, which a task makes a repository: it has no .git of its own and is in
+// no repository's work tree.
+func gitPlain(dir string) (bool, error) {
+	if _, err := os.Lstat(filepath.Join(dir, ".git")); !errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	in, err := gitInWorkTree(dir)
+	return !in && err == nil, err
 }
 
 // initExcludes are what a folder made a repository never commits: secrets and bulky folders. They go in its own
@@ -241,6 +271,9 @@ func gitExclude(dir string, patterns ...string) error {
 
 // gitAddWorktree checks base out in a new worktree at path, on a new branch.
 func gitAddWorktree(dir, branch, path, base string) error {
+	if strings.HasPrefix(base, "-") { // git allows a branch named like an option (a clone's default branch, say): not one here
+		base = "refs/heads/" + base
+	}
 	_, err := runGit(dir, "worktree", "add", "-q", "-b", branch, path, base)
 	return err
 }
@@ -364,19 +397,34 @@ func gitLooseHead(dir string) bool {
 	return err != nil || refs == ""
 }
 
-// gitResetHard puts dir's checkout back at a commit.
-func gitResetHard(dir, commit string) error {
-	_, err := runGit(dir, "reset", "-q", "--hard", commit)
+// gitResetKeep puts dir's checkout back at a commit, keeping what is uncommitted in the folder: when that can't be
+// done (a file changed both ways, a merge in progress), git refuses and the checkout stays where it is.
+func gitResetKeep(dir, commit string) error {
+	if head, err := gitHead(dir); err == nil && head == commit {
+		return nil
+	}
+	_, err := runGit(dir, "reset", "-q", "--keep", commit)
 	return err
 }
 
-// gitMerge merges a branch into dir's checkout; a merge that fails is aborted, leaving the checkout as it was.
-func gitMerge(dir, branch string) error {
-	if _, err := runGit(dir, append(gitCommitter, "merge", "-q", "--no-edit", branch)...); err != nil {
-		_, _ = runGit(dir, "merge", "--abort")
-		return err
+// gitMerge merges a branch into dir's checkout, whatever the user's git config says about merges (merge.ff=only,
+// hooks, signatures). A merge that fails is aborted, leaving the checkout as it was; conflict says whether it stopped
+// on conflicting changes, rather than git refusing it or failing. When the abort fails too, the error says so (the
+// merge stays in progress) and it isn't called a conflict.
+func gitMerge(dir, branch string) (conflict bool, err error) {
+	_, err = runGit(dir, append(gitCommitter, "merge", "-q", "--no-edit", "--no-verify", "--ff", "--no-verify-signatures", branch)...)
+	if err == nil {
+		return false, nil
 	}
-	return nil
+	unmerged, lerr := runGit(dir, "ls-files", "-u")
+	conflict = lerr == nil && unmerged != ""
+	if _, merging := runGit(dir, "rev-parse", "-q", "--verify", "MERGE_HEAD"); merging != nil {
+		return conflict, err // git didn't start it: nothing to abort
+	}
+	if _, aerr := runGit(dir, "merge", "--abort"); aerr != nil {
+		return false, fmt.Errorf("%w; aborting it: %v", err, aerr)
+	}
+	return conflict, err
 }
 
 func gitDeleteBranch(dir, branch string) error {

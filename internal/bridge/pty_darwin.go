@@ -3,8 +3,11 @@
 package bridge
 
 import (
+	"context"
 	"os"
+	"os/exec"
 	"syscall"
+	"time"
 	"unsafe"
 )
 
@@ -33,4 +36,19 @@ func openPTY() (*os.File, string, error) {
 		n++
 	}
 	return master, string(name[:n]), nil
+}
+
+// listProcs is every process of this machine, as ps tells it; nil when ps fails.
+func listProcs() []procInfo {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	// one -o each: ps takes the rest of an -o after "=" as the column's header
+	cmd := exec.CommandContext(ctx, "/bin/ps", "-A", "-o", "pid=", "-o", "ppid=", "-o", "pgid=", "-o", "lstart=")
+	cmd.Env = append(os.Environ(), "LC_ALL=C")
+	cmd.WaitDelay = time.Second
+	out, err := cmd.Output()
+	if err != nil {
+		return nil
+	}
+	return parsePS(string(out))
 }

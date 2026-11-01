@@ -35,6 +35,12 @@
   .q .hd { color:#8a867e; font-weight:400; font-size:12px; margin-right:6px; }
   label.opt { display:block; padding:2px 0; cursor:pointer; } label.opt small { color:#8a867e; margin-left:6px; }
   .q input.other { display:block; width:100%; margin-top:4px; }
+  button:disabled { opacity:.5; cursor:default; }
+  .cut { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:4px 0; }
+  .cut .warn { flex:1; min-width:200px; color:#d64541; font-weight:600; font-size:12px; }
+  .q.missing { outline:2px solid #d64541; outline-offset:2px; }
+  .q .need { margin-top:2px; color:#d64541; font-size:12px; font-weight:600; }
+  .q .need[hidden] { display:none; }
 </style>
 </head>
 <body>

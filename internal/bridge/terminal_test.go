@@ -98,6 +98,47 @@ func TestChildEnvDropsClaudeSession(t *testing.T) {
 	}
 }
 
+// TestChildEnvSessionVars: a session gets its own token, launch, task and bridge, never the bridge's (a bridge the mod
+// started has the starting session's), and each name once, regardless of case on Windows, where a program may read the
+// first of two; SYMPHONY_DATA stays.
+func TestChildEnvSessionVars(t *testing.T) {
+	environ := []string{"PATH=/bin", "SYMPHONY_TOKEN=starter", "SYMPHONY_TASK=T9", "SYMPHONY_LAUNCH=Lstarter",
+		"SYMPHONY_BRIDGE=http://x", "SYMPHONY_DATA=/d", "SYMPHONY_LANG=fr", "symphony_token=lower", "TERM=xterm"}
+	extra := map[string]string{"SYMPHONY_TOKEN": "new", "SYMPHONY_LAUNCH": "L1", "SYMPHONY_LANG": "ja", "SYMPHONY_BRIDGE": "http://y"}
+	count := func(env []string, goos, name string) (n int, value string) {
+		for _, kv := range env {
+			if k, v, _ := strings.Cut(kv, "="); envName(goos, k) == envName(goos, name) {
+				n, value = n+1, v
+			}
+		}
+		return n, value
+	}
+	for _, goos := range []string{"linux", "windows"} {
+		env := childEnvFor(goos, environ, extra)
+		for name, want := range map[string]string{"SYMPHONY_TOKEN": "new", "SYMPHONY_LAUNCH": "L1", "SYMPHONY_LANG": "ja",
+			"SYMPHONY_BRIDGE": "http://y", "SYMPHONY_DATA": "/d", "PATH": "/bin", "TERM": "xterm"} {
+			if n, v := count(env, goos, name); n != 1 || v != want {
+				t.Errorf("%s: %s %d times (%q), want once: %q\n%q", goos, name, n, v, want, env)
+			}
+		}
+		if n, _ := count(env, goos, "SYMPHONY_TASK"); n != 0 {
+			t.Errorf("%s: the bridge's task reached the session: %q", goos, env)
+		}
+	}
+	// on Linux another case is another variable
+	if !slices.Contains(childEnvFor("linux", environ, extra), "symphony_token=lower") {
+		t.Error("linux: symphony_token isn't SYMPHONY_TOKEN")
+	}
+	if slices.Contains(childEnvFor("windows", environ, extra), "symphony_token=lower") {
+		t.Error("windows: symphony_token is SYMPHONY_TOKEN")
+	}
+	// the copy of the bridge started in the background keeps all but the session's
+	got := stripSessionEnv("linux", environ)
+	if want := []string{"PATH=/bin", "SYMPHONY_DATA=/d", "SYMPHONY_LANG=fr", "symphony_token=lower", "TERM=xterm"}; !slices.Equal(got, want) {
+		t.Errorf("stripSessionEnv: %q, want %q", got, want)
+	}
+}
+
 func TestPTYAttachCommand(t *testing.T) {
 	if got := NewPTYTerminal().Attach("abc"); got != "symphony attach abc" {
 		t.Fatalf("attach command: %q", got)

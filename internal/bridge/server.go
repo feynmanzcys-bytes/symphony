@@ -37,6 +37,9 @@ type Server struct {
 	// Key is the page key every request but the mod's must show (key.go); NewServer makes one, the bridge sets the one
 	// in its data folder, so a page's cookie outlives a restart
 	Key string
+	// Shutdown stops the bridge, its sessions with it (POST /api/shutdown, which symphony -stop sends); the program
+	// sets it, and without it the endpoint answers 501
+	Shutdown func()
 
 	web    fs.FS
 	mux    *http.ServeMux
@@ -70,6 +73,7 @@ func NewServer(hub *Hub, web fs.FS) *Server {
 	s.mux.HandleFunc("GET /api/activity", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, map[string]any{"items": hub.Activity()})
 	})
+	s.mux.HandleFunc("POST /api/shutdown", s.shutdown)
 	s.mux.HandleFunc("GET /api/ledger", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, 200, map[string]any{"rows": hub.Ledger()}) })
 
 	// called by the mod, with the account's token (modEndpoint in key.go lists these)
@@ -82,6 +86,7 @@ func NewServer(hub *Hub, web fs.FS) *Server {
 
 	// called by the page: answers, accounts, starting sessions
 	s.mux.HandleFunc("POST /api/answer/{id}", s.answer)
+	s.mux.HandleFunc("GET /api/asks/{id}/input", s.askInput)
 	s.mux.HandleFunc("POST /api/accounts", s.createAccount)
 	s.mux.HandleFunc("DELETE /api/accounts/{id}", s.deleteAccount)
 	s.mux.HandleFunc("GET /api/launch/options", s.launchOptions)
@@ -142,6 +147,18 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if !modEndpoint(r) {
+		// A browser says where a request comes from. The API answers the bridge's own pages and addresses typed in, not a
+		// link, redirect or fetch from another site or another port of this machine, which would bring the cookie along
+		// (SameSite=Lax lets it ride on a top-level GET, and cookies ignore the port): even a GET makes the bridge do
+		// something (/api/dirs reads the folder it names). Programs (curl, attach, the demo, symphony -stop) send no
+		// Sec-Fetch-Site; the sign-in (/?key=, opened from a file) and the pages themselves stay reachable.
+		// /api/dirs reads any folder it is given, so not even a link opened from outside the browser (a mail, a chat, a
+		// terminal: Sec-Fetch-Site none) reaches it; the pages fetch it, they never navigate to it.
+		site, mode := r.Header.Get("Sec-Fetch-Site"), r.Header.Get("Sec-Fetch-Mode")
+		if strings.HasPrefix(r.URL.Path, "/api/") && (site == "cross-site" || site == "same-site" || (r.URL.Path == "/api/dirs" && mode == "navigate")) {
+			http.Error(w, "cross-site request refused", http.StatusForbidden)
+			return
+		}
 		if s.signIn(w, r) {
 			return
 		}
@@ -153,10 +170,30 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.mux.ServeHTTP(w, r)
 }
 
+// shutdown answers POST /api/shutdown (symphony -stop, showing the page key like every page call) with 202, then stops
+// the bridge as SIGTERM does: its sessions end.
+func (s *Server) shutdown(w http.ResponseWriter, r *http.Request) {
+	if s.Shutdown == nil {
+		http.Error(w, "this bridge can't be stopped this way", http.StatusNotImplemented)
+		return
+	}
+	writeJSON(w, http.StatusAccepted, map[string]bool{"ok": true})
+	if f, ok := w.(http.Flusher); ok {
+		f.Flush()
+	}
+	go s.Shutdown()
+}
+
+// writeJSON answers with v as JSON; when v doesn't encode, the answer is a 500 that says so rather than a 200 cut short.
 func writeJSON(w http.ResponseWriter, status int, v any) {
+	data, err := json.Marshal(v)
+	if err != nil {
+		status = http.StatusInternalServerError
+		data, _ = json.Marshal(map[string]string{"error": "can't encode the answer: " + err.Error()})
+	}
 	w.Header().Set("content-type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
+	_, _ = w.Write(append(data, '\n'))
 }
 
 // errStatus is the HTTP status of errors made on the spot (with params), which errors.Is can't tell apart.
@@ -164,6 +201,7 @@ var errStatus = map[string]int{
 	"task_member_busy": http.StatusConflict, "task_ended": http.StatusConflict,
 	"task_running": http.StatusConflict, "task_unknown": http.StatusNotFound, "task_no_git": http.StatusPreconditionFailed,
 	"task_git_failed": http.StatusInternalServerError, "pty_start_failed": http.StatusInternalServerError, "task_repo_in_use": http.StatusConflict,
+	"data_write_failed": http.StatusInternalServerError, "launch_still_running": http.StatusConflict,
 }
 
 func writeErr(w http.ResponseWriter, err error) {
@@ -178,6 +216,8 @@ func writeErr(w http.ResponseWriter, err error) {
 		status = http.StatusConflict
 	case errors.Is(err, ErrTermUnknown):
 		status = http.StatusNotFound
+	case errors.Is(err, ErrSessionGone):
+		status = http.StatusGone
 	case errors.Is(err, ErrWrongAccount):
 		status = http.StatusForbidden
 	}
@@ -217,11 +257,16 @@ func (s *Server) event(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, errorBody(newError("event_no_session", "missing session")))
 		return
 	}
-	if err := s.Hub.Apply(ev, acc); err != nil {
+	fresh, err := s.Hub.Report(ev, acc)
+	if err != nil {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, 200, map[string]any{"ok": true, "account": acc.Name})
+	res := map[string]any{"ok": true, "account": acc.Name}
+	if fresh {
+		res["fresh"] = true // the bridge didn't know the session: the mod reports its tools again
+	}
+	writeJSON(w, 200, res)
 }
 
 func (s *Server) ask(w http.ResponseWriter, r *http.Request) {
@@ -282,6 +327,16 @@ func (s *Server) answer(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]bool{"ok": true})
 }
 
+// askInput answers a pending ask's whole input: the page's preview may have cut long strings (inputTruncated).
+func (s *Server) askInput(w http.ResponseWriter, r *http.Request) {
+	input, err := s.Hub.AskInput(r.PathValue("id"))
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, 200, map[string]any{"input": input})
+}
+
 // createAccount creates an account and returns its token once (for starting a session by hand:
 // SYMPHONY_TOKEN=<token>).
 func (s *Server) createAccount(w http.ResponseWriter, r *http.Request) {
@@ -319,6 +374,10 @@ func (s *Server) stream(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("content-type", "text/event-stream")
 	w.Header().Set("cache-control", "no-cache")
 	w.WriteHeader(200)
+	// once the stream ends (the hub lets a page go that fell behind), the EventSource comes back a second later
+	if _, err := fmt.Fprint(w, "retry: 1000\n\n"); err != nil {
+		return
+	}
 	flusher.Flush()
 
 	keepalive := time.NewTicker(15 * time.Second)
@@ -327,7 +386,10 @@ func (s *Server) stream(w http.ResponseWriter, r *http.Request) {
 		select {
 		case <-r.Context().Done():
 			return
-		case msg := <-ch:
+		case msg, ok := <-ch:
+			if !ok {
+				return // let go: the page comes back for a full snapshot
+			}
 			if _, err := fmt.Fprintf(w, "data: %s\n\n", msg.JSON()); err != nil {
 				return
 			}
@@ -468,10 +530,6 @@ func (s *Server) launch(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, ErrUnknownAccount)
 			return
 		}
-		if s.Hub.Online(acc.ID) {
-			writeErr(w, ErrAccountBusy)
-			return
-		}
 	} else {
 		if acc, err = s.Hub.CreateAccount(req.Name); err != nil {
 			writeErr(w, err)
@@ -479,6 +537,16 @@ func (s *Server) launch(w http.ResponseWriter, r *http.Request) {
 		}
 		created = true
 	}
+	// one start at a time: the desk is held until the launch is in the hub (a failed start lets go of it)
+	release, err := s.Hub.reserveDesk(acc.ID)
+	if err != nil {
+		if created {
+			_ = s.Hub.DeleteAccount(acc.ID)
+		}
+		writeErr(w, err)
+		return
+	}
+	defer release()
 	req.Account, req.Name = acc.ID, acc.Name
 
 	id := newID()

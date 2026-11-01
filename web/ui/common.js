@@ -104,6 +104,40 @@ export async function browse(sym, box, path, fail, home) {
   ul.querySelectorAll('li').forEach((li, i) => { if (items[i]) li.onclick = () => browse(sym, box, items[i][1], fail, home) })
 }
 
+// ---------- drawing what one clicks ----------
+// setHTML puts html into el only when it differs from what it put there last (says whether it did): a row or a tile
+// drawn again the same stays the element it was.
+const drawnHTML = new WeakMap()
+export function setHTML(el, html) {
+  if (drawnHTML.get(el) === html) return false
+  drawnHTML.set(el, html)
+  el.innerHTML = html
+  return true
+}
+// A click is a press and a release on the same element: one a redraw replaces in between never gets it, so a busy
+// session's row could hardly be clicked. deferWhilePressed(draw) gives a draw that, while a pointer is down, only notes
+// that it's wanted and runs once the press is over, after the click it makes. A press longer than PRESS_HOLD lets the
+// draws go on (a press that ends outside the window must not hold the page).
+const PRESS_HOLD = 500
+let pressedAt = 0
+const wanted = new Set()
+const pressed = () => pressedAt > 0 && performance.now() - pressedAt < PRESS_HOLD
+function released() {
+  pressedAt = 0
+  setTimeout(() => { const fns = [...wanted]; wanted.clear(); for (const fn of fns) fn() }) // after the click
+}
+addEventListener('pointerdown', () => {
+  const at = pressedAt = performance.now()
+  setTimeout(() => { if (pressedAt === at) released() }, PRESS_HOLD)
+}, true)
+addEventListener('pointerup', released, true)
+addEventListener('pointercancel', released, true)
+addEventListener('blur', released)
+export function deferWhilePressed(draw) {
+  const run = (...args) => { if (pressed()) wanted.add(run); else draw(...args) }
+  return run
+}
+
 // a button in the pixel style
 export function button(text, cls, fn, title) {
   const b = document.createElement('button')

@@ -1086,9 +1086,10 @@ func perfTasksCycles(t *testing.T) {
 			mustSend(t, b.URL, m.token, "/api/event", map[string]any{"session": m.session, "kind": "chat.delta", "turnId": "t", "step": 0,
 				"blocks": []map[string]any{{"i": 0, "kind": "text", "text": strings.Repeat("x", 2000)}}})
 			launches = append(launches, m.launch)
-			// its terminal has taken in what claude wrote
+			// its terminal has taken in what claude wrote (its history: Screen is cut short)
 			deadline := time.Now().Add(5 * time.Second)
-			for term := b.Launcher.Terms.Get(m.launch); term != nil && len(term.Screen(3)) < 128<<10 && time.Now().Before(deadline); {
+			written := func(term *bridge.Term) int { history, _, detach := term.Attach(0, 0); detach(); return len(history) }
+			for term := b.Launcher.Terms.Get(m.launch); term != nil && written(term) < 128<<10 && time.Now().Before(deadline); {
 				time.Sleep(5 * time.Millisecond)
 			}
 		}

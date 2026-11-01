@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"runtime"
 	"slices"
 	"strings"
 	"time"
@@ -66,23 +67,63 @@ func leakedToChild(k string) bool {
 	return strings.HasPrefix(k, "CLAUDE_CODE_") || k == "CLAUDECODE" || k == "CLAUDE_PID"
 }
 
-// childEnv is the bridge's environment, minus its own Claude Code session (leakedToChild), plus the session's
-// variables; a terminal type when none is set (a bridge started at login has none).
+// sessionVars tie a process to one office session: its account, its launch, its task and the bridge it reports to. A
+// bridge started from inside a session (the mod starts one that way) has that session's; a session it starts gets its
+// own from the launch, and nothing else it runs gets any. SYMPHONY_DATA and SYMPHONY_LANG aren't a session's.
+var sessionVars = []string{"SYMPHONY_TOKEN", "SYMPHONY_LAUNCH", "SYMPHONY_TASK", "SYMPHONY_BRIDGE"}
+
+// envName is how a variable's name compares: as it is, but regardless of case on Windows.
+func envName(goos, k string) string {
+	if goos == "windows" {
+		return strings.ToUpper(k)
+	}
+	return k
+}
+
+// StripSessionEnv is env without sessionVars, for a copy of the bridge started in the background.
+func StripSessionEnv(env []string) []string {
+	return stripSessionEnv(runtime.GOOS, env)
+}
+
+func stripSessionEnv(goos string, env []string) []string {
+	var out []string
+	for _, kv := range env {
+		if k, _, _ := strings.Cut(kv, "="); !slices.Contains(sessionVars, envName(goos, k)) {
+			out = append(out, kv)
+		}
+	}
+	return out
+}
+
+// childEnv is the bridge's environment, minus its own Claude Code session (leakedToChild), any session's
+// (sessionVars) and what the session sets itself, plus the session's variables; a terminal type when none is set (a
+// bridge started at login has none). Every name is there once: Windows passes a block on as it is, and a program
+// there may read the first of two.
 func childEnv(extra map[string]string) []string {
+	return childEnvFor(runtime.GOOS, os.Environ(), extra)
+}
+
+func childEnvFor(goos string, environ []string, extra map[string]string) []string {
+	own := map[string]bool{}
+	for k := range extra {
+		own[envName(goos, k)] = true
+	}
 	var env []string
 	set := map[string]bool{}
-	for _, kv := range os.Environ() {
+	for _, kv := range stripSessionEnv(goos, environ) {
 		k, v, _ := strings.Cut(kv, "=")
-		if leakedToChild(k) {
+		name := envName(goos, k)
+		if leakedToChild(name) || own[name] {
 			continue
 		}
-		if (k == "TERM" || k == "COLORTERM") && v == "" {
+		if (name == "TERM" || name == "COLORTERM") && v == "" {
 			continue
 		}
-		set[k] = true
+		set[name] = true
 		env = append(env, kv)
 	}
 	for _, k := range sortedKeys(extra) {
+		set[envName(goos, k)] = true
 		env = append(env, k+"="+extra[k])
 	}
 	if !set["TERM"] {
@@ -108,17 +149,30 @@ func (t *ptyTerminal) Start(l *Launch, dir string, env map[string]string, argv [
 }
 
 // Watch answers "trust this folder" when a new folder asks, and fails the launch when the process exits or
-// time runs out before the session reports in.
+// time runs out before the session reports in. Once a desk session is online, it follows the process to its end (a
+// task follows its members' processes itself, publishTask).
 func (t *ptyTerminal) Watch(hub *Hub, l *Launch, timeout time.Duration) {
 	term := t.Terms.Get(l.ID)
 	if term == nil {
 		return
 	}
+	t.untilOnline(hub, l, term, timeout)
+	// a desk session's process is followed to its end whatever became of the launch: its session may still report in
+	// after the launch failed (while the kill's hangup is in its grace, or someone uses its terminal)
+	if l.Task == "" {
+		<-term.Exited()
+		hub.launchExited(l.ID, term.ExitErr(), term.Screen(4))
+	}
+}
+
+// untilOnline waits for the launch to leave starting, answering the trust prompt on the way, and fails it when the
+// process exits or time runs out; it answers the launch's status then.
+func (t *ptyTerminal) untilOnline(hub *Hub, l *Launch, term *Term, timeout time.Duration) string {
 	deadline := time.Now().Add(timeout)
 	trusted := false
 	for time.Now().Before(deadline) {
-		if hub.launchStatus(l.ID) != LaunchStarting {
-			return
+		if st := hub.launchStatus(l.ID); st != LaunchStarting {
+			return st
 		}
 		select {
 		case <-term.Exited():
@@ -126,7 +180,7 @@ func (t *ptyTerminal) Watch(hub *Hub, l *Launch, timeout time.Duration) {
 			hub.failLaunch(l.ID, newError("launch_process_exited",
 				fmt.Sprintf("the claude process exited (%v); check the options. Last lines of the terminal:\n%s", term.ExitErr(), screen),
 				"detail", fmt.Sprint(term.ExitErr()), "screen", screen))
-			return
+			return hub.launchStatus(l.ID) // online, when the session reported in just before it went
 		case <-time.After(500 * time.Millisecond):
 		}
 		if !trusted && hasTrustPrompt(term.Screen(12)) {
@@ -139,6 +193,7 @@ func (t *ptyTerminal) Watch(hub *Hub, l *Launch, timeout time.Duration) {
 	screen := term.Screen(8)
 	hub.failLaunch(l.ID, newError("launch_timeout_pty",
 		"not online after "+timeout.String()+"; last lines of the terminal:\n"+screen, "timeout", timeout.String(), "screen", screen))
+	return hub.launchStatus(l.ID) // online, when the session reported in at the last moment
 }
 
 // ---------- opening a window on demand ----------

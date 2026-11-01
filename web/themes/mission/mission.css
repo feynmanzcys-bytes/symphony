@@ -21,6 +21,7 @@ button.px:hover { border-color: var(--accent); }
 button.px.primary { background: var(--accent); border-color: var(--accent); color: #041018; }
 button.px.alert { background: var(--danger); border-color: var(--danger); color: #fff; }
 button.px.icon { width: 32px; padding: 2px 0; text-align: center; }
+button.px.icon.blocked { opacity: .55; border-style: dashed; border-color: var(--amber); } /* the sound is on, but the browser won't play it before a click */
 .panel, #asks .card, #taskwin .tlist { border-radius: 6px; box-shadow: 0 0 0 1px var(--line), 0 24px 60px rgba(0,0,0,.6); }
 .modal { background: rgba(0,0,0,.6); }
 #asks input[type=text], #asks button, #launch input, #launch select, #task :is(input:not([type=checkbox]), select, textarea), .chat .say textarea, #taskwin .tsay textarea { border-radius: 4px; border-color: var(--line); background: var(--pane); color: var(--ink); }

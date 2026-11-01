@@ -61,6 +61,7 @@ const (
 	LaunchStarting = "starting"
 	LaunchOnline   = "online"
 	LaunchFailed   = "failed"
+	LaunchEnded    = "ended" // it was online, and its process has exited
 )
 
 type Launch struct {
@@ -170,7 +171,9 @@ func (l *Launcher) Mod(ctx context.Context) ModStatus {
 	if !l.modAt.IsZero() && now().Sub(l.modAt) < ttl {
 		return l.mod
 	}
-	l.mod, l.modAt = l.checkMod(ctx), now()
+	// not under the caller's ctx: a page that goes away meanwhile would leave "signal: killed" as everyone's answer
+	// (checkMod has a time limit of its own)
+	l.mod, l.modAt = l.checkMod(context.WithoutCancel(ctx)), now()
 	return l.mod
 }
 
@@ -180,7 +183,10 @@ func (l *Launcher) checkMod(ctx context.Context) ModStatus {
 	list := l.ListPlugins
 	if list == nil {
 		list = func(ctx context.Context) ([]byte, error) {
-			return exec.CommandContext(ctx, l.Claude, "plugin", "list", "--json").Output()
+			cmd := exec.CommandContext(ctx, l.Claude, "plugin", "list", "--json")
+			hideConsole(cmd)
+			cmd.WaitDelay = 5 * time.Second // what it started may hold its output open
+			return cmd.Output()
 		}
 	}
 	var plugins []struct {
@@ -224,6 +230,29 @@ func (l *Launcher) checkMod(ctx context.Context) ModStatus {
 		}
 	}
 	return st
+}
+
+// ModMarket says whether dir is a plugin marketplace that offers the mod (.claude-plugin/marketplace.json): this
+// repository, or a copy of it.
+func ModMarket(dir string) bool {
+	data, err := os.ReadFile(filepath.Join(dir, ".claude-plugin", "marketplace.json"))
+	if err != nil {
+		return false
+	}
+	var market struct {
+		Plugins []struct {
+			Name string `json:"name"`
+		} `json:"plugins"`
+	}
+	if json.Unmarshal(data, &market) != nil {
+		return false
+	}
+	for _, p := range market.Plugins {
+		if p.Name == ModName {
+			return true
+		}
+	}
+	return false
 }
 
 func (l *Launcher) installCommand() string {

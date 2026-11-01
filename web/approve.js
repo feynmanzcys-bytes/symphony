@@ -1,6 +1,9 @@
-// The approval page (/approve): the pending asks as cards, kept up by the bridge's event stream.
+// The approval page (/approve): the pending asks as cards, kept up by the bridge's client (symphony.js: the stream,
+// let go while the page is hidden, and the connection banner while the bridge can't be reached).
 import { t, applyI18n, langPicker } from '/i18n.js'
 import { esc, syncCards } from '/asks.js'
+import { connect } from '/symphony.js'
+import { connectionBanner } from '/ui/banner.js'
 
 applyI18n()
 document.querySelector('header nav').before(langPicker())
@@ -28,11 +31,7 @@ function render(snap) {
   document.title = asks.length ? t('approve.titleCount', { n: asks.length }) : t('approve.title')
 }
 
-fetch('/api/state').then(r => r.json()).then(render).catch(() => {})
-const es = new EventSource('/api/stream')
-es.onopen = () => statusEl.textContent = t('approve.connected')
-es.onerror = () => statusEl.textContent = t('approve.reconnecting')
-es.onmessage = m => {
-  const msg = JSON.parse(m.data)
-  if (msg.type === 'snapshot') render(msg)
-}
+const sym = connect()
+connectionBanner(sym)
+sym.on('snapshot', render)
+sym.on('connection', up => { statusEl.textContent = t(up ? 'approve.connected' : 'approve.reconnecting') })

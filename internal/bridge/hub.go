@@ -15,6 +15,8 @@ import (
 	"sync"
 	"time"
 	"unicode/utf8"
+
+	"github.com/feynmanzcys-bytes/symphony/internal/i18n"
 )
 
 // session states
@@ -36,9 +38,17 @@ const (
 
 const (
 	keepMessages = 300
-	// inputPreview: a string longer than this in a pending ask's input reaches the page cut to this length (a Write of a
-	// whole file would otherwise ride along with every snapshot until the ask is settled)
+	// inputPreview: a string longer than this in a pending ask's input reaches the page cut to this length, its first
+	// inputHead runes and its last ones, where a long command ends (a Write of a whole file would otherwise ride along
+	// with every snapshot until the ask is settled); GET /api/asks/<id>/input has it whole
 	inputPreview = 4096
+	inputHead    = 3072
+	// keepDoneAgents: how many finished subagents a session keeps, the newest (the office draws up to 4 by a desk)
+	keepDoneAgents = 8
+	// subBuffer: how many pushes a page may fall behind before the hub lets it go (deliverLocked); the busiest office
+	// the tests make (42 sessions streaming) pushes about 500 a second, so this is a couple of seconds of a stalled
+	// connection, on top of what the sockets hold
+	subBuffer = 1024
 	// how long an ended session is kept (accounts and seats stay)
 	endedTTL = 10 * time.Minute
 	// a sent and a received message pair up by content within this window
@@ -64,6 +74,7 @@ type Agent struct {
 	Model       string     `json:"model,omitempty"`
 	Background  bool       `json:"background,omitempty"`
 	Started     *time.Time `json:"started,omitempty"`
+	Ended       *time.Time `json:"ended,omitempty"` // agent.end
 }
 
 type Session struct {
@@ -75,7 +86,7 @@ type Session struct {
 	State   string            `json:"state"`
 	Tool    string            `json:"tool,omitempty"`
 	Prompt  string            `json:"prompt,omitempty"`
-	Agents  map[string]*Agent `json:"agents"`
+	Agents  map[string]*Agent `json:"agents"` // the running subagents and the newest finished ones (keepDoneAgents)
 	Tools   int               `json:"tools"`
 	Model   string            `json:"model,omitempty"`  // the model in use; sets the character's size
 	Effort  string            `json:"effort,omitempty"` // the thinking effort; sets the character's muscles
@@ -95,6 +106,7 @@ type Session struct {
 	Usage       *Usage      `json:"usage,omitempty"`
 	Turns       int         `json:"turns"`                 // main-loop turns completed
 	Compactions int         `json:"compactions,omitempty"` // times the conversation was compacted
+	AgentsTotal int         `json:"agentsTotal,omitempty"` // every subagent the session had, those no longer in Agents too
 	Todos       []*Todo     `json:"todos,omitempty"`       // the agent team's open tasks
 	BgTasks     int         `json:"bgTasks,omitempty"`     // background tasks running at the last turn's end
 	BgCrons     int         `json:"bgCrons,omitempty"`     // scheduled runs
@@ -120,7 +132,8 @@ type Ask struct {
 	Status    string         `json:"status"`
 	Answer    map[string]any `json:"answer,omitempty"`
 	Created   time.Time      `json:"created"`
-	// InputTruncated says that the Input the page gets is a preview: long strings in it are cut (inputPreview)
+	// InputTruncated says that the Input the page gets is a preview: long strings in it are cut (inputPreview); GET
+	// /api/asks/<id>/input has it whole
 	InputTruncated bool `json:"inputTruncated,omitempty"`
 
 	preview any // Input as the page gets it
@@ -143,6 +156,25 @@ type Message struct {
 	Delivered bool      `json:"delivered"`
 	Received  bool      `json:"received"`
 	Time      time.Time `json:"time"`
+}
+
+// The largest duration and cost a report may carry: the hub adds them up, and a sum that ran off to infinity couldn't be
+// encoded for the pages any more.
+const (
+	maxReportedMs  = 1e12 // about 30 years
+	maxReportedUSD = 1e9
+)
+
+// saneNumbers drops a duration or a cost no session can mean: negative, past the maximum, or not a number at all.
+func (ev *Event) saneNumbers() {
+	if !(ev.DurationMs >= 0 && ev.DurationMs <= maxReportedMs) {
+		ev.DurationMs = 0
+	}
+	if u := ev.Usage; u != nil && u.Cost != nil && !(u.Cost.USD >= 0 && u.Cost.USD <= maxReportedUSD) {
+		cp := *u
+		cp.Cost = nil
+		ev.Usage = &cp
+	}
 }
 
 // Event is one event the mod reports; which fields matter depends on kind.
@@ -232,9 +264,18 @@ type Push struct {
 	data  []byte
 }
 
-// newPush encodes v; the hub's lock must be held.
-func newPush(v any) *Push {
-	data, _ := json.Marshal(v)
+// pushLocked encodes v into a push; the hub's lock must be held, so the push is the state of this moment. A value that
+// doesn't encode (a number that isn't finite, which saneNumbers keeps out) gives nil, and the caller sends nothing: an
+// empty message would break the page, and the log says why (Warn, at most once a minute).
+func (h *Hub) pushLocked(v any) *Push {
+	data, err := json.Marshal(v)
+	if err != nil {
+		if now := h.now(); h.Warn != nil && now.Sub(h.warned) >= time.Minute {
+			h.warned = now
+			h.Warn(i18n.T("log.push_failed", "reason", err.Error()))
+		}
+		return nil
+	}
 	return &Push{Value: v, data: data}
 }
 
@@ -268,8 +309,15 @@ type Hub struct {
 	gitLocks treeLocks
 	// AttachHint tells, by launch id, where to find a session's terminal; the current terminal backend provides it
 	AttachHint func(launchID string) string
+	// Warn writes a line to the bridge's log (the program sets it; nothing without it)
+	Warn   func(line string)
+	warned time.Time // when Warn last said a push couldn't be encoded
+	// behind is when Warn last said a page fell behind
+	behind time.Time
 	// terms are the sessions' terminals when the bridge hosts them (ending a task kills its members' processes)
 	terms *Terms
+	// reserved are the accounts a start from the page is being made for (reserveDesk)
+	reserved map[string]bool
 }
 
 func NewHub() *Hub {
@@ -295,42 +343,61 @@ func newID() string {
 // ---------- subscriptions ----------
 
 // Subscribe returns a channel that first gets a full snapshot, then an event and a new snapshot (without the
-// message log) on every change.
+// message log) on every change. The hub closes it when the subscriber falls too far behind (deliverLocked); a new
+// subscription starts again from a full snapshot.
 func (h *Hub) Subscribe() (<-chan *Push, func()) {
-	ch := make(chan *Push, 64)
+	ch := make(chan *Push, subBuffer)
 	h.mu.Lock()
 	h.subs[ch] = struct{}{}
-	ch <- newPush(h.snapshotLocked(true))
+	if p := h.pushLocked(h.snapshotLocked(true)); p != nil {
+		ch <- p
+	}
 	h.mu.Unlock()
 	return ch, func() {
 		h.mu.Lock()
-		delete(h.subs, ch)
+		delete(h.subs, ch) // only deliverLocked closes it, as it lets it go
 		h.mu.Unlock()
 	}
 }
 
-// broadcastLocked pushes an event (optional), then the latest snapshot; a subscriber that falls behind misses
-// messages and catches up with the next snapshot. Each is encoded once, however many subscribers there are.
+// deliverLocked hands a push to every subscriber. One whose channel is full has stopped reading (a frozen tab, a
+// stalled connection): rather than go on with a hole it can't see (a piece of a streamed answer, an ask), it is let
+// go: what it has queued is dropped (it comes back for a full snapshot, and a frozen tab would hold on to it) and its
+// channel closed, so its stream ends and the page's EventSource comes back. The log says so, once a minute at most.
+func (h *Hub) deliverLocked(p *Push) {
+	for ch := range h.subs {
+		select {
+		case ch <- p:
+		default:
+			delete(h.subs, ch)
+			for len(ch) > 0 {
+				select {
+				case <-ch:
+				default: // the stream took the last one meanwhile
+				}
+			}
+			close(ch)
+			if now := h.now(); h.Warn != nil && now.Sub(h.behind) >= time.Minute {
+				h.behind = now
+				h.Warn(i18n.T("log.page_behind"))
+			}
+		}
+	}
+}
+
+// broadcastLocked pushes an event (optional), then the latest snapshot. Each is encoded once, however many
+// subscribers there are.
 func (h *Hub) broadcastLocked(extra any) {
 	if len(h.subs) == 0 {
 		return
 	}
-	var ev *Push
 	if extra != nil {
-		ev = newPush(extra)
+		if ev := h.pushLocked(extra); ev != nil {
+			h.deliverLocked(ev)
+		}
 	}
-	snap := newPush(h.snapshotLocked(false))
-	for ch := range h.subs {
-		if ev != nil {
-			select {
-			case ch <- ev:
-			default:
-			}
-		}
-		select {
-		case ch <- snap:
-		default:
-		}
+	if snap := h.pushLocked(h.snapshotLocked(false)); snap != nil {
+		h.deliverLocked(snap)
 	}
 }
 
@@ -412,13 +479,21 @@ func (h *Hub) snapshotLocked(full bool) Snapshot {
 // refused (ErrAccountBusy), unless it starts in the same process (restart, the launch id of a session.start, is the
 // online one's): a fresh session after /clear may report in before the one it replaces says goodbye, which then ends.
 // A task session only comes (back) online while its task runs (ErrTaskEnded).
-func (h *Hub) sessionLocked(id string, acc *Account, task, restart string) (s *Session, fresh bool, err error) {
+func (h *Hub) sessionLocked(id string, acc *Account, task, restart, launch string) (s *Session, fresh bool, err error) {
 	s = h.sessions[id]
 	if s != nil && s.Account != acc.ID {
 		return nil, false, ErrWrongAccount
 	}
 	if s != nil && s.State != StateEnded {
 		return s, false, nil
+	}
+	// a report that was on its way when the session's process exited (it names that process's launch) doesn't bring
+	// the session back; one from another launch (claude --continue from the page) or from a session started by hand
+	// (no launch) does
+	if s != nil && s.Launch != "" && launch == s.Launch && h.terms != nil {
+		if t := h.terms.Get(s.Launch); t != nil && t.Ended() {
+			return nil, false, ErrSessionGone
+		}
 	}
 	if task != "" {
 		if t := h.taskLocked(task); t == nil || t.Status != TaskRunning || t.member(acc.ID) == nil {
@@ -428,11 +503,11 @@ func (h *Hub) sessionLocked(id string, acc *Account, task, restart string) (s *S
 	if other := h.onlineTaskLocked(acc.ID, task); other != nil && other.ID != id {
 		switch {
 		case restart != "" && other.Launch == restart:
-			h.endSessionLocked(other) // the launch id proves it is the same process
+			h.offDutyLocked(other, "") // the launch id proves it is the same process
 		case h.now().Sub(other.Updated) < StaleAfter:
 			return nil, false, ErrAccountBusy
 		default:
-			other.State, other.Tool = StateEnded, "" // that one was lost long ago; make way
+			h.offDutyLocked(other, "lost") // that one was lost long ago; make way
 		}
 	}
 	// an account keeps the record of its current desk session only, and of one session per task
@@ -448,11 +523,43 @@ func (h *Hub) sessionLocked(id string, acc *Account, task, restart string) (s *S
 	}
 	s.Task = task
 	s.State, s.Updated, s.StateSince = StateIdle, now, now // lost and back again; carry on
+	s.EndReason = ""
 	return s, true, nil
 }
 
 // Apply handles one mod event. acc is the account its token belongs to.
-func (h *Hub) Apply(ev Event, acc *Account) error {
+func (h *Hub) Apply(ev Event, acc *Account) error { return h.apply(ev, acc, nil) }
+
+// Report is Apply, and says whether the event made the hub create the session's record: an event other than
+// session.start from a session it didn't know (the bridge restarted, or forgot the session long after it was lost).
+// The mod then reports again what it tells only now and then (its tools).
+func (h *Hub) Report(ev Event, acc *Account) (fresh bool, err error) {
+	err = h.apply(ev, acc, &fresh)
+	return fresh, err
+}
+
+// sessionInfo is what the mod tells of a session besides what it does; the heartbeats carry it too, so a restarted
+// bridge learns it again, and a heartbeat pushes only when it changed some of it.
+type sessionInfo struct {
+	login, model, effort, cwd, mod, surface string
+	engine                                  EngineInfo
+	repo                                    RepoInfo
+}
+
+func (s *Session) info() sessionInfo {
+	in := sessionInfo{login: s.Login, model: s.Model, effort: s.Effort, cwd: s.Cwd, mod: s.Mod, surface: s.Surface}
+	if s.Engine != nil {
+		in.engine = *s.Engine
+	}
+	if s.Repo != nil {
+		in.repo = *s.Repo
+	}
+	return in
+}
+
+// apply handles one mod event; created, when given, is set as Report says.
+func (h *Hub) apply(ev Event, acc *Account, created *bool) error {
+	ev.saneNumbers()
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
@@ -477,10 +584,15 @@ func (h *Hub) Apply(ev Event, acc *Account) error {
 	if ev.Kind == "session.start" {
 		restart = ev.Launch
 	}
-	s, fresh, err := h.sessionLocked(ev.Session, acc, task, restart)
+	known := h.sessions[ev.Session] != nil
+	s, fresh, err := h.sessionLocked(ev.Session, acc, task, restart, ev.Launch)
 	if err != nil {
 		return err
 	}
+	if created != nil {
+		*created = !known && ev.Kind != "session.start"
+	}
+	info := s.info()
 	if ev.Login != "" {
 		s.Login = ev.Login
 	}
@@ -518,28 +630,22 @@ func (h *Hub) Apply(ev Event, acc *Account) error {
 	if ev.Surface != "" {
 		s.Surface = ev.Surface
 	}
-	if ev.Launch != "" && s.Launch == "" {
+	// a session.start names the launch it runs in, also for a session that ran in another before (claude --continue
+	// goes on under the same session id)
+	if ev.Launch != "" && (s.Launch == "" || (ev.Kind == "session.start" && s.Launch != ev.Launch)) {
 		s.Launch = ev.Launch
 		if h.AttachHint != nil {
 			s.Attach = h.AttachHint(ev.Launch) // the launch record is gone after a restart; the terminal backend derives it from the id
 		}
 		if l := h.launches[ev.Launch]; l != nil && l.Account == acc.ID {
-			s.Attach = l.Attach
-			l.Status, l.Session, l.Error = LaunchOnline, s.ID, ""
-			// until the session reports its model and effort, use the ones picked at launch
-			if s.Model == "" {
-				s.Model = l.Model
-			}
-			if s.Effort == "" {
-				s.Effort = l.Effort
-			}
+			h.bindLaunchLocked(s, l)
 		}
 	}
 	s.Updated = h.now()
 	if fresh && s.Task != "" {
 		h.joinTaskLocked(s, ev.Kind == "session.start")
 	}
-	if ev.Kind == "heartbeat" && !fresh {
+	if ev.Kind == "heartbeat" && !fresh && s.info() == info {
 		return nil // a heartbeat only keeps the session alive; nothing to tell the page
 	}
 	// the chat's own events change nothing in the office: they go to the pages as chat events, without a snapshot;
@@ -555,6 +661,8 @@ func (h *Hub) Apply(ev Event, acc *Account) error {
 		h.chatUserLocked(s, ev)
 	case "chat.sent":
 		h.chatSentLocked(s, ev.Text)
+	case "chat.dropped":
+		h.chatDroppedLocked(s, ev.Text, ev.Reason)
 	case "session.usage":
 		if ev.Usage != nil {
 			h.usageLocked(s, ev.Usage)
@@ -578,6 +686,7 @@ func (h *Hub) Apply(ev Event, acc *Account) error {
 		if target == nil {
 			target = &Agent{ID: ev.AgentID, State: StateIdle}
 			s.Agents[ev.AgentID] = target
+			s.AgentsTotal++
 		}
 	}
 	setState := func(state, tool string) {
@@ -593,10 +702,7 @@ func (h *Hub) Apply(ev Event, acc *Account) error {
 	case "session.start":
 		h.noteLocked(s, "start", "")
 	case "session.end":
-		s.State, s.Tool = StateEnded, ""
-		s.EndReason = ev.Reason
-		h.chatNoticeLocked(s.ID, "ended")
-		h.noteLocked(s, "end", ev.Reason)
+		h.offDutyLocked(s, ev.Reason)
 	case "session.model":
 		// a switch (/model, the picker, a fallback) is worth a line in the chat; the model itself was set above
 		if ev.From != "" && ev.From != ev.Model {
@@ -702,12 +808,32 @@ func (h *Hub) detailsLocked(s *Session, ev Event, target *Agent) {
 		}
 	case "agent.end":
 		if target != nil {
-			target.State, target.Tool = StateDone, ""
+			now := h.now()
+			target.State, target.Tool, target.Ended = StateDone, "", &now
+			dropOldAgents(s, target)
 		}
 	case "turn.error":
 		s.LastError = strings.TrimSpace(ev.Text + " " + ev.Details)
 		h.chatNoticeDetailLocked(s.ID, "error", s.LastError)
 		h.noteLocked(s, "error", s.LastError)
+	}
+}
+
+// dropOldAgents forgets a session's finished subagents but the newest keepDoneAgents, by when they ended: every
+// snapshot carries them, and a long session may run hundreds. The one that just ended (last) always stays, so a late
+// event of it finds it rather than counting it again.
+func dropOldAgents(s *Session, last *Agent) {
+	var done []*Agent
+	for _, a := range s.Agents {
+		if a.State == StateDone && a.Ended != nil && a != last {
+			done = append(done, a)
+		}
+	}
+	if extra := len(done) - (keepDoneAgents - 1); extra > 0 {
+		sort.Slice(done, func(i, j int) bool { return done[i].Ended.Before(*done[j].Ended) })
+		for _, a := range done[:extra] {
+			delete(s.Agents, a.ID)
+		}
 	}
 }
 
@@ -734,6 +860,64 @@ func (h *Hub) refreshWaitingLocked(s *Session) {
 	}
 }
 
+// offDutyLocked is the one way a session goes off duty, whatever the cause: it said goodbye, it was lost, its process
+// went, its task ended, a new session took its place. The state and why (when known), the chat's notice, the activity
+// line, and its pending asks withdrawn; a session already off duty is left as it is. The caller broadcasts and checks
+// the session's task.
+func (h *Hub) offDutyLocked(s *Session, reason string) {
+	if s.State == StateEnded {
+		return
+	}
+	before := s.State
+	s.State, s.Tool = StateEnded, ""
+	if reason != "" {
+		s.EndReason = reason
+	}
+	h.markStateLocked(s, before)
+	h.chatNoticeLocked(s.ID, "ended")
+	h.noteLocked(s, "end", reason)
+	h.cancelSessionAsksLocked(s.ID)
+}
+
+// cancelSessionAsksLocked withdraws what a session left pending.
+func (h *Hub) cancelSessionAsksLocked(id string) {
+	for _, a := range h.asks {
+		if a.Session == id && a.Status == AskPending {
+			h.cancelAskLocked(a)
+		}
+	}
+}
+
+// cancelAskLocked withdraws a pending ask nobody will answer: the waiting mod gets "cancelled" (and the terminal asks),
+// the chat's card says so and the pages are told, as when the mod withdraws it itself.
+func (h *Hub) cancelAskLocked(a *Ask) {
+	a.Status = AskCancelled
+	close(a.done)
+	h.chatSettledLocked(a)
+	h.noteLocked(h.sessions[a.Session], "settled", strings.TrimSpace(AskCancelled+" "+a.Tool))
+	h.broadcastLocked(map[string]any{"type": "settled", "id": a.ID, "status": AskCancelled})
+}
+
+// exitedLocked puts a session whose process is gone off duty (a process that dies has no time to say goodbye). One that
+// didn't end well (a crash, a kill) says how in its chat, with the last lines of its screen.
+func (h *Hub) exitedLocked(s *Session, exitErr error, screen string) {
+	if s.State == StateEnded {
+		return
+	}
+	if !cleanExit(exitErr) {
+		detail := exitErr.Error()
+		if screen != "" {
+			detail += "\n" + cutFront(screen, 240) // the notice keeps 300 runes: the last lines matter most
+		}
+		h.chatNoticeDetailLocked(s.ID, "exited", detail)
+		h.noteLocked(s, "error", exitErr.Error())
+	}
+	h.offDutyLocked(s, "exited")
+}
+
+// cleanExit is true for a process that exited by itself with status 0 (a Term reports that as "exit 0").
+func cleanExit(err error) bool { return err == nil || err.Error() == "exit 0" }
+
 // Reap marks sessions silent for too long as off duty (closing the terminal leaves the mod no time to say goodbye).
 func (h *Hub) Reap() {
 	h.mu.Lock()
@@ -742,7 +926,7 @@ func (h *Hub) Reap() {
 	var tasks []string
 	for _, s := range h.sessions {
 		if s.State != StateEnded && h.now().Sub(s.Updated) >= StaleAfter {
-			s.State, s.Tool, s.StateSince = StateEnded, "", h.now()
+			h.offDutyLocked(s, "lost")
 			changed = true
 			if s.Task != "" {
 				tasks = append(tasks, s.Task)
@@ -757,8 +941,9 @@ func (h *Hub) Reap() {
 	}
 }
 
-// dropSessionLocked forgets a session: its record, its chat and its inbox.
+// dropSessionLocked forgets a session: its record, its chat and its inbox. Nothing it asked stays pending.
 func (h *Hub) dropSessionLocked(id string) {
+	h.cancelSessionAsksLocked(id)
 	delete(h.sessions, id)
 	delete(h.chats, id)
 	delete(h.inboxes, id)
@@ -782,7 +967,8 @@ func (h *Hub) Prune() {
 		}
 	}
 	for id, l := range h.launches {
-		if l.Status != LaunchStarting && l.Time.Before(cut) {
+		// a launch whose process still runs stays: it holds the desk (reserveDesk), and is marked ended with it
+		if l.Status != LaunchStarting && l.Time.Before(cut) && (h.terms == nil || !h.terms.Live(id)) {
 			delete(h.launches, id)
 		}
 	}
@@ -980,8 +1166,9 @@ func (h *Hub) sendLocked(from *Session, ev Event) *Message {
 
 // ---------- pending asks ----------
 
-// trimInput is v with every string longer than inputPreview cut to that length (a note at the end says so), and
-// whether anything was cut. Maps and lists are copied as far as needed; v itself is left alone.
+// trimInput is v with every string longer than inputPreview cut to that length: its head and its tail, with how many
+// runes were cut between them (… [+N] …); and whether anything was cut. Maps and lists are copied as far as needed;
+// v itself is left alone.
 func trimInput(v any) (any, bool) {
 	switch x := v.(type) {
 	case string:
@@ -989,7 +1176,8 @@ func trimInput(v any) (any, bool) {
 			return x, false
 		}
 		runes := []rune(x)
-		return string(runes[:inputPreview]) + "… [+" + strconv.Itoa(len(runes)-inputPreview) + "]", true
+		tail := len(runes) - (inputPreview - inputHead)
+		return string(runes[:inputHead]) + " … [+" + strconv.Itoa(len(runes)-inputPreview) + "] … " + string(runes[tail:]), true
 	case map[string]any:
 		var out map[string]any
 		for k, val := range x {
@@ -1044,7 +1232,7 @@ func (h *Hub) CreateAsk(req AskRequest, acc *Account) (string, error) {
 	if s := h.sessions[req.Session]; s != nil {
 		task = s.Task
 	}
-	s, _, err := h.sessionLocked(req.Session, acc, task, "")
+	s, _, err := h.sessionLocked(req.Session, acc, task, "", "")
 	if err != nil {
 		return "", err
 	}
@@ -1067,6 +1255,18 @@ func (h *Hub) CreateAsk(req AskRequest, acc *Account) (string, error) {
 	h.markStateLocked(s, before)
 	h.broadcastLocked(map[string]any{"type": "ask", "id": a.ID, "session": a.Session})
 	return a.ID, nil
+}
+
+// AskInput is a pending ask's input as the mod sent it, long strings whole (the pages get it trimmed, trimInput);
+// ErrUnknownAsk once the ask is settled.
+func (h *Hub) AskInput(id string) (any, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	a := h.asks[id]
+	if a == nil || a.Status != AskPending {
+		return nil, ErrUnknownAsk
+	}
+	return a.Input, nil // never changed after the ask is made, so it can be encoded once the lock is let go
 }
 
 // Wait blocks until there is an answer, time runs out or the request goes away, and returns the state then.
@@ -1139,8 +1339,27 @@ func (h *Hub) addLaunch(l *Launch) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.launches[l.ID] = l
+	// its session may have reported in already, while the start was being recorded
+	for _, s := range h.sessions {
+		if s.Launch == l.ID && s.Account == l.Account && s.State != StateEnded {
+			h.bindLaunchLocked(s, l)
+		}
+	}
 	h.noteLocked(nil, "launch", strings.TrimSpace(l.Name+" "+l.Dir))
 	h.broadcastLocked(map[string]any{"type": "launch", "id": l.ID})
+}
+
+// bindLaunchLocked: the launch's session reported in; the launch is online, and the session takes what the launch knows.
+func (h *Hub) bindLaunchLocked(s *Session, l *Launch) {
+	s.Attach = l.Attach
+	l.Status, l.Session, l.Error, l.ErrorCode, l.ErrorParams = LaunchOnline, s.ID, "", "", nil
+	// until the session reports its model and effort, use the ones picked at launch
+	if s.Model == "" {
+		s.Model = l.Model
+	}
+	if s.Effort == "" {
+		s.Effort = l.Effort
+	}
 }
 
 func (h *Hub) launchStatus(id string) string {
@@ -1159,16 +1378,93 @@ func (h *Hub) failLaunch(id string, why *Error) {
 		l.Status, l.Error, l.ErrorCode, l.ErrorParams = LaunchFailed, why.Text, why.Code, why.Params
 		h.noteLocked(nil, "launchFailed", strings.TrimSpace(l.Name+" "+why.Text))
 		h.broadcastLocked(map[string]any{"type": "launch", "id": id})
-		if l.Task != "" {
-			// a member that never reported in won't: its process goes (it would keep the task running for nothing)
-			if h.terms != nil {
-				if term := h.terms.Get(id); term != nil {
-					term.Kill()
-				}
+		// a session that never reported in won't: its process goes (stuck at a prompt, it would hold the desk or keep
+		// the task running for nothing, out of sight); the error keeps the last lines of its screen
+		// (not while someone uses its terminal: a login or a first-run prompt there; the launch comes online when the
+		// session reports in)
+		if h.terms != nil {
+			if term := h.terms.Get(id); term != nil && term.Clients() == 0 {
+				term.Kill()
 			}
+		}
+		if l.Task != "" {
 			h.checkTaskLocked(l.Task) // a task whose last member never came ends
 		}
 	}
+}
+
+// launchExited: a desk session's process is gone (Watch follows it once it is online). Its session goes off duty at
+// once, saying why when it didn't end well; one that said goodbye first is off duty already. The launch is over.
+func (h *Hub) launchExited(id string, exitErr error, screen string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.stopping {
+		return // the bridge ends its sessions on its way out
+	}
+	changed := false
+	for _, s := range h.sessions {
+		if s.Launch == id && s.Task == "" && s.State != StateEnded {
+			h.exitedLocked(s, exitErr, screen)
+			changed = true
+		}
+	}
+	if l := h.launches[id]; l != nil && l.Status == LaunchOnline {
+		l.Status = LaunchEnded
+		changed = true
+	}
+	if changed {
+		h.broadcastLocked(map[string]any{"type": "launch", "id": id})
+	}
+}
+
+// reserveDesk holds an account's desk for one start from the page, so two starts can't both get through: none while
+// the account is online, has a start on the way or a process from the page still running (deskBusyLocked). release
+// lets go of it; by then the launch is in the hub and holds the desk itself.
+func (h *Hub) reserveDesk(account string) (release func(), err error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if err := h.deskBusyLocked(account); err != nil {
+		return nil, err
+	}
+	if h.reserved == nil {
+		h.reserved = map[string]bool{}
+	}
+	h.reserved[account] = true
+	return func() {
+		h.mu.Lock()
+		defer h.mu.Unlock()
+		delete(h.reserved, account)
+	}, nil
+}
+
+// deskBusyLocked says whether the account's desk is taken: its session is online, a start from the page is being made
+// or on its way, or the process of one still runs (even with its session off duty: it may come back, or still be at a
+// prompt in its terminal).
+func (h *Hub) deskBusyLocked(account string) *Error {
+	if h.onlineLocked(account) != nil || h.reserved[account] {
+		return ErrAccountBusy
+	}
+	live := func(id string) bool { return id != "" && h.terms != nil && h.terms.Live(id) }
+	for _, l := range h.launches {
+		if l.Account == account && l.Task == "" && l.Status == LaunchStarting {
+			return ErrAccountBusy
+		}
+	}
+	// a process whose session is off duty (it stopped answering) or never came: the person decides, in its terminal
+	still := func(id, attach string) *Error {
+		return newError("launch_still_running", "the process of this desk's last start still runs; open its terminal ("+attach+") or end it", "command", attach)
+	}
+	for _, l := range h.launches {
+		if l.Account == account && l.Task == "" && live(l.ID) {
+			return still(l.ID, l.Attach)
+		}
+	}
+	for _, s := range h.sessions {
+		if s.Account == account && s.Task == "" && live(s.Launch) {
+			return still(s.Launch, s.Attach)
+		}
+	}
+	return nil
 }
 
 // recentDirs are recently used folders, offered as shortcuts in the launch dialog; task sessions' worktrees aren't.

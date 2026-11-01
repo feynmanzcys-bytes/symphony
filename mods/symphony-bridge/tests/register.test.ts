@@ -3,14 +3,15 @@
 // and every message it shows is recorded.
 import type { On } from 'claude-code'
 import { expect, mock, test } from 'claude-code/testing'
+import { LANGS, message } from '../hooks/messages'
 import { hmacSha256 } from '../hooks/register'
 
 // answered: the request got an answer (not 'down' or 'hang'); proved: a hello the bridge answered with the right proof
 type Req = { url: string; method?: string; auth?: string; body?: Record<string, unknown>; answered?: boolean; proved?: boolean }
 // 'down' means the bridge isn't running and can't be reached; 'hang' that it never answers
 type Reply = { status: number; text: string } | 'down' | 'hang'
-// what running symphony does: exits with a code, or 'missing' when it isn't on PATH
-type Ran = { exitCode: number } | 'missing'
+// what running symphony does: exits with a code (saying something, maybe), or 'missing' when it isn't on PATH
+type Ran = { exitCode: number; stdout?: string; stderr?: string } | 'missing'
 
 const utf8 = (s: string) => new TextEncoder().encode(s)
 const hex = (bytes: Uint8Array) => [...bytes].map(b => b.toString(16).padStart(2, '0')).join('')
@@ -25,7 +26,7 @@ const KNOWN = 'tok'
 function world(
   on: On,
   env: Record<string, string>,
-  reply: (r: Req) => Reply = () => ({ status: 200, text: '{}' }),
+  reply: (r: Req) => Reply | Promise<Reply> = () => ({ status: 200, text: '{}' }),
   run: (argv: readonly string[]) => Ran = () => 'missing',
   hello?: (r: Req) => Reply | undefined,
 ) {
@@ -42,10 +43,10 @@ function world(
     runs.push([...e.argv])
     const ran = run(e.argv)
     if (ran === 'missing') return { deny: `${e.argv[0]}: not found` }
-    return { value: { exitCode: ran.exitCode, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+    return { value: { exitCode: ran.exitCode, stdout: ran.stdout ?? '', stderr: ran.stderr ?? '', isStdoutTruncated: false, isStderrTruncated: false } }
   })
   const asBridge = async (r: Req): Promise<Reply> => {
-    const answer = reply(r)
+    const answer = await reply(r)
     if (answer === 'down' || answer === 'hang') return answer
     if (r.body?.id !== (await sha256hex(KNOWN))) return { status: 401, text: '{"error":"no valid account token"}' }
     r.proved = true
@@ -58,7 +59,7 @@ function world(
     all.push(r)
     const isHello = r.url.endsWith('/api/hello')
     ;(isHello ? hellos : r.url.includes('/api/inbox') ? polls : reqs).push(r)
-    const answer = isHello ? (hello?.(r) ?? (await asBridge(r))) : reply(r)
+    const answer = isHello ? (hello?.(r) ?? (await asBridge(r))) : await reply(r)
     r.answered = answer !== 'down' && answer !== 'hang'
     if (answer === 'down') return { deny: 'connection refused' }
     if (answer === 'hang') return new Promise<never>(() => {})
@@ -69,14 +70,15 @@ function world(
     toasts.push(e.text)
     return { value: undefined }
   })
-  on('session.id', () => ({ value: 'sess-1' }))
+  const session = { id: 'sess-1' } // what $.session.id() answers
+  on('session.id', () => ({ value: session.id }))
   on('session.model', () => ({ value: 'claude-sonnet-5-5' }))
   on('fs.read', (_$, e) => {
     reads.push(e.path)
     return { deny: 'tests read no files' }
   })
   on('session.start', (_$, e) => ({ cwd: e.cwd }))
-  return { all, reqs, polls, hellos, toasts, runs, reads, clock }
+  return { all, reqs, polls, hellos, toasts, runs, reads, clock, session }
 }
 
 // The token leaves the session only for a bridge that has just proved it knows it: every request that carries it
@@ -245,14 +247,28 @@ test('a bridge on this machine that is down: the mod starts it with symphony -ba
   expectCheckedBeforeToken(w.all)
 })
 
-test('symphony fails to start the bridge: the usual message, and no second try', async ($, on) => {
+test('symphony fails to start the bridge without a word: the message names its exit status, and no second try', async ($, on) => {
   const w = world(on, { SYMPHONY_TOKEN: 'tok' }, () => 'down', () => ({ exitCode: 1 }))
 
   await $.session.start(start)
   expect(w.runs.length).toBe(1)
   expect(w.hellos.length).toBe(1)
   expect(w.reqs).toEqual([]) // the token never left: nothing answered the check
-  expect(w.toasts).toEqual(["symphony: can't reach the bridge (http://127.0.0.1:7788); approvals stay in the terminal for now"])
+  expect(w.toasts).toEqual(["symphony: couldn't start the bridge (http://127.0.0.1:7788): exit status 1; approvals stay in the terminal for now"])
+})
+
+test('symphony fails to start the bridge: the message says why, as symphony said it last, without the time or the page key', async ($, on) => {
+  const stderr = [
+    '2026/11/02 10:00:00 starting',
+    "2026/11/02 10:00:06 the bridge doesn't answer at http://127.0.0.1:7788/?key=0123456789abcdef0123456789abcdef yet; its log: /data/bridge.log",
+    '',
+  ].join('\n')
+  const w = world(on, { SYMPHONY_TOKEN: 'tok' }, () => 'down', () => ({ exitCode: 1, stderr }))
+
+  await $.session.start(start)
+  expect(w.toasts).toEqual([
+    "symphony: couldn't start the bridge (http://127.0.0.1:7788): the bridge doesn't answer at http://127.0.0.1:7788/?key=… yet; its log: /data/bridge.log; approvals stay in the terminal for now",
+  ])
 })
 
 test('a bridge on another machine is never started from here', async ($, on) => {
@@ -609,7 +625,7 @@ test('the reason sent back to the model when the page decides is in the session 
   await $.session.start(start)
   const verdict = await $.tool.check(bash)
   expect(verdict).toEqual(expect.objectContaining({ decision: 'deny', reason: 'symphony: auf der Webseite abgelehnt' }))
-  expect(w.toasts).toEqual([])
+  expect(w.toasts).toEqual(['symphony: wartet auf deine Antwort auf der Webseite des Büros (http://127.0.0.1:7788); Esc bricht ab'])
 })
 
 // ---------- the chat: what the employee window shows ----------
@@ -986,4 +1002,490 @@ test('without a token none of it is reported', async ($, on) => {
   await w.clock.advance(5000)
   await w.clock.settle()
   expect(w.reqs).toEqual([])
+})
+
+// ---------- the messages: every language has every message, with the same placeholders ----------
+
+test('every language has the messages English has, with the same placeholders', async () => {
+  const keys = ['unreachable', 'started', 'startFailed', 'badToken', 'notBridge', 'insecure', 'busy', 'waiting', 'allowed', 'denied'] as const
+  const names = (text: string) => [...text.matchAll(/\{(\w+)\}/g)].map(m => m[1]).sort()
+  for (const lang of LANGS) {
+    for (const key of keys) {
+      const text = message(lang, key)
+      expect({ lang, key, ok: typeof text === 'string' && text.startsWith('symphony') }).toEqual({ lang, key, ok: true })
+      expect({ lang, key, names: names(text) }).toEqual({ lang, key, names: names(message('en', key)) })
+    }
+  }
+})
+
+// ---------- /clear and /resume inside the session: it goes on under a new id ----------
+
+test('/clear: the old session ends, the new one starts under its own id, and heartbeats and the inbox poll go on', async ($, on) => {
+  const w = world(on, { SYMPHONY_TOKEN: 'tok', SYMPHONY_LAUNCH: 'L1', SYMPHONY_TASK: 'T7' })
+  on('session.end', (_$, e) => ({ sessionId: e.sessionId }))
+  on('classic.SessionStart', () => ({}))
+  on('tool.list', () => ({ value: [{ name: 'Bash', description: '', mcp: false }] }))
+
+  await $.session.start(start)
+  await w.clock.advance(15_000)
+  await w.clock.settle()
+  w.session.id = 'sess-2' // the engine may be on the new id before the goodbye goes out: it still names the old one
+  await $.session.end({ reason: 'clear', sessionId: 'sess-1', resume: { id: 'sess-1' } })
+  const ended = w.reqs.length
+  expect(w.reqs.at(-1)?.body).toEqual(expect.objectContaining({ kind: 'session.end', reason: 'clear', session: 'sess-1' }))
+
+  await $.classic.SessionStart({ source: 'clear', session_id: 'sess-2', session_title: 'bob-T7', cwd: '/work' })
+  await w.clock.settle()
+  const after = w.reqs.slice(ended)
+  // a start, as at the start: the bridge ends the old one by the launch id and gives a task member its kickoff again
+  expect(after[0]?.body).toEqual(
+    expect.objectContaining({ kind: 'session.start', session: 'sess-2', launch: 'L1', task: 'T7', cwd: '/work', model: 'claude-sonnet-5-5', interactive: true, surface: 'terminal' }),
+  )
+  expect(after.map(r => r.body?.kind)).toEqual(expect.arrayContaining(['session.start', 'session.title', 'session.tools']))
+  const polled = w.polls.length
+  await w.clock.advance(15_000)
+  await w.clock.settle()
+  expect(w.reqs.at(-1)?.body).toEqual(expect.objectContaining({ kind: 'heartbeat', session: 'sess-2' }))
+  expect(w.reqs.slice(ended).every(r => r.body?.session === 'sess-2')).toBe(true)
+  expect(w.polls.length).toBeGreaterThan(polled)
+  expect(w.polls.at(-1)?.url).toContain('session=sess-2')
+})
+
+test('/resume inside the session: the same, under the resumed id', async ($, on) => {
+  const w = world(on, { SYMPHONY_TOKEN: 'tok' })
+  on('session.end', (_$, e) => ({ sessionId: e.sessionId }))
+  on('classic.SessionStart', () => ({}))
+
+  await $.session.start(start)
+  await $.session.end({ reason: 'resume', sessionId: 'sess-1', resume: { id: 'sess-1' } })
+  await $.classic.SessionStart({ source: 'resume', session_id: 'sess-0' })
+  await w.clock.advance(15_000)
+  await w.clock.settle()
+  expect(w.reqs.map(r => [r.body?.kind, r.body?.session])).toEqual([
+    ['session.start', 'sess-1'],
+    ['session.end', 'sess-1'],
+    ['session.start', 'sess-0'],
+    ['session.title', 'sess-0'],
+    ['heartbeat', 'sess-0'],
+  ])
+})
+
+test('claude --resume: the resume right after the start starts nothing again', async ($, on) => {
+  const w = world(on, { SYMPHONY_TOKEN: 'tok' })
+  on('classic.SessionStart', () => ({}))
+
+  await $.session.start(start)
+  await $.classic.SessionStart({ source: 'resume', session_id: 'sess-1', session_title: 'bob' })
+  await w.clock.settle()
+  expect(kinds(w)).toEqual(['session.start', 'session.title'])
+})
+
+test('once the session ended for good nothing more is reported (it would come back to life on the page)', async ($, on) => {
+  const w = world(on, { SYMPHONY_TOKEN: 'tok' })
+  on('session.end', (_$, e) => ({ sessionId: e.sessionId }))
+  on('classic.SessionStart', () => ({}))
+  on('tool.call', () => ({ result: {} }))
+
+  await $.session.start(start)
+  await $.session.end({ reason: 'prompt_input_exit', sessionId: 'sess-1', resume: { id: 'sess-1' } })
+  await $.classic.SessionStart({ source: 'compact', session_id: 'sess-1' })
+  await $.tool.call({ tool: 'Bash', command: 'ls' })
+  await w.clock.advance(60_000)
+  await w.clock.settle()
+  expect(kinds(w)).toEqual(['session.start', 'session.end'])
+})
+
+// ---------- a bridge that restarted, or meets the session through its heartbeat ----------
+
+test('the heartbeat carries what the start told, with the model and effort as last used', async ($, on) => {
+  const w = world(on, { SYMPHONY_TOKEN: 'tok' })
+  on('session.version', () => ({ value: { version: '2.1.316', base: '2.1.316' } }))
+  on('session.repo', () => ({ value: { root: '/work', remote: 'https://user:secret@github.com/x/y.git', internal: false, name: 'y' } }))
+  on('session.identity', () => ({ value: { kind: 'claude.ai', email: 'ada@example.com', isVerified: true } }))
+  on('turn.step', async function* () {
+    yield { kind: 'text', index: 0, text: 'ok' }
+    return stepResult
+  })
+
+  await $.session.start(start)
+  for await (const _ of $.turn.step({ ...step, effort: 'high' })) {
+    // consumed
+  }
+  await w.clock.advance(15_000)
+  await w.clock.settle()
+  const beat = w.reqs.filter(r => r.body?.kind === 'heartbeat').at(-1)
+  expect(beat?.body).toEqual(
+    expect.objectContaining({
+      model: 'claude-opus-5-5',
+      effort: 'high',
+      engine: { version: '2.1.316', base: '2.1.316' },
+      repo: { root: '/work', name: 'y', internal: false },
+      surface: 'terminal',
+      login: 'ada@example.com',
+    }),
+  )
+  expect(JSON.stringify(beat?.body)).not.toContain('github.com')
+})
+
+test('a bridge that did not know the session (fresh) hears the tools, the surfaces, the name and the background work again', async ($, on) => {
+  let restarted = false
+  const w = world(on, { SYMPHONY_TOKEN: 'tok' }, r => {
+    if (restarted && r.body?.kind === 'heartbeat') {
+      restarted = false
+      return { status: 200, text: '{"ok":true,"fresh":true}' }
+    }
+    return { status: 200, text: '{"ok":true}' }
+  })
+  on('tool.list', () => ({ value: [{ name: 'Bash', description: '', mcp: false }] }))
+  on('session.surfaces', () => ({ value: ['terminal'] }))
+  on('classic.UserPromptSubmit', () => ({}))
+  on('classic.Stop', () => ({}))
+  const stop = () => $.classic.Stop({ stop_hook_active: false, background_tasks: [], session_crons: [] })
+
+  await $.session.start(start)
+  await $.classic.UserPromptSubmit({ prompt: 'hi', session_title: 'bob' })
+  await stop()
+  await stop() // unchanged: not reported again
+  await w.clock.settle()
+  expect(kinds(w).sort()).toEqual(['session.background', 'session.start', 'session.title', 'session.tools'])
+
+  restarted = true // the bridge restarted: it meets the session through the next heartbeat
+  const from = w.reqs.length
+  await w.clock.advance(15_000)
+  await w.clock.settle()
+  await stop()
+  await w.clock.settle()
+  expect(kinds({ reqs: w.reqs.slice(from) }).sort()).toEqual(['heartbeat', 'session.background', 'session.surfaces', 'session.title', 'session.tools'])
+  expect(find({ reqs: w.reqs.slice(from) }, 'session.title')).toEqual(expect.objectContaining({ title: 'bob' }))
+})
+
+// ---------- what the page sends that doesn't enter ----------
+
+const sayOnce = (text: string): ((r: Req) => Reply) => {
+  let polls = 0
+  return r => {
+    if (r.url.includes('/api/inbox')) {
+      polls++
+      return { status: 200, text: polls === 1 ? JSON.stringify({ items: [{ kind: 'say', text }] }) : '{"items":[]}' }
+    }
+    return { status: 200, text: '{}' }
+  }
+}
+
+test('a prompt from the page that a hook drops is reported dropped, with why, not sent', async ($, on) => {
+  const w = world(on, { SYMPHONY_TOKEN: 'tok' }, sayOnce('deploy it'))
+  on('prompt.submit', () => ({ drop: 'blocked by a UserPromptSubmit hook: no deploys on Friday' }))
+
+  await $.session.start(start)
+  await w.clock.advance(100)
+  await w.clock.settle()
+  expect(find(w, 'chat.sent')).toBeUndefined()
+  expect(find(w, 'chat.user')).toBeUndefined()
+  expect(find(w, 'chat.dropped')).toEqual(
+    expect.objectContaining({ text: 'deploy it', reason: 'blocked by a UserPromptSubmit hook: no deploys on Friday' }),
+  )
+})
+
+test('a prompt from the page that fails to go in is reported dropped with the error', async ($, on) => {
+  const w = world(on, { SYMPHONY_TOKEN: 'tok' }, sayOnce('deploy it'))
+  on('prompt.submit', () => {
+    throw new Error('the prompt queue is full')
+  })
+
+  await $.session.start(start)
+  await w.clock.advance(100)
+  await w.clock.settle()
+  expect(find(w, 'chat.sent')).toBeUndefined()
+  const dropped = find(w, 'chat.dropped')
+  expect(dropped?.text).toBe('deploy it')
+  expect(typeof dropped?.reason === 'string' && dropped.reason.length > 0).toBe(true) // the engine's word for the failure
+})
+
+// ---------- waiting for the page: bounded, and the terminal can interrupt it ----------
+
+test('a wait the bridge never answers: after 25 seconds the terminal asks', async ($, on) => {
+  const w = world(on, { SYMPHONY_TOKEN: 'tok' }, r =>
+    r.url.endsWith('/api/ask') ? created : r.url.includes('/api/wait/') ? 'hang' : { status: 200, text: '{}' },
+  )
+  on('tool.check', () => ({ decision: 'ask', reason: 'ask a person' }))
+
+  await $.session.start(start)
+  let settled = false
+  const verdict = $.tool.check(bash)
+  void verdict.then(() => (settled = true))
+  await w.clock.settle()
+  await w.clock.advance(20_000)
+  expect(settled).toBe(false) // the bridge answers a wait within 20 seconds: not yet
+  await w.clock.advance(5_000)
+  expect(await verdict).toEqual(expect.objectContaining({ decision: 'ask', reason: 'ask a person' }))
+  // the card is withdrawn even though the bridge is now left alone for a while: nobody waits on it any more
+  await w.clock.settle()
+  expect(w.reqs.some(r => r.url.includes('/api/cancel/'))).toBe(true)
+})
+
+test('the page is told it waits: once, the first time a request goes there', async ($, on) => {
+  const w = world(on, { SYMPHONY_TOKEN: 'tok' }, answering('{"status":"done","answer":{"decision":"allow"}}'))
+  on('tool.check', () => ({ decision: 'ask' }))
+
+  await $.session.start(start)
+  expect((await $.tool.check(bash)).decision).toBe('allow')
+  expect((await $.tool.check({ ...bash, tool_use_id: 'tu-2' })).decision).toBe('allow')
+  expect(w.toasts).toEqual(['symphony: waiting for your answer in the office page (http://127.0.0.1:7788); Esc cancels'])
+})
+
+test(
+  'Esc while the page decides: the wait ends at once and the card is withdrawn',
+  {
+    plugins: [
+      {
+        // above the mod, as the terminal's interrupt: it settles first, and the mod's dispatch is abandoned
+        name: 'esc',
+        tier: 'prepend',
+        register(on) {
+          on('tool.check', async ($, e, next) => {
+            void next(e).catch(() => undefined)
+            await $.clock.sleep(1_000)
+            return { decision: 'deny', reason: 'interrupted' }
+          })
+        },
+      },
+    ],
+  },
+  async ($, on) => {
+    const w = world(on, { SYMPHONY_TOKEN: 'tok' }, r =>
+      r.url.endsWith('/api/ask') ? created : r.url.includes('/api/wait/') ? 'hang' : { status: 200, text: '{}' },
+    )
+    on('tool.check', () => ({ decision: 'ask', reason: 'ask a person' }))
+
+    await $.session.start(start)
+    const verdict = $.tool.check(bash)
+    await w.clock.settle()
+    expect(w.reqs.some(r => r.url.endsWith('/api/wait/a1'))).toBe(true)
+    await w.clock.advance(1_000)
+    expect((await verdict).reason).toBe('interrupted')
+    await w.clock.settle()
+    expect(w.reqs.filter(r => r.url.endsWith('/api/cancel/a1')).length).toBe(1) // at once, not after the 20 s wait
+  },
+)
+
+test('an ask the bridge takes only after the timeout is withdrawn when its answer comes', async ($, on) => {
+  const w = world(on, { SYMPHONY_TOKEN: 'tok' }, async r => {
+    if (r.url.endsWith('/api/ask')) {
+      await w.clock.sleep(12_000)
+      return created
+    }
+    return { status: 200, text: '{}' }
+  })
+  on('tool.check', () => ({ decision: 'ask', reason: 'ask a person' }))
+
+  await $.session.start(start)
+  const verdict = $.tool.check(bash)
+  await w.clock.settle()
+  await w.clock.advance(10_000)
+  expect(await verdict).toEqual(expect.objectContaining({ decision: 'ask', reason: 'ask a person' }))
+  expect(w.reqs.filter(r => r.url.includes('/api/cancel/')).length).toBe(0)
+  await w.clock.advance(2_000)
+  await w.clock.settle()
+  expect(w.reqs.filter(r => r.url.endsWith('/api/cancel/a1')).length).toBe(1)
+})
+
+test('the bridge restarted and lost the ask (the wait gets a 404): the ask is put back and the wait goes on', async ($, on) => {
+  let asks = 0
+  let waits = 0
+  const w = world(on, { SYMPHONY_TOKEN: 'tok' }, r => {
+    if (r.url.endsWith('/api/ask')) return { status: 200, text: JSON.stringify({ id: `a${++asks}` }) }
+    if (r.url.includes('/api/wait/')) {
+      waits++
+      return waits === 1 ? { status: 404, text: '{"error":"no such ask"}' } : { status: 200, text: '{"status":"done","answer":{"decision":"allow"}}' }
+    }
+    return { status: 200, text: '{}' }
+  })
+  on('tool.check', () => ({ decision: 'ask' }))
+
+  await $.session.start(start)
+  expect((await $.tool.check(bash)).decision).toBe('allow')
+  expect(w.reqs.filter(r => r.url.endsWith('/api/ask')).length).toBe(2)
+  expect(w.reqs.filter(r => r.url.includes('/api/wait/')).map(r => r.url.split('/').at(-1))).toEqual(['a1', 'a2'])
+  expect(w.reqs.filter(r => r.url.includes('/api/cancel/'))).toEqual([])
+})
+
+// ---------- what the page may decide ----------
+
+test("the organization's ceiling holds: a page's allow can't pass it, a deny can", async ($, on) => {
+  let answer = 'allow'
+  world(on, { SYMPHONY_TOKEN: 'tok' }, r =>
+    r.url.endsWith('/api/ask')
+      ? created
+      : r.url.endsWith('/api/wait/a1')
+        ? { status: 200, text: JSON.stringify({ status: 'done', answer: { decision: answer } }) }
+        : { status: 200, text: '{}' },
+  )
+  on('tool.check', () => ({ decision: 'ask', reason: 'ask a person', ceiling: 'ask' }))
+  const capped = { ...bash, ceiling: 'ask' }
+
+  await $.session.start(start)
+  expect(await $.tool.check(capped)).toEqual(expect.objectContaining({ decision: 'ask', reason: 'ask a person' }))
+  answer = 'deny'
+  expect((await $.tool.check(capped)).decision).toBe('deny')
+})
+
+test('a call the page denied ends denied, though the call comes back only as an error', async ($, on) => {
+  let answer = 'deny'
+  const w = world(on, { SYMPHONY_TOKEN: 'tok' }, r =>
+    r.url.endsWith('/api/ask')
+      ? created
+      : r.url.endsWith('/api/wait/a1')
+        ? { status: 200, text: JSON.stringify({ status: 'done', answer: { decision: answer, reason: 'not now' } }) }
+        : { status: 200, text: '{}' },
+  )
+  on('tool.check', () => ({ decision: 'ask' }))
+  let ran = 0
+  on('tool.call', () => {
+    ran++
+    return { result: 'exit 1', isError: true }
+  })
+
+  await $.session.start(start)
+  // the engine asks the check inside the call; a deny comes back as an errored call, not { deny }
+  const denied = await $.tool.call({ tool: 'Bash', command: 'touch x', tool_use_id: 'tu-1' })
+  expect(denied.deny).toBeUndefined()
+  expect(ran).toBe(0)
+  answer = 'allow' // and a call the page allowed that fails on its own is no denial
+  await $.tool.call({ tool: 'Bash', command: 'touch x', tool_use_id: 'tu-2' })
+  expect(ran).toBe(1)
+  await w.clock.settle()
+  const ends = w.reqs.filter(r => r.body?.kind === 'tool.end').map(r => r.body)
+  expect(ends).toEqual([
+    expect.objectContaining({ toolUseId: 'tu-1', denied: true, isError: true }),
+    expect.objectContaining({ toolUseId: 'tu-2', denied: false, isError: true }),
+  ])
+})
+
+const questions = [{ question: 'Which colour?', header: 'Colour', options: [{ label: 'red', description: '' }, { label: 'blue', description: '' }], multiSelect: false }]
+
+test('AskUserQuestion: the page answers it, and the answers become the tool result without the terminal dialog', async ($, on) => {
+  const w = world(on, { SYMPHONY_TOKEN: 'tok' }, answering('{"status":"done","answer":{"answers":{"Which colour?":"blue"}}}'))
+  let dialog = 0
+  on('tool.call', () => {
+    dialog++
+    return { result: { questions, answers: {} } }
+  })
+  on('tool.check', () => ({ decision: 'ask' }))
+
+  await $.session.start(start)
+  // the check passes it by: the question itself is the ask
+  expect((await $.tool.check({ tool: 'AskUserQuestion', input: { questions }, tool_use_id: 'tu-q' })).decision).toBe('ask')
+  expect(w.reqs.filter(r => r.url.endsWith('/api/ask')).length).toBe(0)
+  const ran = await $.tool.call({ tool: 'AskUserQuestion', questions, tool_use_id: 'tu-q' })
+  expect(ran.result).toEqual({ questions, answers: { 'Which colour?': 'blue' } })
+  expect(dialog).toBe(0)
+  expect(w.reqs.find(r => r.url.endsWith('/api/ask'))?.body).toEqual(expect.objectContaining({ kind: 'question', questions }))
+})
+
+const badAnswers: [string, string][] = [
+  ['answers that are not an object', '{"status":"done","answer":{"answers":"blue"}}'],
+  ['no answers', '{"status":"done","answer":{"decision":"allow"}}'],
+  ['the card withdrawn', '{"status":"cancelled"}'],
+]
+for (const [what, wait] of badAnswers) {
+  test(`AskUserQuestion with ${what}: the terminal's own dialog asks`, async ($, on) => {
+    world(on, { SYMPHONY_TOKEN: 'tok' }, answering(wait))
+    let dialog = 0
+    on('tool.call', () => {
+      dialog++
+      return { result: { questions, answers: { 'Which colour?': 'red' } } }
+    })
+
+    await $.session.start(start)
+    const ran = await $.tool.call({ tool: 'AskUserQuestion', questions, tool_use_id: 'tu-q' })
+    expect(dialog).toBe(1)
+    expect(ran.result).toEqual({ questions, answers: { 'Which colour?': 'red' } })
+  })
+}
+
+// ---------- a bridge that takes requests and doesn't answer ----------
+
+test('a bridge that takes requests and never answers: the reports behind are dropped at once, not each given its own timeout', async ($, on) => {
+  let hung = false
+  const w = world(
+    on,
+    { SYMPHONY_TOKEN: 'tok' },
+    () => (hung ? 'hang' : { status: 200, text: '{}' }),
+    undefined,
+    () => (hung ? 'hang' : undefined),
+  )
+  on('tool.call', () => ({ result: {} }))
+
+  await $.session.start(start)
+  await w.clock.settle()
+  hung = true // stopped with Ctrl-Z, say
+  const from = w.all.length
+  for (let i = 0; i < 100; i++) await $.tool.call({ tool: 'Bash', command: `echo ${i}` })
+  await w.clock.advance(60_000)
+  await w.clock.settle()
+  // one report that hung, then a probe now and then (the heartbeat), not a check and a request per report
+  expect(w.all.length - from).toBeLessThan(8)
+
+  hung = false // and it goes on
+  await w.clock.advance(15_000)
+  await w.clock.settle()
+  await $.tool.call({ tool: 'Bash', command: 'echo back' })
+  await w.clock.settle()
+  expect(w.reqs.filter(r => r.body?.kind === 'tool.start').at(-1)?.body).toEqual(expect.objectContaining({ summary: 'echo back' }))
+})
+
+test('a bridge that never answers the check: no symphony is started in its place', async ($, on) => {
+  const w = world(on, { SYMPHONY_TOKEN: 'tok' }, () => 'hang', () => ({ exitCode: 1 }))
+
+  const started = $.session.start(start)
+  await w.clock.settle()
+  await w.clock.advance(5_000)
+  await started
+  expect(w.runs).toEqual([]) // something holds the address: no bridge could start there
+  expect(w.toasts).toEqual(["symphony: can't reach the bridge (http://127.0.0.1:7788); approvals stay in the terminal for now"])
+})
+
+test(
+  'the queue of reports is bounded: past 500, the oldest go',
+  { timeoutMs: 30_000 },
+  async ($, on) => {
+    let open: (() => void) | undefined
+    const gate = new Promise<void>(resolve => (open = resolve))
+    const w = world(on, { SYMPHONY_TOKEN: 'tok' }, async r => {
+      if (r.body?.kind === 'session.notify' && r.body?.text === 'n0') await gate // the bridge is slow with the first one
+      return { status: 200, text: '{}' }
+    })
+    on('classic.Notification', () => ({}))
+
+    await $.session.start(start)
+    for (let i = 0; i < 600; i++) await $.classic.Notification({ message: `n${i}`, notification_type: 'idle_prompt' })
+    open?.()
+    await w.clock.settle()
+    const notes = w.reqs.filter(r => r.body?.kind === 'session.notify').map(r => r.body?.text)
+    expect(notes.length).toBe(501) // the one on its way, and the newest 500
+    expect(notes[0]).toBe('n0')
+    expect(notes[1]).toBe('n100')
+    expect(notes.at(-1)).toBe('n599')
+  },
+)
+
+test('/clear while the old session\'s inbox poll is still out: the new session polls for itself at once', async ($, on) => {
+  let held = false
+  const w = world(on, { SYMPHONY_TOKEN: 'tok' }, r => {
+    // the bridge holds an ended session's long poll until its time is up
+    if (held && r.url.includes('/api/inbox?session=sess-1')) return 'hang'
+    return { status: 200, text: '{}' }
+  })
+  on('session.end', (_$, e) => ({ sessionId: e.sessionId }))
+  on('classic.SessionStart', () => ({}))
+
+  await $.session.start(start)
+  held = true
+  await w.clock.advance(100) // the next poll goes out and is held
+  await w.clock.settle()
+  expect(w.polls.at(-1)?.url).toContain('session=sess-1')
+  await $.session.end({ reason: 'clear', sessionId: 'sess-1', resume: { id: 'sess-1' } })
+  await $.classic.SessionStart({ source: 'clear', session_id: 'sess-2' })
+  await w.clock.settle()
+  expect(w.polls.at(-1)?.url).toContain('session=sess-2') // a kickoff the page queued for it comes at once
 })

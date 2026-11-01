@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -497,6 +498,63 @@ func TestModStatus(t *testing.T) {
 	l.Mod(ctx)
 	if f.calls != 3 {
 		t.Fatalf("want 3 checks, got %d", f.calls)
+	}
+}
+
+// TestModCheckOutlivesCaller: the page that set off the check may go away meanwhile (a reload, another theme); the
+// check runs on, and neither that page nor the next is told the mod can't be checked.
+func TestModCheckOutlivesCaller(t *testing.T) {
+	var calls atomic.Int32
+	l := &Launcher{ListPlugins: func(ctx context.Context) ([]byte, error) {
+		calls.Add(1)
+		select {
+		case <-ctx.Done():
+			return nil, errors.New("signal: killed")
+		case <-time.After(300 * time.Millisecond):
+			return []byte(installedMod), nil
+		}
+	}}
+	ctx, cancel := context.WithCancel(context.Background())
+	time.AfterFunc(50*time.Millisecond, cancel)
+	if m := l.Mod(ctx); !m.OK {
+		t.Fatalf("the first page's check: %+v", m)
+	}
+	if m := l.Mod(context.Background()); !m.OK || calls.Load() != 1 {
+		t.Fatalf("the next page's: %+v (%d checks)", m, calls.Load())
+	}
+}
+
+// TestModMarket: a folder is taken for the mod's marketplace (the install hint's local path) only when its
+// marketplace offers the mod; another plugin marketplace isn't.
+func TestModMarket(t *testing.T) {
+	market := func(content string) string {
+		dir := t.TempDir()
+		if content != "" {
+			if err := os.MkdirAll(filepath.Join(dir, ".claude-plugin"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(dir, ".claude-plugin", "marketplace.json"), []byte(content), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return dir
+	}
+	for _, tc := range []struct {
+		content string
+		want    bool
+	}{
+		{`{"name":"symphony","plugins":[{"name":"symphony-bridge","source":"./mods/symphony-bridge"}]}`, true},
+		{`{"name":"other","plugins":[{"name":"something-else","source":"./x"}]}`, false},
+		{`not json`, false},
+		{"", false},
+	} {
+		if got := ModMarket(market(tc.content)); got != tc.want {
+			t.Errorf("%q: %v, want %v", tc.content, got, tc.want)
+		}
+	}
+	// this repository
+	if !ModMarket(filepath.Join("..", "..")) {
+		t.Error("the repository's own marketplace should count")
 	}
 }
 

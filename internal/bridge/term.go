@@ -19,7 +19,13 @@ type ptyProc interface {
 	Resize(cols, rows int) error
 	Wait() error  // waits for the process to exit
 	Close() error // closes the output once the process is gone, which ends the reader
-	Kill() error
+	Kill() error  // ends the process and what it started, for good
+}
+
+// hanger is a process that can be asked to end before it is ended for good (pty_unix.go: a hangup, as closing its
+// terminal would). Kill comes killGrace later, or once the process is gone.
+type hanger interface {
+	Hangup() error
 }
 
 const (
@@ -31,6 +37,22 @@ const (
 	termEndedTTL = 10 * time.Minute
 	// termCols and termRows are a session's size until a window attaches with its own
 	termCols, termRows = 120, 40
+	// termMaxSize is the most columns or rows a window may ask for: within a pty's uint16 and a Windows console's int16
+	termMaxSize = 1<<15 - 1
+	// maxForward is the most spaces one cursor move to the right becomes in plain text, and forwardBudget all of them
+	// together: a session's output can ask for any number, as often as it likes
+	maxForward    = 1000
+	forwardBudget = 64 << 10
+	// screenMax is the most a screen's text may hold (Screen): it goes into a failed launch's error, in every snapshot
+	screenMax = 8 << 10
+)
+
+// killGrace is how long a session asked to end (Kill) has to end what it started before all of it is killed; termDrain
+// is how long the output may take to run dry once the process is gone (a pty's goes on while something the session
+// started holds it). Variables, so tests can shorten them.
+var (
+	killGrace = 3 * time.Second
+	termDrain = time.Second
 )
 
 var (
@@ -51,9 +73,13 @@ type Term struct {
 	clients map[*termClient]struct{}
 	cols    int
 	rows    int
-	exited  chan struct{}
+	waited  chan struct{} // closed once the process is gone
+	killing chan struct{} // made by Kill; closed once everything the session ran has been killed
+	exited  chan struct{} // closed once the terminal is done with: the process gone, its output read, a kill finished
 	exitErr error
 	ended   time.Time
+	grace   time.Duration // killGrace and termDrain as they were when it started: its goroutines outlive a test
+	drain   time.Duration
 }
 
 // termClient is one attached window: output reaches it through out; a window that can't keep up is dropped
@@ -77,24 +103,42 @@ func newTerm(id, name, dir string, env []string, argv []string) (*Term, error) {
 
 // hostTerm follows a started process's output in the background.
 func hostTerm(id, name string, proc ptyProc) *Term {
-	t := &Term{ID: id, Name: name, proc: proc, clients: map[*termClient]struct{}{}, cols: termCols, rows: termRows, exited: make(chan struct{})}
+	t := &Term{ID: id, Name: name, proc: proc, clients: map[*termClient]struct{}{}, cols: termCols, rows: termRows,
+		waited: make(chan struct{}), exited: make(chan struct{}), grace: killGrace, drain: termDrain}
 	go t.pump()
 	return t
 }
 
-// pump copies the process's output to the history and the clients until it ends.
+// pump copies the process's output to the history and the clients until it ends. It waits for the process, not for
+// the output to end: on Windows the output ends only once Wait has closed the console, and on a pty only once nothing
+// the session started holds it any more.
 func (t *Term) pump() {
-	buf := make([]byte, termChunk)
-	for {
-		n, err := t.proc.Read(buf)
-		if n > 0 {
-			t.push(buf[:n])
+	read := make(chan struct{})
+	go func() {
+		defer close(read)
+		buf := make([]byte, termChunk)
+		for {
+			n, err := t.proc.Read(buf)
+			if n > 0 {
+				t.push(buf[:n])
+			}
+			if err != nil {
+				return
+			}
 		}
-		if err != nil {
-			break
-		}
-	}
+	}()
 	err := t.proc.Wait()
+	close(t.waited)
+	t.mu.Lock()
+	killing := t.killing
+	t.mu.Unlock()
+	if killing != nil {
+		<-killing // what it started goes too before the session counts as gone (a task's worktrees are removed next)
+	}
+	select { // the last words, which a failed launch shows
+	case <-read:
+	case <-time.After(t.drain):
+	}
 	_ = t.proc.Close()
 	t.mu.Lock()
 	t.exitErr, t.ended = err, time.Now()
@@ -160,7 +204,7 @@ func (t *Term) Write(b []byte) error {
 }
 
 func (t *Term) Resize(cols, rows int) error {
-	if cols <= 0 || rows <= 0 || t.Ended() {
+	if cols <= 0 || rows <= 0 || cols > termMaxSize || rows > termMaxSize || t.Ended() {
 		return nil
 	}
 	t.mu.Lock()
@@ -179,7 +223,8 @@ func (t *Term) Ended() bool {
 	return !t.ended.IsZero()
 }
 
-// Exited is closed once the process is gone; ExitErr says how it ended.
+// Exited is closed once the process is gone (after Kill, what it started too) and its output read; ExitErr says how it
+// ended.
 func (t *Term) Exited() <-chan struct{} { return t.exited }
 func (t *Term) ExitErr() error {
 	t.mu.Lock()
@@ -187,7 +232,35 @@ func (t *Term) ExitErr() error {
 	return t.exitErr
 }
 
-func (t *Term) Kill() { _ = t.proc.Kill() }
+// Kill ends the session without waiting: a hangup first, as closing its terminal would, so claude can end what it
+// started; once it is gone, or after killGrace, the rest is killed (pty_unix.go: also what it started in sessions of
+// their own, which no signal to its process group reaches). Exited closes once all of that is done.
+func (t *Term) Kill() { t.kill() }
+
+// kill starts ending the session, once, and returns a channel closed once everything is killed; nil when the
+// process had already ended.
+func (t *Term) kill() <-chan struct{} {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if !t.ended.IsZero() {
+		return nil
+	}
+	if t.killing == nil {
+		done := make(chan struct{})
+		t.killing = done
+		go func() {
+			defer close(done)
+			if h, ok := t.proc.(hanger); ok && h.Hangup() == nil {
+				select {
+				case <-t.waited:
+				case <-time.After(t.grace):
+				}
+			}
+			_ = t.proc.Kill()
+		}()
+	}
+	return t.killing
+}
 
 // Clients is how many windows are attached.
 func (t *Term) Clients() int {
@@ -204,9 +277,12 @@ var (
 
 // plainText is terminal output as text: cursor moves to the right become spaces, the other escape sequences go.
 func plainText(raw []byte) string {
+	budget := forwardBudget // once spent, a move is one space
 	moved := forward.ReplaceAllFunc(raw, func(m []byte) []byte {
 		n, _ := strconv.Atoi(string(m[2 : len(m)-1]))
-		return bytes.Repeat([]byte(" "), max(n, 1))
+		k := min(max(n, 1), maxForward, max(budget, 1))
+		budget -= k
+		return bytes.Repeat([]byte(" "), k)
 	})
 	return strings.ReplaceAll(string(ansi.ReplaceAll(moved, nil)), "\r", "")
 }
@@ -216,7 +292,7 @@ func (t *Term) Screen(n int) string {
 	t.mu.Lock()
 	hist := append([]byte(nil), t.hist...)
 	t.mu.Unlock()
-	return lastLines(plainText(hist), n)
+	return cutFront(lastLines(plainText(hist), n), screenMax)
 }
 
 // Terms is the bridge's terminals by launch id.
@@ -270,13 +346,27 @@ func (ts *Terms) Live(id string) bool {
 	return t != nil && !t.Ended()
 }
 
-// KillAll ends every running process (the bridge is shutting down).
+// KillAll ends every running session (the bridge is shutting down): all at once, so their grace periods run side by
+// side, and it returns once they are killed, about killGrace at most.
 func (ts *Terms) KillAll() {
 	ts.mu.Lock()
-	defer ts.mu.Unlock()
+	all := make([]*Term, 0, len(ts.m))
 	for _, t := range ts.m {
-		if !t.Ended() {
-			t.Kill()
+		all = append(all, t)
+	}
+	ts.mu.Unlock()
+	var killed []<-chan struct{}
+	for _, t := range all {
+		if k := t.kill(); k != nil {
+			killed = append(killed, k)
+		}
+	}
+	deadline := time.After(killGrace + 2*time.Second) // Kill itself may take a moment (pty_unix.go lists the processes)
+	for _, k := range killed {
+		select {
+		case <-k:
+		case <-deadline:
+			return
 		}
 	}
 }

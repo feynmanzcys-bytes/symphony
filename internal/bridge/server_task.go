@@ -165,6 +165,12 @@ func (s *Server) startTask(req TaskRequest) (*Task, error) {
 	if _, err := exec.LookPath("git"); err != nil {
 		return nil, ErrNoGit
 	}
+	// past the numbers of the task branches the members' repositories already have
+	dirs := make([]string, len(members))
+	for i, m := range members {
+		dirs[i] = m.Dir
+	}
+	hub.raiseTaskNext(usedTaskNumber(dirs))
 	id, err := hub.reserveTask(employees)
 	if err != nil {
 		return nil, err
@@ -173,7 +179,7 @@ func (s *Server) startTask(req TaskRequest) (*Task, error) {
 	undo := &taskUndo{}
 	fail := func(err error) (*Task, error) {
 		hub.dropTask(id) // first, so sessions of the task are refused from now on
-		undo.run(hub, s.Launcher.Terms)
+		undo.run(hub, s.Launcher.Terms, id)
 		return nil, err
 	}
 	for _, m := range members {
@@ -264,7 +270,12 @@ func (s *Server) prepareGit(t *Task, undo *taskUndo) (map[string]string, error) 
 	prefixes := map[string]string{}
 	for _, dir := range dirs {
 		r := &TaskRepo{Dir: dir}
-		if _, err := os.Lstat(filepath.Join(dir, ".git")); errors.Is(err, os.ErrNotExist) && !gitInWorkTree(dir) {
+		// a folder git can't tell about (a repository around it it can't read or won't trust) is an error, not plain
+		plain, err := gitPlain(dir)
+		if err != nil {
+			return nil, gitFailed(dir, err)
+		}
+		if plain {
 			// git add -A of a whole home folder (or a folder above it) or drive would take ages and hold everything
 			if holdsHome(dir, home) || filepath.Dir(dir) == dir {
 				return nil, newError("task_dir_home", "won't make a git repository of "+dir+" (the home folder, a folder above it or a drive's root); pick a project folder", "dir", dir)
@@ -356,7 +367,7 @@ type taskUndo struct {
 	launches  []string  // sessions started
 }
 
-func (u *taskUndo) run(hub *Hub, terms *Terms) {
+func (u *taskUndo) run(hub *Hub, terms *Terms, task string) {
 	if terms != nil {
 		for _, id := range u.launches {
 			if t := terms.Get(id); t != nil {
@@ -368,25 +379,44 @@ func (u *taskUndo) run(hub *Hub, terms *Terms) {
 			}
 		}
 	}
+	// what can't be taken back stays, and the log says what (the page shows why the task didn't start)
+	var left []string
+	gitLeft := func(dir string, err error) {
+		if err != nil {
+			left = append(left, gitFailed(dir, err).Text)
+		}
+	}
 	var dirs []string
 	for _, m := range u.worktrees {
-		_, _ = runGit(m.Dir, "worktree", "remove", "--force", m.Worktree)
-		_ = gitDeleteBranch(m.Dir, m.Branch)
+		_, err := runGit(m.Dir, "worktree", "remove", "--force", m.Worktree)
+		gitLeft(m.Dir, err)
+		gitLeft(m.Dir, gitDeleteBranch(m.Dir, m.Branch))
 		if !slices.Contains(dirs, m.Dir) {
 			dirs = append(dirs, m.Dir)
 		}
 	}
 	for _, dir := range dirs {
-		_, _ = runGit(dir, "worktree", "prune")
+		_, err := runGit(dir, "worktree", "prune")
+		gitLeft(dir, err)
 		removeIfEmpty(filepath.Join(dir, symphonyDir, "worktrees"), filepath.Join(dir, symphonyDir))
 	}
 	for _, dir := range u.inited {
-		_ = os.RemoveAll(filepath.Join(dir, ".git"))
 		// only what this start made: files kept from earlier tasks' worktrees (.symphony/kept) stay
-		_ = os.RemoveAll(filepath.Join(dir, symphonyDir, "worktrees"))
+		for _, p := range []string{filepath.Join(dir, ".git"), filepath.Join(dir, symphonyDir, "worktrees")} {
+			if err := os.RemoveAll(p); err != nil {
+				left = append(left, err.Error())
+			}
+		}
 		removeIfEmpty(filepath.Join(dir, symphonyDir))
 	}
 	for _, id := range u.advisors {
-		_ = hub.DeleteAccount(id)
+		if err := hub.DeleteAccount(id); err != nil {
+			left = append(left, "deleting advisor "+id+": "+err.Error())
+		}
+	}
+	if hub.Warn != nil {
+		for _, l := range left {
+			hub.Warn(i18n.T("log.task_undo_failed", "task", task, "reason", l))
+		}
 	}
 }

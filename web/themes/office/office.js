@@ -4,7 +4,8 @@
 import { t, lang, errorText, fmtTime, applyI18n, langPicker } from '/i18n.js'
 import { esc } from '/asks.js'
 import { connect } from '/symphony.js'
-import { GREEN, YELLOW, RED, GRAY, STATE_COLOR, base, lower, dot, element, hash, build, buildText, statusText as statusOf, richText } from '/ui/common.js'
+import { GREEN, YELLOW, RED, GRAY, STATE_COLOR, base, lower, dot, element, hash, build, buildText, statusText as statusOf, richText, setHTML, deferWhilePressed } from '/ui/common.js'
+import { connectionBanner } from '/ui/banner.js'
 import { createChat } from '/ui/chat.js'
 import { createLaunchDialog } from '/ui/launch.js'
 import { createTaskUI } from '/ui/task.js'
@@ -16,6 +17,7 @@ let snapshot = sym.state
 sym.on('snapshot', s => { snapshot = s })
 
 applyI18n()
+connectionBanner(sym)
 const prefs = document.querySelector('#hud .prefs'), langSel = langPicker()
 prefs.appendChild(langSel)
 themePicker(sym).then(sel => prefs.insertBefore(sel, langSel))
@@ -973,9 +975,20 @@ function updateEmployee(e, acc, walkIn, task) {
   e.label.classList.toggle('off', !online)
   e.label.dataset.state = state
   const status = task && !online ? t('task.inRoom', { room:taskRoom(task), id:task.id }) : statusText(online ? e.s : null)
-  const html = `<div class="nm">${esc(acc.name)}</div><div class="st">${dot(state)}${esc(status)}</div>`
-  if (html !== e.labelHTML) { e.labelHTML = html; e.label.innerHTML = html; e.sized = false } // measured again next frame
+  setLabel(e, acc.name, state, status)
   e.status = `${acc.name} · ${status}`
+}
+// A name tag's text, changed in place: the tag and its parts stay the elements they were, so a click pressed on one
+// as the state changes still lands. Measured again next frame when it changed.
+function setLabel(x, name, state, status) {
+  const sig = `${name}|${state}|${status}`
+  if (sig === x.labelSig) return
+  x.labelSig = sig
+  if (!x.label.firstChild) x.label.innerHTML = '<div class="nm"></div><div class="st"><span class="dot"></span><span class="tx"></span></div>'
+  x.label.querySelector('.nm').textContent = name
+  x.label.querySelector('.st .dot').style.background = STATE_COLOR[state] ?? GRAY
+  x.label.querySelector('.st .tx').textContent = status
+  x.sized = false
 }
 
 function dropEmployee(e) { e.label.remove(); e.bubble?.remove(); emps.delete(e.acc.id) }
@@ -1041,8 +1054,7 @@ function labelFigure(f) {
   f.label.classList.toggle('off', !online)
   setData(f.label, 'state', state); setData(f.label, 'account', f.acc.id); setData(f.label, 'task', f.task.id); setData(f.label, 'session', f.s.id)
   const status = statusText(online ? f.s : null)
-  const html = `<div class="nm">${esc(f.member.name)}</div><div class="st">${dot(state)}${esc(status)}</div>`
-  if (html !== f.labelHTML) { f.labelHTML = html; f.label.innerHTML = html; f.sized = false }
+  setLabel(f, f.member.name, state, status)
   f.status = `${f.member.name} · ${status} · ${taskRoom(f.task)}`
 }
 
@@ -1303,6 +1315,16 @@ function doingText(e) {
 }
 const stateLine = e => { const doing = doingText(e); return statusText(isOnline(e) ? e.s : null) + (doing ? ' · ' + doing : '') }
 
+// the subagents beside a desk: at most four, picked the running ones first, then the newest (the bridge may keep only
+// some of the finished ones; ended marks one that finished), and standing in the order they started
+const agentDone = a => a.state === 'done' || !!a.ended
+const agentAt = a => Date.parse(a.started) || 0
+function agentsShown(s) {
+  const list = Object.values(s.agents || {})
+  const picked = list.length <= 4 ? list : [...list].sort((a, b) => agentDone(a) - agentDone(b) || agentAt(b) - agentAt(a)).slice(0, 4)
+  return picked.sort((a, b) => agentAt(a) - agentAt(b))
+}
+
 // ================= rendering =================
 const cv = document.getElementById('office'), ctx = cv.getContext('2d')
 let S = 1, offX = 0, offY = 0, dpr = 1, D = 1, drawHair = 0 // D: the drawing's pixels to a pixel of the office
@@ -1345,12 +1367,12 @@ function frame(now) {
       items.push(employeeItem(g, e, now, at))
       if (e.there) { using.add(e.goal.id); watching ||= e.want?.act === 'tv' }
     } else e.there = e.atDesk = false
-    // subagents: small ones standing in the aisles beside the desk
-    if (online) Object.values(e.s.agents || {}).slice(-4).forEach((a, i) => {
+    // subagents: small ones standing in the aisles beside the desk, the running ones first, then the newest
+    if (online) agentsShown(e.s).forEach((a, i) => {
       const ax = e.desk.x + (i % 2 ? 35 : -13), ay = e.desk.y + 2 + Math.floor(i / 2) * 8
       const busy = a.state === 'tool' || a.state === 'thinking'
       const bob = busy && Math.floor((now + i * 90) / 200) % 2 ? -1 : 0
-      const look = a.state === 'done' ? GRAY_LOOK : lookOf(e.acc)
+      const look = agentDone(a) ? GRAY_LOOK : lookOf(e.acc)
       items.push({ y:ay + 5, draw:() => drawMiniPerson(g, ax + 1, ay - 2 + bob, look) })
     })
   }
@@ -1703,21 +1725,22 @@ addEventListener('keydown', ev => { // "/" jumps to the search box; Esc lets go 
 // The HUD's counts by state, one chip each in the state's color; the number stands out wherever the language puts it.
 const numbered = (key, n) => t(key, { n:'\u0001' }).split('\u0001').map(esc).join(`<b>${n}</b>`)
 const CHIPS = [['idle', 'idle', 'stats.idle'], ['busy', 'tool', 'stats.working'], ['waiting', 'waiting', 'stats.waiting'], ['off', 'ended', 'stats.offDuty']]
-// While asks wait for you, the pending chip turns red and opens them.
-function renderStats() {
+// While asks wait for you, the pending chip turns red and opens them. (Not while a pointer is down: a chip replaced under
+// a press loses its click.)
+const renderStats = deferWhilePressed(() => {
   const el = document.getElementById('stats'), badge = hudTab.querySelector('.badge')
   badge.hidden = !snapshot.asks.length
   badge.textContent = snapshot.asks.length
-  if (!snapshot.accounts.length) { chipOn = null; el.textContent = t('office.nobody'); return }
+  if (!snapshot.accounts.length) { chipOn = null; setHTML(el, esc(t('office.nobody'))); return }
   const n = { idle:0, busy:0, waiting:0, off:0 }
   for (const e of emps.values()) n[groupOf(e)]++
   for (const f of figs.values()) if (isOnline(f)) n[groupOf(f)]++ // task sessions count like desk sessions
-  el.innerHTML = CHIPS.map(([group, state, key]) => {
+  setHTML(el, CHIPS.map(([group, state, key]) => { // (the same chips stay the elements they were: a click pressed on one lands)
     const hot = group === 'waiting' && snapshot.asks.length > 0
     return `<button class="chip${hot ? ' hot' : ''}${chipOn === group ? ' on' : ''}" data-group="${group}" style="--c:${STATE_COLOR[state]}" ` +
       `title="${esc(hot ? t('asks.title', { n:snapshot.asks.length }) : t('stats.focusTitle'))}">${numbered(key, n[group])}</button>`
-  }).join('')
-}
+  }).join(''))
+})
 document.getElementById('stats').addEventListener('click', ev => {
   const chip = ev.target.closest('.chip')
   if (!chip) return
@@ -2051,7 +2074,7 @@ function showChat(id) {
     line:chatStateLine(),
     taskChip:task ? { id:task.id, title:task.title, label:t('task.chip', { id:task.id, room:taskRoom(task) }) } : null,
     chips:[['seat', chatSid ? '' : t('card.seatNo', { n:acc.seat + 1 })], ['model', online ? buildText(s) : ''], ['session', s?.title],
-      ['dir', s?.cwd || (chatSid ? member?.worktree : acc.last?.dir || acc.dir)], ['subagents', online ? Object.keys(s.agents || {}).length || '' : ''], ['tools', online ? s.tools : ''],
+      ['dir', s?.cwd || (chatSid ? member?.worktree : acc.last?.dir || acc.dir)], ['subagents', online ? s.agentsTotal || Object.keys(s.agents || {}).length || '' : ''], ['tools', online ? s.tools : ''],
       ['login', s?.login]],
     buttons, buttonsKey:`${id}|${chatSid}|${online}|${busy}|${online && !!s.launch}|${!!launchOpts?.enabled}|${away?.id}|${member?.session}`,
     // the chat follows the account's current desk session (an employee off duty keeps the last one's log while the bridge

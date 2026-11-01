@@ -3,7 +3,16 @@
 package bridge
 
 import (
+	"bytes"
+	"errors"
+	"io"
+	"os"
+	"os/signal"
+	"path/filepath"
+	"strconv"
 	"strings"
+	"sync"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -108,6 +117,43 @@ func TestPlainText(t *testing.T) {
 	if !hasTrustPrompt(plainText(raw)) || hasTrustPrompt("trust me") {
 		t.Fatal("the trust prompt should be found through cursor moves and nowhere else")
 	}
+	// a session's output may ask to move any distance: it becomes at most maxForward spaces, never a huge allocation
+	for _, n := range []string{"99999999999999999999", "2000000000", "1001"} {
+		if got := plainText([]byte("a\x1b[" + n + "Cb")); got != "a"+strings.Repeat(" ", maxForward)+"b" {
+			t.Fatalf("a move of %s: %d characters", n, len(got))
+		}
+	}
+	// and all the moves together become at most forwardBudget spaces, then one each
+	many := bytes.Repeat([]byte("x\x1b[1000C"), 32768)
+	if got := len(plainText(many)); got > 2*32768+forwardBudget {
+		t.Fatalf("32768 moves became %d characters", got)
+	}
+}
+
+// TestTermResizeBounds: a window may ask for any size; one beyond what a pty or a console holds is ignored, as 0 is.
+func TestTermResizeBounds(t *testing.T) {
+	p := newFakeProc()
+	tm := hostTerm("x", "x", p)
+	defer p.exit(nil)
+	for _, size := range [][2]int{{70000, 24}, {24, 70000}, {termMaxSize + 1, 30}, {0, 30}, {-1, 30}} {
+		if err := tm.Resize(size[0], size[1]); err != nil {
+			t.Fatal(err)
+		}
+		p.mu.Lock()
+		got := p.size
+		p.mu.Unlock()
+		if got != [2]int{} {
+			t.Fatalf("Resize(%d, %d) reached the pty: %v", size[0], size[1], got)
+		}
+	}
+	if err := tm.Resize(100, 30); err != nil {
+		t.Fatal(err)
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.size != [2]int{100, 30} {
+		t.Fatalf("a good size should reach the pty: %v", p.size)
+	}
 }
 
 func TestAttachScript(t *testing.T) {
@@ -116,5 +162,208 @@ func TestAttachScript(t *testing.T) {
 		if !strings.Contains(s, want) {
 			t.Fatalf("script lacks %q:\n%s", want, s)
 		}
+	}
+}
+
+// shorten sets a duration for one test.
+func shorten(t *testing.T, d *time.Duration, to time.Duration) {
+	old := *d
+	*d = to
+	t.Cleanup(func() { *d = old })
+}
+
+// processGone says whether pid has ended: no such process, or one that only waits to be reaped.
+func processGone(pid int) bool {
+	if errors.Is(syscall.Kill(pid, 0), syscall.ESRCH) {
+		return true
+	}
+	stat, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/stat") // Linux
+	if err != nil {
+		return false
+	}
+	f := strings.Fields(string(stat[bytes.LastIndexByte(stat, ')')+1:]))
+	return len(f) > 0 && f[0] == "Z"
+}
+
+// TestSetsidHelper isn't a test but a session's tool, for TestTermKillEndsToolsOfTheirOwn: it runs in a session of its
+// own, as Claude Code's tools do, ignores the hangup and waits to be killed.
+func TestSetsidHelper(t *testing.T) {
+	pidFile := os.Getenv("SYMPHONY_TEST_TOOL")
+	if pidFile == "" {
+		t.Skip("run by TestTermKillEndsToolsOfTheirOwn")
+	}
+	signal.Ignore(syscall.SIGHUP)
+	if _, err := syscall.Setsid(); err != nil {
+		os.Exit(2)
+	}
+	if err := os.WriteFile(pidFile, []byte(strconv.Itoa(os.Getpid())), 0o600); err != nil {
+		os.Exit(2)
+	}
+	time.Sleep(time.Hour)
+}
+
+// TestTermKillEndsToolsOfTheirOwn: what a session started in a session of its own (Claude Code's tools), which no signal
+// to the session's process group reaches, is killed too, even when it ignores the hangup.
+func TestTermKillEndsToolsOfTheirOwn(t *testing.T) {
+	shorten(t, &killGrace, 500*time.Millisecond)
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	pidFile := filepath.Join(t.TempDir(), "pid")
+	term, err := newTerm("k1", "kim", t.TempDir(), append(childEnv(nil), "SYMPHONY_TEST_TOOL="+pidFile),
+		[]string{"/bin/sh", "-c", shellQuote(exe) + ` -test.run='^TestSetsidHelper$' </dev/null >/dev/null 2>&1 & exec sleep 1000`})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var pid int
+	waitFor(t, "the tool to start", func() bool {
+		data, err := os.ReadFile(pidFile)
+		pid, _ = strconv.Atoi(strings.TrimSpace(string(data)))
+		return err == nil && pid > 0
+	})
+	t.Cleanup(func() { _ = syscall.Kill(pid, syscall.SIGKILL) })
+	term.Kill()
+	select {
+	case <-term.Exited():
+	case <-time.After(5 * time.Second):
+		t.Fatal("the session should be gone")
+	}
+	// gone by the time the session counts as gone: a task's worktrees are removed right after
+	if !processGone(pid) {
+		time.Sleep(200 * time.Millisecond) // the kill is sent; give it a moment to land
+		if !processGone(pid) {
+			t.Fatal("the tool in a session of its own should be killed with the session")
+		}
+	}
+}
+
+// TestTermEndsWhilePTYHeld: a session that exits while something it started in a session of its own still holds the
+// pty (so its output never ends by itself) counts as ended all the same, a moment later: closing the pty wakes the read.
+func TestTermEndsWhilePTYHeld(t *testing.T) {
+	shorten(t, &termDrain, 200*time.Millisecond)
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	pidFile := filepath.Join(t.TempDir(), "pid")
+	term, err := newTerm("k3", "kim", t.TempDir(), append(childEnv(nil), "SYMPHONY_TEST_TOOL="+pidFile),
+		[]string{"/bin/sh", "-c", shellQuote(exe) + ` -test.run='^TestSetsidHelper$' & while [ ! -s ` + shellQuote(pidFile) + ` ]; do sleep 0.05; done; echo bye; exit 0`})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if data, err := os.ReadFile(pidFile); err == nil {
+			if pid, _ := strconv.Atoi(strings.TrimSpace(string(data))); pid > 0 {
+				_ = syscall.Kill(pid, syscall.SIGKILL)
+			}
+		}
+	})
+	select {
+	case <-term.Exited():
+	case <-time.After(5 * time.Second):
+		t.Fatal("the session exited, but its terminal hasn't ended")
+	}
+	if err := term.ExitErr(); err == nil || err.Error() != "exit 0" || !strings.Contains(term.Screen(3), "bye") {
+		t.Fatalf("exit %v, screen %q", err, term.Screen(3))
+	}
+}
+
+// TestTermKillLetsItEnd: Kill hangs up first and gives the session time to end by itself (claude ends its tools then),
+// and it isn't killed as long as it does so in time.
+func TestTermKillLetsItEnd(t *testing.T) {
+	shorten(t, &killGrace, 5*time.Second)
+	term, err := newTerm("k2", "kim", t.TempDir(), childEnv(nil),
+		[]string{"/bin/sh", "-c", `trap 'echo cleaning up; sleep 0.2; exit 7' HUP; echo ready; sleep 1000 & wait`})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "the session to be ready", func() bool { return strings.Contains(term.Screen(5), "ready") })
+	start := time.Now()
+	term.Kill()
+	select {
+	case <-term.Exited():
+	case <-time.After(10 * time.Second):
+		t.Fatal("the session should be gone")
+	}
+	if err := term.ExitErr(); err == nil || err.Error() != "exit status 7" {
+		t.Fatalf("the session should have ended by itself on the hangup, got %v", err)
+	}
+	if took := time.Since(start); took > 3*time.Second {
+		t.Fatalf("a session that ends on the hangup shouldn't wait out the grace period (%s)", took)
+	}
+	if !strings.Contains(term.Screen(5), "cleaning up") {
+		t.Fatalf("screen: %q", term.Screen(5))
+	}
+}
+
+// TestKillAllAtOnce: KillAll ends every session, the ones that ignore the hangup too, waiting out the grace period once
+// for all of them, not once each.
+func TestKillAllAtOnce(t *testing.T) {
+	shorten(t, &killGrace, time.Second)
+	ts := &Terms{}
+	var terms []*Term
+	for _, id := range []string{"a", "b", "c"} {
+		term, err := newTerm(id, id, t.TempDir(), childEnv(nil), []string{"/bin/sh", "-c", `trap "" HUP; echo ready; exec sleep 1000`})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ts.put(term)
+		terms = append(terms, term)
+	}
+	for _, term := range terms {
+		waitFor(t, "the session to be ready", func() bool { return strings.Contains(term.Screen(5), "ready") })
+	}
+	start := time.Now()
+	ts.KillAll()
+	if took := time.Since(start); took < killGrace || took > 2*killGrace {
+		t.Fatalf("KillAll took %s; want the grace period (%s) once", took, killGrace)
+	}
+	for _, term := range terms {
+		select {
+		case <-term.Exited():
+		case <-time.After(5 * time.Second):
+			t.Fatalf("%s should be gone", term.ID)
+		}
+		if err := term.ExitErr(); err == nil || err.Error() != "signal: killed" {
+			t.Fatalf("%s: %v", term.ID, err)
+		}
+	}
+}
+
+// heldProc is a process whose output stays open after it has exited: ConPTY's until Wait closes the console, a pty's
+// while something the session started still holds it.
+type heldProc struct {
+	r      *io.PipeReader
+	w      *io.PipeWriter
+	exited chan struct{}
+	once   sync.Once
+}
+
+func (p *heldProc) Read(b []byte) (int, error)  { return p.r.Read(b) }
+func (p *heldProc) Write(b []byte) (int, error) { return len(b), nil }
+func (p *heldProc) Resize(cols, rows int) error { return nil }
+func (p *heldProc) Wait() error                 { <-p.exited; return nil }
+func (p *heldProc) Close() error                { return p.r.Close() }
+func (p *heldProc) Kill() error                 { p.once.Do(func() { close(p.exited) }); return nil }
+
+// TestTermEndsWhileOutputHeld: a terminal ends when its process does, with its last words read, even when the output
+// doesn't end by itself.
+func TestTermEndsWhileOutputHeld(t *testing.T) {
+	shorten(t, &termDrain, 200*time.Millisecond)
+	r, w := io.Pipe()
+	p := &heldProc{r: r, w: w, exited: make(chan struct{})}
+	term := hostTerm("h1", "hal", p)
+	if _, err := w.Write([]byte("last words\r\n")); err != nil {
+		t.Fatal(err)
+	}
+	_ = p.Kill() // the process exits; its output stays open
+	select {
+	case <-term.Exited():
+	case <-time.After(5 * time.Second):
+		t.Fatal("the terminal should end with its process")
+	}
+	if !term.Ended() || !strings.Contains(term.Screen(3), "last words") {
+		t.Fatalf("ended=%v screen=%q", term.Ended(), term.Screen(3))
 	}
 }

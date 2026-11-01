@@ -5,7 +5,8 @@
 import { t, lang, errorText, applyI18n, langPicker } from '/i18n.js'
 import { esc } from '/asks.js'
 import { connect } from '/symphony.js'
-import { base, lower, hash, buildText, statusText as statusOf } from '/ui/common.js'
+import { base, lower, hash, buildText, statusText as statusOf, setHTML, deferWhilePressed } from '/ui/common.js'
+import { connectionBanner } from '/ui/banner.js'
 import { createChat } from '/ui/chat.js'
 import { createLaunchDialog } from '/ui/launch.js'
 import { createTaskUI } from '/ui/task.js'
@@ -13,9 +14,11 @@ import { themePicker } from '/ui/themes.js'
 
 const sym = connect()
 let snapshot = sym.state
-sym.on('snapshot', s => { snapshot = s })
+// the tab's title counts the asks: kept up with every snapshot, also while the page is hidden (no frames then)
+sym.on('snapshot', s => { snapshot = s; document.title = (s.asks.length ? `(${s.asks.length}) ` : '') + t('msgr.title') })
 const statusText = s => statusOf(sym, s)
 applyI18n()
+connectionBanner(sym)
 
 // ---------- dark or light ----------
 const DARK_STORE = 'symphony.messenger.dark'
@@ -44,6 +47,9 @@ const deskOf = acc => sym.sessionOf(acc) ?? snapshot.sessions.filter(x => x.acco
 const taskOf = acc => snapshot.tasks.find(k => k.members.some(m => m.account === acc.id && online(sym.sessionById(m.session)))) ?? null
 const stateOf = s => !online(s) ? 'ended' : sym.asking(s.id) ? 'waiting' : s.state
 const GROUP_ORDER = { waiting: 0, tool: 1, thinking: 1, idle: 2, ended: 3, done: 3 }
+// the rate-limit windows: the ones known by name, any other as Claude Code calls it
+const LIMIT_KEY = { five_hour: 'msgr.limit.fiveHour', seven_day: 'msgr.limit.sevenDay', spend_limit: 'msgr.limit.spend' }
+const limitLabel = kind => LIMIT_KEY[kind] ? t(LIMIT_KEY[kind]) : String(kind).replace(/_/g, ' ')
 
 // a face: the shape and the hue from the name, the eyes, a mouth; the state is on the element, the motion in CSS
 const SHAPES = ['<circle class="body" cx="22" cy="22" r="20"/>', '<rect class="body" x="3" y="3" width="38" height="38" rx="10"/>', '<polygon class="body" points="22,2 40,12 40,32 22,42 4,32 4,12"/>', '<path class="body" d="M22 3 L41 22 L22 41 L3 22 Z" />']
@@ -114,6 +120,7 @@ function openCoworker(id, sid = null, taskId = null) {
   placeholder.hidden = true
   chat.focus()
   renderProfile(); renderSide()
+  refreshActivity(true) // what its computer ran
 }
 const openGroup = id => tasks.openWindow(id) // onWindowOpen does the rest
 function showChat() {
@@ -216,21 +223,30 @@ document.getElementById('people').addEventListener('click', ev => { const r = ev
 document.getElementById('groups').addEventListener('click', ev => { const r = ev.target.closest('.row'); if (r) openGroup(r.dataset.group) })
 
 // ---------- the profile and the computer ----------
-let activity = [], actPending = null
-async function loadActivity() { activity = await sym.fetchActivity(); renderProfile() }
-function refreshActivity() { if (actPending) return; actPending = setTimeout(() => { actPending = null; loadActivity() }, 800) }
-for (const type of ['event', 'ask', 'settled']) sym.on(type, refreshActivity)
+// The activity log feeds the computer's last lines: fetched only while a coworker's profile shows, on a page that's
+// seen, not more than every few seconds however many pushes come; again when one is picked, the page shows again or
+// the stream comes back.
+const ACT_GAP = 3000
+let activity = [], actPending = null, actAt = 0
+async function loadActivity() { actAt = Date.now(); const list = await sym.fetchActivity(); if (list) activity = list; renderProfile() }
+function refreshActivity(now = false) {
+  if (actPending || !picked?.account || document.visibilityState === 'hidden') return
+  actPending = setTimeout(() => { actPending = null; loadActivity() }, Math.max(now ? 0 : 800, actAt + ACT_GAP - Date.now()))
+}
+for (const type of ['event', 'ask', 'settled']) sym.on(type, () => refreshActivity())
+sym.on('resync', () => refreshActivity(true))
+document.addEventListener('visibilitychange', () => refreshActivity(true))
 const profileEl = document.getElementById('profile')
-const row = (k, v, wrap = false) => v === undefined || v === null || v === '' ? '' : `<dt>${esc(t('msgr.profile.' + k))}</dt><dd class="${wrap ? 'wrap' : ''}" title="${esc(String(v).replace(/<[^>]+>/g, ''))}">${v}</dd>`
+const row = (k, v, wrap = false) => v === undefined || v === null || v === '' ? '' : `<dt>${esc(t('msgr.profile.' + k))}</dt><dd class="${wrap ? 'wrap' : ''}">${v}</dd>`
 function renderProfile() {
   if (!picked) { profileEl.hidden = true; return }
   profileEl.hidden = false
   if (picked.group) {
     const k = sym.taskById(picked.group)
     if (!k) { profileEl.hidden = true; return }
-    profileEl.innerHTML = `<div class="top">${face(k.id, k.status === 'failed' ? 'ended' : 'tool', 'big')}<h2>${esc(k.id)}</h2><div class="st">${esc(t('task.status.' + k.status))}</div></div>` +
+    setHTML(profileEl, `<div class="top">${face(k.id, k.status === 'failed' ? 'ended' : 'tool', 'big')}<h2>${esc(k.id)}</h2><div class="st">${esc(t('task.status.' + k.status))}</div></div>` +
       `<h3>${esc(t('msgr.profile.about'))}</h3><div class="wrap" style="font-size:13px;white-space:pre-wrap;overflow-wrap:anywhere">${esc(k.title)}</div>` +
-      `<h3>${esc(t('msgr.profile.members'))}</h3><div class="list">` + k.members.map(m => { const s = sym.sessionById(m.session); return `<div class="row" data-session="${esc(m.session || '')}" data-account="${esc(m.account)}">${face(m.name, stateOf(s))}<span class="txt"><b>${esc(m.name)}</b>${k.leader === m.account ? ` <span class="tag">${esc(t('task.lead'))}</span>` : ''}</span><span class="dim">${esc(!m.session ? t('task.memberStarting') : online(s) ? statusText(s) : t('task.memberEnded'))}</span></div>` }).join('') + '</div>'
+      `<h3>${esc(t('msgr.profile.members'))}</h3><div class="list">` + k.members.map(m => { const s = sym.sessionById(m.session); return `<div class="row" data-session="${esc(m.session || '')}" data-account="${esc(m.account)}">${face(m.name, stateOf(s))}<span class="txt"><b>${esc(m.name)}</b>${k.leader === m.account ? ` <span class="tag">${esc(t('task.lead'))}</span>` : ''}</span><span class="dim">${esc(!m.session ? t('task.memberStarting') : online(s) ? statusText(s) : t('task.memberEnded'))}</span></div>` }).join('') + '</div>')
     return
   }
   const acc = sym.accountById(picked.account)
@@ -241,7 +257,7 @@ function renderProfile() {
   const u = s?.usage, ctx = u?.context?.percent
   const totals = u?.totals ? Object.values(u.totals).reduce((n, tk) => n + tk.input + tk.output, 0) : 0
   const recent = activity.filter(a => a.session === s?.id && (a.kind === 'tool' || a.kind === 'ask' || a.kind === 'error')).slice(-5).reverse()
-  profileEl.innerHTML = `<div class="top">${face(name, st, 'big')}<h2>${esc(name)}</h2><div class="st">${esc(on ? statusText(s) : t('state.ended'))}</div></div>` +
+  const drawn = setHTML(profileEl, `<div class="top">${face(name, st, 'big')}<h2>${esc(name)}</h2><div class="st">${esc(on ? statusText(s) : t('state.ended'))}</div></div>` +
     (picked.task ? `<span class="link" data-group="${esc(picked.task)}">← ${esc(t('msgr.profile.backToGroup', { id: picked.task }))}</span>` : task ? `<span class="link" data-group="${esc(task.id)}">${esc(t('msgr.profile.inGroup', { id: task.id }))}</span>` : '') +
     `<h3>${esc(t('msgr.profile.computer'))}</h3><div class="computer">` +
     `<div class="now ${on && s.state === 'tool' ? 'on' : on ? '' : 'off'}"><i></i><span>${esc(on ? (s.state === 'tool' && s.tool ? s.tool : s.state === 'thinking' ? t('state.thinking') : t('msgr.profile.idle')) : t('state.ended'))}</span></div>` +
@@ -249,16 +265,17 @@ function renderProfile() {
     (on && s.launch ? `<button class="px" id="take-over" title="${esc(t('chat.terminalTitle'))}">${esc(t('msgr.profile.takeOver'))}</button>` : '') + `</div>` +
     `<h3>${esc(t('msgr.profile.about'))}</h3><dl>` +
     row('model', on ? esc(buildText(s)) : esc(acc.last?.model || '')) + row('folder', esc(s?.cwd || acc.last?.dir || acc.dir || '')) +
-    row('repo', s?.repo ? esc(s.repo.name || base(s.repo.root)) : '') + row('engine', s?.engine ? esc(s.engine.version + (s.mod ? ' · mod ' + s.mod : '')) : '') +
+    row('repo', s?.repo ? esc(s.repo.name || base(s.repo.root)) : '') + row('engine', s?.engine ? esc(s.engine.version + (s.mod ? ' · ' + t('msgr.profile.modVersion', { version: s.mod }) : '')) : '') +
     row('session', esc(s?.title || '')) + row('login', esc(s?.login || '')) + `</dl>` +
     (on ? `<h3>${esc(t('msgr.profile.figures'))}</h3><dl>` +
       row('context', typeof ctx === 'number' ? `<span class="bar${ctx >= 90 ? ' full' : ctx >= 70 ? ' high' : ''}"><i style="width:${Math.min(100, ctx)}%"></i></span>${Math.round(ctx)}%` : '') +
-      row('limits', (u?.rateLimits || []).map(r => esc(`${r.kind.replace('_', ' ')} ${Math.round(r.percentUsed)}%`)).join(' · ')) +
+      row('limits', (u?.rateLimits || []).map(r => esc(`${limitLabel(r.kind)} ${Math.round(r.percentUsed)}%`)).join(' · ')) +
       row('cost', (u?.cost ? esc(fmtUsd(u.cost.usd)) + ' · ' : '') + esc(t('msgr.profile.today', { usd: fmtUsd(costOf(acc)) }))) +
       row('tokens', totals ? esc(fmtNum.format(totals)) : '') + row('tools', s.tools ? `${s.tools}${s.toolMs ? ' · ' + esc(Math.round(s.toolMs / 1000) + 's') : ''}` : '') + row('turns', s.turns || '') +
       row('mcp', (s.mcp || []).map(m => `<span class="tag">${esc(m)}</span>`).join('')) +
-      row('agents', Object.values(s.agents || {}).map(a => `<span class="tag" title="${esc(a.description || '')}">${esc(a.type || a.id.slice(0, 6))}${a.state === 'done' ? ' ✓' : ''}</span>`).join('')) +
-      row('todos', (s.todos || []).map(x => esc(x.subject)).join('<br>'), true) + `</dl>` : '')
+      row('agents', Object.values(s.agents || {}).map(a => `<span class="tag" title="${esc(a.description || '')}">${esc(a.type || a.id.slice(0, 6))}${a.state === 'done' || a.ended ? ' ✓' : ''}</span>`).join('')) +
+      row('todos', (s.todos || []).map(x => esc(x.subject)).join('<br>'), true) + `</dl>` : ''))
+  if (drawn) for (const dd of profileEl.querySelectorAll('dd')) dd.title = dd.textContent // the tooltip: the row's text as shown
 }
 profileEl.addEventListener('click', async ev => {
   if (ev.target.id === 'take-over') {
@@ -273,23 +290,21 @@ profileEl.addEventListener('click', async ev => {
   if (m && m.dataset.session) openCoworker(m.dataset.account, m.dataset.session, picked.group)
 })
 
-// ---------- every change, once per frame ----------
+// ---------- every change, once per frame, and not while a pointer is down (a row replaced under a press loses its
+// click) ----------
 let drawing = false
+const draw = deferWhilePressed(() => {
+  renderSide()
+  if (picked?.account) showChat()
+  renderProfile()
+})
 function render() {
   if (drawing) return
   drawing = true
-  requestAnimationFrame(() => {
-    drawing = false
-    renderSide()
-    if (picked?.account) showChat()
-    renderProfile()
-    const waiting = snapshot.asks.length
-    document.title = (waiting ? `(${waiting}) ` : '') + t('msgr.title')
-  })
+  requestAnimationFrame(() => { drawing = false; draw() })
 }
 sym.on('change', render)
 sym.on('protocol', (bridge, page) => { const note = document.getElementById('launch-note'); note.hidden = false; note.textContent = t('error.protocol_mismatch', { bridge, page }) })
 document.getElementById('placeholder-face').outerHTML = face('symphony', 'idle', 'big')
 loadOptions()
-loadActivity()
 render()

@@ -150,7 +150,7 @@ export function createLaunchDialog(sym, { options = () => sym.launchOptions(true
       if (!pending) return
       const l = (sym.state.launches || []).find(x => x.id === pending)
       if (!l) return
-      if (l.status === 'online') {
+      if (l.status === 'online' || l.status === 'ended') { // ended: it came online and its process exited since
         log(t('log.started', { name: l.name }))
         launch.close()
         onOnline(l)

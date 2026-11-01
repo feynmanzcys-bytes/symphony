@@ -6,13 +6,17 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 	"unicode"
+
+	"github.com/feynmanzcys-bytes/symphony/internal/i18n"
 )
 
 // Account is one identity in the office: a name, a token and a fixed seat, used by one desk session at a time (and
@@ -46,8 +50,11 @@ type AccountView struct {
 var (
 	ErrUnknownAccount = newError("account_unknown", "no such account")
 	ErrNameTaken      = newError("account_name_taken", "that name is already taken")
-	ErrAccountBusy    = newError("account_busy", "this account already has a session online")
+	ErrAccountBusy    = newError("account_busy", "this account already has a session online, or one starting")
+	ErrSessionGone    = newError("session_gone", "this session's process has ended")
 	ErrBadName        = newError("account_bad_name", "a name needs 1 to 40 characters and no control characters")
+	// errAccountsWrite is accounts.json that couldn't be written; the bridge's log has the details (saveLocked)
+	errAccountsWrite = newError("data_write_failed", "can't write accounts.json in the data folder; the bridge's log says why", "file", "accounts.json")
 )
 
 func newToken() string {
@@ -58,6 +65,21 @@ func newToken() string {
 
 func validName(name string) bool {
 	return name != "" && len([]rune(name)) <= 40 && strings.IndexFunc(name, unicode.IsControl) < 0
+}
+
+// DamagedFile is a data file that is there but doesn't parse, one the bridge can't start without (accounts.json with
+// the tokens, tasks.json with the task counter): restored from a backup or moved aside, it starts again.
+type DamagedFile struct {
+	Path string
+	Err  error
+}
+
+func (e *DamagedFile) Error() string { return e.Path + ": " + e.Err.Error() }
+func (e *DamagedFile) Unwrap() error { return e.Err }
+
+// withoutNil drops the null entries of a list read from a data file (a hand edit, say), which would crash the bridge.
+func withoutNil[T any](list []*T) []*T {
+	return slices.DeleteFunc(list, func(v *T) bool { return v == nil })
 }
 
 // loadAccounts reads the accounts file; a missing file means no accounts.
@@ -74,12 +96,62 @@ func loadAccounts(path string) ([]*Account, error) {
 	}
 	var list []*Account
 	if err := json.Unmarshal(data, &list); err != nil {
-		return nil, fmt.Errorf("%s: %w", path, err)
+		return nil, &DamagedFile{Path: path, Err: err}
 	}
-	return list, nil
+	return withoutNil(list), nil
 }
 
-// saveAccounts writes atomically (a temp file, then a rename); the file holds tokens, so only the owner may read it.
+// loadLog reads a log the bridge can start without (messages.json, ledger.json); a missing file is an empty log. One
+// that doesn't parse (a crash left it half written, say) is set aside as <name>.corrupt-<unix seconds>, the log says
+// so, and the bridge starts with an empty one. One that is there but can't be read is an error: taken for empty, it
+// would be written over.
+func loadLog[T any](h *Hub, path string) ([]*T, error) {
+	data, err := os.ReadFile(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var list []*T
+	if err := json.Unmarshal(data, &list); err != nil {
+		aside := fmt.Sprintf("%s.corrupt-%d", path, h.now().Unix())
+		if os.Rename(path, aside) != nil {
+			return nil, &DamagedFile{Path: path, Err: err}
+		}
+		if h.Warn != nil {
+			h.Warn(i18n.T("log.data_set_aside", "file", path, "reason", err.Error(), "aside", aside))
+		}
+		return nil, nil
+	}
+	return withoutNil(list), nil
+}
+
+// writeSynced replaces path with data so that a crash can't leave it half written: data goes to path.tmp (only this
+// user may read it), which is synced to the disk and then renamed over path. A failed write takes path.tmp away again.
+func writeSynced(path string, data []byte) error {
+	tmp := path + ".tmp"
+	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+	if err != nil {
+		return err
+	}
+	_, err = f.Write(data)
+	if err == nil {
+		err = f.Sync()
+	}
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err == nil {
+		err = os.Rename(tmp, path)
+	}
+	if err != nil {
+		_ = os.Remove(tmp)
+	}
+	return err
+}
+
+// saveAccounts writes atomically (writeSynced); the file holds tokens, so only the owner may read it.
 func saveAccounts(path string, list []*Account) error {
 	if path == "" {
 		return nil
@@ -92,33 +164,29 @@ func saveAccounts(path string, list []*Account) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o600); err != nil {
-		return err
-	}
-	return os.Rename(tmp, path)
+	return writeSynced(path, data)
 }
 
 // ---------- accounts on the Hub ----------
 
-// Open sets the data folder and reads the accounts (accounts.json), the message log (messages.json) and the tasks
-// (tasks.json; tasks the previous bridge left running are ended now).
+// Open sets the data folder and reads the accounts (accounts.json), the message log (messages.json), the ledger
+// (ledger.json) and the tasks (tasks.json; tasks the previous bridge left running are ended now). The bridge has to
+// hold the folder's lock first (LockData): another bridge's running tasks would look left over.
 func (h *Hub) Open(dir string) error {
+	for _, s := range []*saver{&h.msgSave, &h.taskSave, &h.ledgerSave} {
+		s.warn = h.warnWrite
+	}
 	list, err := loadAccounts(filepath.Join(dir, "accounts.json"))
 	if err != nil {
 		return err
 	}
-	var msgs []*Message
-	if data, err := os.ReadFile(filepath.Join(dir, "messages.json")); err == nil {
-		if err := json.Unmarshal(data, &msgs); err != nil {
-			return fmt.Errorf("messages.json: %w", err)
-		}
+	msgs, err := loadLog[Message](h, filepath.Join(dir, "messages.json"))
+	if err != nil {
+		return err
 	}
-	var ledger []*LedgerRow
-	if data, err := os.ReadFile(filepath.Join(dir, "ledger.json")); err == nil {
-		if err := json.Unmarshal(data, &ledger); err != nil {
-			return fmt.Errorf("ledger.json: %w", err)
-		}
+	ledger, err := loadLog[LedgerRow](h, filepath.Join(dir, "ledger.json"))
+	if err != nil {
+		return err
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -131,6 +199,8 @@ func (h *Hub) Open(dir string) error {
 	return h.openTasksLocked(dir)
 }
 
+// saveLocked writes accounts.json. A failure goes to the log as well (Warn), so a caller that answers nobody may let
+// the error go.
 func (h *Hub) saveLocked() error {
 	if h.dataDir == "" {
 		return nil
@@ -139,15 +209,34 @@ func (h *Hub) saveLocked() error {
 	for _, a := range h.accounts {
 		list = append(list, a)
 	}
-	return saveAccounts(filepath.Join(h.dataDir, "accounts.json"), list)
+	path := filepath.Join(h.dataDir, "accounts.json")
+	if err := saveAccounts(path, list); err != nil {
+		h.warnWrite(path, err)
+		return err
+	}
+	return nil
+}
+
+// warnWrite tells the log that a data file couldn't be written (the disk is full, the folder read-only ...): the
+// office goes on, but what changed is in memory only until a write gets through.
+func (h *Hub) warnWrite(path string, err error) {
+	if h.Warn != nil {
+		h.Warn(i18n.T("log.save_failed", "file", path, "reason", err.Error()))
+	}
 }
 
 // saver writes a file (the message log, the tasks) in the background: the hub's lock is held while it is encoded,
-// never while the disk is written; writes that pile up collapse into the latest.
+// never while the disk is written; writes that pile up collapse into the latest. A write that fails is in the log, at
+// most once a minute, and gets one more try when the bridge stops (wait).
 type saver struct {
 	mu      sync.Mutex
-	pending []byte        // the latest log to write, nil when written
+	path    string
+	pending []byte        // the latest contents to write, nil when written
 	idle    chan struct{} // closed when the writer is done; nil while none runs
+	failed  []byte        // the contents the last write didn't get on disk; nil once one did
+	err     error         // why the last write failed; nil once one succeeded
+	warned  time.Time     // when the log last heard of a failed write
+	warn    func(path string, err error)
 }
 
 // saveMessagesLocked hands the message log to the background writer, so it survives a bridge restart.
@@ -155,28 +244,30 @@ func (h *Hub) saveMessagesLocked() {
 	if h.dataDir == "" {
 		return
 	}
+	path := filepath.Join(h.dataDir, "messages.json")
 	data, err := json.Marshal(h.messages)
 	if err != nil {
+		h.msgSave.done(path, nil, err)
 		return
 	}
-	h.msgSave.put(filepath.Join(h.dataDir, "messages.json"), data)
+	h.msgSave.put(path, data)
 }
 
 // put hands the latest contents to the writer.
 func (s *saver) put(path string, data []byte) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.pending = data
+	s.path, s.pending = path, data
 	if s.idle == nil {
 		s.idle = make(chan struct{})
-		go s.write(path)
+		go s.write()
 	}
 }
 
-func (s *saver) write(path string) {
+func (s *saver) write() {
 	for {
 		s.mu.Lock()
-		data := s.pending
+		data, path := s.pending, s.path
 		s.pending = nil
 		if data == nil {
 			close(s.idle)
@@ -185,28 +276,58 @@ func (s *saver) write(path string) {
 			return
 		}
 		s.mu.Unlock()
-		if os.WriteFile(path+".tmp", data, 0o600) == nil {
-			_ = os.Rename(path+".tmp", path)
-		}
+		s.done(path, data, writeSynced(path, data))
 	}
 }
 
-// wait waits until what was handed over is on disk.
-func (s *saver) wait() {
+// done notes how writing data to path went (data is nil when it didn't encode): a failure is kept for wait, and the
+// log hears of it, at most once a minute.
+func (s *saver) done(path string, data []byte, err error) {
+	s.mu.Lock()
+	s.failed, s.err = nil, nil
+	say := false
+	if err != nil {
+		s.failed, s.err = data, fmt.Errorf("%s: %w", filepath.Base(path), err)
+		if now := time.Now(); now.Sub(s.warned) >= time.Minute {
+			s.warned, say = now, true
+		}
+	}
+	warn := s.warn
+	s.mu.Unlock()
+	if say && warn != nil {
+		warn(path, err)
+	}
+}
+
+// wait waits until what was handed over is on disk, and says why not when it isn't: a write that failed gets one more
+// try first (the disk may have room again, or another program let go of the file).
+func (s *saver) wait() error {
 	s.mu.Lock()
 	idle := s.idle
 	s.mu.Unlock()
 	if idle != nil {
 		<-idle
 	}
+	s.mu.Lock()
+	if s.idle == nil && s.failed != nil {
+		s.pending, s.idle = s.failed, make(chan struct{})
+		go s.write()
+	}
+	idle = s.idle
+	s.mu.Unlock()
+	if idle != nil {
+		<-idle
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.err
 }
 
-// Flush waits until the tasks being ended are done, and the message log, the tasks and the ledger are on disk.
-func (h *Hub) Flush() {
+// Flush waits until the tasks being ended are done, and the message log, the tasks and the ledger are on disk; the
+// error says which of them couldn't be written.
+func (h *Hub) Flush() error {
 	h.taskJobs.wait()
-	h.msgSave.wait()
-	h.taskSave.wait()
-	h.ledgerSave.wait()
+	return errors.Join(h.msgSave.wait(), h.taskSave.wait(), h.ledgerSave.wait())
 }
 
 // CreateAccount creates an account in the lowest free seat. Names are unique (sessions message each other by name).
@@ -240,7 +361,7 @@ func (h *Hub) createAccount(name string, advisor bool) (*Account, error) {
 	h.accounts[a.ID] = a
 	if err := h.saveLocked(); err != nil {
 		delete(h.accounts, a.ID)
-		return nil, err
+		return nil, errAccountsWrite
 	}
 	h.broadcastLocked(nil)
 	cp := *a
@@ -276,13 +397,12 @@ func (h *Hub) deleteAccountLocked(id string) error {
 	// cancel what its lost sessions left pending, so the popup shows no orphaned cards
 	for _, ask := range h.asks {
 		if ask.Account == id && ask.Status == AskPending {
-			ask.Status = AskCancelled
-			close(ask.done)
+			h.cancelAskLocked(ask)
 		}
 	}
 	if err := h.saveLocked(); err != nil {
 		h.accounts[id] = a
-		return err
+		return errAccountsWrite
 	}
 	return nil
 }
@@ -320,7 +440,7 @@ func (h *Hub) setLast(id string, req LaunchRequest) {
 	if a := h.accounts[id]; a != nil {
 		req.Account, req.Name = "", ""
 		a.Last = &req
-		_ = h.saveLocked()
+		_ = h.saveLocked() // a failure is in the log
 	}
 }
 

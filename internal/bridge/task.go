@@ -1,11 +1,13 @@
 package bridge
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -39,7 +41,7 @@ const (
 	taskMinMembers = 2
 	taskMaxMembers = 5
 	// memberExitWait is how long ending a task waits for a member's killed process before touching its worktree
-	memberExitWait = 10 * time.Second
+	memberExitWait = 20 * time.Second // a kill takes up to killGrace, plus listing what it started (ps on macOS)
 )
 
 var (
@@ -263,6 +265,45 @@ func (h *Hub) reserveTask(accounts []string) (string, error) {
 	return t.ID, nil
 }
 
+// raiseTaskNext makes sure task number n is never given out (again): the counter only goes up.
+func (h *Hub) raiseTaskNext(n int) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if n >= max(h.taskNext, 1) {
+		h.taskNext = n + 1
+		h.saveTasksLocked()
+	}
+}
+
+// taskBranchRef is a task member's branch as git lists it: refs/heads/symphony/T<n>/<slug>.
+var taskBranchRef = regexp.MustCompile(`^refs/heads/symphony/T([0-9]+)/`)
+
+// usedTaskNumber is the largest task number among the symphony/T<n>/... branches of the repositories holding dirs
+// (a folder in none has none). The branches stay after a task, and tasks.json needn't know them (another data
+// folder's tasks, or one that was reset): given out again, a number they use would fail to make its worktrees.
+func usedTaskNumber(dirs []string) int {
+	used := 0
+	seen := map[string]bool{}
+	for _, dir := range dirs {
+		if seen[dir] {
+			continue
+		}
+		seen[dir] = true
+		out, err := runGit(dir, "for-each-ref", "--format=%(refname)", "refs/heads/symphony/")
+		if err != nil {
+			continue
+		}
+		for _, ref := range strings.Split(out, "\n") {
+			if m := taskBranchRef.FindStringSubmatch(ref); m != nil {
+				if n, err := strconv.Atoi(m[1]); err == nil {
+					used = max(used, n)
+				}
+			}
+		}
+	}
+	return used
+}
+
 // repoMadeBy is the open task that made a repository holding dir (whose work tree's top is root), if any: no other
 // task may use that repository while that task runs, as it merges into the folder's checkout when it ends. With
 // around, a repository inside dir counts too (dir is about to be made one).
@@ -316,7 +357,7 @@ func (h *Hub) publishTask(id string, launches []*Launch) *Task {
 			if term := h.terms.Get(l.ID); term != nil {
 				go func(launch string) {
 					<-term.Exited()
-					h.memberExited(id, launch)
+					h.memberExited(id, launch, term.ExitErr(), term.Screen(4))
 				}(l.ID)
 			}
 		}
@@ -434,13 +475,16 @@ func (h *Hub) checkTaskLocked(id string) {
 
 // memberExited: a member's process is gone. Its session is off duty at once (a killed process has no time to say
 // so), and the task ends with the last member.
-func (h *Hub) memberExited(task, launch string) {
+func (h *Hub) memberExited(task, launch string, exitErr error, screen string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	if h.stopping {
+		return // the bridge ends its sessions on its way out, and leaves the task to the next one
+	}
 	changed := false
 	for _, s := range h.sessions {
 		if s.Task == task && s.Launch == launch && s.State != StateEnded {
-			h.endSessionLocked(s)
+			h.exitedLocked(s, exitErr, screen)
 			changed = true
 		}
 	}
@@ -450,26 +494,16 @@ func (h *Hub) memberExited(task, launch string) {
 	h.checkTaskLocked(task)
 }
 
-// endSessionLocked marks a session off duty, as a session.end does.
-func (h *Hub) endSessionLocked(s *Session) {
-	before := s.State
-	s.State, s.Tool = StateEnded, ""
-	h.markStateLocked(s, before)
-	h.chatNoticeLocked(s.ID, "ended")
-}
-
 // stopTaskSessionsLocked puts a task's sessions off duty and withdraws what they left pending.
 func (h *Hub) stopTaskSessionsLocked(id string) {
 	for _, s := range h.sessions {
-		if s.Task == id && s.State != StateEnded {
-			h.endSessionLocked(s)
+		if s.Task == id {
+			h.offDutyLocked(s, "")
 		}
 	}
 	for _, a := range h.asks {
 		if s := h.sessions[a.Session]; s != nil && s.Task == id && a.Status == AskPending {
-			a.Status = AskCancelled
-			close(a.done)
-			h.chatSettledLocked(a)
+			h.cancelAskLocked(a)
 		}
 	}
 }
@@ -676,8 +710,16 @@ func (h *Hub) finishTask(id string) {
 		trees = append(trees, gitLockKey(r.Dir))
 	}
 	unlock := h.gitLocks.lock(trees)
-	fail := tidyTask(t)
+	fails := tidyTask(t)
 	unlock()
+	// the page shows the first; the log has them all
+	var texts []string
+	for _, e := range fails {
+		texts = append(texts, e.Text)
+		if h.Warn != nil {
+			h.Warn(i18n.T("log.task_end_failed", "task", id, "reason", e.Text))
+		}
+	}
 
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -692,8 +734,8 @@ func (h *Hub) finishTask(id string) {
 			mm.Kept = m.Kept
 		}
 	}
-	if fail != nil {
-		task.Status, task.Error, task.ErrorCode, task.ErrorParams = TaskFailed, fail.Text, fail.Code, fail.Params
+	if len(fails) > 0 {
+		task.Status, task.Error, task.ErrorCode, task.ErrorParams = TaskFailed, strings.Join(texts, "\n"), fails[0].Code, fails[0].Params
 	} else {
 		// an ended task leaves the office, and its sessions and advisors with it; a failed one keeps them for its window
 		h.dropTaskPeopleLocked(task)
@@ -728,15 +770,11 @@ func (h *Hub) dropTaskPeopleLocked(t *Task) {
 // or they would go with it; what git ignores in it is moved to <folder>/.symphony/kept/<slug>-<task id>, Member.Kept).
 // In a repository the bridge made, uncommitted changes in the folder itself are committed too and every member's
 // branch is merged into the base branch in member order; when a merge fails, the merges are taken back and the task
-// fails. Nothing else is ever removed: the repositories, the bridge's own included, and the branches stay. The first
-// failure is the answer, and whatever it concerns stays as it is, so nothing is lost.
-func tidyTask(t *Task) *Error {
-	var fail *Error
-	note := func(e *Error) {
-		if fail == nil {
-			fail = e
-		}
-	}
+// fails. Nothing else is ever removed: the repositories, the bridge's own included, and the branches stay. It answers
+// every failure, in the order they came; whatever one concerns stays as it is, so nothing is lost.
+func tidyTask(t *Task) []*Error {
+	var fails []*Error
+	note := func(e *Error) { fails = append(fails, e) }
 	rootOf := map[string]string{}
 	for _, r := range t.Repos {
 		rootOf[r.Dir] = r.Root
@@ -789,29 +827,46 @@ func tidyTask(t *Task) *Error {
 			note(gitFailed(r.Dir, err))
 			continue
 		}
-		before, err := gitHead(r.Dir)
-		if err != nil {
-			note(gitFailed(r.Dir, err))
-			continue
-		}
+		var branches []string
 		for _, m := range t.Members {
-			if rootOf[m.Dir] != r.Root || m.Branch == "" {
-				continue
+			if rootOf[m.Dir] == r.Root && m.Branch != "" {
+				branches = append(branches, m.Branch)
 			}
-			if err := gitMerge(r.Dir, m.Branch); err != nil {
-				note(newError("task_merge_conflict", fmt.Sprintf("merging %s in %s failed: %v", m.Branch, r.Dir, err), "dir", r.Dir, "branch", m.Branch))
-				// the merges that went through are taken back: the folder and the branches are as the members left them
-				if err := gitResetHard(r.Dir, before); err != nil {
-					note(gitFailed(r.Dir, err))
-				}
-				break
-			}
+		}
+		if e := mergeBranches(r.Dir, branches); e != nil {
+			note(e)
 		}
 	}
 	for _, r := range t.Repos {
 		removeIfEmpty(filepath.Join(r.Dir, symphonyDir, "worktrees"), filepath.Join(r.Dir, symphonyDir))
 	}
-	return fail
+	return fails
+}
+
+// mergeBranches merges the branches into dir's checkout, in order. When one doesn't merge, the merges before it are
+// taken back, so nothing was merged and the branches stay as they were: task_merge_conflict when it conflicts,
+// task_git_failed with git's words otherwise. Taking them back keeps what is uncommitted in the folder (reset --keep,
+// never --hard: the folder is the user's); when git refuses, the checkout stays where it is, with the merges that went
+// through, and the error says so.
+func mergeBranches(dir string, branches []string) *Error {
+	before, err := gitHead(dir)
+	if err != nil {
+		return gitFailed(dir, err)
+	}
+	for _, b := range branches {
+		conflict, err := gitMerge(dir, b)
+		if err == nil {
+			continue
+		}
+		if uerr := gitResetKeep(dir, before); uerr != nil {
+			return gitFailed(dir, fmt.Errorf("merging %s: %v; the merges before it couldn't be taken back, so the checkout was left where it is (at %s before the task's merges): %w", b, err, before, uerr))
+		}
+		if conflict {
+			return newError("task_merge_conflict", fmt.Sprintf("merging %s in %s failed: %v", b, dir, err), "dir", dir, "branch", b)
+		}
+		return gitFailed(dir, fmt.Errorf("merging %s: %w", b, err))
+	}
+	return nil
 }
 
 // Stop is for a bridge on its way out, before it kills the sessions: from then on no task ends by itself (that would
@@ -867,26 +922,44 @@ func (h *Hub) saveTasksLocked() {
 	if h.dataDir == "" {
 		return
 	}
+	path := filepath.Join(h.dataDir, "tasks.json")
 	data, err := json.MarshalIndent(taskFile{Next: h.taskNext, Tasks: h.tasks}, "", "  ")
 	if err != nil {
+		h.taskSave.done(path, nil, err)
 		return
 	}
-	h.taskSave.put(filepath.Join(h.dataDir, "tasks.json"), data)
+	h.taskSave.put(path, data)
 }
 
 // openTasksLocked reads tasks.json. A task found running or ending lost its sessions with the previous bridge: it is
 // ended now, the same way. Advisors without such a task or a failed one are left over (the bridge stopped while
-// making one): they go.
+// making one): they go. A tasks.json that doesn't parse, empty too, stops the bridge (DamagedFile): it holds the task
+// counter, and the tasks it names may have worktrees to tidy up.
 func (h *Hub) openTasksLocked(dir string) error {
-	data, err := os.ReadFile(filepath.Join(dir, "tasks.json"))
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
+	path := filepath.Join(dir, "tasks.json")
+	data, err := os.ReadFile(path)
+	var f taskFile
+	switch {
+	case err == nil && len(bytes.TrimSpace(data)) == 0:
+		// emptied by a crash (an older bridge didn't sync its writes): nothing in it to keep, and the task counter comes
+		// back from the members' branches (raiseTaskNext); set aside like a damaged log
+		aside := fmt.Sprintf("%s.corrupt-%d", path, h.now().Unix())
+		if os.Rename(path, aside) != nil {
+			return &DamagedFile{Path: path, Err: errors.New("empty")}
+		}
+		if h.Warn != nil {
+			h.Warn(i18n.T("log.data_set_aside", "file", path, "reason", "empty", "aside", aside))
+		}
+	case err == nil:
+		if err := json.Unmarshal(data, &f); err != nil {
+			return &DamagedFile{Path: path, Err: err}
+		}
+	case !errors.Is(err, os.ErrNotExist):
 		return err
 	}
-	var f taskFile
-	if len(data) > 0 {
-		if err := json.Unmarshal(data, &f); err != nil {
-			return fmt.Errorf("tasks.json: %w", err)
-		}
+	f.Tasks = withoutNil(f.Tasks)
+	for _, t := range f.Tasks {
+		t.Members, t.Repos = withoutNil(t.Members), withoutNil(t.Repos)
 	}
 	h.taskNext, h.tasks = f.Next, f.Tasks
 	var stale []string

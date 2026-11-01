@@ -17,6 +17,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/feynmanzcys-bytes/symphony/internal/i18n"
 )
@@ -390,6 +391,84 @@ func TestProveKey(t *testing.T) {
 	ln.Close()
 	if ok, err := ProveKey(free, srv.Key); ok || err == nil {
 		t.Fatalf("nothing listening: %v %v", ok, err)
+	}
+}
+
+// TestShutdown: POST /api/shutdown needs the page key like every page call, answers 202 and then stops the bridge (the
+// program's Shutdown); without one set it is 501, and a GET is no way to stop it.
+func TestShutdown(t *testing.T) {
+	srv, base := newBridge(t)
+	stopped := make(chan struct{}, 1)
+	web := client{t: t, base: base}
+	if st := web.status("POST", "/api/shutdown", nil); st != http.StatusNotImplemented {
+		t.Fatalf("without Shutdown: %d", st)
+	}
+	srv.Shutdown = func() { stopped <- struct{}{} }
+	mod := client{t: t, base: base, modOnly: true}
+	if st, code := mod.failure("POST", "/api/shutdown", nil); st != http.StatusUnauthorized || code != "page_key" {
+		t.Fatalf("without the key: %d %q", st, code)
+	}
+	if st := web.status("GET", "/api/shutdown", nil); st != http.StatusMethodNotAllowed {
+		t.Fatalf("a GET: %d", st)
+	}
+	select {
+	case <-stopped:
+		t.Fatal("nothing but an authorized POST may stop the bridge")
+	default:
+	}
+	if st := web.status("POST", "/api/shutdown", nil); st != http.StatusAccepted {
+		t.Fatalf("with the key: %d", st)
+	}
+	select {
+	case <-stopped:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the bridge wasn't stopped")
+	}
+}
+
+// TestCrossSiteAPI: the API refuses what a browser says comes from another site or another port of this machine (a
+// link, a redirect, a fetch: the cookie would ride along), even a GET, as /api/dirs reads the folder it names; the
+// pages, addresses typed in, programs (no Sec-Fetch-Site), the sign-in and the mod's endpoints are as before.
+func TestCrossSiteAPI(t *testing.T) {
+	srv := NewServer(NewHub(), testWeb)
+	srv.Key = testKey
+	tmp := t.TempDir()
+	for _, c := range []struct {
+		site, method, path string
+		cookie             bool
+		want               int
+		mode               string
+	}{
+		{"none", "GET", "/api/dirs?path=" + tmp, true, 403, "navigate"}, // a link opened from another app
+		{"none", "GET", "/api/state", true, 200, "navigate"},            // an address typed in, to look
+		{"cross-site", "GET", "/api/dirs?path=" + tmp, true, 403, ""},
+		{"same-site", "GET", "/api/dirs?path=" + tmp, true, 403, ""},
+		{"cross-site", "GET", "/api/launch/options", true, 403, ""},
+		{"cross-site", "GET", "/api/state", true, 403, ""},
+		{"cross-site", "HEAD", "/api/state", true, 403, ""},
+		{"same-origin", "GET", "/api/dirs?path=" + tmp, true, 200, ""},
+		{"none", "GET", "/api/dirs?path=" + tmp, true, 200, ""},
+		{"", "GET", "/api/dirs?path=" + tmp, true, 200, ""},
+		{"cross-site", "GET", "/", true, 200, ""},
+		{"cross-site", "GET", "/?key=" + testKey, false, 303, ""},
+		{"cross-site", "GET", "/api/inbox", false, 401, ""}, // a mod endpoint: its token check, as before
+	} {
+		req := httptest.NewRequest(c.method, "http://127.0.0.1:7788"+c.path, nil)
+		req.RemoteAddr = "127.0.0.1:5555"
+		if c.cookie {
+			req.AddCookie(&http.Cookie{Name: "symphony_key_7788", Value: testKey})
+		}
+		if c.site != "" {
+			req.Header.Set("Sec-Fetch-Site", c.site)
+		}
+		if c.mode != "" {
+			req.Header.Set("Sec-Fetch-Mode", c.mode)
+		}
+		rec := httptest.NewRecorder()
+		srv.ServeHTTP(rec, req)
+		if rec.Code != c.want {
+			t.Errorf("Sec-Fetch-Site %q mode %q, %s %s: %d, want %d", c.site, c.mode, c.method, c.path, rec.Code, c.want)
+		}
 	}
 }
 

@@ -5,7 +5,8 @@
 import { t, lang, errorText, applyI18n, langPicker } from '/i18n.js'
 import { esc, syncCards } from '/asks.js'
 import { connect } from '/symphony.js'
-import { STATE_COLOR, TASK_COLOR, GRAY, base, lower, dot, buildText, statusText as statusOf } from '/ui/common.js'
+import { STATE_COLOR, TASK_COLOR, GRAY, base, lower, dot, buildText, statusText as statusOf, setHTML, deferWhilePressed } from '/ui/common.js'
+import { connectionBanner } from '/ui/banner.js'
 import { createChat } from '/ui/chat.js'
 import { createLaunchDialog } from '/ui/launch.js'
 import { createTaskUI } from '/ui/task.js'
@@ -13,9 +14,11 @@ import { themePicker } from '/ui/themes.js'
 
 const sym = connect()
 let snapshot = sym.state
-sym.on('snapshot', s => { snapshot = s })
+// the tab's title counts the asks: kept up with every snapshot, also while the page is hidden (no frames then)
+sym.on('snapshot', s => { snapshot = s; document.title = (s.asks.length ? `(${s.asks.length}) ` : '') + t('hq.title') })
 const statusText = s => statusOf(sym, s)
 applyI18n()
+connectionBanner(sym)
 
 // ---------- dark or light: the system's choice, or the switch's, remembered ----------
 const DARK_STORE = 'symphony.hq.dark'
@@ -41,6 +44,7 @@ function showTab(name) {
   for (const b of tabsEl.querySelectorAll('button')) b.classList.toggle('on', b.dataset.tab === name)
   for (const s of document.querySelectorAll('main > section')) s.hidden = s.dataset.tab !== name
   if (location.hash !== '#' + name) history.replaceState(null, '', '#' + name)
+  refreshActivity(true) // a tab that shows it: the log as it is now
   render()
 }
 tabsEl.addEventListener('click', ev => { const b = ev.target.closest('button[data-tab]'); if (b) showTab(b.dataset.tab) })
@@ -72,12 +76,11 @@ function renderKPIs() {
     ['waiting', String(waiting), 'approvals', waiting > 0], ['costToday', fmtUsd(costToday()), 'overview'],
     ['context', avg === null ? '—' : avg + '<small>%</small>', 'people'], ['errors', String(errors), 'activity', errors > 0],
   ]
-  document.getElementById('kpis').innerHTML = tiles.map(([k, v, to, hot]) =>
-    `<div class="kpi click${hot ? ' hot' : ''}" data-tab="${to}"><div class="lbl">${esc(t('hq.kpi.' + k))}</div><div class="val">${v}</div></div>`).join('')
-  const count = (name, n, hot) => { const el = tabsEl.querySelector(`[data-tab=${name}] .count`); el.hidden = !n; el.textContent = n; el.classList.toggle('hot', !!hot) }
+  setHTML(document.getElementById('kpis'), tiles.map(([k, v, to, hot]) =>
+    `<div class="kpi click${hot ? ' hot' : ''}" data-tab="${to}"><div class="lbl">${esc(t('hq.kpi.' + k))}</div><div class="val">${v}</div></div>`).join(''))
+  const count = (name, n, hot) => { const el = tabsEl.querySelector(`[data-tab=${name}] .count`); el.hidden = !n; if (el.textContent !== String(n)) el.textContent = n; el.classList.toggle('hot', !!hot) }
   count('approvals', waiting, waiting > 0)
   count('projects', snapshot.tasks.length, false)
-  document.title = (waiting ? `(${waiting}) ` : '') + t('hq.title')
 }
 document.getElementById('kpis').addEventListener('click', ev => { const k = ev.target.closest('.kpi'); if (k) showTab(k.dataset.tab) })
 
@@ -157,7 +160,7 @@ function showChat() {
     line: statusText(on ? s : null),
     taskChip: task ? { id: task.id, title: task.title, label: `${task.id} · ${task.title.split('\n')[0].slice(0, 40)}` } : null,
     chips: [['model', on ? buildText(s) : ''], ['session', s?.title], ['dir', s?.cwd || (chatSid ? member?.worktree : acc.last?.dir || acc.dir)],
-      ['subagents', on ? Object.keys(s.agents || {}).length || '' : ''], ['tools', on ? s.tools : ''], ['login', s?.login]],
+      ['subagents', on ? s.agentsTotal || Object.keys(s.agents || {}).length || '' : ''], ['tools', on ? s.tools : ''], ['login', s?.login]],
     buttons, buttonsKey: `${chatFor}|${chatSid}|${on}|${busy}|${on && !!s.launch}|${!!launchOpts?.enabled}|${task?.id}|${member?.session}`,
     session: chatSid || s?.id || null, online: on,
     offText: chatSid ? t('task.offline') : task && member ? t('chat.awayInTask', { id: task.id, name: member.name }) : t('chat.offline'),
@@ -168,9 +171,9 @@ function showChat() {
 function renderOverview() {
   // who waits for you, a click opens the window
   const waiting = snapshot.asks.map(a => ({ a, acc: sym.accountById(a.account), s: sym.sessionById(a.session) }))
-  document.getElementById('ov-waiting').innerHTML = waiting.length ? waiting.map(({ a, acc, s }) =>
+  setHTML(document.getElementById('ov-waiting'), waiting.length ? waiting.map(({ a, acc, s }) =>
     `<div class="row click" data-session="${esc(a.session)}" data-account="${esc(a.account)}">${dot('waiting')}<b>${esc(nameOf(s, acc))}</b><span class="txt">${esc(t(a.kind === 'question' ? 'asks.question' : 'asks.permission'))}${esc(t('common.colon'))}${esc(a.tool ? a.tool + ' ' : '')}${esc(summaryOf(a))}</span><time>${esc(fmtTime(a.created))}</time></div>`).join('')
-    : `<div class="empty">${esc(t('hq.overview.nothingWaiting'))}</div>`
+    : `<div class="empty">${esc(t('hq.overview.nothingWaiting'))}</div>`)
   // the activity of the last 30 minutes, events per minute
   const now = Date.now(), bins = new Array(30).fill(0)
   for (const a of activity) { const i = 29 - Math.floor((now - Date.parse(a.time)) / 60000); if (i >= 0 && i < 30) bins[i]++ }
@@ -182,7 +185,7 @@ function renderOverview() {
   for (const s of liveSessions()) for (const [model, tk] of Object.entries(s.usage?.totals || {})) byModel.set(model, (byModel.get(model) || 0) + tk.input + tk.output)
   bars(document.getElementById('ov-tokens'), [...byModel].sort((a, b) => b[1] - a[1]), n => fmtNum.format(n), t('hq.overview.noTokens'))
   // the last things that happened
-  document.getElementById('ov-recent').innerHTML = activity.length ? activity.slice(-8).reverse().map(activityRow).join('') : `<div class="empty">${esc(t('hq.overview.noActivity'))}</div>`
+  setHTML(document.getElementById('ov-recent'), activity.length ? activity.slice(-8).reverse().map(activityRow).join('') : `<div class="empty">${esc(t('hq.overview.noActivity'))}</div>`)
 }
 const nameOf = (s, acc) => (s?.task && s.title) ? s.title : acc?.name || s?.title || '?'
 const summaryOf = a => a.kind === 'question' ? (a.questions?.[0]?.question || '') : (a.input?.command || a.input?.file_path || a.input?.pattern || a.input?.url || a.input?.description || '')
@@ -199,14 +202,15 @@ function sparkline(el, values, tipOf) {
   const x = i => pad + i * (W - 2 * pad) / (n - 1), y = v => H - pad - v * (H - 2 * pad) / max
   const pts = values.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ')
   const step = (W - 2 * pad) / (n - 1)
-  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
+  const drawn = setHTML(el, `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">
     <line class="axis" x1="${pad}" y1="${H - pad}" x2="${W - pad}" y2="${H - pad}"/>
     <line class="grid" x1="${pad}" y1="${y(max)}" x2="${W - pad}" y2="${y(max)}"/>
     <text x="${pad}" y="${y(max) - 4}">${max}</text>
     <polygon class="area" points="${x(0)},${H - pad} ${pts} ${x(n - 1)},${H - pad}"/>
     <polyline class="line" points="${pts}"/>
     ${values.map((v, i) => `<rect class="hit" data-i="${i}" x="${(x(i) - step / 2).toFixed(1)}" y="0" width="${step.toFixed(1)}" height="${H}"/>`).join('')}
-    <line class="cross" x1="0" y1="${pad}" x2="0" y2="${H - pad}" visibility="hidden"/></svg><div class="tip" hidden></div>`
+    <line class="cross" x1="0" y1="${pad}" x2="0" y2="${H - pad}" visibility="hidden"/></svg><div class="tip" hidden></div>`)
+  if (!drawn) return // the same as before, with its hover already
   const svg = el.querySelector('svg'), cross = el.querySelector('.cross'), tip = el.querySelector('.tip')
   svg.addEventListener('mousemove', ev => {
     const hit = ev.target.closest('.hit')
@@ -220,16 +224,16 @@ function sparkline(el, values, tipOf) {
 }
 // horizontal bars, one hue, the value in text at the end of each; drawn in the box's own pixels
 function bars(el, rows, fmt, emptyText) {
-  if (!rows.length) { el.style.height = ''; el.innerHTML = `<div class="none">${esc(emptyText)}</div>`; return }
+  if (!rows.length) { el.style.height = ''; setHTML(el, `<div class="none">${esc(emptyText)}</div>`); return }
   const W = el.clientWidth || 300, rowH = 24, H = rows.length * rowH + 8, labelW = Math.min(150, Math.round(W * 0.36)), max = Math.max(...rows.map(r => r[1])) || 1
   el.style.height = Math.max(60, H) + 'px'
   const cut = s => { s = String(s); return s.length > 18 ? s.slice(0, 17) + '…' : s }
-  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">` + rows.map(([name, v], i) => {
+  setHTML(el, `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}">` + rows.map(([name, v], i) => {
     const y = 4 + i * rowH, w = Math.max(2, (v / max) * (W - labelW - 70))
     return `<text x="${labelW - 8}" y="${y + 15}" text-anchor="end"><title>${esc(String(name))}</title>${esc(cut(name))}</text>` +
       `<rect class="bar" x="${labelW}" y="${y + 4}" width="${w.toFixed(1)}" height="${rowH - 10}" rx="3"><title>${esc(name + ': ' + fmt(v))}</title></rect>` +
       `<text class="val" x="${labelW + w + 6}" y="${y + 15}">${esc(fmt(v))}</text>`
-  }).join('') + '</svg>'
+  }).join('') + '</svg>')
 }
 
 // ---------- people ----------
@@ -254,8 +258,8 @@ function renderPeople() {
   const rows = peopleRows()
   const n = { idle: 0, busy: 0, waiting: 0, off: 0 }
   for (const r of rows) n[r.g]++
-  document.getElementById('chips').innerHTML = [['idle', 'idle', 'stats.idle'], ['busy', 'tool', 'stats.working'], ['waiting', 'waiting', 'stats.waiting'], ['off', 'ended', 'stats.offDuty']]
-    .map(([g, st, key]) => `<button class="chip${chipOn === g ? ' on' : ''}${g === 'waiting' && n.waiting ? ' hot' : ''}" data-group="${g}" style="--c:${STATE_COLOR[st]}"><i></i>${esc(t(key, { n: n[g] }))}</button>`).join('')
+  setHTML(document.getElementById('chips'), [['idle', 'idle', 'stats.idle'], ['busy', 'tool', 'stats.working'], ['waiting', 'waiting', 'stats.waiting'], ['off', 'ended', 'stats.offDuty']]
+    .map(([g, st, key]) => `<button class="chip${chipOn === g ? ' on' : ''}${g === 'waiting' && n.waiting ? ' hot' : ''}" data-group="${g}" style="--c:${STATE_COLOR[st]}"><i></i>${esc(t(key, { n: n[g] }))}</button>`).join(''))
   const q = lower(findEl.value.trim())
   const shown = rows.filter(r => (!chipOn || r.g === chipOn) && (!q || matches(r, q)))
   const key = r => ({
@@ -264,7 +268,7 @@ function renderPeople() {
   })[sortBy]
   shown.sort((a, b) => { const x = key(a), y = key(b); return (x < y ? -1 : x > y ? 1 : 0) * (sortAsc ? 1 : -1) || a.acc.name.localeCompare(b.acc.name, lang) })
   for (const th of thead.children) { th.classList.toggle('on', th.dataset.col === sortBy); th.classList.toggle('asc', th.dataset.col === sortBy && sortAsc) }
-  document.querySelector('#people tbody').innerHTML = shown.map(r => {
+  setHTML(document.querySelector('#people tbody'), shown.map(r => {
     const { acc, s, on, task } = r, state = on ? (sym.asking(s.id) ? 'waiting' : s.state) : 'ended'
     const ctx = r.ctx >= 0 ? `<span class="ctx${r.ctx >= 90 ? ' full' : r.ctx >= 70 ? ' high' : ''}" title="${esc(fmtNum.format(s.usage.context.tokens || 0) + ' / ' + fmtNum.format(s.usage.context.window))}"><i style="width:${Math.min(100, r.ctx)}%"></i></span>${Math.round(r.ctx)}%` : '<span class="dim">—</span>'
     const acts = [on && s.launch ? `<button class="px" data-act="terminal" title="${esc(t('chat.terminalTitle'))}">${esc(t('hq.btn.terminal'))}</button>` : '',
@@ -278,7 +282,7 @@ function renderPeople() {
       `<td>${task ? `<span class="badge" title="${esc(task.title)}">${esc(task.id)}</span>` : ''}</td>` +
       `<td>${ctx}</td><td>${on ? s.tools : ''}</td><td>${on ? s.turns || 0 : ''}</td><td>${r.cost ? fmtUsd(r.cost) : '<span class="dim">—</span>'}</td>` +
       `<td class="dim">${on ? esc(uptime(s)) : ''}</td><td class="acts">${acts}</td></tr>`
-  }).join('')
+  }).join(''))
   document.getElementById('people-empty').hidden = shown.length > 0
 }
 document.getElementById('chips').addEventListener('click', ev => { const c = ev.target.closest('.chip'); if (!c) return; chipOn = chipOn === c.dataset.group ? null : c.dataset.group; renderPeople() })
@@ -346,27 +350,34 @@ document.getElementById('queue').addEventListener('click', ev => { const o = ev.
 // ---------- projects: the board ----------
 function renderProjects() {
   const cols = [['running', TASK_COLOR.running], ['ending', TASK_COLOR.ending], ['failed', TASK_COLOR.failed]]
-  document.getElementById('board').innerHTML = cols.map(([st, c]) => {
+  setHTML(document.getElementById('board'), cols.map(([st, c]) => {
     const list = snapshot.tasks.filter(k => k.status === st)
     return `<div class="col"><h2><i style="--c:${c}"></i>${esc(t('hq.projects.' + st))}<span class="badge">${list.length}</span></h2>` + (list.map(task =>
       `<div class="task" data-task="${esc(task.id)}"><div class="hd"><b>${esc(task.id)}</b>${task.leader ? `<span class="lead">${esc(t('task.lead'))}${esc(t('common.colon'))}${esc(task.members.find(m => m.account === task.leader)?.name || '')}</span>` : `<span class="lead">${esc(t('task.flat'))}</span>`}</div>` +
         `<div class="title">${esc(task.title)}</div>` + task.members.map(m => { const s = sym.sessionById(m.session), on = online(s); return `<div class="mem">${dot(!on ? 'ended' : sym.asking(m.session) ? 'waiting' : s.state)}<b>${esc(m.name)}</b><span class="dim">${esc(m.branch)}</span><span class="st">${esc(!m.session ? t('task.memberStarting') : on ? statusText(s) : t('task.memberEnded'))}</span></div>` }).join('') +
         (task.status === 'failed' ? `<div class="err">${esc(errorText({ code: task.errorCode, params: task.errorParams, error: task.error }))}</div>` : '') + `</div>`).join('') || `<div class="empty">${esc(t('hq.empty.projects'))}</div>`) + '</div>'
-  }).join('')
+  }).join(''))
 }
 document.getElementById('board').addEventListener('click', ev => { const k = ev.target.closest('.task'); if (k) tasks.openWindow(k.dataset.task) })
 
 // ---------- activity: the bridge's log (/api/activity), then every push that adds to it ----------
-let activity = [], actPending = null
+// Fetched only for a tab that shows it (the overview, the timeline), on a page that's seen, and not more than every
+// few seconds however many pushes come; again when such a tab opens, the page shows again or the stream comes back.
+const ACT_GAP = 3000
+let activity = [], actPending = null, actAt = 0
 async function loadActivity() {
-  activity = await sym.fetchActivity()
+  actAt = Date.now()
+  const list = await sym.fetchActivity()
+  if (list) activity = list
   if (tab === 'activity' || tab === 'overview') render()
 }
-function refreshActivity() { // soon, once, however many pushes come
-  if (actPending) return
-  actPending = setTimeout(() => { actPending = null; loadActivity() }, 800)
+function refreshActivity(now = false) {
+  if (actPending || (tab !== 'activity' && tab !== 'overview') || document.visibilityState === 'hidden') return
+  actPending = setTimeout(() => { actPending = null; loadActivity() }, Math.max(now ? 0 : 800, actAt + ACT_GAP - Date.now()))
 }
-for (const type of ['event', 'message', 'ask', 'settled', 'launch']) sym.on(type, refreshActivity)
+for (const type of ['event', 'message', 'ask', 'settled', 'launch']) sym.on(type, () => refreshActivity())
+sym.on('resync', () => refreshActivity(true))
+document.addEventListener('visibilitychange', () => refreshActivity(true))
 const actWho = document.getElementById('act-who'), actKind = document.getElementById('act-kind')
 const KINDS = ['start', 'end', 'tool', 'ask', 'settled', 'message', 'error', 'launch', 'launchFailed']
 function activityRow(a) {
@@ -375,23 +386,24 @@ function activityRow(a) {
 function renderActivity() {
   const names = [...new Set(activity.map(a => a.name).filter(Boolean))].sort((a, b) => a.localeCompare(b, lang))
   const who = actWho.value, kind = actKind.value
-  const opts = (sel, list, all) => { const v = sel.value; sel.innerHTML = `<option value="">${esc(all)}</option>` + list.map(([val, label]) => `<option value="${esc(val)}">${esc(label)}</option>`).join(''); sel.value = list.some(([val]) => val === v) ? v : '' }
+  // (the options are put in again only when they change: that would close a list someone has open)
+  const opts = (sel, list, all) => { const v = sel.value; if (setHTML(sel, `<option value="">${esc(all)}</option>` + list.map(([val, label]) => `<option value="${esc(val)}">${esc(label)}</option>`).join(''))) sel.value = list.some(([val]) => val === v) ? v : '' }
   opts(actWho, names.map(n => [n, n]), t('hq.activity.everyone'))
   opts(actKind, KINDS.map(k => [k, t('hq.activity.kind.' + k)]), t('hq.activity.everything'))
   const shown = activity.filter(a => (!who || a.name === who) && (!kind || a.kind === kind)).slice(-300).reverse()
-  document.getElementById('act-list').innerHTML = shown.length ? shown.map(activityRow).join('') : `<div class="empty">${esc(t('hq.empty.activity'))}</div>`
+  setHTML(document.getElementById('act-list'), shown.length ? shown.map(activityRow).join('') : `<div class="empty">${esc(t('hq.empty.activity'))}</div>`)
 }
 actWho.onchange = actKind.onchange = renderActivity
 
-// ---------- every change: the strip and the tab shown, once per frame however many pushes come; the windows are the
-// shared pieces' business ----------
+// ---------- every change: the strip and the tab shown, once per frame however many pushes come, and not while a
+// pointer is down (a row replaced under a press loses its click); the windows are the shared pieces' business ----------
 let drawing = false
 function render() {
   if (drawing) return
   drawing = true
   requestAnimationFrame(() => { drawing = false; draw() })
 }
-function draw() {
+const draw = deferWhilePressed(() => {
   renderKPIs()
   if (tab === 'overview') renderOverview()
   else if (tab === 'people') renderPeople()
@@ -399,10 +411,9 @@ function draw() {
   else if (tab === 'projects') renderProjects()
   else if (tab === 'activity') renderActivity()
   if (chatFor) showChat()
-}
+})
 sym.on('change', render)
 sym.on('protocol', (bridge, page) => { const note = document.getElementById('launch-note'); note.hidden = false; note.textContent = t('error.protocol_mismatch', { bridge, page }) })
 setInterval(() => { if (tab === 'people' || tab === 'overview') render() }, 30000) // uptimes and the minutes move
 showTab(tab)
 loadOptions()
-loadActivity()

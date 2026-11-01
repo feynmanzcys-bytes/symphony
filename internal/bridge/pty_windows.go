@@ -23,6 +23,7 @@ var (
 	procDeleteProcThreadAttributeList     = kernel32.NewProc("DeleteProcThreadAttributeList")
 	procCreateJobObject                   = kernel32.NewProc("CreateJobObjectW")
 	procAssignProcessToJobObject          = kernel32.NewProc("AssignProcessToJobObject")
+	procSetInformationJobObject           = kernel32.NewProc("SetInformationJobObject")
 	procTerminateJobObject                = kernel32.NewProc("TerminateJobObject")
 	procResumeThread                      = kernel32.NewProc("ResumeThread")
 )
@@ -31,7 +32,29 @@ const (
 	procThreadAttributePseudoConsole = 0x20016
 	extendedStartupInfoPresent       = 0x00080000
 	createSuspended                  = 0x00000004
+
+	jobObjectExtendedLimitInformation = 9
+	jobObjectLimitKillOnJobClose      = 0x2000
 )
+
+// jobLimits is JOBOBJECT_EXTENDED_LIMIT_INFORMATION, its fields in their C order and sizes, so Go lays it out as C does
+// on 64-bit Windows (144 bytes). Elsewhere (386) the size differs and SetInformationJobObject turns it down.
+type jobLimits struct {
+	PerProcessUserTimeLimit int64
+	PerJobUserTimeLimit     int64
+	LimitFlags              uint32
+	MinimumWorkingSetSize   uintptr
+	MaximumWorkingSetSize   uintptr
+	ActiveProcessLimit      uint32
+	Affinity                uintptr
+	PriorityClass           uint32
+	SchedulingClass         uint32
+	IoInfo                  [6]uint64 // IO_COUNTERS
+	ProcessMemoryLimit      uintptr
+	JobMemoryLimit          uintptr
+	PeakProcessMemoryUsed   uintptr
+	PeakJobMemoryUsed       uintptr
+}
 
 // coordArg packs a COORD (passed by value) into one argument: X in the low 16 bits, Y in the high ones.
 func coordArg(cols, rows int) uintptr {
@@ -44,10 +67,11 @@ type startupInfoEx struct {
 }
 
 type windowsProc struct {
-	console syscall.Handle
 	in, out *os.File // our ends: in is the console's input (we write), out its output (we read)
-	process syscall.Handle
+	// jobMu guards the handles below: Wait closes the process and the console while Kill or Resize may use them
 	jobMu   sync.Mutex
+	console syscall.Handle // 0 once closed
+	process syscall.Handle // 0 once closed
 	job     syscall.Handle // the job object the process and whatever it starts are in, so Kill gets them all; 0 when none
 	waited  chan struct{}
 	err     error
@@ -116,6 +140,10 @@ func startPTY(dir string, env []string, argv []string, cols, rows int) (ptyProc,
 	}
 	p.process = pi.Process
 	if job, _, _ := procCreateJobObject.Call(0, 0); job != 0 {
+		// what is in the job ends when its last handle closes, and only the bridge holds one: once the session's
+		// terminal is done with (Close), or when the bridge goes, however it goes (a crash, taskkill /F)
+		limits := jobLimits{LimitFlags: jobObjectLimitKillOnJobClose}
+		procSetInformationJobObject.Call(job, jobObjectExtendedLimitInformation, uintptr(unsafe.Pointer(&limits)), unsafe.Sizeof(limits))
 		if ok, _, _ := procAssignProcessToJobObject.Call(job, uintptr(pi.Process)); ok != 0 {
 			p.job = syscall.Handle(job)
 		} else {
@@ -152,26 +180,37 @@ func (p *windowsProc) closeAll() {
 func (p *windowsProc) Read(b []byte) (int, error)  { return p.out.Read(b) }
 func (p *windowsProc) Write(b []byte) (int, error) { return p.in.Write(b) }
 func (p *windowsProc) Resize(cols, rows int) error {
+	p.jobMu.Lock()
+	defer p.jobMu.Unlock()
+	if p.console == 0 {
+		return nil
+	}
 	if hr, _, _ := procResizePseudoConsole.Call(uintptr(p.console), coordArg(cols, rows)); hr != 0 {
 		return fmt.Errorf("ResizePseudoConsole: HRESULT 0x%x", hr)
 	}
 	return nil
 }
 
-// Wait waits for the process; then it closes the console, which ends the output (and the reader).
+// Wait waits for the process; then it closes the console, which ends the output (and the reader, which keeps reading
+// meanwhile: older Windows builds return from ClosePseudoConsole only once its output is drained).
 func (p *windowsProc) Wait() error {
-	if _, err := syscall.WaitForSingleObject(p.process, syscall.INFINITE); err != nil {
+	process := p.process // only Wait changes it, below
+	if _, err := syscall.WaitForSingleObject(process, syscall.INFINITE); err != nil {
 		p.err = err
 	} else {
 		var code uint32
-		if err := syscall.GetExitCodeProcess(p.process, &code); err != nil {
+		if err := syscall.GetExitCodeProcess(process, &code); err != nil {
 			p.err = err
 		} else if code != 0 {
 			p.err = fmt.Errorf("exit status %d", code)
 		}
 	}
-	syscall.CloseHandle(p.process)
-	procClosePseudoConsole.Call(uintptr(p.console))
+	p.jobMu.Lock()
+	syscall.CloseHandle(process)
+	console := p.console
+	p.process, p.console = 0, 0
+	p.jobMu.Unlock()
+	procClosePseudoConsole.Call(uintptr(console))
 	p.in.Close()
 	return p.err
 }
@@ -181,17 +220,18 @@ func (p *windowsProc) Close() error {
 	return p.out.Close()
 }
 
-// Kill ends the process and whatever it started (its job), or the process alone when it has no job.
+// Kill ends the process and whatever it started (its job; what the process left running, once it has ended), or the
+// process alone when it has no job.
 func (p *windowsProc) Kill() error {
-	if p.process == 0 {
-		return errors.New("not started")
-	}
 	p.jobMu.Lock()
 	defer p.jobMu.Unlock()
 	if p.job != 0 {
 		if ok, _, _ := procTerminateJobObject.Call(uintptr(p.job), 1); ok != 0 {
 			return nil
 		}
+	}
+	if p.process == 0 {
+		return errors.New("no process to end")
 	}
 	return syscall.TerminateProcess(p.process, 1)
 }

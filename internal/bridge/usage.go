@@ -222,12 +222,8 @@ func (h *Hub) pushUsageLocked(s *Session) {
 	if len(h.subs) == 0 || s.Usage == nil {
 		return
 	}
-	p := newPush(map[string]any{"type": "usage", "session": s.ID, "usage": s.Usage})
-	for ch := range h.subs {
-		select {
-		case ch <- p:
-		default:
-		}
+	if p := h.pushLocked(map[string]any{"type": "usage", "session": s.ID, "usage": s.Usage}); p != nil {
+		h.deliverLocked(p)
 	}
 }
 
@@ -285,11 +281,13 @@ func (h *Hub) saveLedgerLocked() {
 	if h.dataDir == "" {
 		return
 	}
+	path := filepath.Join(h.dataDir, "ledger.json")
 	data, err := json.Marshal(h.ledger)
 	if err != nil {
+		h.ledgerSave.done(path, nil, err)
 		return
 	}
-	h.ledgerSave.put(filepath.Join(h.dataDir, "ledger.json"), data)
+	h.ledgerSave.put(path, data)
 }
 
 // ledgerTodayLocked is today's rows, for the snapshot.

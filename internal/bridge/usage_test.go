@@ -125,8 +125,14 @@ func TestUsageAndLedger(t *testing.T) {
 	}
 	defer resp.Body.Close()
 	r := bufio.NewReader(resp.Body)
-	if _, err := r.ReadString('\n'); err != nil { // the first snapshot
-		t.Fatal(err)
+	for { // the reconnect delay, then the first snapshot
+		l, err := r.ReadString('\n')
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.HasPrefix(l, "data: ") {
+			break
+		}
 	}
 	c.ok("POST", "/api/event", Event{Session: "s1", Kind: "session.usage", Usage: &Usage{
 		Context: &ContextUsage{Tokens: 40000, Window: 200000, Percent: 20}, RateLimits: []RateLimit{{Kind: "five_hour", PercentUsed: 12}}, Cost: &Cost{USD: 0.5}}})

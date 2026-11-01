@@ -39,14 +39,14 @@ symphony 由兩個部分組成，兩個都要裝：
 uname -sm                 # Linux/macOS：決定下面用哪個壓縮檔（x86_64 → amd64；arm64/aarch64 → arm64）
 claude --version          # 需要 Claude Code 2.1.x（在 2.1.316 上測試過）
 git --version             # 只有協作任務需要；沒有的話在回報裡註明，不要停下來
-symphony -version         # 已經裝了？會印出 "symphony v1.0.0 (darwin/arm64)"
+symphony -version         # 已經裝了？會印出 "symphony v1.1.0 (darwin/arm64)"
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:7788/api/state   # 有 bridge 在執行嗎？401：symphony 1.x；200：比較舊的版本；000：沒有
-claude plugin list --json # mod 已經裝了？找 "id":"symphony-bridge@symphony"
+claude plugin list --json # mod 已經裝了？找有 "id": "symphony-bridge@symphony" 的那一筆
 ```
 
 在 Windows 上用 PowerShell：`$env:PROCESSOR_ARCHITECTURE` 的值是 `AMD64` 或 `ARM64`。
 
-如果沒有 `claude`，就停下來，請使用者先安裝 Claude Code。如果程式和 mod 都已經就位，改看下面的「更新」。已經在執行的 bridge 會一直用它啟動時的那個程式：如果有 bridge 在執行，你要在第 5 步之前把它停掉。
+如果沒有 `claude`，就停下來，請使用者先安裝 Claude Code。如果程式和 mod 都已經就位，改看下面的「更新」。如果只有其中一個就位，就做另一個的步驟：程式是第 2 和第 3 步（`symphony -version` 印出的已經是最新版本的話就不用做），mod 是第 4 步，然後做第 5 步。已經在執行的 bridge 會一直用它啟動時的那個程式：如果有 bridge 在執行，你要在第 5 步之前把它停掉。
 
 #### 第 2 步：取得程式
 
@@ -58,10 +58,9 @@ claude plugin list --json # mod 已經裝了？找 "id":"symphony-bridge@symphon
 d=$(mktemp -d)   # 一個只有你能讀取的新資料夾
 echo "$d"        # 記下來：第 3 步要從這裡安裝
 cd "$d"
-curl -fLO https://github.com/feynmanzcys-bytes/symphony/releases/latest/download/symphony_<os>_<arch>.tar.gz
-curl -fLO https://github.com/feynmanzcys-bytes/symphony/releases/latest/download/checksums.txt
-sha256sum -c --ignore-missing checksums.txt      # Linux：必須印出 "symphony_<os>_<arch>.tar.gz: OK"
-shasum -a 256 -c --ignore-missing checksums.txt  # macOS：同樣的檢查
+curl -fsSLO https://github.com/feynmanzcys-bytes/symphony/releases/latest/download/symphony_<os>_<arch>.tar.gz
+curl -fsSLO https://github.com/feynmanzcys-bytes/symphony/releases/latest/download/checksums.txt
+if command -v sha256sum >/dev/null; then sha256sum -c --ignore-missing checksums.txt; else shasum -a 256 -c --ignore-missing checksums.txt; fi   # 必須印出 "symphony_<os>_<arch>.tar.gz: OK"
 tar xzf symphony_<os>_<arch>.tar.gz              # 程式現在是 "$d/symphony"
 ```
 
@@ -109,7 +108,7 @@ cd "$d/src" && go build -o "$d/symphony" ./cmd/bridge   # 程式現在是 "$d/sy
 ```bash
 install -m 755 "$d/symphony" ~/.local/bin/symphony
 xattr -d com.apple.quarantine ~/.local/bin/symphony 2>/dev/null || true   # macOS：這個執行檔沒有簽章
-symphony -version          # 會印出 "symphony v1.0.0 (linux/amd64)"：版本和平台
+symphony -version          # 會印出 "symphony v1.1.0 (linux/amd64)"：版本和平台
 ```
 
 如果這些資料夾都不在 `PATH` 裡，先問過使用者再做任何修改。使用者同意的話，就建立 `~/.local/bin`，把它加進 shell 的 rc 檔（`~/.zshrc` 或 `~/.bashrc`），並在回報裡說明；不同意的話，就把程式裝在使用者指定的地方，並告訴他們：只要 `symphony` 不在他們 Claude Code 工作階段的 `PATH` 裡，mod 就沒辦法自己啟動 bridge（第 5 步的隨登入啟動仍然可以用）。
@@ -119,7 +118,7 @@ symphony -version          # 會印出 "symphony v1.0.0 (linux/amd64)"：版本�
 ```powershell
 $dest = Join-Path $env:LOCALAPPDATA 'Programs\symphony'
 Expand-Archive -LiteralPath (Join-Path $d $zip) -DestinationPath $dest -Force
-& (Join-Path $dest 'symphony.exe') -version   # 會印出 "symphony v1.0.0 (windows/amd64)"
+& (Join-Path $dest 'symphony.exe') -version   # 會印出 "symphony v1.1.0 (windows/amd64)"
 ```
 
 把那個資料夾加進使用者的 `Path` 是會一直留著的改動：要先問使用者。使用者同意的話，執行下面這行，再開一個新的 shell；不同意的話，就用完整路徑。第一次執行時 SmartScreen 可能會跳出警告：按「其他資訊」，再按「仍要執行」。
@@ -141,11 +140,11 @@ claude plugin install symphony-bridge --marketplace feynmanzcys-bytes/symphony
 確認：
 
 ```bash
-claude plugin list --json   # 其中一筆是 "id":"symphony-bridge@symphony", "scope":"user", "enabled":true
+claude plugin list --json   # 其中一筆是 "id": "symphony-bridge@symphony", "scope": "user", "enabled": true
 ```
 
-- `"scope":"project"` 或 `"local"`：mod 只會在某一個資料夾裡載入。先執行 `claude plugin uninstall symphony-bridge@symphony`，再加上 `--scope user` 重新安裝。
-- `"enabled":false`：執行 `claude plugin enable symphony-bridge@symphony`。
+- `"scope": "project"` 或 `"local"`：mod 只會在某一個資料夾裡載入。先執行 `claude plugin uninstall symphony-bridge@symphony`，再加上 `--scope user` 重新安裝。
+- `"enabled": false`：執行 `claude plugin enable symphony-bridge@symphony`。
 
 #### 第 5 步：啟動 bridge
 
@@ -171,28 +170,29 @@ symphony now starts when you log in (<where>); it's running at http://127.0.0.1:
 symphony -background -open=false
 ```
 
-這會在脫離終端機的背景啟動 bridge（電腦重新開機後不會再自動啟動），並印出：
+這會在脫離終端機的背景啟動 bridge（電腦重新開機後不會再自動啟動），並在標準錯誤輸出上印出（前面帶著日期和時間）：
 
 ```
 the symphony bridge runs in the background at http://127.0.0.1:7788/?key=<key>; its log: <data folder>/bridge.log
 ```
 
-這個版本的 bridge 已經在執行時，它會改印出 `a symphony bridge is already running at http://127.0.0.1:7788/?key=<key>`；這沒問題，不要再啟動另一個。`<key>` 是頁面金鑰，瀏覽器靠它登入辦公室：不要把它貼到別的地方。如果程式回答 `127.0.0.1:7788 is taken: another program, or a symphony bridge with another data folder, answers there`，就告訴使用者是什麼在那裡回應（舊版的 symphony bridge 也算：照「更新」裡的做法把它停掉），沒問過使用者之前不要改用其他位址。
+這個版本的 bridge 已經在執行時，它會（以同樣的方式）改印出 `a symphony bridge is already running at http://127.0.0.1:7788/?key=<key>`；這沒問題，不要再啟動另一個。`<key>` 是頁面金鑰，瀏覽器靠它登入辦公室：不要把它貼到別的地方。如果程式回答 `127.0.0.1:7788 is taken: another program, or a symphony bridge with another data folder, answers there`，就告訴使用者是什麼在那裡回應（舊版的 symphony bridge 也算：照「更新」裡的做法把它停掉），沒問過使用者之前不要改用其他位址。
 
 用一個請求確認整條鏈路，請求裡出示資料目錄裡的頁面金鑰（經由標準輸入傳入，這樣金鑰就不會出現在其他使用者看得到的命令列上）：
 
 ```bash
-printf 'X-Symphony-Key: %s\n' "$(cat ~/.config/symphony/key)" | curl -s -H @- http://127.0.0.1:7788/api/launch/options                         # Linux
-printf 'X-Symphony-Key: %s\n' "$(cat ~/"Library/Application Support/symphony/key")" | curl -s -H @- http://127.0.0.1:7788/api/launch/options   # macOS
+printf 'X-Symphony-Key: %s\n' "$(cat "${SYMPHONY_DATA:-${XDG_CONFIG_HOME:-$HOME/.config}/symphony}/key")" | curl -s -H @- http://127.0.0.1:7788/api/launch/options      # Linux
+printf 'X-Symphony-Key: %s\n' "$(cat "${SYMPHONY_DATA:-$HOME/Library/Application Support/symphony}/key")" | curl -s -H @- http://127.0.0.1:7788/api/launch/options   # macOS
 ```
 
 ```powershell
-(Invoke-WebRequest -UseBasicParsing -Headers @{ 'X-Symphony-Key' = (Get-Content "$env:APPDATA\symphony\key") } -Uri http://127.0.0.1:7788/api/launch/options).Content
+$data = if ($env:SYMPHONY_DATA) { $env:SYMPHONY_DATA } else { Join-Path $env:APPDATA 'symphony' }
+(Invoke-WebRequest -UseBasicParsing -Headers @{ 'X-Symphony-Key' = (Get-Content (Join-Path $data 'key')) } -Uri http://127.0.0.1:7788/api/launch/options).Content
 ```
 
 資料目錄在 Linux 上是 `~/.config/symphony`（有設定 `$XDG_CONFIG_HOME` 時是 `$XDG_CONFIG_HOME/symphony`），macOS 上是 `~/Library/Application Support/symphony`，Windows 上是 `%AppData%\symphony`；有設定 `SYMPHONY_DATA` 時則是它指定的地方。
 
-回應裡會有 `"enabled":true` 和 `"mod":{"ok":true,"id":"symphony-bridge@symphony","version":"1.0.0"}`：表示 bridge 在執行、找到了 `claude`，而且 mod 安裝在工作階段會載入的地方。如果是 `"enabled":false`，`mod.code` 說明哪裡有問題，`mod.fix` 給出修正的指令：`mod_not_installed` 或 `mod_project_scope`（回到第 4 步）、`mod_disabled`（啟用它）、`mod_check_failed`（`claude plugin list --json` 執行失敗，多半是 Claude Code 版本太舊）。`"mod":null` 表示 bridge 在它的 `PATH` 裡完全找不到 `claude`（紀錄裡會寫）：把它放進去，或用 `-claude /path/to/claude` 啟動 bridge。回應是 `"code":"page_key"` 的話，表示這個金鑰檔不屬於正在執行的那個 bridge：它是用另一個資料目錄啟動的。
+回應裡會有 `"enabled":true` 和 `"mod":{"ok":true,"id":"symphony-bridge@symphony","version":"1.1.0"}`：表示 bridge 在執行、找到了 `claude`，而且 mod 安裝在工作階段會載入的地方。如果是 `"enabled":false`，`mod.code` 說明哪裡有問題，`mod.fix` 給出修正的指令：`mod_not_installed` 或 `mod_project_scope`（回到第 4 步）、`mod_disabled`（啟用它）、`mod_check_failed`（`claude plugin list --json` 執行失敗，多半是 Claude Code 版本太舊）。`"mod":null` 表示 bridge 在它的 `PATH` 裡完全找不到 `claude`（紀錄裡會寫）：把它放進去，或用 `-claude /path/to/claude` 啟動 bridge。回應是 `"code":"page_key"` 的話，表示請求沒有出示金鑰，或出示的金鑰不對：檢查 `cat` 有沒有找到金鑰檔（資料目錄見上面）；如果有找到，就表示正在執行的那個 bridge 是用另一個資料目錄啟動的。
 
 bridge 的紀錄是資料目錄裡的 `bridge.log`；隨登入啟動時，Linux 上的紀錄在 `journalctl --user -u symphony`，macOS 上在 `~/Library/Logs/symphony.log`。
 
@@ -209,14 +209,11 @@ bridge 的紀錄是資料目錄裡的 `bridge.log`；隨登入啟動時，Linux 
 - 裝了什麼、裝在哪裡：程式的路徑、安裝在使用者範圍的 mod、bridge 是隨登入啟動還是在背景執行、對 `PATH` 或 rc 檔做的任何修改、你做的選擇，以及缺少 `git`（如果真的缺）。
 - 怎麼全部復原：見下面的「解除安裝」。
 
-規則：bridge 只在本機監聽（它不接受其他位址，所以 `-addr` 維持 `127.0.0.1:7788`），不要用 `sudo` 執行它，也不要在同一個位址啟動第二個 bridge。
+規則：bridge 只在本機監聽（不是本機的位址它一律拒絕；除非使用者另外選了連接埠，否則維持預設的 `127.0.0.1:7788`），不要用 `sudo` 執行它，也不要在同一個位址、或用同一個資料目錄啟動第二個 bridge（symphony 會拒絕，並指出正在執行的是哪一個）。
 
 #### 更新
 
-照第 2 步下載新版。正在執行的 bridge 在重新啟動前跑的還是舊程式（而且在 Windows 上，執行中的程式沒辦法替換），所以要先停掉它，照第 3 步替換程式，再重新啟動它。停掉 bridge 會結束它啟動的工作階段，所以要先告訴使用者：
-
-- 隨登入啟動的：`symphony -autostart off`（在 Linux 和 macOS 上這也會停掉它；在 Windows 上還要關掉 bridge 的主控台視窗，或執行 `Stop-Process -Name symphony`），替換程式，然後執行 `symphony -autostart on -open=false`。
-- 用 `-background` 啟動的：它沒有停止指令。結束它的程序：在 Linux 和 macOS 上用 `pkill -x symphony`（這也會結束所有 `symphony attach`），在 Windows 上用 `Stop-Process -Name symphony`。替換程式，然後執行 `symphony -background -open=false`。
+照第 2 步下載新版。正在執行的 bridge 在重新啟動前跑的還是舊程式（而且在 Windows 上，執行中的程式沒辦法替換），所以要先用 `symphony -stop` 停掉它，照第 3 步替換程式，再照它原本的方式重新啟動：隨登入啟動的，就執行 `symphony -autostart on -open=false`（這也會立刻啟動它），不然就執行 `symphony -background -open=false`。如果 bridge 執行時用的 `-addr` 或 `-data` 不是預設值，這幾個指令都要加上同樣的參數：`-stop` 只會停掉那個資料目錄的 bridge（在 `-addr` 上，或在那個資料目錄的 bridge 實際執行的地方），沒有 bridge 回應時會說 `nothing to stop`。停掉 bridge 會結束它啟動的工作階段，所以要先告訴使用者。（`-stop` 是 v1.1.0 才有的；要停掉 v1.0.0 的 bridge，就結束它的程序：在 Linux 和 macOS 上用 `pkill -x symphony`，在 Windows 上用 `Stop-Process -Name symphony`。）
 
 mod 用 `claude plugin update symphony-bridge@symphony` 跟著更新（用 clone 當市集的話，改成在那裡 `git pull`）。
 
@@ -225,8 +222,8 @@ mod 用 `claude plugin update symphony-bridge@symphony` 跟著更新（用 clone
 #### 解除安裝
 
 ```bash
-symphony -autostart off                           # 之後登入不再自動啟動，並停掉 bridge 和它的工作階段
-pkill -x symphony                                 # 停掉用 -background 啟動的 bridge
+symphony -stop                                    # 停掉 bridge 和它的工作階段，不管它是怎麼啟動的（不是預設值時，加上它的 -addr 和 -data）
+symphony -autostart off                           # 之後登入不再自動啟動（原本就沒有設定的話，它會說明）
 claude plugin uninstall symphony-bridge@symphony  # mod
 claude plugin marketplace remove symphony         # 市集項目
 rm ~/.local/bin/symphony                          # 程式，看第 3 步放在哪裡
@@ -235,8 +232,8 @@ rm ~/.local/bin/symphony                          # 程式，看第 3 步放在�
 如果第 3 步把 `~/.local/bin` 加進了 shell 的 rc 檔，也要把那一行刪掉。在 Windows 上，用 PowerShell：
 
 ```powershell
+symphony -stop                                               # 停掉 bridge 和它的工作階段（不是預設值時，加上它的 -addr 和 -data）
 symphony -autostart off                                      # 之後登入不再自動啟動
-Stop-Process -Name symphony -ErrorAction SilentlyContinue    # 停掉 bridge
 claude plugin uninstall symphony-bridge@symphony
 claude plugin marketplace remove symphony
 $dest = Join-Path $env:LOCALAPPDATA 'Programs\symphony'
@@ -245,7 +242,7 @@ $p = ([Environment]::GetEnvironmentVariable('Path', 'User') -split ';' | Where-O
 [Environment]::SetEnvironmentVariable('Path', $p, 'User')    # 第 3 步加進去的 Path 項目
 ```
 
-資料目錄（帳號和它們的 token、頁面金鑰、訊息紀錄、任務）會留下來；要全部移除的話，就把它刪掉。刪掉它也會刪掉頁面金鑰：下次啟動時會產生新的，每個瀏覽器都得重新登入。在 Linux 上，如果瀏覽器是 snap 或 flatpak，`open.html` 會在那個瀏覽器自己的資料夾裡（`~/snap/<snap>/common` 或 `~/.var/app/<app id>`），也要一起刪掉。
+資料目錄（帳號和它們的 token、頁面金鑰、訊息紀錄、用量帳本、任務，以及 `lock`、`bridge.addr` 或被移到一旁的 `*.corrupt-<time>` 這類檔案）會留下來；要全部移除的話，就把它刪掉。刪掉它也會刪掉頁面金鑰：下次啟動時會產生新的，每個瀏覽器都得重新登入。在 Linux 上，如果瀏覽器是 snap 或 flatpak，`open.html` 會在那個瀏覽器自己的資料夾裡（`~/snap/<snap>/common` 或 `~/.var/app/<app id>`），也要一起刪掉。
 
 ## 能做什麼
 
@@ -275,7 +272,7 @@ $p = ([Environment]::GetEnvironmentVariable('Path', 'User') -split ';' | Where-O
 | 參數 | 預設值 | 用途 |
 | --- | --- | --- |
 | `-addr` | `127.0.0.1:7788` | 監聽位址。主機部分必須是 `127.0.0.1`、`localhost` 或 `::1`（例如 `[::1]:7788`）；其他位址 bridge 一律拒絕 |
-| `-data` | `$SYMPHONY_DATA`，沒有的話就用使用者設定資料夾裡的 `symphony` | 資料目錄：帳號和它們的 token（`accounts.json`）、頁面金鑰（`key`）和 `open.html`、訊息紀錄（`messages.json`）、任務（`tasks.json`），以及 `-background` 的紀錄（`bridge.log`） |
+| `-data` | `$SYMPHONY_DATA`，沒有的話就用使用者設定資料夾裡的 `symphony` | 資料目錄：帳號和它們的 token（`accounts.json`）、頁面金鑰（`key`）和 `open.html`、訊息紀錄（`messages.json`）、用量帳本（`ledger.json`）、任務（`tasks.json`）、`-background` 的紀錄（`bridge.log`）、`lock` 和 `bridge.addr`（哪個 bridge 在用它、在哪個位址），以及損壞後被移到一旁的訊息紀錄或用量帳本（`*.corrupt-<time>`） |
 | `-claude` | `claude` | claude 執行檔 |
 | `-lang` | 系統語言，沒有的話就是 `en` | bridge 訊息使用的語言（預設值由 `SYMPHONY_LANG`、`LC_ALL`、`LC_MESSAGES` 或 `LANG` 決定） |
 | `-mod` | 空白 | 開發用：透過 `--plugin-dir` 讓工作階段載入這個資料夾裡的 mod，覆蓋已安裝的版本 |
@@ -283,11 +280,12 @@ $p = ([Environment]::GetEnvironmentVariable('Path', 'User') -split ';' | Where-O
 | `-open` | `true` | bridge 啟動後在瀏覽器開啟辦公室；如果這個資料目錄的 bridge 已經在 `-addr` 上執行，就只開啟它的辦公室 |
 | `-autostart` | — | `on`：之後每次登入都自動啟動 bridge（帶上一起給的參數），並且立刻啟動；`off`：取消 |
 | `-background` | — | 在背景啟動 bridge：脫離終端機，紀錄寫到資料目錄裡的 `bridge.log`，等它有回應就返回 |
+| `-stop` | — | 停掉這個資料目錄的 bridge（在 `-addr` 上，不在的話就在它實際執行的地方），不管它是怎麼啟動的（它的工作階段會結束），等它停止了才返回；它只會向能證明自己持有頁面金鑰的 bridge 出示這把金鑰 |
 | `-version` | — | 顯示版本號後結束 |
 
-如果 `-addr` 上回應的是別的東西（其他程式、用另一個資料目錄的 bridge，或是舊版的 symphony bridge），symphony 會說明這一點，然後停止；它只會向能證明自己持有頁面金鑰的 bridge 出示這把金鑰。
+如果 `-addr` 上回應的是別的東西（其他程式、用另一個資料目錄的 bridge，或是舊版的 symphony bridge），symphony 會說明這一點，然後停止；它只會向能證明自己持有頁面金鑰的 bridge 出示這把金鑰。一個資料目錄同一時間只屬於一個 bridge：如果指定的資料目錄已經有 bridge 在別的位址上執行，symphony 會說出它在哪裡執行、開啟它的辦公室，然後停止（要再啟動一個 bridge，就給它自己的 `-data`）。
 
-**隨登入啟動**：`symphony -autostart on` 讓 bridge 之後每次登入都自動啟動（一起給的參數也會帶上，例如 `-addr`），並且立刻啟動；`symphony -autostart off` 取消。Linux 上是 systemd 使用者服務（用 `journalctl --user -u symphony` 查看紀錄），macOS 上是 launchd 代理程式（紀錄在 `~/Library/Logs/symphony.log`），Windows 上是登錄檔 Run 機碼裡的一個值（bridge 在主控台視窗裡執行，關掉視窗它就會停止，直到下次登入）。這需要 symphony 程式本身，`go run` 不行。
+**隨登入啟動**：`symphony -autostart on` 讓 bridge 之後每次登入都自動啟動（一起給的參數也會帶上，例如 `-addr`），並且立刻啟動；`symphony -autostart off` 取消。Linux 上是 systemd 使用者服務（用 `journalctl --user -u symphony` 查看紀錄），macOS 上是 launchd 代理程式（紀錄在 `~/Library/Logs/symphony.log`），Windows 上是登錄檔 Run 機碼裡的一個值（bridge 在主控台視窗裡執行，關掉視窗它就會停止，直到下次登入）。`symphony -stop` 不管 bridge 是怎麼啟動的都能停掉它，直到它再次被啟動（隨登入啟動的，就是到下次登入）。這需要 symphony 程式本身，`go run` 不行。
 
 **從原始碼執行**，需要 Go 1.27 以上：`git clone https://github.com/feynmanzcys-bytes/symphony.git && cd symphony && go run ./cmd/bridge`。
 
@@ -311,12 +309,14 @@ SYMPHONY_TOKEN=<token> claude --name frontend-alice --permission-mode manual
 | 訊息（繁體中文／英文） | 意思 |
 | --- | --- |
 | `連不上 bridge` / `can't reach the bridge` | bridge 的位址上沒有任何回應，自己啟動 bridge 也沒用（或是這個位址不在本機）。 |
+| `無法啟動 bridge（...）：<reason>` / `couldn't start the bridge ...: <reason>` | 沒有任何回應，`symphony -background` 也因為顯示的原因而失敗（例如這個資料目錄的 bridge 在別的位址上執行：請把 `SYMPHONY_BRIDGE` 設成那個位址）。 |
 | `bridge 不認得這個 SYMPHONY_TOKEN` / `the bridge doesn't know this SYMPHONY_TOKEN` | bridge 沒有用這個 token 的帳號：帳號被刪掉了，或是 bridge 用的是另一個資料目錄。 |
 | `不是這個工作階段能信任的 symphony bridge` / `isn't a symphony bridge this session can trust` | 這個位址上有東西回應，但無法證明它認得這個 token：可能是其他程式，或是比 mod 舊的 symphony（請更新它）。token 不會送出。 |
 | `SYMPHONY_BRIDGE（...）必須在這台電腦上或使用 https` / `SYMPHONY_BRIDGE ... must be on this machine or use https` | 這個位址不是 mod 接受的寫法；完全不會連線到 bridge。 |
 | `這個帳號已經有工作階段在線上` / `this account already has a session online` | 一個帳號同一時間只能給一個工作階段使用；請為這個工作階段另外建立一個帳號。 |
+| `正在等你在辦公室網頁（...）上回覆` / `waiting for your answer in the office page` | 權限請求或提問正在辦公室網頁上等待，不在終端機裡；請到那裡回覆，或按 Esc 取消。每個工作階段只會顯示一次。 |
 
-本機上 bridge 的位址沒有回應時，工作階段會自己用 `symphony -background -open=false -addr <that address>` 啟動 bridge（前提是 `symphony` 在 PATH 裡），並告訴你（`已在背景啟動 bridge` / `started the bridge ... in the background`）；工作階段結束後 bridge 仍會繼續執行。如果帳號不在預設的資料目錄，請設定 `SYMPHONY_DATA`。
+本機上 bridge 的位址沒有回應時，工作階段會自己用 `symphony -background -open=false -addr <that address>` 啟動 bridge（前提是 `symphony` 在 PATH 裡），並告訴你（`已在背景啟動 bridge` / `started the bridge ... in the background`）；工作階段結束後 bridge 仍會繼續執行。如果帳號不在預設的資料目錄，請設定 `SYMPHONY_DATA`。如果這個資料目錄的 bridge 已經在別的位址上執行，工作階段會說明這一點，然後退回終端機處理：請把 `SYMPHONY_BRIDGE` 設成那個位址。
 
 ## 協作任務
 
@@ -358,7 +358,7 @@ SYMPHONY_TOKEN=<token> claude --name frontend-alice --permission-mode manual
 頁面可以啟動工作階段，等於能在這台電腦上執行指令，所以 bridge 會把關誰能連到它：
 
 - **頁面金鑰**：辦公室和它的 API 都需要頁面金鑰，這是瀏覽器透過 `symphony` 開啟的連結拿到的 cookie。金鑰就是資料目錄裡的 `key` 檔，只有你能讀取；程式則在 `X-Symphony-Key` 標頭裡出示它。
-- **只限這台電腦**：bridge 只在本機監聽，也只接受來自本機的連線。它會拒絕發給其他主機的請求（DNS rebinding），也會拒絕其他網站透過你的瀏覽器送來的寫入請求，其他網站也不能用框架嵌入它的頁面。頁面只載入 bridge 自己的檔案（Content Security Policy）。
+- **只限這台電腦**：bridge 只在本機監聽，也只接受來自本機的連線。它會拒絕發給其他主機的請求（DNS rebinding），也會拒絕其他網站透過你的瀏覽器送來的寫入請求；只要你的瀏覽器表明請求來自其他網站或其他連接埠，它的 API 一律不回應，就算只是點開一個連結也一樣。其他網站也不能用框架嵌入它的頁面。頁面只載入 bridge 自己的檔案（Content Security Policy）。
 - **mod 會先確認 bridge**，確認過才送出 token；`symphony` 程式也會先確認過才出示頁面金鑰，所以在 bridge 的位址上監聽的其他東西兩樣都拿不到。
 - **防不了的事**：以你自己的使用者身分執行的程式，可以讀取資料目錄裡的頁面金鑰和 token，就像它們能讀你的任何檔案一樣。另外，瀏覽器會把一個網站的 cookie 送給它的每一個連接埠：這台電腦上另一位使用者在 `127.0.0.1` 上執行的伺服器，只要你的瀏覽器開啟了它，或是在 bridge 停止、辦公室卻還開在某個分頁裡時占用了 bridge 的連接埠，就會拿到頁面金鑰的 cookie。在和別人共用的電腦上，請先關掉辦公室再停止 bridge；如果金鑰可能已經外洩，就刪掉資料目錄裡的 `key` 檔（下次啟動時會產生新的）。
 - 這些程式沒有簽章。用瀏覽器下載的話，macOS 可能因為無法驗證開發者而拒絕執行：請到「系統設定 → 隱私權與安全性」按「強制打開」，或執行一次 `xattr -d com.apple.quarantine symphony`。Windows 的 SmartScreen 也可能跳出警告：按「其他資訊」，再按「仍要執行」。Release 裡的 `checksums.txt` 列出了每個壓縮檔的 SHA-256；安裝的第 2 步會檢查它。

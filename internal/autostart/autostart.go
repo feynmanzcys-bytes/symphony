@@ -159,8 +159,8 @@ Description=symphony bridge, the office for Claude Code sessions
 [Service]
 ExecStart=` + strings.Join(line, " ") + `
 Environment=` + systemdQuote("PATH="+path) + `
-# stopping the bridge leaves the sessions it started in tmux running
-KillMode=process
+# stopping the bridge ends the sessions it started, its children: it ends them itself, then whatever is left goes
+KillMode=mixed
 Restart=on-failure
 RestartSec=5
 

@@ -38,8 +38,8 @@ type ChatItem struct {
 	Text    string    `json:"text,omitempty"`
 	Done    bool      `json:"done"`              // a streamed block ended; a tool call ended; an ask was settled
 	Tool    string    `json:"tool,omitempty"`    // tool and ask: the tool's name
-	Summary string    `json:"summary,omitempty"` // tool: its main argument
-	Status  string    `json:"status,omitempty"`  // tool: ok|error|denied; user: queued|sent; ask: pending|allow|deny|answered|cancelled
+	Summary string    `json:"summary,omitempty"` // tool: its main argument; user: why it was dropped
+	Status  string    `json:"status,omitempty"`  // tool: ok|error|denied; user: queued|sent|dropped; ask: pending|allow|deny|answered|cancelled
 	AgentID string    `json:"agentId,omitempty"`
 	Origin  string    `json:"origin,omitempty"` // user: composer (typed), page, task (a task's kickoff), or the engine's origin kind
 	From    string    `json:"from,omitempty"`   // message: the sender's name
@@ -112,12 +112,8 @@ func (h *Hub) pushChatLocked(session string, it *ChatItem, delta string) {
 	} else {
 		ev["item"] = it
 	}
-	p := newPush(ev)
-	for ch := range h.subs {
-		select {
-		case ch <- p:
-		default:
-		}
+	if p := h.pushLocked(ev); p != nil {
+		h.deliverLocked(p)
 	}
 }
 
@@ -234,17 +230,27 @@ func (h *Hub) chatUserLocked(s *Session, ev Event) {
 }
 
 // chatSentLocked: the mod submitted a prompt the page sent; the queued item becomes sent.
-func (h *Hub) chatSentLocked(s *Session, text string) {
+func (h *Hub) chatSentLocked(s *Session, text string) { h.chatSubmittedLocked(s, text, "sent", "") }
+
+// chatDroppedLocked: a prompt the page sent didn't enter the session (a hook refused it, or the engine); the queued
+// item becomes dropped, with the reason.
+func (h *Hub) chatDroppedLocked(s *Session, text, reason string) {
+	h.chatSubmittedLocked(s, text, "dropped", cutRunes(strings.TrimSpace(reason), 500))
+}
+
+// chatSubmittedLocked settles the queued item of a prompt the page sent: sent, or dropped and why (summary). One the
+// log no longer has comes back as a new item.
+func (h *Hub) chatSubmittedLocked(s *Session, text, status, summary string) {
 	c := h.chatLocked(s.ID)
 	text = strings.TrimSpace(text)
 	for _, it := range c.items {
 		if it.Kind == ChatUser && it.Status == "queued" && sameText(it.Text, text) {
-			it.Status, it.Done = "sent", true
+			it.Status, it.Summary, it.Done = status, summary, true
 			h.pushChatLocked(s.ID, it, "")
 			return
 		}
 	}
-	h.chatAppendLocked(s.ID, &ChatItem{Kind: ChatUser, Text: cutRunes(text, chatPromptMax), Origin: "page", Status: "sent", Done: true})
+	h.chatAppendLocked(s.ID, &ChatItem{Kind: ChatUser, Text: cutRunes(text, chatPromptMax), Origin: "page", Status: status, Summary: summary, Done: true})
 }
 
 func (h *Hub) chatMessageLocked(session string, m *Message) {

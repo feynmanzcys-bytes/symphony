@@ -15,13 +15,39 @@
 //   sym.on('ask' | 'settled' | 'launch' | 'task', fn)   the bridge's own notices; a snapshot follows each
 //   sym.on('change', fn)       once after any of the above that changed the state (snapshot, message, messages, usage)
 //   sym.on('protocol', fn)     once, when the bridge's protocol isn't this client's, fn(bridge, page): the page says so and goes on
+//   sym.on('connection', fn)   the stream came up (fn(true)) or was lost (fn(false)); it reconnects by itself
+//   sym.on('resync', fn)       a full snapshot came after the first (the stream reconnected): pushes may have been missed,
+//                              so what a page fetched on its own (a chat log, the activity) is worth fetching again
+//   sym.stayConnected(on)      keep the stream while the page is hidden (a page that must ring for a new ask)
 //
-// The calls answer { ok, status, data }, data being the bridge's JSON ({ error, code, params } when !ok; the page
-// turns a code into text with errorText() from i18n.js).
+// A page hidden for 10 seconds lets its stream go (a browser holds six connections per host, and every page would hold
+// one) and asks for the state now and then instead; shown again, it opens the stream, whose first message is a full
+// snapshot. The calls answer { ok, status, data }, data being the bridge's JSON ({ error, code, params } when !ok; the
+// page turns a code into text with errorText() from i18n.js); a call that gets no answer in 15 seconds, or none at
+// all, answers status 0 with the code 'unreachable'.
 
 export const PROTOCOL = 2 // the protocol this client speaks; the bridge's snapshot says its own
 
-const KEEP_MESSAGES = 300
+const KEEP_MESSAGES = 300 // of each task shown, and of the rest: as the bridge keeps them
+const TIMEOUT = 15000 // a call without an answer in this long fails
+const HIDDEN_CLOSE = 10000 // a page hidden this long lets its stream go...
+const HIDDEN_POLL = 30000 // ...and asks for the state this often meanwhile (a tab's title counts the asks)
+const RETRY = 3000 // after an answer that wasn't the stream (the browser gives up then), try again this soon
+
+// request is one call to the bridge: { ok, status, data }. timeout 0 waits as long as it takes (a task's git work).
+export async function request(method, path, body, { timeout = TIMEOUT } = {}) {
+  const init = { method }
+  if (body !== undefined) { init.headers = { 'content-type': 'application/json' }; init.body = JSON.stringify(body) }
+  const ctl = new AbortController(), timer = timeout ? setTimeout(() => ctl.abort(), timeout) : 0
+  init.signal = ctl.signal
+  try {
+    const r = await fetch(path, init)
+    const data = await r.json().catch(() => null)
+    return { ok: r.ok, status: r.status, data }
+  } catch { // no answer: the bridge isn't there, or took too long
+    return { ok: false, status: 0, data: { code: 'unreachable', error: "can't reach the bridge" } }
+  } finally { clearTimeout(timer) }
+}
 
 export function connect({ stream = true } = {}) {
   const listeners = new Map()
@@ -50,16 +76,17 @@ export function connect({ stream = true } = {}) {
     answer: (id, body) => post(`/api/answer/${id}`, body),
     createAccount: name => post('/api/accounts', { name }),
     deleteAccount: id => call('DELETE', `/api/accounts/${id}`),
-    launch: req => post('/api/launch', req),
+    launch: req => post('/api/launch', req, { timeout: 60000 }), // the bridge checks the mod first (claude plugin list)
     dirs: path => get('/api/dirs?path=' + encodeURIComponent(path)),
     launchOptions,
-    fetchChat: async sid => (await get(`/api/chat/${sid}`)).data?.items ?? [],
-    fetchActivity: async () => (await get('/api/activity')).data?.items ?? [],
-    fetchLedger: async () => (await get('/api/ledger')).data?.rows ?? [],
+    // null when the bridge didn't answer with the list
+    fetchChat: async sid => { const r = await get(`/api/chat/${sid}`); return r.ok ? r.data?.items ?? [] : null },
+    fetchActivity: async () => { const r = await get('/api/activity'); return r.ok ? r.data?.items ?? [] : null },
+    fetchLedger: async () => { const r = await get('/api/ledger'); return r.ok ? r.data?.rows ?? [] : null },
     openTerminal: launchId => post(`/api/terminal/${launchId}/open`),
     themes: () => get('/api/themes'),
     tasks: {
-      create: body => post('/api/tasks', body),
+      create: body => post('/api/tasks', body, { timeout: 0 }), // git readies every member's worktree first
       end: id => post(`/api/tasks/${id}/end`, {}),
       forget: id => call('DELETE', `/api/tasks/${id}`),
       say: (id, text) => post(`/api/tasks/${id}/say`, { text }),
@@ -67,22 +94,15 @@ export function connect({ stream = true } = {}) {
     },
   }
 
-  async function call(method, path, body) {
-    const init = { method }
-    if (body !== undefined) { init.headers = { 'content-type': 'application/json' }; init.body = JSON.stringify(body) }
-    let r
-    try { r = await fetch(path, init) } catch { return { ok: false, status: 0, data: null } }
-    const data = await r.json().catch(() => null)
-    return { ok: r.ok, status: r.status, data }
-  }
-  function post(path, body = {}) { return call('POST', path, body) }
-  function get(path) { return call('GET', path) }
+  const call = request
+  function post(path, body = {}, opts) { return call('POST', path, body, opts) }
+  function get(path, opts) { return call('GET', path, undefined, opts) }
 
   // /api/launch/options: whether the page can start sessions, and the drop-down choices; kept until asked again
   let opts = null
   async function launchOptions(refresh = false) {
     if (opts && !refresh) return opts
-    const r = await get('/api/launch/options')
+    const r = await get('/api/launch/options', { timeout: 60000 })
     opts = r.ok ? r.data : null
     return opts
   }
@@ -105,10 +125,21 @@ export function connect({ stream = true } = {}) {
   function applyMessage(m) {
     const list = sym.state.messages, i = list.findIndex(x => x.id === m.id)
     if (i >= 0) list[i] = m
-    else { list.push(m); if (list.length > KEEP_MESSAGES) list.splice(0, list.length - KEEP_MESSAGES) }
+    else { list.push(m); trimMessages(list) }
     sym.messagesVersion++
     noteMessage(m)
     emit('change')
+  }
+  // as the bridge keeps the log: the newest KEEP_MESSAGES of each task shown (running, ending, failed: the snapshot's),
+  // and as many of the rest together (between desks, of tasks gone); the oldest go first, the order stays
+  function trimMessages(list) {
+    if (list.length <= KEEP_MESSAGES) return
+    const shown = new Set(sym.state.tasks.map(k => k.id)), count = new Map(), kept = []
+    for (let i = list.length - 1; i >= 0; i--) {
+      const group = shown.has(list[i].task) ? list[i].task : '', n = count.get(group) || 0
+      if (n < KEEP_MESSAGES) { count.set(group, n + 1); kept.push(list[i]) }
+    }
+    if (kept.length < list.length) list.splice(0, list.length, ...kept.reverse())
   }
   let catchingUp = false, warned = false
   async function catchUpMessages() {
@@ -120,8 +151,10 @@ export function connect({ stream = true } = {}) {
     } finally { catchingUp = false }
   }
 
-  function applySnapshot(snap) {
+  // quiet: a full snapshot the page asked for while its stream was closed (no resync: the stream's will come)
+  function applySnapshot(snap, quiet = false) {
     const full = Array.isArray(snap.messages) // the first snapshot and /api/state carry the log; the pushed ones don't
+    const resync = full && !sym.first && !quiet
     const messages = full ? snap.messages : sym.state.messages
     sym.state = snap
     for (const k of ['accounts', 'sessions', 'asks', 'launches', 'tasks', 'ledger']) if (!Array.isArray(snap[k])) snap[k] = []
@@ -130,6 +163,7 @@ export function connect({ stream = true } = {}) {
     else if (snap.messageTail && !messages.some(m => m.id === snap.messageTail)) catchUpMessages()
     if (snap.protocol !== PROTOCOL && !warned) { warned = true; emit('protocol', snap.protocol, PROTOCOL) } // once: a bridge of another generation
     emit('snapshot', snap)
+    if (resync) emit('resync')
     sym.first = false
     emit('change')
   }
@@ -153,13 +187,48 @@ export function connect({ stream = true } = {}) {
   }
   sym.take = take // a theme or a test may feed messages by hand (made-up activity)
 
-  // the first snapshot by request (it carries the message log), then the stream; the stream's own first message is a
-  // full snapshot too, so whichever comes first wins and the other is just a newer state
+  // ---------- the stream ----------
+  // The first snapshot by request (it carries the message log), then the stream; the stream's own first message is a
+  // full snapshot too, so whichever comes first wins and the other is just a newer state. The browser reconnects a
+  // stream that broke off by itself (its first message: a full snapshot again); one that got an answer other than the
+  // stream (the bridge restarting, a 401) it gives up, and this opens it again a little later.
+  let es = null, up = null, retry = 0, hideTimer = 0, poll = 0, keep = false
+  const setUp = v => { if (up !== v) { up = v; emit('connection', v) } }
+  function open() {
+    if (es) return
+    clearTimeout(retry); retry = 0
+    clearInterval(poll); poll = 0
+    const src = es = sym.stream = new EventSource('/api/stream')
+    src.onopen = () => setUp(true)
+    src.onmessage = m => take(JSON.parse(m.data))
+    src.onerror = () => {
+      if (src !== es) return
+      setUp(false)
+      if (src.readyState === EventSource.CLOSED) { es = sym.stream = null; retry = setTimeout(open, RETRY) }
+    }
+  }
+  // hidden a while: the stream goes (not a lost connection: no 'connection' false), the state comes now and then
+  function sleep() {
+    if (!es && !retry) return
+    es?.close(); es = sym.stream = null
+    clearTimeout(retry); retry = 0
+    poll = setInterval(async () => {
+      const r = await get('/api/state')
+      if (poll && r.ok && r.data) applySnapshot(r.data, true)
+    }, HIDDEN_POLL)
+  }
+  function visibility() {
+    clearTimeout(hideTimer)
+    if (document.visibilityState !== 'hidden') open()
+    else if (keep) open()
+    else hideTimer = setTimeout(sleep, HIDDEN_CLOSE)
+  }
+  sym.stayConnected = on => { keep = !!on; if (stream) visibility() }
   if (stream) {
     get('/api/state').then(r => { if (r.ok && r.data && sym.first) applySnapshot(r.data) })
-    const es = new EventSource('/api/stream')
-    es.onmessage = m => take(JSON.parse(m.data))
-    sym.stream = es
+    open()
+    document.addEventListener('visibilitychange', visibility)
+    visibility()
   }
   return sym
 }

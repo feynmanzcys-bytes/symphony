@@ -35,6 +35,9 @@ type testBridge struct {
 	Launcher *bridge.Launcher
 	// anon counts requests to the mod endpoints without a token: a session without SYMPHONY_TOKEN must send none
 	anon atomic.Int64
+	// cut: the pages can't reach the bridge (their connections are dropped unanswered); the mod still can (cutPages)
+	cut    atomic.Bool
+	server *httptest.Server
 
 	mu     sync.Mutex
 	events []bridge.Event
@@ -56,9 +59,16 @@ func startBridge(t *testing.T, mod string) *testBridge {
 		if isModAPI(r.URL.Path) && r.Header.Get("Authorization") == "" {
 			b.anon.Add(1)
 		}
+		if b.cut.Load() && !isModAPI(r.URL.Path) && r.URL.Path != "/api/hello" && r.URL.Path != "/api/inbox" {
+			if conn, _, err := http.NewResponseController(w).Hijack(); err == nil {
+				conn.Close() // no answer at all, as from a bridge that isn't there
+			}
+			return
+		}
 		srv.ServeHTTP(w, r)
 	}))
 	b.URL = "http://" + ts.Listener.Addr().String()
+	b.server = ts
 	pageKeys.Store(b.URL, b.Key)
 	t.Cleanup(func() { pageKeys.Delete(b.URL) })
 	// sessions started from the page run on pseudo-terminals inside the bridge, as in the real thing
@@ -67,18 +77,44 @@ func startBridge(t *testing.T, mod string) *testBridge {
 	ts.Start()
 	t.Cleanup(ts.Close)
 	t.Cleanup(b.Launcher.Terms.KillAll)
-	ch, stop := hub.Subscribe()
-	t.Cleanup(stop)
+	// the events the hub pushes, for waitEvent; the hub lets a subscriber that falls behind go (as it does a page), so
+	// this one subscribes again (the snapshot that comes first carries no event)
+	done := make(chan struct{})
+	t.Cleanup(func() { close(done) })
 	go func() {
-		for msg := range ch {
-			if m, ok := msg.Value.(map[string]any); ok && m["type"] == "event" {
-				b.mu.Lock()
-				b.events = append(b.events, m["event"].(bridge.Event))
-				b.mu.Unlock()
+		for {
+			ch, stop := hub.Subscribe()
+			for msg := range ch {
+				if m, ok := msg.Value.(map[string]any); ok && m["type"] == "event" {
+					b.mu.Lock()
+					b.events = append(b.events, m["event"].(bridge.Event))
+					b.mu.Unlock()
+				}
+				select {
+				case <-done:
+					stop()
+					return
+				default:
+				}
+			}
+			select {
+			case <-done:
+				return
+			default:
+				t.Log("the hub let the test's event recorder go (it fell behind); subscribing again")
 			}
 		}
 	}()
 	return b
+}
+
+// cutPages makes the bridge unreachable for the pages (on) or reachable again (off): their streams drop, and every
+// request of theirs gets its connection closed without an answer; the mod's requests still go through.
+func (b *testBridge) cutPages(on bool) {
+	b.cut.Store(on)
+	if on {
+		b.server.CloseClientConnections()
+	}
 }
 
 // post sends a request the way the mod does, with an account's token: made-up activity for tests without sessions.

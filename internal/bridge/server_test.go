@@ -504,6 +504,13 @@ func TestStreamStartsWithSnapshot(t *testing.T) {
 		t.Fatalf("content-type: %q", ct)
 	}
 	r := bufio.NewReader(resp.Body)
+	// the EventSource is told to come back a second after the stream ends (the hub lets a page go that fell behind)
+	if retry, err := r.ReadString('\n'); err != nil || retry != "retry: 1000\n" {
+		t.Fatalf("the stream should start with the reconnect delay: %q %v", retry, err)
+	}
+	if blank, _ := r.ReadString('\n'); blank != "\n" {
+		t.Fatalf("then a blank line: %q", blank)
+	}
 	line, err := r.ReadString('\n')
 	if err != nil || !strings.HasPrefix(line, `data: {"type":"snapshot"`) {
 		t.Fatalf("the first message should be a snapshot: %q %v", line, err)

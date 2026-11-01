@@ -7,7 +7,8 @@
 import { t, lang, errorText, applyI18n, langPicker } from '/i18n.js'
 import { esc } from '/asks.js'
 import { connect } from '/symphony.js'
-import { STATE_COLOR, GRAY, base, lower, buildText, statusText as statusOf } from '/ui/common.js'
+import { STATE_COLOR, GRAY, base, lower, buildText, statusText as statusOf, deferWhilePressed } from '/ui/common.js'
+import { connectionBanner } from '/ui/banner.js'
 import { createChat } from '/ui/chat.js'
 import { createLaunchDialog } from '/ui/launch.js'
 import { createTaskUI } from '/ui/task.js'
@@ -15,9 +16,11 @@ import { themePicker } from '/ui/themes.js'
 
 const sym = connect()
 let snapshot = sym.state
-sym.on('snapshot', s => { snapshot = s })
+// every snapshot, frames or not (a hidden page draws none): the alarm bell, and the tab's title counting the alarms
+sym.on('snapshot', s => { snapshot = s; ring(s.asks.length); document.title = (s.asks.length ? `(${s.asks.length}) ` : '') + t('mc.title') })
 const statusText = s => statusOf(sym, s)
 applyI18n()
+connectionBanner(sym)
 const prefs = document.querySelector('.bar .prefs'), langSel = langPicker()
 prefs.appendChild(langSel)
 themePicker(sym).then(sel => prefs.insertBefore(sel, langSel))
@@ -30,8 +33,10 @@ const fmtTime = when => new Date(when).toLocaleTimeString(lang, { hour: '2-digit
 const stateOf = s => !online(s) ? 'ended' : sym.asking(s.id) ? 'waiting' : s.state
 const ORDER = { waiting: 0, tool: 1, thinking: 1, idle: 2, ended: 3, done: 3 }
 const STATE_WORD_SHORT = { idle: 'mc.state.idle', thinking: 'mc.state.thinking', tool: 'mc.state.tool', waiting: 'mc.state.waiting', ended: 'mc.state.off' }
+// the rate-limit windows, short: the ones known by name, any other as Claude Code calls it
+const LIMIT_KEY = { five_hour: 'mc.limit.fiveHour', seven_day: 'mc.limit.sevenDay', spend_limit: 'mc.limit.spend' }
+const limitLabel = kind => LIMIT_KEY[kind] ? t(LIMIT_KEY[kind]) : String(kind).replace(/_/g, ' ').toUpperCase()
 // the task colors: one per task, by its number
-const LIMIT_LABEL = { five_hour: '5H', seven_day: '7D', spend_limit: '$' } // the rate-limit windows, short
 const TASK_HUES = [36, 200, 290, 150, 330, 60, 250, 100]
 const taskColor = id => `hsl(${TASK_HUES[(+String(id).slice(1) || 0) % TASK_HUES.length]} 80% 60%)`
 
@@ -135,7 +140,7 @@ function showChat() {
 
 // ---------- the wall ----------
 const wall = document.getElementById('wall'), findEl = document.getElementById('find')
-findEl.addEventListener('input', renderWall) // at once: the box narrows the wall as one types
+findEl.addEventListener('input', () => renderWall()) // at once: the box narrows the wall as one types
 // the tiles: every session online (a desk's, a task member's), then every account off duty
 function tiles() {
   const q = lower(findEl.value.trim()), out = []
@@ -165,7 +170,8 @@ function fit(n) {
   const h = H / rows
   return h < 90 ? 'tiny' : h < 140 ? 'small' : ''
 }
-function renderWall() {
+// (not while a pointer is down: a tile replaced under a press loses its click)
+const renderWall = deferWhilePressed(() => {
   const list = tiles()
   if (!list.length) { wall.style.gridTemplateColumns = '1fr'; wall.innerHTML = `<div class="empty">${esc(t('mc.noSessions'))}</div>`; return }
   const size = fit(list.length)
@@ -187,8 +193,8 @@ function renderWall() {
         `<div class="hd"><span class="nm" title="${esc(x.name)}">${esc(x.name)}</span><span class="st" style="--c:${STATE_COLOR[st] ?? GRAY}"><i></i>${esc(t(STATE_WORD_SHORT[st] ?? 'mc.state.off'))}</span></div>` +
         `<div class="model">${esc(on && s.model ? s.model.replace(/^claude-/, '') + (s.effort ? ' · ' + s.effort : '') : x.acc?.last?.model || '')}</div>` +
         (on ? `<div class="gauges">` +
-          (typeof ctx === 'number' ? `<span class="lbl">CTX</span><span class="gauge${ctx >= 90 ? ' full' : ctx >= 70 ? ' high' : ''}"><i style="width:${Math.min(100, ctx)}%"></i></span><span class="val">${Math.round(ctx)}%</span>` : '') +
-          limits.map(l => `<span class="lbl">${esc(LIMIT_LABEL[l.kind] ?? l.kind.replace(/_/g, ' ').toUpperCase())}</span><span class="gauge${l.percentUsed >= 90 ? ' full' : l.percentUsed >= 70 ? ' high' : ''}"><i style="width:${Math.min(100, l.percentUsed)}%"></i></span><span class="val">${Math.round(l.percentUsed)}%</span>`).join('') + `</div>` +
+          (typeof ctx === 'number' ? `<span class="lbl">${esc(t('mc.ctx'))}</span><span class="gauge${ctx >= 90 ? ' full' : ctx >= 70 ? ' high' : ''}"><i style="width:${Math.min(100, ctx)}%"></i></span><span class="val">${Math.round(ctx)}%</span>` : '') +
+          limits.map(l => `<span class="lbl">${esc(limitLabel(l.kind))}</span><span class="gauge${l.percentUsed >= 90 ? ' full' : l.percentUsed >= 70 ? ' high' : ''}"><i style="width:${Math.min(100, l.percentUsed)}%"></i></span><span class="val">${Math.round(l.percentUsed)}%</span>`).join('') + `</div>` +
           `<div class="spark">${spark(bins(s.id))}</div>` : '') +
         `<div class="now" title="${esc(now)}">${esc(now)}</div>`
       if (el) el.replaceWith(fresh); else wall.appendChild(fresh)
@@ -200,7 +206,7 @@ function renderWall() {
     if ((prev ? prev.nextSibling : wall.firstChild) !== el) { if (prev) prev.after(el); else wall.prepend(el) }
     prev = el
   }
-}
+})
 const askText = s => { const a = snapshot.asks.find(a => a.session === s.id); return !a ? '' : a.kind === 'question' ? (a.questions?.[0]?.question || t('asks.question')) : [a.tool, a.input?.command || a.input?.file_path || ''].filter(Boolean).join(' ') }
 wall.addEventListener('click', ev => {
   const stripe = ev.target.closest('.stripe')
@@ -212,25 +218,51 @@ wall.addEventListener('click', ev => {
 addEventListener('resize', render)
 
 // ---------- the bar: mission time, sessions, alarms, cost ----------
-let alarmsSeen = 0, primed = false, sound = false // primed: the first paint rings no bell for alarms already there
+// The bell: two short tones when the alarms go up (not for the ones there when the page opens). With the sound on, the
+// page keeps its stream while hidden, so the bell rings in a tab in the background too. A browser lets a page play
+// sound only once it was clicked or typed in: until then the switch says so.
+let alarmsSeen = 0, sound = false
 const SOUND_STORE = 'symphony.mission.sound'
 try { sound = localStorage.getItem(SOUND_STORE) === '1' } catch {}
 const soundBtn = document.getElementById('sound')
+let ac = null // the page's one AudioContext, made (and let play) by the first click or key
+function wake() {
+  try {
+    ac ??= new AudioContext()
+    ac.onstatechange = showSound
+    if (ac.state === 'suspended') ac.resume().catch(() => {})
+  } catch {}
+  showSound()
+}
+addEventListener('pointerdown', wake, true)
+addEventListener('keydown', wake, true)
+const canPlay = () => ac?.state === 'running'
+function showSound() {
+  const blocked = sound && !canPlay()
+  soundBtn.textContent = sound ? '🔔' : '🔕'
+  soundBtn.classList.toggle('blocked', blocked)
+  soundBtn.title = t(!sound ? 'mc.soundOff' : blocked ? 'mc.soundBlocked' : 'mc.soundOn')
+}
 function setSound(on) {
   sound = on
-  soundBtn.textContent = on ? '🔔' : '🔕'
-  soundBtn.title = t(on ? 'mc.soundOn' : 'mc.soundOff')
+  showSound()
+  sym.stayConnected(on)
   try { localStorage.setItem(SOUND_STORE, on ? '1' : '0') } catch {}
 }
 setSound(sound)
-soundBtn.onclick = () => { setSound(!sound); if (sound) beep() }
+soundBtn.onclick = () => { wake(); setSound(!sound); if (sound) beep() }
 function beep() { // two short tones, nothing loaded: the page's own
+  if (!canPlay()) return
   try {
-    const ac = new AudioContext(), g = ac.createGain()
+    const g = ac.createGain()
     g.gain.value = 0.08; g.connect(ac.destination)
     for (const [f, at] of [[880, 0], [1320, 0.16]]) { const o = ac.createOscillator(); o.type = 'square'; o.frequency.value = f; o.connect(g); o.start(ac.currentTime + at); o.stop(ac.currentTime + at + 0.12) }
-    setTimeout(() => ac.close(), 600)
+    setTimeout(() => g.disconnect(), 600)
   } catch {}
+}
+function ring(alarms) {
+  if (!sym.first && alarms > alarmsSeen && sound) beep()
+  alarmsSeen = alarms
 }
 function renderBar() {
   // the desk sessions online over the headcount (a task's member sessions are the same people, and tiles of their own)
@@ -239,11 +271,7 @@ function renderBar() {
   const alarms = snapshot.asks.length, el = document.getElementById('stat-alarms')
   el.querySelector('b').textContent = alarms
   el.classList.toggle('hot', alarms > 0)
-  if (!primed) primed = true
-  else if (alarms > alarmsSeen && sound) beep()
-  alarmsSeen = alarms
   document.getElementById('stat-cost').textContent = fmtUsd(snapshot.ledger.reduce((n, r) => n + r.usd, 0))
-  document.title = (alarms ? `(${alarms}) ` : '') + t('mc.title')
 }
 document.getElementById('stat-alarms').onclick = () => {
   const a = snapshot.asks[0]
@@ -259,10 +287,18 @@ function tickTime() {
 setInterval(tickTime, 1000)
 
 // ---------- the ticker: the bridge's activity log, newest last, and every push that adds to it ----------
-let activity = [], actPending = null
-async function loadActivity() { activity = await sym.fetchActivity(); renderTicker() }
-function refreshActivity() { if (actPending) return; actPending = setTimeout(() => { actPending = null; loadActivity() }, 800) }
-for (const type of ['event', 'message', 'ask', 'settled', 'launch']) sym.on(type, refreshActivity)
+// fetched on a page that's seen, not more than every few seconds however many pushes come; again when the page shows
+// again or the stream comes back
+const ACT_GAP = 3000
+let activity = [], actPending = null, actAt = 0
+async function loadActivity() { actAt = Date.now(); const list = await sym.fetchActivity(); if (list) activity = list; renderTicker() }
+function refreshActivity(now = false) {
+  if (actPending || document.visibilityState === 'hidden') return
+  actPending = setTimeout(() => { actPending = null; loadActivity() }, Math.max(now ? 0 : 800, actAt + ACT_GAP - Date.now()))
+}
+for (const type of ['event', 'message', 'ask', 'settled', 'launch']) sym.on(type, () => refreshActivity())
+sym.on('resync', () => refreshActivity(true))
+document.addEventListener('visibilitychange', () => refreshActivity(true))
 let tickerShown = ''
 function renderTicker() {
   const track = document.getElementById('ticker-track'), items = activity.slice(-40)
@@ -274,12 +310,13 @@ function renderTicker() {
   track.style.setProperty('--dur', Math.max(20, items.length * 4) + 's')
 }
 
-// ---------- every change, once per frame ----------
+// ---------- every change, once per frame, and not while a pointer is down ----------
 let drawing = false
+const draw = deferWhilePressed(() => { renderBar(); renderWall(); if (chatFor) showChat() })
 function render() {
   if (drawing) return
   drawing = true
-  requestAnimationFrame(() => { drawing = false; renderBar(); renderWall(); if (chatFor) showChat() })
+  requestAnimationFrame(() => { drawing = false; draw() })
 }
 sym.on('change', render)
 sym.on('protocol', (bridge, page) => { const note = document.getElementById('launch-note'); note.hidden = false; note.textContent = t('error.protocol_mismatch', { bridge, page }) })

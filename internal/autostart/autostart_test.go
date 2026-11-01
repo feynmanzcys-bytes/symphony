@@ -59,7 +59,7 @@ func TestLinux(t *testing.T) {
 	for _, line := range []string{
 		`ExecStart="/opt/sym phony/symphony" "-addr=127.0.0.1:7788" "-data=/home/u/a \"b\" $$c" "-open=false"`,
 		`Environment="PATH=/usr/bin:/home/u/100%%/bin"`,
-		"KillMode=process",
+		"KillMode=mixed",
 		"Restart=on-failure",
 		"WantedBy=default.target",
 	} {

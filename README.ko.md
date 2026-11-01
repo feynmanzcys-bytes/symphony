@@ -39,14 +39,14 @@ symphony는 두 부분으로 되어 있고, 둘 다 있어야 합니다.
 uname -sm                 # Linux/macOS: 아래에서 고를 압축 파일이 정해집니다 (x86_64 → amd64; arm64/aarch64 → arm64)
 claude --version          # Claude Code 2.1.x 필요 (2.1.316에서 테스트)
 git --version             # 협업 작업에만 필요. 없으면 보고에 적되 멈추지는 마세요
-symphony -version         # 이미 설치돼 있나? "symphony v1.0.0 (darwin/arm64)" 출력
+symphony -version         # 이미 설치돼 있나? "symphony v1.1.0 (darwin/arm64)" 출력
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:7788/api/state   # bridge가 실행 중인가? 401: symphony 1.x, 200: 그보다 오래된 버전, 000: 없음
-claude plugin list --json # mod가 이미 설치돼 있나? "id":"symphony-bridge@symphony"를 찾으세요
+claude plugin list --json # mod가 이미 설치돼 있나? "id": "symphony-bridge@symphony"가 있는 항목을 찾으세요
 ```
 
 Windows에서는 PowerShell을 쓰세요. `$env:PROCESSOR_ARCHITECTURE`는 `AMD64` 또는 `ARM64`입니다.
 
-`claude`가 없으면 멈추고, 먼저 Claude Code를 설치하라고 사용자에게 알리세요. 프로그램과 mod가 둘 다 이미 있으면 대신 아래 "업데이트"로 가세요. 이미 실행 중인 bridge는 시작할 때의 프로그램으로 계속 돌아가므로, 실행 중인 bridge가 있으면 5단계 전에 그것을 멈추게 됩니다.
+`claude`가 없으면 멈추고, 먼저 Claude Code를 설치하라고 사용자에게 알리세요. 프로그램과 mod가 둘 다 이미 있으면 대신 아래 "업데이트"로 가세요. 둘 중 하나만 있으면 없는 쪽의 단계를 진행하세요. 프로그램은 2단계와 3단계(`symphony -version`이 이미 최신 릴리스를 출력하면 건너뜁니다), mod는 4단계이고, 그다음 5단계로 가세요. 이미 실행 중인 bridge는 시작할 때의 프로그램으로 계속 돌아가므로, 실행 중인 bridge가 있으면 5단계 전에 그것을 멈추게 됩니다.
 
 #### 2단계: 프로그램 받기
 
@@ -58,10 +58,9 @@ Linux와 macOS에서는:
 d=$(mktemp -d)   # 자신만 읽을 수 있는 새 폴더
 echo "$d"        # 적어 두세요: 3단계에서 여기서 설치합니다
 cd "$d"
-curl -fLO https://github.com/feynmanzcys-bytes/symphony/releases/latest/download/symphony_<os>_<arch>.tar.gz
-curl -fLO https://github.com/feynmanzcys-bytes/symphony/releases/latest/download/checksums.txt
-sha256sum -c --ignore-missing checksums.txt      # Linux: 반드시 "symphony_<os>_<arch>.tar.gz: OK"가 출력돼야 합니다
-shasum -a 256 -c --ignore-missing checksums.txt  # macOS: 같은 검사
+curl -fsSLO https://github.com/feynmanzcys-bytes/symphony/releases/latest/download/symphony_<os>_<arch>.tar.gz
+curl -fsSLO https://github.com/feynmanzcys-bytes/symphony/releases/latest/download/checksums.txt
+if command -v sha256sum >/dev/null; then sha256sum -c --ignore-missing checksums.txt; else shasum -a 256 -c --ignore-missing checksums.txt; fi   # 반드시 "symphony_<os>_<arch>.tar.gz: OK"가 출력돼야 합니다
 tar xzf symphony_<os>_<arch>.tar.gz              # 이제 프로그램은 "$d/symphony"에 있습니다
 ```
 
@@ -109,7 +108,7 @@ cd "$d/src" && go build -o "$d/symphony" ./cmd/bridge   # 이제 프로그램은
 ```bash
 install -m 755 "$d/symphony" ~/.local/bin/symphony
 xattr -d com.apple.quarantine ~/.local/bin/symphony 2>/dev/null || true   # macOS: 바이너리에 서명이 없습니다
-symphony -version          # "symphony v1.0.0 (linux/amd64)" 출력: 버전과 플랫폼
+symphony -version          # "symphony v1.1.0 (linux/amd64)" 출력: 버전과 플랫폼
 ```
 
 이 폴더들 중 `PATH`에 있는 것이 하나도 없으면, 무엇이든 바꾸기 전에 사용자에게 물어보세요. 좋다고 하면 `~/.local/bin`을 만들어 셸의 rc 파일(`~/.zshrc` 또는 `~/.bashrc`)에 추가하고, 보고에 그렇게 적으세요. 싫다고 하면 사용자가 말하는 곳에 프로그램을 설치하고, `symphony`가 사용자의 Claude Code 세션의 `PATH`에 없는 동안에는 mod가 bridge를 스스로 시작할 수 없다고 알려 주세요(5단계의 로그인할 때 시작은 그래도 됩니다).
@@ -119,7 +118,7 @@ Windows에서는 전용 폴더에 압축을 푸세요(`$d`와 `$zip`은 2단계�
 ```powershell
 $dest = Join-Path $env:LOCALAPPDATA 'Programs\symphony'
 Expand-Archive -LiteralPath (Join-Path $d $zip) -DestinationPath $dest -Force
-& (Join-Path $dest 'symphony.exe') -version   # "symphony v1.0.0 (windows/amd64)" 출력
+& (Join-Path $dest 'symphony.exe') -version   # "symphony v1.1.0 (windows/amd64)" 출력
 ```
 
 그 폴더를 사용자의 `Path`에 추가하는 것은 계속 남는 변경이므로, 먼저 사용자에게 물어보세요. 좋다고 하면 아래 줄을 실행하고 새 셸을 여세요. 싫다고 하면 전체 경로를 쓰세요. 처음 실행할 때 SmartScreen이 경고할 수 있습니다. "추가 정보"를 누른 뒤 "실행"을 누르세요.
@@ -141,11 +140,11 @@ claude plugin install symphony-bridge --marketplace feynmanzcys-bytes/symphony
 확인:
 
 ```bash
-claude plugin list --json   # 항목 하나에 "id":"symphony-bridge@symphony", "scope":"user", "enabled":true가 있어야 합니다
+claude plugin list --json   # 항목 하나에 "id": "symphony-bridge@symphony", "scope": "user", "enabled": true가 있어야 합니다
 ```
 
-- `"scope":"project"` 또는 `"local"`: mod가 한 폴더에서만 로드됩니다. `claude plugin uninstall symphony-bridge@symphony`를 실행한 뒤 `--scope user`로 다시 설치하세요.
-- `"enabled":false`: `claude plugin enable symphony-bridge@symphony`.
+- `"scope": "project"` 또는 `"local"`: mod가 한 폴더에서만 로드됩니다. `claude plugin uninstall symphony-bridge@symphony`를 실행한 뒤 `--scope user`로 다시 설치하세요.
+- `"enabled": false`: `claude plugin enable symphony-bridge@symphony`.
 
 #### 5단계: bridge 시작
 
@@ -171,28 +170,29 @@ symphony now starts when you log in (<where>); it's running at http://127.0.0.1:
 symphony -background -open=false
 ```
 
-이 명령은 bridge를 터미널과 분리해 시작하고(컴퓨터를 다시 시작한 뒤에는 다시 시작되지 않습니다), 다음을 출력합니다.
+이 명령은 bridge를 터미널과 분리해 시작하고(컴퓨터를 다시 시작한 뒤에는 다시 시작되지 않습니다), 표준 오류에 날짜와 시각 뒤에 다음을 출력합니다.
 
 ```
 the symphony bridge runs in the background at http://127.0.0.1:7788/?key=<key>; its log: <data folder>/bridge.log
 ```
 
-이 버전의 bridge가 이미 실행 중이면 대신 `a symphony bridge is already running at http://127.0.0.1:7788/?key=<key>`를 출력합니다. 문제없는 상황이니 또 시작하지 마세요. `<key>`는 브라우저를 사무실에 로그인시키는 페이지 키이므로, 다른 곳에 붙여 넣지 마세요. 프로그램이 `127.0.0.1:7788 is taken: another program, or a symphony bridge with another data folder, answers there`라고 답하면, 거기서 무엇이 응답하는지 사용자에게 알리고(예전 버전의 symphony bridge도 여기에 해당합니다. "업데이트"처럼 멈추세요), 묻지 않고 다른 주소를 고르지 마세요.
+이 버전의 bridge가 이미 실행 중이면 대신 (같은 방식으로) `a symphony bridge is already running at http://127.0.0.1:7788/?key=<key>`를 출력합니다. 문제없는 상황이니 또 시작하지 마세요. `<key>`는 브라우저를 사무실에 로그인시키는 페이지 키이므로, 다른 곳에 붙여 넣지 마세요. 프로그램이 `127.0.0.1:7788 is taken: another program, or a symphony bridge with another data folder, answers there`라고 답하면, 거기서 무엇이 응답하는지 사용자에게 알리고(예전 버전의 symphony bridge도 여기에 해당합니다. "업데이트"처럼 멈추세요), 묻지 않고 다른 주소를 고르지 마세요.
 
 요청 하나로 전체 연결을 확인합니다. 이 요청은 데이터 폴더에 있는 페이지 키를 제시합니다(표준 입력으로 넘기므로, 다른 사용자가 볼 수 있는 명령줄에 키가 드러나지 않습니다).
 
 ```bash
-printf 'X-Symphony-Key: %s\n' "$(cat ~/.config/symphony/key)" | curl -s -H @- http://127.0.0.1:7788/api/launch/options                         # Linux
-printf 'X-Symphony-Key: %s\n' "$(cat ~/"Library/Application Support/symphony/key")" | curl -s -H @- http://127.0.0.1:7788/api/launch/options   # macOS
+printf 'X-Symphony-Key: %s\n' "$(cat "${SYMPHONY_DATA:-${XDG_CONFIG_HOME:-$HOME/.config}/symphony}/key")" | curl -s -H @- http://127.0.0.1:7788/api/launch/options      # Linux
+printf 'X-Symphony-Key: %s\n' "$(cat "${SYMPHONY_DATA:-$HOME/Library/Application Support/symphony}/key")" | curl -s -H @- http://127.0.0.1:7788/api/launch/options   # macOS
 ```
 
 ```powershell
-(Invoke-WebRequest -UseBasicParsing -Headers @{ 'X-Symphony-Key' = (Get-Content "$env:APPDATA\symphony\key") } -Uri http://127.0.0.1:7788/api/launch/options).Content
+$data = if ($env:SYMPHONY_DATA) { $env:SYMPHONY_DATA } else { Join-Path $env:APPDATA 'symphony' }
+(Invoke-WebRequest -UseBasicParsing -Headers @{ 'X-Symphony-Key' = (Get-Content (Join-Path $data 'key')) } -Uri http://127.0.0.1:7788/api/launch/options).Content
 ```
 
 데이터 폴더는 Linux에서는 `~/.config/symphony`(`$XDG_CONFIG_HOME`이 설정돼 있으면 `$XDG_CONFIG_HOME/symphony`), macOS에서는 `~/Library/Application Support/symphony`, Windows에서는 `%AppData%\symphony`이고, `SYMPHONY_DATA`가 설정돼 있으면 그 폴더입니다.
 
-응답에 `"enabled":true`와 `"mod":{"ok":true,"id":"symphony-bridge@symphony","version":"1.0.0"}`가 있으면, bridge가 실행 중이고 `claude`를 찾았으며 세션이 로드할 위치에 mod가 설치된 것입니다. `"enabled":false`이면 `mod.code`가 무엇이 문제인지, `mod.fix`가 그것을 고치는 명령을 알려 줍니다. `mod_not_installed`나 `mod_project_scope`(4단계로 돌아가기), `mod_disabled`(활성화하기), `mod_check_failed`(`claude plugin list --json`이 실패한 것이니 Claude Code가 너무 오래된 버전일 가능성이 큽니다)입니다. `"mod":null`은 bridge가 자기 `PATH`에서 `claude`를 아예 찾지 못했다는 뜻입니다(로그에 나옵니다). claude를 거기에 넣거나 `-claude /path/to/claude`로 bridge를 시작하세요. 응답에 `"code":"page_key"`가 있으면 그 키 파일이 실행 중인 bridge의 것이 아니라는 뜻입니다. bridge가 다른 데이터 폴더로 시작된 것입니다.
+응답에 `"enabled":true`와 `"mod":{"ok":true,"id":"symphony-bridge@symphony","version":"1.1.0"}`가 있으면, bridge가 실행 중이고 `claude`를 찾았으며 세션이 로드할 위치에 mod가 설치된 것입니다. `"enabled":false`이면 `mod.code`가 무엇이 문제인지, `mod.fix`가 그것을 고치는 명령을 알려 줍니다. `mod_not_installed`나 `mod_project_scope`(4단계로 돌아가기), `mod_disabled`(활성화하기), `mod_check_failed`(`claude plugin list --json`이 실패한 것이니 Claude Code가 너무 오래된 버전일 가능성이 큽니다)입니다. `"mod":null`은 bridge가 자기 `PATH`에서 `claude`를 아예 찾지 못했다는 뜻입니다(로그에 나옵니다). claude를 거기에 넣거나 `-claude /path/to/claude`로 bridge를 시작하세요. 응답에 `"code":"page_key"`가 있으면 요청이 키를 제시하지 않았거나 틀린 키를 제시했다는 뜻입니다. `cat`이 키 파일을 찾았는지 확인하세요(데이터 폴더는 위 참고). 찾았다면 실행 중인 bridge가 다른 데이터 폴더로 시작된 것입니다.
 
 bridge의 로그는 데이터 폴더의 `bridge.log`입니다. 로그인할 때 시작된 bridge는 Linux에서는 `journalctl --user -u symphony`, macOS에서는 `~/Library/Logs/symphony.log`에 로그를 남깁니다.
 
@@ -209,14 +209,11 @@ bridge의 로그는 데이터 폴더의 `bridge.log`입니다. 로그인할 때 
 - 무엇을 어디에 설치했는지: 프로그램 경로, 사용자 범위의 mod, bridge를 로그인 시 시작으로 했는지 백그라운드로 시작했는지, `PATH`나 rc 파일을 바꿨다면 그 내용, 여러분이 한 선택, 그리고 `git`이 없다면 없다는 사실.
 - 모두 되돌리는 방법: 아래 "제거".
 
-규칙: bridge는 이 컴퓨터에서만 수신합니다(다른 주소는 거부하므로 `-addr`는 `127.0.0.1:7788` 그대로 둡니다). `sudo`로 실행하지 말고, 같은 주소에 두 번째 bridge를 시작하지 마세요.
+규칙: bridge는 이 컴퓨터에서만 수신합니다(이 컴퓨터가 아닌 주소는 거부합니다. 사용자가 다른 포트를 고르지 않는 한 기본값 `127.0.0.1:7788`을 그대로 두세요). `sudo`로 실행하지 말고, 같은 주소나 같은 데이터 폴더로 두 번째 bridge를 시작하지 마세요(symphony가 거부하고, 실행 중인 bridge를 알려 줍니다).
 
 #### 업데이트
 
-2단계처럼 새 릴리스를 내려받으세요. 실행 중인 bridge는 다시 시작할 때까지 예전 프로그램으로 돌아가므로(Windows에서는 실행 중인 프로그램을 바꿔 넣을 수도 없습니다), bridge를 멈추고 3단계처럼 프로그램을 바꿔 넣은 다음 다시 시작하세요. bridge를 멈추면 bridge가 시작한 세션도 끝나므로 먼저 사용자에게 알리세요.
-
-- 로그인할 때 시작되는 경우: `symphony -autostart off`(Linux와 macOS에서는 이것으로 bridge도 멈춥니다. Windows에서는 bridge의 콘솔 창도 닫거나 `Stop-Process -Name symphony`를 실행하세요), 프로그램을 바꿔 넣고, 그다음 `symphony -autostart on -open=false`.
-- `-background`로 시작한 경우: 멈추는 명령이 따로 없습니다. 그 프로세스를 끝내세요. Linux와 macOS에서는 `pkill -x symphony`(실행 중인 `symphony attach`도 함께 끝납니다), Windows에서는 `Stop-Process -Name symphony`입니다. 프로그램을 바꿔 넣고, 그다음 `symphony -background -open=false`.
+2단계처럼 새 릴리스를 내려받으세요. 실행 중인 bridge는 다시 시작할 때까지 예전 프로그램으로 돌아가므로(Windows에서는 실행 중인 프로그램을 바꿔 넣을 수도 없습니다), `symphony -stop`으로 bridge를 멈추고 3단계처럼 프로그램을 바꿔 넣은 다음, 전에 돌던 방식 그대로 다시 시작하세요. 로그인할 때 시작되는 경우에는 `symphony -autostart on -open=false`(이 명령으로 지금 바로 시작도 됩니다), 아니면 `symphony -background -open=false`입니다. bridge가 기본값이 아닌 `-addr`나 `-data`로 실행 중이라면 이 명령마다 같은 값을 붙이세요. `-stop`은 그 데이터 폴더의 bridge만 멈추고(`-addr`에서, 또는 그 폴더의 bridge가 실제로 실행 중인 곳에서), 응답하는 bridge가 없으면 `nothing to stop`이라고 알립니다. bridge를 멈추면 bridge가 시작한 세션도 끝나므로 먼저 사용자에게 알리세요. (`-stop`은 v1.1.0에서 생겼습니다. v1.0.0 bridge를 멈추려면 그 프로세스를 끝내세요. Linux와 macOS에서는 `pkill -x symphony`, Windows에서는 `Stop-Process -Name symphony`입니다.)
 
 mod는 `claude plugin update symphony-bridge@symphony`로 따라옵니다(클론을 마켓플레이스로 쓴다면 대신 거기서 `git pull`).
 
@@ -225,8 +222,8 @@ mod는 `claude plugin update symphony-bridge@symphony`로 따라옵니다(클론
 #### 제거
 
 ```bash
-symphony -autostart off                           # 로그인할 때 더는 시작하지 않고, bridge와 그 세션을 멈춥니다
-pkill -x symphony                                 # -background로 시작한 bridge를 멈춥니다
+symphony -stop                                    # bridge와 그 세션을 멈춥니다. 어떻게 시작했든 상관없습니다 (-addr나 -data가 기본값이 아니면 그 값도 붙이세요)
+symphony -autostart off                           # 로그인할 때 더는 시작하지 않습니다 (원래 그렇게 돼 있지 않았으면 그렇다고 알려 줍니다)
 claude plugin uninstall symphony-bridge@symphony  # mod
 claude plugin marketplace remove symphony         # 마켓플레이스 항목
 rm ~/.local/bin/symphony                          # 프로그램 (3단계에서 넣은 위치)
@@ -235,8 +232,8 @@ rm ~/.local/bin/symphony                          # 프로그램 (3단계에서 
 3단계에서 셸 rc 파일에 `~/.local/bin`을 추가했다면 그 줄도 지우세요. Windows에서는 PowerShell로:
 
 ```powershell
+symphony -stop                                               # bridge와 그 세션을 멈춥니다 (-addr나 -data가 기본값이 아니면 그 값도 붙이세요)
 symphony -autostart off                                      # 로그인할 때 더는 시작하지 않습니다
-Stop-Process -Name symphony -ErrorAction SilentlyContinue    # bridge를 멈춥니다
 claude plugin uninstall symphony-bridge@symphony
 claude plugin marketplace remove symphony
 $dest = Join-Path $env:LOCALAPPDATA 'Programs\symphony'
@@ -245,7 +242,7 @@ $p = ([Environment]::GetEnvironmentVariable('Path', 'User') -split ';' | Where-O
 [Environment]::SetEnvironmentVariable('Path', $p, 'User')    # 3단계에서 추가한 Path 항목
 ```
 
-데이터 폴더(token이 든 계정, 페이지 키, 메시지 기록, 작업)는 남습니다. 전부 지우려면 이 폴더도 지우세요. 이 폴더를 지우면 페이지 키도 지워지므로, 다음에 시작할 때 새 키가 만들어지고 모든 브라우저가 다시 로그인해야 합니다. Linux에서 snap이나 flatpak 브라우저를 쓴다면 `open.html`은 그 브라우저 전용 폴더(`~/snap/<snap>/common` 또는 `~/.var/app/<app id>`)에 있으니 그것도 지우세요.
+데이터 폴더(token이 든 계정, 페이지 키, 메시지 기록, 사용량 장부, 작업, 그리고 `lock`, `bridge.addr`, 따로 치워 둔 `*.corrupt-<time>` 같은 파일)는 남습니다. 전부 지우려면 이 폴더도 지우세요. 이 폴더를 지우면 페이지 키도 지워지므로, 다음에 시작할 때 새 키가 만들어지고 모든 브라우저가 다시 로그인해야 합니다. Linux에서 snap이나 flatpak 브라우저를 쓴다면 `open.html`은 그 브라우저 전용 폴더(`~/snap/<snap>/common` 또는 `~/.var/app/<app id>`)에 있으니 그것도 지우세요.
 
 ## 주요 기능
 
@@ -275,7 +272,7 @@ $p = ([Environment]::GetEnvironmentVariable('Path', 'User') -split ';' | Where-O
 | 플래그 | 기본값 | 설명 |
 | --- | --- | --- |
 | `-addr` | `127.0.0.1:7788` | 수신 대기할 주소. 호스트는 `127.0.0.1`, `localhost`, `::1`(`[::1]:7788`처럼) 중 하나여야 하며, bridge는 다른 호스트를 거부합니다 |
-| `-data` | `$SYMPHONY_DATA`, 없으면 설정 폴더 안의 `symphony` | 데이터 폴더: token이 든 계정(`accounts.json`), 페이지 키(`key`)와 `open.html`, 메시지 기록(`messages.json`), 작업(`tasks.json`), `-background`의 로그(`bridge.log`) |
+| `-data` | `$SYMPHONY_DATA`, 없으면 설정 폴더 안의 `symphony` | 데이터 폴더: token이 든 계정(`accounts.json`), 페이지 키(`key`)와 `open.html`, 메시지 기록(`messages.json`), 사용량 장부(`ledger.json`), 작업(`tasks.json`), `-background`의 로그(`bridge.log`), `lock`과 `bridge.addr`(어느 bridge가 어디서 쓰고 있는지), 그리고 손상되어 따로 치워 둔 메시지 기록이나 사용량 장부(`*.corrupt-<time>`) |
 | `-claude` | `claude` | claude 실행 파일 |
 | `-lang` | 시스템 언어, 없으면 `en` | bridge 메시지 언어(`SYMPHONY_LANG`, `LC_ALL`, `LC_MESSAGES`, `LANG`으로 기본값이 정해집니다) |
 | `-mod` | 비어 있음 | 개발용: 이 폴더의 mod를 `--plugin-dir`로 세션에 넘겨, 설치된 사본 대신 쓰게 합니다 |
@@ -283,11 +280,12 @@ $p = ([Environment]::GetEnvironmentVariable('Path', 'User') -split ';' | Where-O
 | `-open` | `true` | bridge가 시작되면 브라우저에서 사무실을 엽니다. `-addr`에서 이 데이터 폴더의 bridge가 이미 실행 중이면 그 사무실만 엽니다 |
 | `-autostart` | — | `on`: 로그인할 때마다 bridge를 자동으로 시작하고(함께 준 플래그 포함) 지금 바로 시작합니다. `off`: 되돌립니다 |
 | `-background` | — | bridge를 백그라운드에서 시작합니다. 터미널과 분리되고 로그는 데이터 폴더의 `bridge.log`에 남기며, 응답하면 돌아옵니다 |
+| `-stop` | — | 이 데이터 폴더의 bridge를 멈춥니다(`-addr`에서, 아니면 실제로 실행 중인 곳에서). 어떻게 시작했든 상관없고(그 세션도 끝납니다), bridge가 사라지면 돌아옵니다. 키는 그 키를 가지고 있다고 증명하는 bridge에만 보여 줍니다 |
 | `-version` | — | 버전을 출력하고 종료합니다 |
 
-`-addr`에서 다른 것(다른 프로그램, 다른 데이터 폴더를 쓰는 bridge, 또는 예전 버전의 symphony bridge)이 응답하면, symphony는 그렇다고 알리고 멈춥니다. 페이지 키는 그 키를 가지고 있다고 증명하는 bridge에만 보여 줍니다.
+`-addr`에서 다른 것(다른 프로그램, 다른 데이터 폴더를 쓰는 bridge, 또는 예전 버전의 symphony bridge)이 응답하면, symphony는 그렇다고 알리고 멈춥니다. 페이지 키는 그 키를 가지고 있다고 증명하는 bridge에만 보여 줍니다. 데이터 폴더 하나는 한 번에 bridge 하나만 쓸 수 있습니다. 지정한 데이터 폴더의 bridge가 이미 다른 주소에서 실행 중이면, symphony는 그 주소를 알리고 그 사무실을 연 뒤 멈춥니다(두 번째 bridge에는 따로 `-data`를 주세요).
 
-**로그인할 때 시작**: `symphony -autostart on`을 실행하면 이후 로그인할 때마다 bridge가 자동으로 시작되고(함께 준 플래그, 예를 들어 `-addr`도 그대로 씁니다) 지금 바로 시작됩니다. `symphony -autostart off`로 되돌릴 수 있습니다. Linux에서는 systemd 사용자 서비스(로그는 `journalctl --user -u symphony`), macOS에서는 launchd 에이전트(로그는 `~/Library/Logs/symphony.log`), Windows에서는 레지스트리 Run 키의 값입니다(bridge는 콘솔 창에서 실행되며, 창을 닫으면 다음 로그인 때까지 멈춥니다). `go run`이 아니라 symphony 프로그램 자체가 필요합니다.
+**로그인할 때 시작**: `symphony -autostart on`을 실행하면 이후 로그인할 때마다 bridge가 자동으로 시작되고(함께 준 플래그, 예를 들어 `-addr`도 그대로 씁니다) 지금 바로 시작됩니다. `symphony -autostart off`로 되돌릴 수 있습니다. Linux에서는 systemd 사용자 서비스(로그는 `journalctl --user -u symphony`), macOS에서는 launchd 에이전트(로그는 `~/Library/Logs/symphony.log`), Windows에서는 레지스트리 Run 키의 값입니다(bridge는 콘솔 창에서 실행되며, 창을 닫으면 다음 로그인 때까지 멈춥니다). `symphony -stop`은 어떻게 시작했든 bridge를 멈추며, bridge는 다시 시작될 때까지(로그인할 때 시작되는 bridge라면 다음 로그인 때까지) 멈춰 있습니다. `go run`이 아니라 symphony 프로그램 자체가 필요합니다.
 
 **소스에서** 실행하려면 Go 1.27 이상이 필요합니다: `git clone https://github.com/feynmanzcys-bytes/symphony.git && cd symphony && go run ./cmd/bridge`.
 
@@ -311,12 +309,14 @@ SYMPHONY_TOKEN=<token> claude --name frontend-alice --permission-mode manual
 | 메시지 | 뜻 |
 | --- | --- |
 | `bridge(...)에 연결할 수 없습니다` / `can't reach the bridge` | bridge 주소에서 아무것도 응답하지 않고, bridge를 시작해도 소용이 없었습니다(또는 그 주소가 이 컴퓨터가 아닙니다). |
+| `bridge(...)를 시작하지 못했습니다: <reason>` / `couldn't start the bridge ...: <reason>` | 아무것도 응답하지 않았고, `symphony -background`도 표시된 이유로 실패했습니다(예를 들어 이 데이터 폴더의 bridge가 다른 주소에서 실행 중이라면 `SYMPHONY_BRIDGE`를 그 주소로 설정하세요). |
 | `bridge가 이 SYMPHONY_TOKEN을 알지 못합니다` / `the bridge doesn't know this SYMPHONY_TOKEN` | bridge에 이 token을 가진 계정이 없습니다. 계정이 삭제됐거나, bridge가 다른 데이터 폴더를 쓰고 있습니다. |
 | `이 세션이 신뢰할 수 있는 symphony bridge가 아니거나` / `isn't a symphony bridge this session can trust` | 그 주소에서 무언가 응답하지만 token을 안다는 것을 증명하지 못합니다. 다른 프로그램이거나, mod보다 오래된 symphony입니다(업데이트하세요). token은 보내지 않습니다. |
 | `SYMPHONY_BRIDGE(...)는 이 컴퓨터에 있거나 https를 사용해야 합니다` / `SYMPHONY_BRIDGE ... must be on this machine or use https` | mod가 받아들이지 않는 주소입니다. bridge에는 전혀 연결하지 않습니다. |
 | `이 계정에는 이미 온라인 세션이 있습니다` / `this account already has a session online` | 계정 하나는 한 번에 세션 하나만 쓸 수 있습니다. 이 세션용으로 계정을 하나 더 만드세요. |
+| `사무실 웹 페이지(...)에서 응답을 기다리는 중입니다` / `waiting for your answer in the office page` | 권한 승인이나 질문이 터미널이 아니라 사무실 페이지에서 기다리고 있습니다. 거기서 답하거나, Esc를 눌러 취소하세요. 세션마다 한 번만 표시됩니다. |
 
-이 컴퓨터의 bridge 주소에서 아무 응답이 없으면, 세션이 `symphony -background -open=false -addr <that address>`로 bridge를 직접 시작하고(`symphony`가 PATH에 있을 때) 그렇다고 알립니다(`백그라운드에서 bridge(...)를 시작했습니다` / `started the bridge ... in the background`). bridge는 세션이 끝나도 계속 실행됩니다. 계정이 기본 데이터 폴더에 없다면 `SYMPHONY_DATA`를 설정하세요.
+이 컴퓨터의 bridge 주소에서 아무 응답이 없으면, 세션이 `symphony -background -open=false -addr <that address>`로 bridge를 직접 시작하고(`symphony`가 PATH에 있을 때) 그렇다고 알립니다(`백그라운드에서 bridge(...)를 시작했습니다` / `started the bridge ... in the background`). bridge는 세션이 끝나도 계속 실행됩니다. 계정이 기본 데이터 폴더에 없다면 `SYMPHONY_DATA`를 설정하세요. 이 데이터 폴더의 bridge가 이미 다른 주소에서 실행 중이면 그렇다고 알리고, 세션은 터미널에서 처리합니다. `SYMPHONY_BRIDGE`를 그 주소로 설정하세요.
 
 ## 협업 작업
 
@@ -358,7 +358,7 @@ SYMPHONY_TOKEN=<token> claude --name frontend-alice --permission-mode manual
 페이지에서 세션을 시작할 수 있다는 것은 곧 이 컴퓨터에서 명령을 실행할 수 있다는 뜻이므로, bridge는 누가 들어오는지 지킵니다.
 
 - **페이지 키**: 사무실과 그 API를 쓰려면 페이지 키가 필요합니다. 페이지 키는 `symphony`가 여는 링크를 통해 브라우저가 받는 쿠키입니다. 키는 데이터 폴더의 `key` 파일로, 여러분만 읽을 수 있습니다. 프로그램은 `X-Symphony-Key` 헤더로 키를 제시합니다.
-- **이 컴퓨터 전용**: bridge는 이 컴퓨터에서만 수신하고, 이 컴퓨터에서 온 연결만 받습니다. 다른 호스트를 향한 요청(DNS 리바인딩)과 다른 웹사이트가 여러분의 브라우저를 통해 보내는 쓰기 요청을 거부하며, 다른 사이트는 이 페이지를 프레임 안에 넣을 수 없습니다. 페이지는 bridge 자신의 파일만 불러옵니다(Content Security Policy).
+- **이 컴퓨터 전용**: bridge는 이 컴퓨터에서만 수신하고, 이 컴퓨터에서 온 연결만 받습니다. 다른 호스트를 향한 요청(DNS 리바인딩)과 다른 웹사이트가 여러분의 브라우저를 통해 보내는 쓰기 요청을 거부하며, 브라우저가 다른 사이트나 다른 포트에서 왔다고 알리는 요청에는 링크라 해도 API가 응답하지 않습니다. 다른 사이트는 이 페이지를 프레임 안에 넣을 수 없습니다. 페이지는 bridge 자신의 파일만 불러옵니다(Content Security Policy).
 - **mod는 bridge를 확인한 뒤에** token을 보내고, `symphony` 프로그램도 bridge를 확인한 뒤에 페이지 키를 보여 주므로, bridge 주소에서 대신 수신하고 있는 다른 무언가는 둘 중 어느 것도 받지 못합니다.
 - **막지 못하는 것**: 여러분 자신의 사용자 권한으로 실행되는 프로그램은 다른 파일과 마찬가지로 데이터 폴더의 페이지 키와 token을 읽을 수 있습니다. 또 브라우저는 한 사이트의 쿠키를 그 사이트의 모든 포트에 보냅니다. 이 컴퓨터의 다른 사용자가 `127.0.0.1`에서 돌리는 서버는 여러분의 브라우저가 그 서버를 열 때, 또는 bridge가 멈춰 있고 사무실이 아직 탭에 열려 있는 동안 그 서버가 bridge의 포트를 차지할 때 페이지 키 쿠키를 받게 됩니다. 다른 사람과 함께 쓰는 컴퓨터에서는 bridge를 멈추기 전에 사무실을 닫고, 키가 새어 나갔을 수 있다면 데이터 폴더의 `key` 파일을 지우세요(다음에 시작할 때 새 키가 만들어집니다).
 - 프로그램에는 서명이 없습니다. 브라우저로 내려받은 사본은 macOS가 개발자를 확인할 수 없다며 막을 수 있습니다. "시스템 설정 → 개인정보 보호 및 보안"에서 "그래도 열기"를 누르거나, `xattr -d com.apple.quarantine symphony`를 한 번 실행하세요. Windows에서도 SmartScreen이 경고할 수 있습니다. "추가 정보"를 누른 뒤 "실행"을 누르세요. 릴리스의 `checksums.txt`에는 모든 압축 파일의 SHA-256이 들어 있고, 설치 2단계에서 이를 검사합니다.

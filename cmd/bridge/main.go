@@ -6,6 +6,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io/fs"
@@ -20,6 +21,7 @@ import (
 	"runtime/debug"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -68,6 +70,7 @@ func main() {
 	auto := flag.String("autostart", "", i18n.T("flag.autostart"))
 	background := flag.Bool("background", false, i18n.T("flag.background"))
 	showVersion := flag.Bool("version", false, i18n.T("flag.version"))
+	stopFlag := flag.Bool("stop", false, i18n.T("flag.stop"))
 	flag.Parse()
 	if *showVersion {
 		fmt.Printf("symphony %s (%s/%s)\n", buildVersion(), runtime.GOOS, runtime.GOARCH)
@@ -83,6 +86,10 @@ func main() {
 		set := map[string]string{}
 		flag.Visit(func(f *flag.Flag) { set[f.Name] = f.Value.String() })
 		setAutostart(*auto, autostartArgs(set, *dataDir), base, *dataDir, *open)
+		return
+	}
+	if *stopFlag {
+		stopBridge(base, *dataDir)
 		return
 	}
 	if *background {
@@ -107,6 +114,11 @@ func main() {
 		}
 		log.Fatal(err)
 	}
+	// One bridge per data folder, whatever its address: a second one would take the first one's running tasks for
+	// left over and end them, and write over its files. Taken before anything there is read.
+	if _, err := bridge.LockData(*dataDir, net.JoinHostPort(host, port)); err != nil {
+		dataTaken(*dataDir, key, *open, err)
+	}
 
 	var pages fs.FS = web.FS
 	if *webDir != "" {
@@ -114,11 +126,17 @@ func main() {
 	}
 
 	hub := bridge.NewHub()
+	hub.Warn = func(line string) { log.Print(line) }
 	if err := hub.Open(*dataDir); err != nil {
-		log.Fatal(err)
+		var damaged *bridge.DamagedFile
+		if errors.As(err, &damaged) {
+			log.Fatal(i18n.T("log.data_damaged", "file", damaged.Path, "reason", damaged.Err.Error()))
+		}
+		log.Fatal(i18n.T("log.data_failed", "dir", *dataDir, "reason", err.Error()))
 	}
 	srv := bridge.NewServer(hub, pages)
 	srv.Key = key
+	var terms *bridge.Terms // the sessions' terminals, when the bridge can start sessions
 	if l := launcher(*modDir, *claude, base); l != nil {
 		l.AttachHint = attachHint(net.JoinHostPort(host, port), *dataDir)
 		srv.SetLauncher(l)
@@ -131,21 +149,51 @@ func main() {
 				return []string{exe, "attach", "-addr", net.JoinHostPort(host, port), "-data", data, id}
 			}
 		}
-		// the sessions are the bridge's children: stopping it ends them, cleanly rather than by surprise
-		stop := make(chan os.Signal, 1)
-		signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+		terms = l.Terms
 		go func() { // ended terminals keep up to 256 KiB of history each: let them go after a while
 			for range time.Tick(time.Minute) {
 				l.Terms.Prune()
 			}
 		}()
-		go func() {
-			<-stop
-			hub.Stop() // no task ends by itself from here on: killing the members would start tidying git up just as we leave
-			l.Terms.KillAll()
-			os.Exit(0)
-		}()
 	}
+	// Stopping the bridge (SIGINT, SIGTERM, SIGHUP, or symphony -stop through POST /api/shutdown) ends the sessions, its
+	// children, cleanly rather than by surprise: no task ends by itself from here on (killing the members would start
+	// tidying git up just as we leave), what waits to be written is written, then the sessions end.
+	var stopping sync.Once
+	stopAll := func() {
+		hub.Stop()
+		// what couldn't be written, after one more try; a disk that hangs doesn't keep the sessions running
+		flushed := make(chan error, 1)
+		go func() { flushed <- hub.Flush() }()
+		select {
+		case err := <-flushed:
+			if err != nil {
+				log.Print(i18n.T("log.unsaved", "reason", err.Error()))
+			}
+		case <-time.After(10 * time.Second):
+			log.Print(i18n.T("log.unsaved", "reason", "still writing after 10 s"))
+		}
+		if terms != nil {
+			terms.KillAll()
+		}
+	}
+	shutdown := func() {
+		stopping.Do(func() {
+			stopAll()
+			os.Exit(0)
+		})
+	}
+	srv.Shutdown = shutdown
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+	// a hangup too: the terminal of a bridge running in it was closed; under nohup it stays ignored, as asked
+	if !signal.Ignored(syscall.SIGHUP) {
+		signal.Notify(stop, syscall.SIGHUP)
+	}
+	go func() {
+		<-stop
+		shutdown()
+	}()
 	go func() {
 		for range time.Tick(time.Minute) {
 			hub.Prune()
@@ -161,7 +209,15 @@ func main() {
 	if *open {
 		go openOffice(*dataDir, office) // the bridge answers meanwhile, however long finding the browser takes
 	}
-	log.Fatal(http.Serve(ln, srv))
+	err = httpServer(srv).Serve(ln)
+	stopping.Do(stopAll) // as shutdown does, but the bridge exits with the error
+	log.Fatal(err)
+}
+
+// httpServer serves h with time limits on what a client may keep waiting: a request's head, an idle connection. None
+// on reading a body or writing an answer: the pages' event stream and the mod's long polls stay open.
+func httpServer(h http.Handler) *http.Server {
+	return &http.Server{Handler: h, ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 2 * time.Minute}
 }
 
 // localAddr splits -addr into its host and port. The host has to be this machine's own (127.0.0.1, localhost or ::1):
@@ -226,9 +282,43 @@ func addrTaken(base string) {
 	log.Fatal(i18n.T("log.addr_taken", "addr", strings.TrimPrefix(base, "http://")))
 }
 
+// dataTaken stops the program when the data folder can't be locked: another bridge holds it (bridge.ErrDataLocked),
+// which then runs at another address. When it proves it answers at the address it noted, its office opens, as it
+// would at this one.
+func dataTaken(dataDir, key string, open bool, err error) {
+	if !errors.Is(err, bridge.ErrDataLocked) {
+		log.Fatal(i18n.T("log.data_failed", "dir", dataDir, "reason", err.Error()))
+	}
+	addr := runningAt(dataDir, key)
+	if addr == "" {
+		log.Fatal(i18n.T("log.data_locked", "dir", dataDir))
+	}
+	office := officeURL("http://"+addr, key)
+	if open {
+		openOffice(dataDir, office)
+	}
+	log.Fatal(i18n.T("log.data_in_use", "dir", dataDir, "url", office))
+}
+
+// runningAt is the address (host:port) of the bridge holding the data folder, as it noted it, when it proves it is
+// this data folder's bridge there; else "".
+func runningAt(dataDir, key string) string {
+	host, port, ok := localAddr(bridge.BridgeAddr(dataDir))
+	if !ok {
+		return ""
+	}
+	addr := net.JoinHostPort(host, port)
+	if bridgeAt("http://"+addr, key) != ours {
+		return ""
+	}
+	return addr
+}
+
 // startBackground starts a copy of this program without -background, detached from this terminal and writing its log
 // to bridge.log in the data folder, and returns once it answers. The mod starts the bridge this way, so it keeps
-// running after the session; when a bridge already answers at the address, there's nothing to start.
+// running after the session; when a bridge already answers at the address, there's nothing to start. The copy gets
+// neither the folder nor the session variables of the session that started it (backgroundArgs,
+// bridge.StripSessionEnv): it outlives that session, and what it runs must never pass for it.
 func startBackground(base, dataDir string) {
 	// made before the copy starts, so both have the same one
 	key := loadKey(dataDir)
@@ -252,15 +342,14 @@ func startBackground(base, dataDir string) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	var args []string
-	for _, a := range os.Args[1:] {
-		if name, _, _ := strings.Cut(strings.TrimLeft(a, "-"), "="); strings.HasPrefix(a, "-") && name == "background" {
-			continue
-		}
-		args = append(args, a)
-	}
+	set := map[string]string{}
+	flag.Visit(func(f *flag.Flag) { set[f.Name] = f.Value.String() })
+	wd, _ := os.Getwd()
+	args, dir := backgroundArgs(set, dataDir, wd)
 	// its own output goes to the log, so whoever ran this (the mod's process.run) isn't kept waiting on a pipe
 	cmd := exec.Command(exe, args...)
+	cmd.Dir = dir
+	cmd.Env = bridge.StripSessionEnv(os.Environ())
 	cmd.Stdout, cmd.Stderr = out, out
 	detach(cmd)
 	err = cmd.Start()
@@ -289,12 +378,81 @@ func startBackground(base, dataDir string) {
 			case another:
 				addrTaken(base)
 			}
+			// or this data folder's bridge runs at another address
+			if addr := runningAt(dataDir, key); addr != "" {
+				log.Fatal(i18n.T("log.data_in_use", "dir", dataDir, "url", officeURL("http://"+addr, key)))
+			}
 			log.Fatal(i18n.T("log.background_failed", "reason", fmt.Sprint(err), "log", logPath))
 		case <-deadline:
 			log.Fatal(i18n.T("log.background_slow", "url", office, "log", logPath))
 		case <-time.After(200 * time.Millisecond):
 		}
 	}
+}
+
+// backgroundArgs are the flags of this command line that the copy started in the background gets (those autostartArgs
+// keeps, folders made absolute, and -open), and the folder it runs in: the data folder, as a program's working folder
+// can't be deleted or renamed on Windows; this repository when started from it, where the install hint finds the mod's
+// marketplace (launcher).
+func backgroundArgs(set map[string]string, dataDir, wd string) (args []string, dir string) {
+	args = autostartArgs(set, dataDir)
+	if v, ok := set["open"]; ok {
+		args = append(args, "-open="+v)
+	}
+	if wd != "" && bridge.ModMarket(wd) {
+		return args, wd
+	}
+	dir, err := filepath.Abs(dataDir)
+	if err != nil {
+		dir = dataDir
+	}
+	return args, dir
+}
+
+// stopBridge stops this data folder's bridge at base (symphony -stop), however it was started: the bridge proves it has
+// the key before the key goes to it, then gets POST /api/shutdown and ends its sessions; this waits until nothing
+// answers there any more. Nothing of this data folder's answering there is no error: there is nothing to stop.
+func stopBridge(base, dataDir string) {
+	addr := strings.TrimPrefix(base, "http://")
+	key, err := bridge.ReadKey(dataDir)
+	switch {
+	case errors.Is(err, fs.ErrNotExist): // no bridge with this data folder ever ran
+		log.Print(i18n.T("log.stop_none", "addr", addr))
+		return
+	case err != nil:
+		log.Fatal(i18n.T("log.key_failed", "dir", dataDir, "reason", err.Error()))
+	}
+	// a data folder has one bridge: the one it noted, wherever that runs
+	if bridgeAt(base, key) != ours {
+		if at := runningAt(dataDir, key); at != "" {
+			base, addr = "http://"+at, at
+		}
+	}
+	switch bridgeAt(base, key) {
+	case nobody:
+		log.Print(i18n.T("log.stop_none", "addr", addr))
+		return
+	case another:
+		log.Fatal(i18n.T("log.key_unproven", "addr", addr))
+	}
+	req, _ := http.NewRequest(http.MethodPost, base+"/api/shutdown", nil)
+	req.Header.Set("X-Symphony-Key", key)
+	c := http.Client{Timeout: 5 * time.Second}
+	res, err := c.Do(req)
+	if err != nil {
+		log.Fatal(i18n.T("log.stop_failed", "addr", addr, "reason", err.Error()))
+	}
+	res.Body.Close()
+	if res.StatusCode != http.StatusAccepted {
+		log.Fatal(i18n.T("log.stop_failed", "addr", addr, "reason", res.Status))
+	}
+	// it writes what waits to be written and waits for tasks being ended (their git work) before it goes
+	for deadline := time.Now().Add(60 * time.Second); bridgeAt(base, key) != nobody; time.Sleep(200 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			log.Fatal(i18n.T("log.stop_slow", "addr", addr))
+		}
+	}
+	log.Print(i18n.T("log.stopped", "addr", addr))
 }
 
 // waitBridge waits for something to answer at base, and says what did: this data folder's bridge, something else, or
@@ -353,6 +511,10 @@ func setAutostart(mode string, args []string, base, dataDir string, open bool) {
 		// something else at the address: the bridge started at login would only step aside, at every login
 		if bridgeAt(base, key) == another {
 			addrTaken(base)
+		}
+		// this data folder's bridge at another address: the one started at login couldn't have the folder
+		if at := runningAt(dataDir, key); at != "" && "http://"+at != base {
+			log.Fatal(i18n.T("log.data_in_use", "dir", dataDir, "url", officeURL("http://"+at, key)))
 		}
 		where, err := sys.Enable(autostart.Entry{Exe: exe, Args: args, Path: os.Getenv("PATH")})
 		if err != nil {
@@ -488,10 +650,8 @@ func launcher(modDir, claude, bridgeURL string) *bridge.Launcher {
 	log.Print(i18n.T("log.launch_on"))
 	l := bridge.NewLauncher(claudePath, abs, bridgeURL, bridge.NewPTYTerminal())
 	// run from the repository, install hints use it as a local plugin marketplace
-	if wd, err := os.Getwd(); err == nil {
-		if _, err := os.Stat(filepath.Join(wd, ".claude-plugin", "marketplace.json")); err == nil {
-			l.Market = wd
-		}
+	if wd, err := os.Getwd(); err == nil && bridge.ModMarket(wd) {
+		l.Market = wd
 	}
 	switch m := l.Mod(context.Background()); {
 	case m.Dev:

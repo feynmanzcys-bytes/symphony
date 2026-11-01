@@ -126,13 +126,17 @@ func LoadKey(dataDir string) (string, error) {
 	}
 }
 
-// writeTemp writes data to a new file next to path that only this user may read, and returns its name.
+// writeTemp writes data to a new file next to path that only this user may read, synced to the disk (renamed into
+// place, it is never found empty after a crash), and returns its name.
 func writeTemp(path string, data []byte) (string, error) {
 	f, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*")
 	if err != nil {
 		return "", err
 	}
 	_, err = f.Write(data)
+	if err == nil {
+		err = f.Sync()
+	}
 	if cerr := f.Close(); err == nil {
 		err = cerr
 	}

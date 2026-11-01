@@ -37,12 +37,16 @@ button.px:disabled { opacity:.5; cursor:default; }
 .chat .btns button { font-size:12px; }
 .chat .flow { flex:1; overflow:auto; padding:12px 16px; background:var(--pane); display:flex; flex-direction:column; gap:8px; }
 .chat .flow .empty { color:var(--muted); text-align:center; margin:auto; }
+.chat .flow .empty.err { color:var(--danger); } /* the log couldn't be fetched */
 .it { flex:none; max-width:min(82%, 820px); font-size:13px; line-height:1.5; } /* flex:none: the column never squeezes a row (an overflow:hidden row would shrink to nothing) */
 .it .body { white-space:pre-wrap; overflow-wrap:anywhere; }
 .it .body pre { background:var(--ink); color:var(--paper-2); padding:6px 8px; margin:4px 0; font:12px/1.5 var(--mono); overflow:auto; white-space:pre; }
 .it .body code { background:rgba(0,0,0,.08); padding:0 3px; font:12px var(--mono); }
 .it.user { align-self:flex-end; background:var(--ink); color:var(--paper); padding:6px 10px; border:2px solid var(--ink); box-shadow:2px 2px 0 rgba(0,0,0,.3); }
 .it.user.queued { opacity:.6; }
+/* one the bridge couldn't hand the session: failed, and why */
+.it.user.dropped { border-color:var(--danger); }
+.it.user .why { display:inline-block; margin-top:4px; padding:0 6px; background:var(--danger); color:#fff; font-size:11px; font-weight:700; }
 .it.user .body code { background:rgba(255,255,255,.18); }
 .it.user .from { font-size:11px; color:var(--line); margin-bottom:2px; }
 /* the bridge's kickoff of a task: long, so folded to a line until clicked */
@@ -106,6 +110,13 @@ button.px:disabled { opacity:.5; cursor:default; }
 #asks .q h3 { margin:4px 0; font-size:14px; } #asks .q .hd { color:var(--muted); font-weight:400; font-size:12px; margin-right:6px; }
 #asks label.opt { display:block; cursor:pointer; padding:1px 0; } #asks label.opt small { color:var(--muted); margin-left:6px; }
 #asks .q input.other { display:block; width:100%; box-sizing:border-box; margin-top:4px; }
+/* (any page's cards) an input the bridge cut: the warning, and the button that shows all of it; Allow waits for it */
+.card .cut { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:4px 0; }
+.card .cut .warn { flex:1; min-width:200px; color:var(--danger); font-weight:700; font-size:12px; }
+/* a question left without an answer */
+.card .q.missing { outline:2px solid var(--danger); outline-offset:2px; }
+.card .q .need { margin-top:2px; color:var(--danger); font-size:12px; font-weight:700; }
+.card .q .need[hidden] { display:none; }
 /* launch dialog */
 #launch label { display:block; margin:8px 0 2px; font-size:12px; color:var(--muted-2); }
 #launch input, #launch select { width:100%; box-sizing:border-box; font:inherit; color:var(--ink); background:#fff; border:2px solid var(--ink); padding:3px 6px; }

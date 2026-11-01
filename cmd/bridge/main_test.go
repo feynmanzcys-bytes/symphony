@@ -231,6 +231,79 @@ func TestAddrTaken(t *testing.T) {
 	}
 }
 
+// TestDataInUse: one bridge per data folder. Started at another address with the same data folder, a bridge says
+// where that folder's bridge runs, opens its office and exits 1 without touching the data; -background too, at once.
+func TestDataInUse(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the stand-in browser is a shell script")
+	}
+	exe := buildBridge(t)
+	dir := t.TempDir()
+	bin, asked := standInBrowser(t, dir)
+	data := filepath.Join(dir, "data")
+	addr, other := freeAddr(t), freeAddr(t)
+	first := bridgeCmd(context.Background(), exe, addr, data, bin, "-open=false")
+	if err := first.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { first.Process.Kill(); first.Wait() })
+	var key string
+	waitFor(t, 10*time.Second, "the first bridge is up", func() bool {
+		k, err := bridge.ReadKey(data)
+		key = k
+		return err == nil && bridgeAt("http://"+addr, k) == ours
+	})
+	office := "http://" + addr + "/?key=" + key
+	// the data as the first bridge keeps it (what opens the office and the background log aside)
+	files := func() string {
+		var list []string
+		entries, _ := os.ReadDir(data)
+		for _, e := range entries {
+			if fi, err := e.Info(); err == nil && e.Name() != "open.html" && e.Name() != "bridge.log" {
+				list = append(list, fmt.Sprint(e.Name(), fi.Size(), fi.ModTime().UnixNano()))
+			}
+		}
+		return strings.Join(list, "\n")
+	}
+	before := files()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	refused := func(args ...string) {
+		t.Helper()
+		started := time.Now()
+		out, err := bridgeCmd(ctx, exe, other, data, bin, args...).CombinedOutput()
+		var exit *exec.ExitError
+		if !errors.As(err, &exit) || exit.ExitCode() != 1 || !strings.Contains(string(out), "is in use by its bridge at "+office) {
+			t.Fatalf("%v: want exit 1 saying where the data folder's bridge runs, got %v:\n%s", args, err, out)
+		}
+		if time.Since(started) > 10*time.Second {
+			t.Errorf("%v took %s", args, time.Since(started))
+		}
+		if bridgeAt("http://"+other, key) != nobody {
+			t.Fatalf("%v: nothing should be left at %s", args, other)
+		}
+	}
+	refused()
+	page := bridge.FileURL(runtime.GOOS, filepath.Join(data, "open.html"))
+	waitFor(t, 10*time.Second, "the running bridge's office opens", func() bool { return slices.Equal(asked(), []string{page}) })
+	refused("-background", "-open=false")
+	if got := bridge.BridgeAddr(data); got != addr {
+		t.Errorf("bridge.addr should still name the first bridge: %q", got)
+	}
+	if after := files(); after != before {
+		t.Errorf("the refused bridges touched the data:\n%s\n---\n%s", before, after)
+	}
+	if bridgeAt("http://"+addr, key) != ours {
+		t.Error("the first bridge should still be running")
+	}
+	// -stop with the data folder finds its bridge wherever it runs
+	out, err := bridgeCmd(ctx, exe, other, data, bin, "-stop").CombinedOutput()
+	if err != nil || !strings.Contains(string(out), "stopped the symphony bridge at "+addr) {
+		t.Fatalf("-stop at %s with the data folder: %v\n%s", other, err, out)
+	}
+}
+
 // TestAddrNotLocal: the bridge listens on this machine only; any other host in -addr stops it before it starts.
 func TestAddrNotLocal(t *testing.T) {
 	for addr, want := range map[string]bool{
@@ -311,6 +384,97 @@ func TestBackground(t *testing.T) {
 	if out := run(); !strings.Contains(out, "already running at "+office) {
 		t.Fatalf("a second -background should find the running bridge:\n%s", out)
 	}
+
+	// -stop stops it, and then finds nothing to stop
+	stop := func() string {
+		cmd := exec.CommandContext(ctx, exe, "-stop", "-addr", addr, "-data="+data)
+		cmd.Env = append(os.Environ(), "SYMPHONY_LANG=en")
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("-stop: %v\n%s", err, out)
+		}
+		return string(out)
+	}
+	if out := stop(); !strings.Contains(out, "stopped the symphony bridge at "+addr) {
+		t.Fatalf("-stop should say it stopped the bridge:\n%s", out)
+	}
+	if bridgeAt("http://"+addr, key) != nobody {
+		t.Fatal("after -stop nothing should answer")
+	}
+	if out := stop(); !strings.Contains(out, "no symphony bridge with this data folder answers at "+addr) {
+		t.Fatalf("a second -stop should find nothing to stop:\n%s", out)
+	}
+}
+
+// TestStop: symphony -stop ends a bridge started in a terminal (it exits 0, as with SIGTERM), refuses to show the key to
+// what can't prove it has it, and with no data folder at all says there is nothing to stop.
+func TestStop(t *testing.T) {
+	exe := buildBridge(t)
+	dir := t.TempDir()
+	data := filepath.Join(dir, "data")
+	addr := freeAddr(t)
+	bridgeProc := exec.Command(exe, "-addr", addr, "-data", data, "-open=false", "-claude", filepath.Join(dir, "no-claude"))
+	bridgeProc.Env = append(os.Environ(), "SYMPHONY_LANG=en")
+	if err := bridgeProc.Start(); err != nil {
+		t.Fatal(err)
+	}
+	exited := make(chan error, 1)
+	go func() { exited <- bridgeProc.Wait() }()
+	t.Cleanup(func() { bridgeProc.Process.Kill() })
+	waitFor(t, 10*time.Second, "the bridge is up", func() bool {
+		key, err := bridge.ReadKey(data)
+		return err == nil && bridgeAt("http://"+addr, key) == ours
+	})
+	stop := func(addr, data string) (string, error) {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, exe, "-stop", "-addr", addr, "-data", data)
+		cmd.Env = append(os.Environ(), "SYMPHONY_LANG=en")
+		out, err := cmd.CombinedOutput()
+		return string(out), err
+	}
+	if out, err := stop(addr, data); err != nil || !strings.Contains(out, "stopped the symphony bridge at "+addr) {
+		t.Fatalf("-stop: %v\n%s", err, out)
+	}
+	select {
+	case err := <-exited:
+		if err != nil {
+			t.Fatalf("the bridge should exit 0, as with SIGTERM: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the bridge is still running")
+	}
+
+	// something else at the address never sees the key, and -stop fails
+	var heard strings.Builder
+	var mu sync.Mutex
+	squatter := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		fmt.Fprintf(&heard, "%s %s %v %s\n", r.Method, r.URL, r.Header, body)
+		mu.Unlock()
+		w.Write([]byte(`{"type":"snapshot","proof":"` + strings.Repeat("ab", 32) + `","ok":true}`))
+	}))
+	defer squatter.Close()
+	there := strings.TrimPrefix(squatter.URL, "http://")
+	if out, err := stop(there, data); err == nil || !strings.Contains(out, there+" doesn't prove it is the bridge with this page key") {
+		t.Fatalf("-stop at a squatter: want a refusal, got %v\n%s", err, out)
+	}
+	key, _ := bridge.ReadKey(data)
+	mu.Lock()
+	if strings.Contains(heard.String(), key) || strings.Contains(heard.String(), "/api/shutdown") {
+		t.Fatalf("the squatter saw the key or a shutdown:\n%s", heard.String())
+	}
+	mu.Unlock()
+
+	// a data folder no bridge ever used: nothing to stop, and nothing made
+	empty := filepath.Join(dir, "empty")
+	if out, err := stop(addr, empty); err != nil || !strings.Contains(out, "no symphony bridge with this data folder answers at "+addr) {
+		t.Fatalf("-stop with a fresh data folder: %v\n%s", err, out)
+	}
+	if _, err := os.Stat(empty); err == nil {
+		t.Fatal("-stop shouldn't make a data folder")
+	}
 }
 
 func freeAddr(t *testing.T) string {
@@ -344,6 +508,43 @@ func TestAutostartArgs(t *testing.T) {
 	got = autostartArgs(map[string]string{"claude": "./bin/claude", "mod": "/mods/x"}, "/data")
 	if want := []string{"-data=/data", "-mod=/mods/x", "-claude=" + filepath.Join(wd, "bin", "claude")}; !slices.Equal(got, want) {
 		t.Errorf("a claude with a folder should become absolute: got %q, want %q", got, want)
+	}
+}
+
+// TestBackgroundArgs: the copy started in the background gets the flags it needs, folders made absolute and -open kept
+// (the mod asks for -open=false), and runs in the data folder, not the folder of the session that started it; in this
+// repository, it runs there, so the install hint still names it.
+func TestBackgroundArgs(t *testing.T) {
+	wd, _ := os.Getwd()
+	abs := func(p string) string { a, _ := filepath.Abs(p); return a }
+	project := t.TempDir()
+	args, dir := backgroundArgs(map[string]string{"addr": "127.0.0.1:7790", "open": "false", "background": "true", "mod": "m", "lang": "ja"}, "data", project)
+	want := []string{"-data=" + filepath.Join(wd, "data"), "-addr=127.0.0.1:7790", "-mod=" + filepath.Join(wd, "m"), "-lang=ja", "-open=false"}
+	if !slices.Equal(args, want) || dir != filepath.Join(wd, "data") {
+		t.Errorf("got %q in %s, want %q in the data folder", args, dir, want)
+	}
+	// another plugin marketplace is just a project
+	if err := os.MkdirAll(filepath.Join(project, ".claude-plugin"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(project, ".claude-plugin", "marketplace.json"), []byte(`{"plugins":[{"name":"other"}]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, dir := backgroundArgs(nil, "/data", project); dir != abs("/data") {
+		t.Errorf("started from another marketplace: runs in %s, want the data folder", dir)
+	}
+	repo := filepath.Join(wd, "..", "..")
+	if _, dir := backgroundArgs(nil, "/data", repo); dir != repo {
+		t.Errorf("started from the repository: runs in %s, want the repository", dir)
+	}
+}
+
+// TestHTTPServer: a client can't hold a connection by sending a request's head slowly, or by keeping it idle; the
+// pages' event stream and the mod's long polls have no time limit.
+func TestHTTPServer(t *testing.T) {
+	s := httpServer(http.NotFoundHandler())
+	if s.ReadHeaderTimeout <= 0 || s.IdleTimeout <= 0 || s.ReadTimeout != 0 || s.WriteTimeout != 0 {
+		t.Errorf("ReadHeaderTimeout %s, IdleTimeout %s, ReadTimeout %s, WriteTimeout %s", s.ReadHeaderTimeout, s.IdleTimeout, s.ReadTimeout, s.WriteTimeout)
 	}
 }
 

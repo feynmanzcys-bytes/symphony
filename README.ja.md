@@ -39,14 +39,14 @@ symphony は 2 つの部分からなり、両方が必要です。
 uname -sm                 # Linux/macOS：下のアーカイブを選ぶ（x86_64 → amd64、arm64/aarch64 → arm64）
 claude --version          # Claude Code 2.1.x が必要（2.1.316 で動作確認済み）
 git --version             # チームでのタスクにだけ必要。なければ報告に書き、止まらない
-symphony -version         # インストール済み？ "symphony v1.0.0 (darwin/arm64)" と表示される
+symphony -version         # インストール済み？ "symphony v1.1.0 (darwin/arm64)" と表示される
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:7788/api/state   # bridge が動いている？ 401：symphony 1.x、200：それより古いもの、000：なし
-claude plugin list --json # mod がインストール済み？ "id":"symphony-bridge@symphony" を探す
+claude plugin list --json # mod がインストール済み？ "id": "symphony-bridge@symphony" のエントリーを探す
 ```
 
 Windows では PowerShell を使います。`$env:PROCESSOR_ARCHITECTURE` は `AMD64` か `ARM64` です。
 
-`claude` がなければ、そこで止めて、先に Claude Code をインストールするようユーザーに伝えてください。プログラムと mod が両方そろっているなら、代わりに下の「更新」へ進んでください。既に動いている bridge は、起動したときのプログラムのまま動き続けます。動いていれば、ステップ 5 の前にそれを止めることになります。
+`claude` がなければ、そこで止めて、先に Claude Code をインストールするようユーザーに伝えてください。プログラムと mod が両方そろっているなら、代わりに下の「更新」へ進んでください。片方だけなら、足りないほうのステップを行います。プログラムにはステップ 2 と 3（`symphony -version` が既に最新のリリースを表示するなら不要）、mod にはステップ 4、そのあとステップ 5 です。既に動いている bridge は、起動したときのプログラムのまま動き続けます。動いていれば、ステップ 5 の前にそれを止めることになります。
 
 #### ステップ 2：プログラムを入手する
 
@@ -58,10 +58,9 @@ Linux と macOS では：
 d=$(mktemp -d)   # 自分だけが読める新しいフォルダ
 echo "$d"        # 書き留めておく：ステップ 3 はここからインストールする
 cd "$d"
-curl -fLO https://github.com/feynmanzcys-bytes/symphony/releases/latest/download/symphony_<os>_<arch>.tar.gz
-curl -fLO https://github.com/feynmanzcys-bytes/symphony/releases/latest/download/checksums.txt
-sha256sum -c --ignore-missing checksums.txt      # Linux："symphony_<os>_<arch>.tar.gz: OK" と表示されなければならない
-shasum -a 256 -c --ignore-missing checksums.txt  # macOS：同じ確認
+curl -fsSLO https://github.com/feynmanzcys-bytes/symphony/releases/latest/download/symphony_<os>_<arch>.tar.gz
+curl -fsSLO https://github.com/feynmanzcys-bytes/symphony/releases/latest/download/checksums.txt
+if command -v sha256sum >/dev/null; then sha256sum -c --ignore-missing checksums.txt; else shasum -a 256 -c --ignore-missing checksums.txt; fi   # "symphony_<os>_<arch>.tar.gz: OK" と表示されなければならない
 tar xzf symphony_<os>_<arch>.tar.gz              # これでプログラムは "$d/symphony" にある
 ```
 
@@ -109,7 +108,7 @@ cd "$d/src" && go build -o "$d/symphony" ./cmd/bridge   # これでプログラ�
 ```bash
 install -m 755 "$d/symphony" ~/.local/bin/symphony
 xattr -d com.apple.quarantine ~/.local/bin/symphony 2>/dev/null || true   # macOS：バイナリに署名がないため
-symphony -version          # "symphony v1.0.0 (linux/amd64)" と表示される：バージョンとプラットフォーム
+symphony -version          # "symphony v1.1.0 (linux/amd64)" と表示される：バージョンとプラットフォーム
 ```
 
 どのフォルダも `PATH` に含まれていなければ、何かを変更する前にユーザーに確認してください。了承されたら、`~/.local/bin` を作ってシェルの rc ファイル（`~/.zshrc` か `~/.bashrc`）に追加し、そのことを報告に書きます。断られたら、ユーザーが指定する場所にプログラムをインストールし、`symphony` が Claude Code セッションの `PATH` 上にないあいだは mod が bridge を自分で起動できないことを伝えてください（ステップ 5 のログイン時の起動は使えます）。
@@ -119,7 +118,7 @@ Windows では、専用のフォルダに展開します（`$d` と `$zip` は�
 ```powershell
 $dest = Join-Path $env:LOCALAPPDATA 'Programs\symphony'
 Expand-Archive -LiteralPath (Join-Path $d $zip) -DestinationPath $dest -Force
-& (Join-Path $dest 'symphony.exe') -version   # "symphony v1.0.0 (windows/amd64)" と表示される
+& (Join-Path $dest 'symphony.exe') -version   # "symphony v1.1.0 (windows/amd64)" と表示される
 ```
 
 そのフォルダをユーザーの `Path` に追加するのは、あとまで残る変更です。先にユーザーに確認してください。了承されたら下の行を実行して新しいシェルを開き、断られたらフルパスを使います。初回の実行で SmartScreen が警告することがあります。「詳細情報」、次に「実行」を選んでください。
@@ -141,11 +140,11 @@ claude plugin install symphony-bridge --marketplace feynmanzcys-bytes/symphony
 確認：
 
 ```bash
-claude plugin list --json   # "id":"symphony-bridge@symphony", "scope":"user", "enabled":true のエントリーが 1 つある
+claude plugin list --json   # "id": "symphony-bridge@symphony", "scope": "user", "enabled": true のエントリーが 1 つある
 ```
 
-- `"scope":"project"` か `"local"`：mod が 1 つのフォルダでしか読み込まれません。`claude plugin uninstall symphony-bridge@symphony` を実行してから、`--scope user` を付けてインストールし直してください。
-- `"enabled":false`：`claude plugin enable symphony-bridge@symphony`。
+- `"scope": "project"` か `"local"`：mod が 1 つのフォルダでしか読み込まれません。`claude plugin uninstall symphony-bridge@symphony` を実行してから、`--scope user` を付けてインストールし直してください。
+- `"enabled": false`：`claude plugin enable symphony-bridge@symphony`。
 
 #### ステップ 5：bridge を起動する
 
@@ -171,28 +170,29 @@ symphony now starts when you log in (<where>); it's running at http://127.0.0.1:
 symphony -background -open=false
 ```
 
-これで bridge がターミナルから切り離されて起動し（マシンを再起動したあとは起動しません）、次のように表示されます。
+これで bridge がターミナルから切り離されて起動し（マシンを再起動したあとは起動しません）、標準エラー出力に、日付と時刻のあとに続けて次のように表示されます。
 
 ```
 the symphony bridge runs in the background at http://127.0.0.1:7788/?key=<key>; its log: <data folder>/bridge.log
 ```
 
-このバージョンの bridge が既に動いていれば、代わりに `a symphony bridge is already running at http://127.0.0.1:7788/?key=<key>` と表示されます。それで問題ないので、もう 1 つ起動しないでください。`<key>` はページの鍵で、ブラウザはこれでオフィスにログインします。ほかの場所には貼り付けないでください。プログラムが `127.0.0.1:7788 is taken: another program, or a symphony bridge with another data folder, answers there` と答えたら、そこで何が応答しているかをユーザーに伝え（古い symphony の bridge もこれに当たります。「更新」のとおり止めてください）、確認せずに別のアドレスを選ばないでください。
+このバージョンの bridge が既に動いていれば、代わりに同じように `a symphony bridge is already running at http://127.0.0.1:7788/?key=<key>` と表示されます。それで問題ないので、もう 1 つ起動しないでください。`<key>` はページの鍵で、ブラウザはこれでオフィスにログインします。ほかの場所には貼り付けないでください。プログラムが `127.0.0.1:7788 is taken: another program, or a symphony bridge with another data folder, answers there` と答えたら、そこで何が応答しているかをユーザーに伝え（古い symphony の bridge もこれに当たります。「更新」のとおり止めてください）、確認せずに別のアドレスを選ばないでください。
 
 データフォルダにあるページの鍵を示すリクエスト 1 つで、全体のつながりを確認します（鍵は標準入力から渡すので、ほかのユーザーにも見えるコマンドラインには載りません）。
 
 ```bash
-printf 'X-Symphony-Key: %s\n' "$(cat ~/.config/symphony/key)" | curl -s -H @- http://127.0.0.1:7788/api/launch/options                         # Linux
-printf 'X-Symphony-Key: %s\n' "$(cat ~/"Library/Application Support/symphony/key")" | curl -s -H @- http://127.0.0.1:7788/api/launch/options   # macOS
+printf 'X-Symphony-Key: %s\n' "$(cat "${SYMPHONY_DATA:-${XDG_CONFIG_HOME:-$HOME/.config}/symphony}/key")" | curl -s -H @- http://127.0.0.1:7788/api/launch/options      # Linux
+printf 'X-Symphony-Key: %s\n' "$(cat "${SYMPHONY_DATA:-$HOME/Library/Application Support/symphony}/key")" | curl -s -H @- http://127.0.0.1:7788/api/launch/options   # macOS
 ```
 
 ```powershell
-(Invoke-WebRequest -UseBasicParsing -Headers @{ 'X-Symphony-Key' = (Get-Content "$env:APPDATA\symphony\key") } -Uri http://127.0.0.1:7788/api/launch/options).Content
+$data = if ($env:SYMPHONY_DATA) { $env:SYMPHONY_DATA } else { Join-Path $env:APPDATA 'symphony' }
+(Invoke-WebRequest -UseBasicParsing -Headers @{ 'X-Symphony-Key' = (Get-Content (Join-Path $data 'key')) } -Uri http://127.0.0.1:7788/api/launch/options).Content
 ```
 
 データフォルダは、Linux では `~/.config/symphony`（`$XDG_CONFIG_HOME` が設定されていれば `$XDG_CONFIG_HOME/symphony`）、macOS では `~/Library/Application Support/symphony`、Windows では `%AppData%\symphony` です。`SYMPHONY_DATA` が設定されていれば、そこになります。
 
-応答に `"enabled":true` と `"mod":{"ok":true,"id":"symphony-bridge@symphony","version":"1.0.0"}` が含まれていれば、bridge が動いていて、`claude` を見つけ、mod がセッションの読み込む場所にインストールされています。`"enabled":false` なら、`mod.code` が何が問題かを、`mod.fix` がそれを直すコマンドを示します。`mod_not_installed` か `mod_project_scope`（ステップ 4 に戻る）、`mod_disabled`（有効にする）、`mod_check_failed`（`claude plugin list --json` が失敗したので、Claude Code が古すぎる可能性が高い）です。`"mod":null` は、bridge が自分の `PATH` 上に `claude` をまったく見つけられなかったという意味です（ログにそう出ます）。そこへ置くか、`-claude /path/to/claude` を付けて bridge を起動してください。`"code":"page_key"` を含む応答は、鍵ファイルが動いている bridge のものではない、つまりその bridge が別のデータフォルダで起動されたという意味です。
+応答に `"enabled":true` と `"mod":{"ok":true,"id":"symphony-bridge@symphony","version":"1.1.0"}` が含まれていれば、bridge が動いていて、`claude` を見つけ、mod がセッションの読み込む場所にインストールされています。`"enabled":false` なら、`mod.code` が何が問題かを、`mod.fix` がそれを直すコマンドを示します。`mod_not_installed` か `mod_project_scope`（ステップ 4 に戻る）、`mod_disabled`（有効にする）、`mod_check_failed`（`claude plugin list --json` が失敗したので、Claude Code が古すぎる可能性が高い）です。`"mod":null` は、bridge が自分の `PATH` 上に `claude` をまったく見つけられなかったという意味です（ログにそう出ます）。そこへ置くか、`-claude /path/to/claude` を付けて bridge を起動してください。`"code":"page_key"` を含む応答は、リクエストが鍵を示さなかったか、違う鍵を示したという意味です。`cat` が鍵ファイルを見つけたか確かめてください（データフォルダは上で説明したとおりです）。見つけていたなら、動いている bridge は別のデータフォルダで起動されています。
 
 bridge のログはデータフォルダの `bridge.log` です。ログイン時に起動した場合、ログは Linux では `journalctl --user -u symphony`、macOS では `~/Library/Logs/symphony.log` に出ます。
 
@@ -209,14 +209,11 @@ bridge のログはデータフォルダの `bridge.log` です。ログイン�
 - 何をどこにインストールしたか：プログラムのパス、ユーザースコープの mod、bridge をログイン時に起動するようにしたかバックグラウンドで起動したか、`PATH` や rc ファイルを変更したならその内容、自分で決めた選択、`git` がないならそのこと。
 - すべてを元に戻す方法：下の「アンインストール」。
 
-ルール：bridge はこのマシンでだけ待ち受けます（ほかのアドレスは拒否するので、`-addr` は `127.0.0.1:7788` のまま）。`sudo` で実行しないこと、同じアドレスで 2 つ目の bridge を起動しないこと。
+ルール：bridge はこのマシンでだけ待ち受けます（このマシン以外のアドレスは拒否します。ユーザーが別のポートを選ばない限り、既定の `127.0.0.1:7788` のままにしてください）。`sudo` で実行しないこと、同じアドレスや同じデータフォルダで 2 つ目の bridge を起動しないこと（symphony はそれを拒否し、動いている bridge を示します）。
 
 #### 更新
 
-ステップ 2 のとおり新しいリリースをダウンロードします。動いている bridge は再起動するまで古いプログラムのままなので（Windows では、動いているプログラムを置き換えることもできません）、bridge を止め、ステップ 3 のとおりプログラムを置き換えてから、もう一度起動します。bridge を止めると bridge が起動したセッションも終了するので、先にユーザーに伝えてください。
-
-- ログイン時に起動している場合：`symphony -autostart off` を実行し（Linux と macOS ではこれで bridge も止まります。Windows では bridge のコンソールウィンドウも閉じるか、`Stop-Process -Name symphony` を実行します）、プログラムを置き換えてから、`symphony -autostart on -open=false`。
-- `-background` で起動した場合：止めるコマンドはありません。そのプロセスを終了させます。Linux と macOS では `pkill -x symphony`（動いている `symphony attach` もすべて終了します）、Windows では `Stop-Process -Name symphony` です。プログラムを置き換えてから、`symphony -background -open=false`。
+ステップ 2 のとおり新しいリリースをダウンロードします。動いている bridge は再起動するまで古いプログラムのままなので（Windows では、動いているプログラムを置き換えることもできません）、`symphony -stop` で bridge を止め、ステップ 3 のとおりプログラムを置き換えてから、前と同じ方法でもう一度起動します。ログイン時に起動するようにしていたなら `symphony -autostart on -open=false`（これで今すぐにも起動します）、そうでなければ `symphony -background -open=false` です。bridge をデフォルト以外の `-addr` や `-data` で動かしている場合は、これらのコマンドのどれにも同じものを付けてください。`-stop` が止めるのはそのデータフォルダの bridge だけで（`-addr` で、またはそのフォルダの bridge が実際に動いている場所で）、何も応答しなければ `nothing to stop` と表示します。bridge を止めると bridge が起動したセッションも終了するので、先にユーザーに伝えてください。（`-stop` は v1.1.0 で加わりました。v1.0.0 の bridge を止めるには、そのプロセスを終了させます。Linux と macOS では `pkill -x symphony`、Windows では `Stop-Process -Name symphony` です。）
 
 mod は `claude plugin update symphony-bridge@symphony` で更新します（クローンをマーケットプレイスにしている場合は、代わりにそこで `git pull`）。
 
@@ -225,8 +222,8 @@ mod は `claude plugin update symphony-bridge@symphony` で更新します（ク
 #### アンインストール
 
 ```bash
-symphony -autostart off                           # ログイン時に起動しなくし、bridge とそのセッションを止める
-pkill -x symphony                                 # -background で起動した bridge を止める
+symphony -stop                                    # どう起動した bridge でも、bridge とそのセッションを止める（デフォルト以外なら、その -addr と -data を付ける）
+symphony -autostart off                           # ログイン時に起動しなくする（そう設定されていなければ、そう表示する）
 claude plugin uninstall symphony-bridge@symphony  # mod
 claude plugin marketplace remove symphony         # マーケットプレイスの登録
 rm ~/.local/bin/symphony                          # プログラム（ステップ 3 で置いた場所）
@@ -235,8 +232,8 @@ rm ~/.local/bin/symphony                          # プログラム（ステッ�
 ステップ 3 で `~/.local/bin` をシェルの rc ファイルに追加した場合は、その行も削除してください。Windows では、PowerShell で：
 
 ```powershell
+symphony -stop                                               # bridge とそのセッションを止める（デフォルト以外なら、その -addr と -data を付ける）
 symphony -autostart off                                      # ログイン時に起動しなくする
-Stop-Process -Name symphony -ErrorAction SilentlyContinue    # bridge を止める
 claude plugin uninstall symphony-bridge@symphony
 claude plugin marketplace remove symphony
 $dest = Join-Path $env:LOCALAPPDATA 'Programs\symphony'
@@ -245,7 +242,7 @@ $p = ([Environment]::GetEnvironmentVariable('Path', 'User') -split ';' | Where-O
 [Environment]::SetEnvironmentVariable('Path', $p, 'User')    # ステップ 3 で追加した Path の項目
 ```
 
-データフォルダ（token 付きのアカウント、ページの鍵、メッセージ履歴、タスク）は残ります。すべて消すには、このフォルダも削除してください。削除するとページの鍵も消えるので、次の起動で新しい鍵が作られ、どのブラウザもログインし直す必要があります。Linux で snap か flatpak のブラウザを使っている場合、`open.html` はそのブラウザ専用のフォルダ（`~/snap/<snap>/common` か `~/.var/app/<app id>`）にあるので、これも削除してください。
+データフォルダ（token 付きのアカウント、ページの鍵、メッセージ履歴、利用台帳、タスク、それに `lock`、`bridge.addr`、よけておいた `*.corrupt-<time>` などのファイル）は残ります。すべて消すには、このフォルダも削除してください。削除するとページの鍵も消えるので、次の起動で新しい鍵が作られ、どのブラウザもログインし直す必要があります。Linux で snap か flatpak のブラウザを使っている場合、`open.html` はそのブラウザ専用のフォルダ（`~/snap/<snap>/common` か `~/.var/app/<app id>`）にあるので、これも削除してください。
 
 ## できること
 
@@ -275,7 +272,7 @@ $p = ([Environment]::GetEnvironmentVariable('Path', 'User') -split ';' | Where-O
 | フラグ | デフォルト | 説明 |
 | --- | --- | --- |
 | `-addr` | `127.0.0.1:7788` | 待ち受けるアドレス。ホストは `127.0.0.1`、`localhost`、`::1`（`[::1]:7788` のように）のいずれかでなければならず、それ以外は bridge が拒否します |
-| `-data` | `$SYMPHONY_DATA`、なければ設定フォルダ内の `symphony` | データフォルダ。token 付きのアカウント（`accounts.json`）、ページの鍵（`key`）と `open.html`、メッセージ履歴（`messages.json`）、タスク（`tasks.json`）、`-background` のログ（`bridge.log`）が入ります |
+| `-data` | `$SYMPHONY_DATA`、なければ設定フォルダ内の `symphony` | データフォルダ。token 付きのアカウント（`accounts.json`）、ページの鍵（`key`）と `open.html`、メッセージ履歴（`messages.json`）、利用台帳（`ledger.json`）、タスク（`tasks.json`）、`-background` のログ（`bridge.log`）、`lock` と `bridge.addr`（どの bridge がどこで使っているか）、壊れていたためよけておいたメッセージ履歴や利用台帳（`*.corrupt-<time>`）が入ります |
 | `-claude` | `claude` | claude の実行ファイル |
 | `-lang` | システムの言語、なければ `en` | bridge のメッセージの言語（デフォルトは `SYMPHONY_LANG`、`LC_ALL`、`LC_MESSAGES`、`LANG` で決まります） |
 | `-mod` | なし | 開発用：このフォルダの mod を `--plugin-dir` でセッションに渡し、インストール済みのものより優先させる |
@@ -283,11 +280,12 @@ $p = ([Environment]::GetEnvironmentVariable('Path', 'User') -split ';' | Where-O
 | `-open` | `true` | bridge の起動後にブラウザでオフィスを開く。このデータフォルダの bridge が `-addr` で既に動いていれば、そのオフィスを開くだけ |
 | `-autostart` | — | `on`：ログインのたびに bridge を自動で起動し（ほかに指定したフラグ付き）、今すぐ起動する。`off`：元に戻す |
 | `-background` | — | bridge をバックグラウンドで起動する。ターミナルから切り離し、ログはデータフォルダの `bridge.log` に書き、応答するようになったら戻る |
+| `-stop` | — | このデータフォルダの bridge を（`-addr` で、そこになければ実際に動いている場所で）、どう起動したかにかかわらず止め（そのセッションは終了します）、止まったら戻る。鍵を示すのは、その鍵を持っていることを証明した bridge に対してだけ |
 | `-version` | — | バージョンを表示して終了する |
 
-`-addr` でほかのもの（別のプログラム、別のデータフォルダを使う bridge、または古い symphony の bridge）が応答しているときは、symphony はそう伝えて終了します。ページの鍵を示すのは、その鍵を持っていることを証明した bridge に対してだけです。
+`-addr` でほかのもの（別のプログラム、別のデータフォルダを使う bridge、または古い symphony の bridge）が応答しているときは、symphony はそう伝えて終了します。ページの鍵を示すのは、その鍵を持っていることを証明した bridge に対してだけです。1 つのデータフォルダを使えるのは一度に 1 つの bridge だけです。指定したデータフォルダの bridge がすでに別のアドレスで動いているときは、symphony はそのアドレスを伝え、そのオフィスを開いて終了します（2 つ目の bridge には専用の `-data` を指定してください）。
 
-**ログイン時に起動**：`symphony -autostart on` を実行すると、以後ログインのたびに bridge が自動で起動し（一緒に指定したフラグ、たとえば `-addr` も引き継ぎます）、今すぐにも起動します。`symphony -autostart off` で元に戻せます。Linux では systemd のユーザーサービス（ログは `journalctl --user -u symphony` で見られます）、macOS では launchd エージェント（ログは `~/Library/Logs/symphony.log`）、Windows ではレジストリの Run キーの値です（bridge はコンソールウィンドウで動き、閉じると次のログインまで止まります）。`go run` ではなく、symphony プログラムそのものが必要です。
+**ログイン時に起動**：`symphony -autostart on` を実行すると、以後ログインのたびに bridge が自動で起動し（一緒に指定したフラグ、たとえば `-addr` も引き継ぎます）、今すぐにも起動します。`symphony -autostart off` で元に戻せます。Linux では systemd のユーザーサービス（ログは `journalctl --user -u symphony` で見られます）、macOS では launchd エージェント（ログは `~/Library/Logs/symphony.log`）、Windows ではレジストリの Run キーの値です（bridge はコンソールウィンドウで動き、閉じると次のログインまで止まります）。`symphony -stop` は、どう起動した bridge でも、次に起動されるまで止めます（ログイン時に起動したものなら、次のログインまで）。`go run` ではなく、symphony プログラムそのものが必要です。
 
 **ソースから**（Go 1.27 以降）：`git clone https://github.com/feynmanzcys-bytes/symphony.git && cd symphony && go run ./cmd/bridge`。
 
@@ -311,12 +309,14 @@ SYMPHONY_TOKEN=<token> claude --name frontend-alice --permission-mode manual
 | メッセージ | 意味 |
 | --- | --- |
 | `bridge（…）に接続できません` / `can't reach the bridge` | bridge のアドレスで何も応答せず、bridge を起動しても解決しなかった（またはアドレスがこのマシン上にない）。 |
+| `bridge（…）を起動できませんでした: <reason>` / `couldn't start the bridge ...: <reason>` | 何も応答せず、`symphony -background` も表示された理由で失敗した（たとえば、このデータフォルダの bridge が別のアドレスで動いている。`SYMPHONY_BRIDGE` をそのアドレスにしてください）。 |
 | `bridge がこの SYMPHONY_TOKEN を認識しません` / `the bridge doesn't know this SYMPHONY_TOKEN` | bridge にこの token のアカウントがない。アカウントが削除されたか、bridge が別のデータフォルダを使っている。 |
 | `このセッションが信頼できる symphony の bridge ではない` / `isn't a symphony bridge this session can trust` | アドレスで何かが応答しているが、token を知っていることを証明できない。別のプログラムか、mod より古い symphony（更新してください）。token は送られません。 |
 | `SYMPHONY_BRIDGE（…）はこのマシン上にあるか、https を使う必要があります` / `SYMPHONY_BRIDGE ... must be on this machine or use https` | mod が受け付けないアドレス。bridge には一切接続しません。 |
 | `このアカウントには既にオンラインのセッションがあります` / `this account already has a session online` | 1 つのアカウントを同時に使えるセッションは 1 つだけ。このセッション用に別のアカウントを作ってください。 |
+| `オフィスの Web ページ（…）での回答を待っています` / `waiting for your answer in the office page` | 権限の承認や質問が、ターミナルではなくオフィスのページで待っている。そこで答えるか、Esc でキャンセルしてください。表示されるのはセッションごとに 1 回だけです。 |
 
-このマシン上の bridge のアドレスが応答しないときは、セッションが `symphony -background -open=false -addr <that address>` で bridge を自分で起動し（`symphony` が PATH にある場合）、そのことを表示します（`bridge（…）をバックグラウンドで起動しました` / `started the bridge ... in the background`）。bridge はセッションが終わっても動き続けます。アカウントが既定のデータフォルダにない場合は `SYMPHONY_DATA` を設定してください。
+このマシン上の bridge のアドレスが応答しないときは、セッションが `symphony -background -open=false -addr <that address>` で bridge を自分で起動し（`symphony` が PATH にある場合）、そのことを表示します（`bridge（…）をバックグラウンドで起動しました` / `started the bridge ... in the background`）。bridge はセッションが終わっても動き続けます。アカウントが既定のデータフォルダにない場合は `SYMPHONY_DATA` を設定してください。このデータフォルダの bridge がすでに別のアドレスで動いている場合は、そう表示して、セッションはターミナルでの操作に戻ります。`SYMPHONY_BRIDGE` をそのアドレスにしてください。
 
 ## チームでのタスク
 
@@ -358,7 +358,7 @@ SYMPHONY_TOKEN=<token> claude --name frontend-alice --permission-mode manual
 ページからセッションを起動できる、つまりこのマシンでコマンドを実行できるので、bridge は、誰がアクセスできるかを制限しています。
 
 - **ページの鍵**：オフィスとその API にはページの鍵が必要です。これは、`symphony` が開くリンクを通じてブラウザが受け取る cookie です。鍵はデータフォルダの `key` ファイルで、あなただけが読めます。プログラムは `X-Symphony-Key` ヘッダーで鍵を示します。
-- **このマシンだけ**：bridge はこのマシンでだけ待ち受け、このマシンからの接続だけを受け付けます。ほかのホスト宛てのリクエスト（DNS リバインディング）や、ほかの Web サイトがあなたのブラウザ経由で送ってくる書き込みは拒否し、ほかのサイトがそのページをフレームに埋め込むこともできません。ページは bridge 自身のファイルだけを読み込みます（Content Security Policy）。
+- **このマシンだけ**：bridge はこのマシンでだけ待ち受け、このマシンからの接続だけを受け付けます。ほかのホスト宛てのリクエスト（DNS リバインディング）や、ほかの Web サイトがあなたのブラウザ経由で送ってくる書き込みは拒否します。また API は、ほかのサイトやほかのポートから来たとブラウザが示すリクエストには、リンクであっても応答しません。ほかのサイトがそのページをフレームに埋め込むこともできません。ページは bridge 自身のファイルだけを読み込みます（Content Security Policy）。
 - **mod は bridge を確かめてから** token を送り、`symphony` プログラムも bridge を確かめてからページの鍵を示すので、bridge のアドレスで待ち受けているほかの何かが token やページの鍵を受け取ることはありません。
 - **防げないもの**：あなた自身のユーザーとして動くプログラムは、ほかのファイルと同じように、データフォルダにあるページの鍵や token を読めます。また、ブラウザはサイトの cookie をそのサイトのどのポートにも送ります。このマシンのほかのユーザーが `127.0.0.1` で動かしているサーバーは、あなたのブラウザがそれを開いたとき、または bridge が止まっていてオフィスがまだタブで開いているあいだにそのサーバーが bridge のポートを使ったときに、ページの鍵の cookie を受け取ります。共用のマシンでは、bridge を止める前にオフィスを閉じてください。鍵が漏れたおそれがあるときは、データフォルダの `key` ファイルを削除してください（次の起動で新しい鍵が作られます）。
 - プログラムには署名がありません。ブラウザでダウンロードした場合、macOS は開発元を検証できないとして実行を拒むことがあります。「システム設定 → プライバシーとセキュリティ」で「このまま開く」をクリックするか、`xattr -d com.apple.quarantine symphony` を一度実行してください。Windows でも SmartScreen が警告することがあります。「詳細情報」をクリックしてから「実行」を選んでください。リリースの `checksums.txt` には各アーカイブの SHA-256 が載っていて、インストールのステップ 2 でそれを確認します。

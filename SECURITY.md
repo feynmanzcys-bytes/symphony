@@ -26,7 +26,7 @@ What symphony protects against:
 
 - **Other people and programs that reach the address.** The office and its API need the page key: a cookie the browser gets through the link the `symphony` program opens. The key is in the `key` file in the data folder, readable only by you. The mod's endpoints take the account's token instead.
 - **Other machines.** The bridge listens on this machine only (`-addr` must be `127.0.0.1`, `localhost` or `::1`; `localhost` means `127.0.0.1`) and refuses connections from any other address.
-- **Websites you visit.** The bridge refuses requests addressed to any host but this machine (DNS rebinding) and writes that other websites send through your browser, and other sites can't frame its pages. Its pages load only the bridge's own files (a Content Security Policy).
+- **Websites you visit.** The bridge refuses requests addressed to any host but this machine (DNS rebinding) and writes that other websites send through your browser, and its API answers no request your browser says comes from another site or another port of this machine, not even a link. Other sites can't frame its pages. Its pages load only the bridge's own files (a Content Security Policy).
 - **Something else at the bridge's address.** Before the mod sends its token, it checks that the bridge knows the token, without sending it (`POST /api/hello`; see [docs/protocol.md](docs/protocol.md)). It sends the token only over plain http on this machine or over https. The `symphony` program (and `symphony attach`) checks the same way that the bridge has the page key before it shows the key.
 
 What it does not protect against:

@@ -39,14 +39,14 @@ symphony tiene dos partes y necesita las dos:
 uname -sm                 # Linux/macOS: decide el archivo de abajo (x86_64 → amd64; arm64/aarch64 → arm64)
 claude --version          # hace falta Claude Code 2.1.x (probado con 2.1.316)
 git --version             # solo para las tareas en equipo; si falta, anótalo en el informe, no te detengas
-symphony -version         # ¿ya está instalado? muestra "symphony v1.0.0 (darwin/arm64)"
+symphony -version         # ¿ya está instalado? muestra "symphony v1.1.0 (darwin/arm64)"
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:7788/api/state   # ¿hay un bridge en marcha? 401: symphony 1.x; 200: uno más antiguo; 000: ninguno
-claude plugin list --json # ¿el mod ya está instalado? busca "id":"symphony-bridge@symphony"
+claude plugin list --json # ¿el mod ya está instalado? busca una entrada con "id": "symphony-bridge@symphony"
 ```
 
 En Windows usa PowerShell: `$env:PROCESSOR_ARCHITECTURE` es `AMD64` o `ARM64`.
 
-Si falta `claude`, detente y dile al usuario que instale primero Claude Code. Si el programa y el mod ya están los dos, ve a «Actualizar», más abajo. Un bridge que ya está en marcha sigue con el programa con el que se inició: si hay uno, lo detendrás antes del paso 5.
+Si falta `claude`, detente y dile al usuario que instale primero Claude Code. Si el programa y el mod ya están los dos, ve a «Actualizar», más abajo. Si solo está uno de los dos, haz los pasos del otro: los pasos 2 y 3 para el programa (salvo que `symphony -version` ya muestre la última versión), el paso 4 para el mod, y luego el paso 5. Un bridge que ya está en marcha sigue con el programa con el que se inició: si hay uno, lo detendrás antes del paso 5.
 
 #### Paso 2: consigue el programa
 
@@ -58,10 +58,9 @@ En Linux y macOS:
 d=$(mktemp -d)   # una carpeta nueva que solo tú puedes leer
 echo "$d"        # anótala: el paso 3 instala desde ella
 cd "$d"
-curl -fLO https://github.com/feynmanzcys-bytes/symphony/releases/latest/download/symphony_<os>_<arch>.tar.gz
-curl -fLO https://github.com/feynmanzcys-bytes/symphony/releases/latest/download/checksums.txt
-sha256sum -c --ignore-missing checksums.txt      # Linux: tiene que mostrar "symphony_<os>_<arch>.tar.gz: OK"
-shasum -a 256 -c --ignore-missing checksums.txt  # macOS: la misma comprobación
+curl -fsSLO https://github.com/feynmanzcys-bytes/symphony/releases/latest/download/symphony_<os>_<arch>.tar.gz
+curl -fsSLO https://github.com/feynmanzcys-bytes/symphony/releases/latest/download/checksums.txt
+if command -v sha256sum >/dev/null; then sha256sum -c --ignore-missing checksums.txt; else shasum -a 256 -c --ignore-missing checksums.txt; fi   # tiene que mostrar "symphony_<os>_<arch>.tar.gz: OK"
 tar xzf symphony_<os>_<arch>.tar.gz              # el programa queda en "$d/symphony"
 ```
 
@@ -109,7 +108,7 @@ Instala el programa del paso 2, `$d/symphony` (si tu shell no conserva las varia
 ```bash
 install -m 755 "$d/symphony" ~/.local/bin/symphony
 xattr -d com.apple.quarantine ~/.local/bin/symphony 2>/dev/null || true   # macOS: el binario no está firmado
-symphony -version          # muestra "symphony v1.0.0 (linux/amd64)": la versión y la plataforma
+symphony -version          # muestra "symphony v1.1.0 (linux/amd64)": la versión y la plataforma
 ```
 
 Si ninguna de estas carpetas está en el `PATH`, pregunta al usuario antes de cambiar nada. Si dice que sí, crea `~/.local/bin`, añádela al archivo rc de la shell (`~/.zshrc` o `~/.bashrc`) e indícalo en el informe; si dice que no, instala el programa donde te diga y avísale de que el mod no puede iniciar el bridge por su cuenta mientras `symphony` no esté en el `PATH` de sus sesiones de Claude Code (el inicio al iniciar sesión, del paso 5, sigue funcionando).
@@ -119,7 +118,7 @@ En Windows, descomprímelo en una carpeta propia (`$d` y `$zip` vienen del paso 
 ```powershell
 $dest = Join-Path $env:LOCALAPPDATA 'Programs\symphony'
 Expand-Archive -LiteralPath (Join-Path $d $zip) -DestinationPath $dest -Force
-& (Join-Path $dest 'symphony.exe') -version   # muestra "symphony v1.0.0 (windows/amd64)"
+& (Join-Path $dest 'symphony.exe') -version   # muestra "symphony v1.1.0 (windows/amd64)"
 ```
 
 Añadir esa carpeta al `Path` del usuario es un cambio duradero: pregunta antes al usuario. Si dice que sí, ejecuta la línea de abajo y abre una shell nueva; si dice que no, usa la ruta completa. SmartScreen puede avisar en la primera ejecución: «Más información» y luego «Ejecutar de todas formas».
@@ -141,11 +140,11 @@ Esto añade el repositorio como el marketplace de plugins `symphony` e instala e
 Comprueba:
 
 ```bash
-claude plugin list --json   # una entrada tiene "id":"symphony-bridge@symphony", "scope":"user", "enabled":true
+claude plugin list --json   # una entrada tiene "id": "symphony-bridge@symphony", "scope": "user", "enabled": true
 ```
 
-- `"scope":"project"` o `"local"`: el mod solo se cargaría en una carpeta. Ejecuta `claude plugin uninstall symphony-bridge@symphony` y vuelve a instalarlo con `--scope user`.
-- `"enabled":false`: `claude plugin enable symphony-bridge@symphony`.
+- `"scope": "project"` o `"local"`: el mod solo se cargaría en una carpeta. Ejecuta `claude plugin uninstall symphony-bridge@symphony` y vuelve a instalarlo con `--scope user`.
+- `"enabled": false`: `claude plugin enable symphony-bridge@symphony`.
 
 #### Paso 5: inicia el bridge
 
@@ -171,28 +170,29 @@ Si dice que no:
 symphony -background -open=false
 ```
 
-Esto inicia el bridge separado de la terminal (no vuelve a iniciarse después de reiniciar la máquina) y muestra:
+Esto inicia el bridge separado de la terminal (no vuelve a iniciarse después de reiniciar la máquina) y muestra, en la salida de error estándar, tras la fecha y la hora:
 
 ```
 the symphony bridge runs in the background at http://127.0.0.1:7788/?key=<key>; its log: <data folder>/bridge.log
 ```
 
-Si ya hay en marcha un bridge de esta versión, muestra en su lugar `a symphony bridge is already running at http://127.0.0.1:7788/?key=<key>`; no pasa nada, no inicies otro. `<key>` es la clave de las páginas, que inicia la sesión de un navegador en la oficina: no la pegues en ningún otro sitio. Si el programa responde `127.0.0.1:7788 is taken: another program, or a symphony bridge with another data folder, answers there`, dile al usuario qué responde ahí (un bridge de symphony más antiguo también cuenta: detenlo como en «Actualizar») y no elijas otra dirección sin preguntar.
+Si ya hay en marcha un bridge de esta versión, muestra en su lugar (de la misma forma) `a symphony bridge is already running at http://127.0.0.1:7788/?key=<key>`; no pasa nada, no inicies otro. `<key>` es la clave de las páginas, que inicia la sesión de un navegador en la oficina: no la pegues en ningún otro sitio. Si el programa responde `127.0.0.1:7788 is taken: another program, or a symphony bridge with another data folder, answers there`, dile al usuario qué responde ahí (un bridge de symphony más antiguo también cuenta: detenlo como en «Actualizar») y no elijas otra dirección sin preguntar.
 
 Comprueba toda la cadena con una sola petición, que presenta la clave de las páginas de la carpeta de datos (por la entrada estándar, para que la clave no aparezca en una línea de comandos que otros usuarios podrían ver):
 
 ```bash
-printf 'X-Symphony-Key: %s\n' "$(cat ~/.config/symphony/key)" | curl -s -H @- http://127.0.0.1:7788/api/launch/options                         # Linux
-printf 'X-Symphony-Key: %s\n' "$(cat ~/"Library/Application Support/symphony/key")" | curl -s -H @- http://127.0.0.1:7788/api/launch/options   # macOS
+printf 'X-Symphony-Key: %s\n' "$(cat "${SYMPHONY_DATA:-${XDG_CONFIG_HOME:-$HOME/.config}/symphony}/key")" | curl -s -H @- http://127.0.0.1:7788/api/launch/options      # Linux
+printf 'X-Symphony-Key: %s\n' "$(cat "${SYMPHONY_DATA:-$HOME/Library/Application Support/symphony}/key")" | curl -s -H @- http://127.0.0.1:7788/api/launch/options   # macOS
 ```
 
 ```powershell
-(Invoke-WebRequest -UseBasicParsing -Headers @{ 'X-Symphony-Key' = (Get-Content "$env:APPDATA\symphony\key") } -Uri http://127.0.0.1:7788/api/launch/options).Content
+$data = if ($env:SYMPHONY_DATA) { $env:SYMPHONY_DATA } else { Join-Path $env:APPDATA 'symphony' }
+(Invoke-WebRequest -UseBasicParsing -Headers @{ 'X-Symphony-Key' = (Get-Content (Join-Path $data 'key')) } -Uri http://127.0.0.1:7788/api/launch/options).Content
 ```
 
 La carpeta de datos es `~/.config/symphony` en Linux (`$XDG_CONFIG_HOME/symphony` si esa variable está definida), `~/Library/Application Support/symphony` en macOS y `%AppData%\symphony` en Windows, o `SYMPHONY_DATA` si está definida.
 
-La respuesta contiene `"enabled":true` y `"mod":{"ok":true,"id":"symphony-bridge@symphony","version":"1.0.0"}`: el bridge está en marcha, encontró `claude` y el mod está instalado donde las sesiones lo cargarán. Con `"enabled":false`, `mod.code` dice qué falla y `mod.fix`, el comando que lo arregla: `mod_not_installed` o `mod_project_scope` (vuelve al paso 4), `mod_disabled` (actívalo), `mod_check_failed` (`claude plugin list --json` falló, así que seguramente Claude Code es demasiado antiguo). `"mod":null` significa que el bridge no encontró `claude` en su `PATH` en absoluto (su registro lo dice): ponlo ahí, o inicia el bridge con `-claude /path/to/claude`. Una respuesta con `"code":"page_key"` significa que el archivo de la clave no es el del bridge en marcha: se inició con otra carpeta de datos.
+La respuesta contiene `"enabled":true` y `"mod":{"ok":true,"id":"symphony-bridge@symphony","version":"1.1.0"}`: el bridge está en marcha, encontró `claude` y el mod está instalado donde las sesiones lo cargarán. Con `"enabled":false`, `mod.code` dice qué falla y `mod.fix`, el comando que lo arregla: `mod_not_installed` o `mod_project_scope` (vuelve al paso 4), `mod_disabled` (actívalo), `mod_check_failed` (`claude plugin list --json` falló, así que seguramente Claude Code es demasiado antiguo). `"mod":null` significa que el bridge no encontró `claude` en su `PATH` en absoluto (su registro lo dice): ponlo ahí, o inicia el bridge con `-claude /path/to/claude`. Una respuesta con `"code":"page_key"` significa que la petición no presentó ninguna clave o presentó una equivocada: comprueba que `cat` encontró el archivo de la clave (la carpeta de datos, más arriba); si lo encontró, el bridge en marcha se inició con otra carpeta de datos.
 
 El registro del bridge es `bridge.log` en la carpeta de datos; si se inició al iniciar sesión, registra en `journalctl --user -u symphony` en Linux y en `~/Library/Logs/symphony.log` en macOS.
 
@@ -209,14 +209,11 @@ Dile al usuario:
 - Qué se instaló y dónde: la ruta del programa, el mod en el ámbito de usuario, el bridge iniciado al iniciar sesión o en segundo plano, cualquier cambio en el `PATH` o en un archivo rc, las decisiones que tomaste, y que falta `git`, si falta.
 - Cómo deshacerlo todo: «Desinstalar», más abajo.
 
-Reglas: el bridge solo escucha en esta máquina (rechaza cualquier otra dirección, así que `-addr` se queda en `127.0.0.1:7788`), no lo ejecutes con `sudo` y no inicies un segundo bridge en la misma dirección.
+Reglas: el bridge solo escucha en esta máquina (rechaza cualquier dirección que no sea de ella; deja la predeterminada, `127.0.0.1:7788`, salvo que el usuario elija otro puerto), no lo ejecutes con `sudo` y no inicies un segundo bridge en la misma dirección ni con la misma carpeta de datos (symphony se niega y dice cuál está en marcha).
 
 #### Actualizar
 
-Descarga la nueva versión como en el paso 2. El bridge en marcha sigue con el programa antiguo hasta que se reinicia (y en Windows no se puede sustituir un programa en ejecución), así que detenlo, sustituye el programa como en el paso 3 y vuelve a iniciarlo. Detener el bridge termina las sesiones que inició, así que avisa antes al usuario:
-
-- Iniciado al iniciar sesión: `symphony -autostart off` (en Linux y macOS esto también lo detiene; en Windows cierra además la ventana de consola del bridge, o ejecuta `Stop-Process -Name symphony`), sustituye el programa y luego `symphony -autostart on -open=false`.
-- Iniciado con `-background`: no tiene un comando para detenerlo. Termina su proceso: `pkill -x symphony` en Linux y macOS (que también termina cualquier `symphony attach`), `Stop-Process -Name symphony` en Windows. Sustituye el programa y luego `symphony -background -open=false`.
+Descarga la nueva versión como en el paso 2. El bridge en marcha sigue con el programa antiguo hasta que se reinicia (y en Windows no se puede sustituir un programa en ejecución), así que detenlo con `symphony -stop`, sustituye el programa como en el paso 3 y vuelve a iniciarlo tal como se ejecutaba antes: `symphony -autostart on -open=false` si se inicia al iniciar sesión (esto también lo inicia ya); si no, `symphony -background -open=false`. Si el bridge se ejecuta con un `-addr` o un `-data` distintos de los predeterminados, pasa los mismos a cada uno de estos comandos: `-stop` solo detiene el bridge de esa carpeta de datos (en `-addr`, o allí donde esté en marcha el bridge de esa carpeta), y dice `nothing to stop` cuando no responde ninguno. Detener el bridge termina las sesiones que inició, así que avisa antes al usuario. (`-stop` llegó con la v1.1.0; para detener un bridge v1.0.0, termina su proceso: `pkill -x symphony` en Linux y macOS, `Stop-Process -Name symphony` en Windows).
 
 El mod se actualiza con `claude plugin update symphony-bridge@symphony` (con un clon como marketplace, haz `git pull` allí).
 
@@ -225,8 +222,8 @@ El programa y el mod comparten número de versión; [CHANGELOG.md](CHANGELOG.md)
 #### Desinstalar
 
 ```bash
-symphony -autostart off                           # deja de iniciarlo al iniciar sesión, y detiene el bridge y sus sesiones
-pkill -x symphony                                 # detiene un bridge iniciado con -background
+symphony -stop                                    # detiene el bridge y sus sesiones, sin importar cómo se haya iniciado (añade su -addr y su -data si no son los predeterminados)
+symphony -autostart off                           # deja de iniciarlo al iniciar sesión (si no lo hacía, lo dice)
 claude plugin uninstall symphony-bridge@symphony  # el mod
 claude plugin marketplace remove symphony         # la entrada del marketplace
 rm ~/.local/bin/symphony                          # el programa, donde lo haya puesto el paso 3
@@ -235,8 +232,8 @@ rm ~/.local/bin/symphony                          # el programa, donde lo haya p
 Si el paso 3 añadió `~/.local/bin` a un archivo rc de la shell, borra también esa línea. En Windows, en PowerShell:
 
 ```powershell
+symphony -stop                                               # detiene el bridge y sus sesiones (añade su -addr y su -data si no son los predeterminados)
 symphony -autostart off                                      # deja de iniciarlo al iniciar sesión
-Stop-Process -Name symphony -ErrorAction SilentlyContinue    # detiene el bridge
 claude plugin uninstall symphony-bridge@symphony
 claude plugin marketplace remove symphony
 $dest = Join-Path $env:LOCALAPPDATA 'Programs\symphony'
@@ -245,7 +242,7 @@ $p = ([Environment]::GetEnvironmentVariable('Path', 'User') -split ';' | Where-O
 [Environment]::SetEnvironmentVariable('Path', $p, 'User')    # la entrada de Path que añadió el paso 3
 ```
 
-La carpeta de datos (las cuentas con sus tokens, la clave de las páginas, el registro de mensajes, las tareas) se queda; bórrala para eliminarlo todo. Al borrarla también se borra la clave de las páginas: el siguiente arranque crea una nueva y todos los navegadores tienen que volver a iniciar sesión. En Linux con un navegador snap o flatpak, `open.html` está en la carpeta propia de ese navegador (`~/snap/<snap>/common` o `~/.var/app/<app id>`); bórralo también.
+La carpeta de datos (las cuentas con sus tokens, la clave de las páginas, el registro de mensajes, el libro de cuentas, las tareas, y archivos como `lock`, `bridge.addr` o un `*.corrupt-<time>` apartado) se queda; bórrala para eliminarlo todo. Al borrarla también se borra la clave de las páginas: el siguiente arranque crea una nueva y todos los navegadores tienen que volver a iniciar sesión. En Linux con un navegador snap o flatpak, `open.html` está en la carpeta propia de ese navegador (`~/snap/<snap>/common` o `~/.var/app/<app id>`); bórralo también.
 
 ## Qué hace
 
@@ -275,7 +272,7 @@ La carpeta de datos (las cuentas con sus tokens, la clave de las páginas, el re
 | Opción | Predeterminado | Qué hace |
 | --- | --- | --- |
 | `-addr` | `127.0.0.1:7788` | Dirección en la que escucha. Su host tiene que ser `127.0.0.1`, `localhost` o `::1` (como en `[::1]:7788`); el bridge rechaza cualquier otro |
-| `-data` | `$SYMPHONY_DATA`; si no, `symphony` en tu carpeta de configuración | La carpeta de datos: las cuentas con sus tokens (`accounts.json`), la clave de las páginas (`key`) y `open.html`, el registro de mensajes (`messages.json`), las tareas (`tasks.json`) y el registro de `-background` (`bridge.log`) |
+| `-data` | `$SYMPHONY_DATA`; si no, `symphony` en tu carpeta de configuración | La carpeta de datos: las cuentas con sus tokens (`accounts.json`), la clave de las páginas (`key`) y `open.html`, el registro de mensajes (`messages.json`), el libro de cuentas (`ledger.json`), las tareas (`tasks.json`), el registro de `-background` (`bridge.log`), `lock` y `bridge.addr` (qué bridge la usa, y dónde), y un registro de mensajes o un libro de cuentas dañado, apartado como `*.corrupt-<time>` |
 | `-claude` | `claude` | El ejecutable de claude |
 | `-lang` | el idioma de tu sistema; si no, `en` | Idioma de los mensajes del bridge (`SYMPHONY_LANG`, `LC_ALL`, `LC_MESSAGES` o `LANG` fijan el predeterminado) |
 | `-mod` | vacío | Para desarrollo: pasa a las sesiones el mod de esta carpeta con `--plugin-dir`, en lugar de la copia instalada |
@@ -283,11 +280,12 @@ La carpeta de datos (las cuentas con sus tokens, la clave de las páginas, el re
 | `-open` | `true` | Abre la oficina en el navegador cuando el bridge arranca; si el bridge de esta carpeta de datos ya está en marcha en `-addr`, solo abre su oficina |
 | `-autostart` | — | `on`: inicia el bridge cada vez que inicias sesión, con las demás opciones dadas, y lo inicia ya; `off`: lo deshace |
 | `-background` | — | Inicia el bridge en segundo plano, separado de la terminal y con su registro en `bridge.log` de la carpeta de datos, y vuelve cuando responde |
+| `-stop` | — | Detiene el bridge de esta carpeta de datos (en `-addr` o, si no, allí donde esté en marcha), sin importar cómo se haya iniciado (sus sesiones terminan), y vuelve cuando ya no está; solo presenta la clave a un bridge que demuestre tenerla |
 | `-version` | — | Muestra la versión y sale |
 
-Si en `-addr` responde otra cosa (otro programa, un bridge con otra carpeta de datos o un bridge de symphony más antiguo), symphony lo dice y se detiene; solo presenta la clave de las páginas a un bridge que demuestre tenerla.
+Si en `-addr` responde otra cosa (otro programa, un bridge con otra carpeta de datos o un bridge de symphony más antiguo), symphony lo dice y se detiene; solo presenta la clave de las páginas a un bridge que demuestre tenerla. Una carpeta de datos es de un solo bridge a la vez: si se inicia con una carpeta de datos cuyo bridge ya está en marcha en otra dirección, symphony dice dónde está, abre su oficina y se detiene (a un segundo bridge, dale su propio `-data`).
 
-**Iniciarlo al iniciar sesión**: `symphony -autostart on` hace que el bridge se inicie cada vez que inicias sesión, con las opciones que pases junto (por ejemplo `-addr`), y lo inicia ya; `symphony -autostart off` lo deshace. En Linux es un servicio de usuario de systemd (`journalctl --user -u symphony` muestra su registro), en macOS un agente de launchd (registro en `~/Library/Logs/symphony.log`) y en Windows un valor bajo la clave Run del registro (el bridge corre en una ventana de consola; al cerrarla se detiene hasta el próximo inicio de sesión). Necesita el programa symphony en sí, no `go run`.
+**Iniciarlo al iniciar sesión**: `symphony -autostart on` hace que el bridge se inicie cada vez que inicias sesión, con las opciones que pases junto (por ejemplo `-addr`), y lo inicia ya; `symphony -autostart off` lo deshace. En Linux es un servicio de usuario de systemd (`journalctl --user -u symphony` muestra su registro), en macOS un agente de launchd (registro en `~/Library/Logs/symphony.log`) y en Windows un valor bajo la clave Run del registro (el bridge corre en una ventana de consola; al cerrarla se detiene hasta el próximo inicio de sesión). `symphony -stop` detiene un bridge sin importar cómo se haya iniciado, hasta que se vuelva a iniciar (en el próximo inicio de sesión, si se inicia al iniciar sesión). Necesita el programa symphony en sí, no `go run`.
 
 **Desde el código fuente**, con Go 1.27 o posterior: `git clone https://github.com/feynmanzcys-bytes/symphony.git && cd symphony && go run ./cmd/bridge`.
 
@@ -311,12 +309,14 @@ Antes de que la sesión envíe su token a ningún sitio, el mod comprueba que el
 | Mensaje | Qué significa |
 | --- | --- |
 | `no se puede conectar con el bridge` / `can't reach the bridge` | Nada responde en la dirección del bridge, e iniciar el bridge no sirvió (o la dirección no es de esta máquina). |
+| `no se pudo iniciar el bridge (...): <reason>` / `couldn't start the bridge ...: <reason>` | Nada respondió, y `symphony -background` falló por el motivo indicado (por ejemplo, el bridge de esta carpeta de datos está en marcha en otra dirección: pon esa dirección en `SYMPHONY_BRIDGE`). |
 | `el bridge no reconoce este SYMPHONY_TOKEN` / `the bridge doesn't know this SYMPHONY_TOKEN` | El bridge no tiene ninguna cuenta con este token: se borró, o el bridge usa otra carpeta de datos. |
 | `no es un bridge de symphony en el que esta sesión pueda confiar` / `isn't a symphony bridge this session can trust` | Algo responde en la dirección pero no puede demostrar que conoce el token: otro programa, o un symphony más antiguo que el mod (actualízalo). El token no se envía. |
 | `SYMPHONY_BRIDGE (...) debe estar en esta máquina o usar https` / `SYMPHONY_BRIDGE ... must be on this machine or use https` | La dirección no es una de las que acepta el mod; nunca se contacta con el bridge. |
 | `esta cuenta ya tiene una sesión en línea` / `this account already has a session online` | Una cuenta sirve para una sola sesión a la vez; crea otra cuenta para esta sesión. |
+| `esperando tu respuesta en la página de la oficina` / `waiting for your answer in the office page` | Una solicitud de permiso o una pregunta espera en la página de la oficina, no en la terminal; respóndela allí o pulsa Esc para cancelarla. Se muestra una vez por sesión. |
 
-Si nada responde en la dirección del bridge en esta máquina, la sesión inicia el bridge ella misma con `symphony -background -open=false -addr <that address>` (si `symphony` está en tu PATH) y lo dice (`se inició el bridge (...) en segundo plano` / `started the bridge ... in the background`); el bridge sigue en marcha cuando la sesión termina. Define `SYMPHONY_DATA` si tus cuentas no están en la carpeta de datos predeterminada.
+Si nada responde en la dirección del bridge en esta máquina, la sesión inicia el bridge ella misma con `symphony -background -open=false -addr <that address>` (si `symphony` está en tu PATH) y lo dice (`se inició el bridge (...) en segundo plano` / `started the bridge ... in the background`); el bridge sigue en marcha cuando la sesión termina. Define `SYMPHONY_DATA` si tus cuentas no están en la carpeta de datos predeterminada. Si el bridge de esta carpeta de datos ya está en marcha en otra dirección, lo dice y la sesión vuelve a la terminal: pon esa dirección en `SYMPHONY_BRIDGE`.
 
 ## Tareas en equipo
 
@@ -358,7 +358,7 @@ Una tarea termina cuando la terminas desde la ventana de la tarea o cuando termi
 La página puede abrir sesiones, lo que equivale a ejecutar comandos en esta máquina, así que el bridge vigila quién llega hasta él:
 
 - **La clave de las páginas**: la oficina y su API necesitan la clave de las páginas, una cookie que tu navegador recibe a través del enlace que abre `symphony`. La clave es el archivo `key` de la carpeta de datos, que solo tú puedes leer; los programas la presentan en la cabecera `X-Symphony-Key`.
-- **Solo esta máquina**: el bridge solo escucha en esta máquina y solo acepta conexiones de ella. Rechaza las peticiones dirigidas a cualquier otro host (DNS rebinding) y las escrituras que otros sitios web envíen a través de tu navegador, y otros sitios no pueden incrustar sus páginas en un marco. Las páginas solo cargan los archivos del propio bridge (una Content Security Policy).
+- **Solo esta máquina**: el bridge solo escucha en esta máquina y solo acepta conexiones de ella. Rechaza las peticiones dirigidas a cualquier otro host (DNS rebinding) y las escrituras que otros sitios web envíen a través de tu navegador, y su API no responde a ninguna petición que tu navegador indique que viene de otro sitio o de otro puerto, ni siquiera a un enlace. Otros sitios no pueden incrustar sus páginas en un marco. Las páginas solo cargan los archivos del propio bridge (una Content Security Policy).
 - **El mod comprueba el bridge** antes de enviar su token, y el programa `symphony` lo comprueba antes de presentar la clave de las páginas, así que otra cosa que escuche en la dirección del bridge no recibe ninguno de los dos.
 - **Contra qué no protege**: los programas que se ejecutan con tu propio usuario pueden leer la clave de las páginas y los tokens de la carpeta de datos, como cualquiera de tus archivos. Y los navegadores envían las cookies de un sitio a todos sus puertos: un servidor que otro usuario de esta máquina ejecute en `127.0.0.1` recibe la cookie de la clave de las páginas cuando tu navegador lo abre, o cuando ocupa el puerto del bridge mientras el bridge está detenido y la oficina sigue abierta en una pestaña. En una máquina compartida, cierra la oficina antes de detener el bridge y, si la clave puede haberse filtrado, borra el archivo `key` de la carpeta de datos (el siguiente arranque crea una nueva).
 - Los programas no están firmados. macOS puede rechazar una copia descargada con el navegador porque no puede verificar al desarrollador: haz clic en «Abrir igualmente» en Ajustes del Sistema → Privacidad y seguridad, o ejecuta una vez `xattr -d com.apple.quarantine symphony`. SmartScreen de Windows también puede avisarte: haz clic en «Más información» y luego en «Ejecutar de todas formas». El `checksums.txt` de la versión tiene el SHA-256 de cada archivo; el paso 2 de la instalación lo comprueba.

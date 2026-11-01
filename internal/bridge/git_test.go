@@ -60,8 +60,8 @@ func TestGitInit(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, filepath.Join(dir, "notes.txt"), "hello")
 	writeFile(t, filepath.Join(dir, "src", "main.go"), "package main")
-	if gitInWorkTree(dir) {
-		t.Fatal("a plain folder is not in a work tree")
+	if in, err := gitInWorkTree(dir); in || err != nil {
+		t.Fatalf("a plain folder is not in a work tree: %v %v", in, err)
 	}
 	if err := gitInit(dir, "T3"); err != nil {
 		t.Fatal(err)
@@ -76,8 +76,8 @@ func TestGitInit(t *testing.T) {
 	if want := mustGit(t, dir, "branch", "--show-current"); err != nil || base != want || base == "" {
 		t.Fatalf("base %q (%v), want the branch git chose, %q", base, err, want)
 	}
-	if !gitInWorkTree(filepath.Join(dir, "src")) {
-		t.Fatal("a folder inside a repository is in its work tree")
+	if in, err := gitInWorkTree(filepath.Join(dir, "src")); !in || err != nil {
+		t.Fatalf("a folder inside a repository is in its work tree: %v %v", in, err)
 	}
 	root, prefix, err := gitRoot(filepath.Join(dir, "src"))
 	if err != nil || prefix != "src/" || !sameDir(root, dir) {
@@ -193,7 +193,7 @@ func TestGitWorktreeLifecycle(t *testing.T) {
 	}
 
 	// merges: the branch comes in; a conflict is aborted and leaves the checkout clean
-	if err := gitMerge(repo, "symphony/T1/bob"); err != nil {
+	if _, err := gitMerge(repo, "symphony/T1/bob"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(repo, "b.txt")); err != nil {
@@ -212,11 +212,11 @@ func TestGitWorktreeLifecycle(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := gitMerge(repo, "symphony/T1/alice"); err != nil {
+	if _, err := gitMerge(repo, "symphony/T1/alice"); err != nil {
 		t.Fatal(err)
 	}
-	if err := gitMerge(repo, "symphony/T1/carol"); err == nil {
-		t.Fatal("both changed the same line: the merge should fail")
+	if conflict, err := gitMerge(repo, "symphony/T1/carol"); err == nil || !conflict {
+		t.Fatalf("both changed the same line: the merge should fail on a conflict: %v %v", conflict, err)
 	}
 	if st := mustGit(t, repo, "status", "--porcelain"); st != "" {
 		t.Fatalf("a failed merge should be aborted: %q", st)
@@ -270,6 +270,33 @@ func TestTreeLocks(t *testing.T) {
 }
 
 // TestGitTimeout: a git command that takes too long is killed, and says so.
+// TestGitWorktreeOptionBranch: a repository whose branch is named like an option (git allows it, and a clone takes the
+// upstream's default branch name) still gets a plain worktree on the task's branch: the name isn't read as an option.
+func TestGitWorktreeOptionBranch(t *testing.T) {
+	for _, name := range []string{"--lock", "-bfoo", "--no-checkout"} {
+		dir := initRepo(t, t.TempDir(), map[string]string{"a.txt": "a\n"})
+		mustGit(t, dir, "update-ref", "refs/heads/"+name, "HEAD")
+		mustGit(t, dir, "symbolic-ref", "HEAD", "refs/heads/"+name)
+		base, err := gitBase(dir)
+		if err != nil || base != name {
+			t.Fatalf("%s: base %q %v", name, base, err)
+		}
+		wt := filepath.Join(t.TempDir(), "wt")
+		if err := gitAddWorktree(dir, "symphony/T1/bob", wt, base); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if list := mustGit(t, dir, "worktree", "list", "--porcelain"); strings.Contains(list, "locked") {
+			t.Fatalf("%s: the worktree is locked:\n%s", name, list)
+		}
+		if readFile(t, filepath.Join(wt, "a.txt")) != "a\n" || mustGit(t, wt, "symbolic-ref", "--short", "HEAD") != "symphony/T1/bob" {
+			t.Fatalf("%s: the worktree should have the files, on the task's branch", name)
+		}
+		if mustGit(t, dir, "symbolic-ref", "HEAD") != "refs/heads/"+name {
+			t.Fatalf("%s: the user's checkout moved", name)
+		}
+	}
+}
+
 func TestGitTimeout(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("the fake git is a shell script")
@@ -290,5 +317,23 @@ func TestGitTimeout(t *testing.T) {
 	}
 	if e := gitFailed("/x", err); e.Code != "task_git_failed" || !strings.Contains(e.Params["detail"], "timed out") {
 		t.Fatalf("a timeout is a git failure: %+v", e)
+	}
+}
+
+// TestGitEnvWithoutSession: git runs without what points it at another repository and without a session's variables
+// (a bridge started by hand inside an office session has its token).
+func TestGitEnvWithoutSession(t *testing.T) {
+	t.Setenv("GIT_DIR", "/elsewhere")
+	t.Setenv("SYMPHONY_TOKEN", "starter-token")
+	t.Setenv("SYMPHONY_TASK", "T9")
+	t.Setenv("SYMPHONY_DATA", "/data")
+	env := strings.Join(gitEnv(), "\n")
+	for _, gone := range []string{"GIT_DIR=", "SYMPHONY_TOKEN=", "SYMPHONY_TASK="} {
+		if strings.Contains(env, gone) {
+			t.Errorf("git's environment has %s", gone)
+		}
+	}
+	if !strings.Contains(env, "SYMPHONY_DATA=/data") || !strings.Contains(env, "GIT_TERMINAL_PROMPT=0") {
+		t.Errorf("git's environment lost what it keeps:\n%s", env)
 	}
 }

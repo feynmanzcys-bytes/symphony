@@ -21,11 +21,20 @@ import { type Lang, matchLang, message } from './messages'
 // The login (the Claude account's email) is what $.session.identity() answers; it answers only a mod the
 // organization's managed settings install, so elsewhere no login is reported.
 // When a bridge on this machine doesn't answer as the session starts, the mod starts it with the symphony program
-// (symphony -background, if it's on PATH; SYMPHONY_DATA, if set, tells it where the accounts are).
+// (symphony -background, if it's on PATH; SYMPHONY_DATA, if set, tells it where the accounts are); when that fails,
+// the message says why, as symphony does.
 // When the bridge is unreachable, rejects the token, fails the check or the account is busy, everything falls back
 // to Claude Code's own terminal interaction; the session never hangs.
 // Reports (events, the heartbeat) go out one after another in the background: a hook never waits for the bridge,
-// and a report that gets no answer in time is given up. Only asks wait, for the page's answer.
+// and a report that gets no answer in time is given up. A bridge that takes a request and doesn't answer in time is
+// left alone for a while (everything meant for it in that time is dropped at once, so nothing piles up behind it),
+// and the queue of reports is bounded. Only asks wait, for the page's answer, each long poll at most WAIT_TIMEOUT,
+// and the terminal's Esc stops the wait at once and withdraws the card.
+// After /clear (or a /resume inside the session) the session goes on under a new id: the mod reports the old one
+// ended and the new one started, as at a start.
+// The heartbeat carries what the start told (model, effort, engine, mod, repo, surface, login), so a bridge that
+// restarted, or that first meets the session through its heartbeat, learns it; when the bridge says it didn't know
+// the session (fresh), the mod tells it the tools, the surfaces, the name and the background work again.
 // The employee window in the page shows the session as a chat: the mod streams the model's thinking and text
 // (turn.step, in batches), reports the prompts that enter (prompt.submit) and the tool calls, and polls the bridge
 // for what the page sends (its inbox): text to submit as the person's prompt, or a stop of the running turn.
@@ -38,6 +47,14 @@ const DEFAULT_BRIDGE = 'http://127.0.0.1:7788'
 // how long a report, or putting an ask on the bridge, may take; a hanging bridge holds nothing up for longer
 const REPORT_TIMEOUT = 5_000
 const ASK_TIMEOUT = 10_000
+// how long one wait for the page's answer may take: the bridge answers each long poll within 20 seconds (pending when
+// nothing was decided), so no answer by then means it is stuck, and the terminal asks instead
+const WAIT_TIMEOUT = 25_000
+// how long a bridge that took a request and didn't answer in time is left alone
+const STUCK_PAUSE = 10_000
+// how many reports may wait to go out; beyond it the oldest that can be lost go first (OUTBOX_LOSSY), then the oldest
+const OUTBOX_CAP = 500
+const OUTBOX_LOSSY = new Set(['heartbeat', 'session.usage', 'chat.delta'])
 // how often the pieces of a streamed response go to the bridge, at most
 const STREAM_FLUSH = 150
 // how often the usage figures go to the bridge, at most (the context fill moves on every response)
@@ -52,14 +69,33 @@ type Answer =
 // insecure: SYMPHONY_BRIDGE is neither on this machine nor https, so the bridge is never contacted
 type Identity = { bridge: string; token: string; headers: Record<string, string>; login?: string; lang: Lang; insecure: boolean }
 
+// what the start tells the bridge of the session besides the event (the heartbeat carries it too)
+type Known = {
+  login?: string
+  model: string
+  surface?: string
+  engine?: { version: string; base?: string }
+  mod?: string
+  repo?: { root: string; name?: string; internal: boolean }
+}
+
 // undefined: the environment hasn't been read yet; null: no SYMPHONY_TOKEN, not an office session
 let identity: Identity | null | undefined
 let sessionId: string | undefined
 let transcriptPath: string | undefined
 // every event carries the folder, the launch id and the task id, so a restarted bridge recognizes the session right away
 let sticky: { cwd?: string; launch?: string; task?: string } = {}
+// what session.start learned of the session, for a restart after /clear and for the heartbeat
+let known: Known | undefined
+let interactive = false
+// withdraws an ask through the session.start hook's $, from a timer of its own: when the terminal interrupts the
+// ask's hook, the engine cancels every request that dispatch starts afterwards ("user-cancel"), through any $; one
+// started from the session's own timer goes out (checked with Claude Code 2.1.316)
+let withdrawLater: ((card: string) => void) | undefined
 // the model and effort last reported to the bridge; reported again only when they change
 let reported = { model: '', effort: '' }
+// the session's name last reported, told again to a bridge that didn't know the session
+let title: string | undefined
 let heartbeat: { cancel: () => void } | undefined
 // the bridge doesn't know the token (401), what answers isn't a bridge this session can trust, or the address is
 // insecure: nothing more goes to it in this session
@@ -67,15 +103,24 @@ let refused = false
 // the bridge's check (POST /api/hello), shared by the requests that wait for it; dropped after a request that got no
 // answer, so the next one checks again
 let checked: Promise<boolean> | undefined
-// reports go out in this order, one at a time
-let queue: Promise<unknown> = Promise.resolve()
+// until when the bridge is left alone: it took a request and didn't answer in time
+let stuckUntil = 0
+// reports waiting to go out, in order, one at a time; sending while they go
+type Report = { kind: string; send: () => Promise<unknown> }
+const outbox: Report[] = []
+let sending: Promise<void> | undefined
+// the person was told once that a request waits in the office page
+let toldWaiting = false
 // calls the web page denied. A denied tool reaches tool.call as an error result, not { deny }, so we remember them.
 const deniedByWeb = new Set<string>()
 // the main loop's running turn, for a stop from the page
 let mainTurn: string | undefined
-// the session ended: the inbox poll stops
+// the session ended: the inbox poll stops, and nothing more is reported for it (a /clear starts the next one)
 let ended = false
 let polling = false
+// which poll loop is the session's: a new session (after /clear) starts its own at once, while the old one's long
+// poll may still be out; that loop ends when its poll comes back
+let pollRound = 0
 // the latest usage figures waiting to go out, and the timer that sends them
 let usagePending: object | undefined
 let usageTimer: { cancel: () => void } | undefined
@@ -93,7 +138,7 @@ async function loginEmail($: EngineInterface) {
   }
 }
 
-// the mod's own version, from its manifest; the bridge compares it with the one it expects
+// the mod's own version, from its manifest, for the pages to show (the bridge only keeps it)
 async function modVersion($: EngineInterface) {
   try {
     const manifest = JSON.parse(await $.fs.read(`${$.plugin.root}/.claude-plugin/plugin.json`))
@@ -175,15 +220,14 @@ function shut($: EngineInterface, id: Identity, key: 'badToken' | 'notBridge') {
 
 // The bridge's check, before the token leaves the session: what answers at the bridge's address gets the token's
 // SHA-256 and a fresh nonce, never the token, and has to answer with the nonce's HMAC keyed with the token. True once it
-// did; false when nothing answered (checked again before the next request) or the check failed (shut).
+// did; false when nothing answered (checked again before the next request; one that took the request and didn't answer
+// in time is left alone for a while) or the check failed (shut).
 async function hello($: EngineInterface, id: Identity): Promise<boolean> {
   const nonce = hex(crypto.getRandomValues(new Uint8Array(16)))
   const body = JSON.stringify({ id: hex(await sha256(utf8(id.token))), nonce })
-  const res = await within(
-    $,
-    REPORT_TIMEOUT,
-    $.http.fetch(`${id.bridge}/api/hello`, { method: 'POST', headers: { 'content-type': 'application/json' }, body }),
-  )
+  const sent = $.http.fetch(`${id.bridge}/api/hello`, { method: 'POST', headers: { 'content-type': 'application/json' }, body })
+  const { value: res, late } = await within($, REPORT_TIMEOUT, sent)
+  if (late) await stuck($, sent)
   if (!res) return false
   if (res.status === 401) {
     shut($, id, 'badToken')
@@ -201,12 +245,38 @@ async function hello($: EngineInterface, id: Identity): Promise<boolean> {
   return false
 }
 
+// The bridge took a request and didn't answer in time (stopped with Ctrl-Z, say, or locked up): it is left alone for
+// STUCK_PAUSE, so the reports behind it are dropped at once instead of each waiting out its own timeout, and an ask
+// goes to the terminal at once. The first request after the pause tries it again, and so does the next one once the
+// late request gets its answer after all.
+async function stuck($: EngineInterface, sent: Promise<unknown>) {
+  stuckUntil = (await $.clock.now()) + STUCK_PAUSE
+  sent.then(
+    () => {
+      stuckUntil = 0
+    },
+    () => {},
+  )
+}
+
+async function isStuck($: EngineInterface) {
+  return stuckUntil > 0 && (await $.clock.now()) < stuckUntil
+}
+
 // A request to the bridge with the token, only once the bridge has passed its check, and only for office sessions.
 // Undefined when it isn't sent or gets no answer (within ms, when given); no answer drops the check, so the next
-// request checks again (the bridge may have stopped and something else taken its address).
-async function call($: EngineInterface, path: string, body?: unknown, ms?: number): Promise<HttpResponse | undefined> {
+// request checks again (the bridge may have stopped and something else taken its address). late gets an answer that
+// came after ms (the request can't be stopped, only no longer waited for).
+async function call(
+  $: EngineInterface,
+  path: string,
+  body?: unknown,
+  ms?: number,
+  late?: (res: HttpResponse) => void,
+): Promise<HttpResponse | undefined> {
   const id = await ident($)
-  if (!id || id.insecure || refused) return undefined
+  // a withdrawal goes out even while the bridge is left alone: a card nobody waits on would stay on the page
+  if (!id || id.insecure || refused || (!path.startsWith('/api/cancel/') && (await isStuck($)))) return undefined
   const check = (checked ??= hello($, id))
   let res: HttpResponse | undefined
   if (await check.catch(() => false)) {
@@ -216,24 +286,33 @@ async function call($: EngineInterface, path: string, body?: unknown, ms?: numbe
       headers: id.headers,
       body: body === undefined ? undefined : JSON.stringify(body),
     })
-    res = ms === undefined ? await sent.catch(() => undefined) : await within($, ms, sent)
+    if (ms === undefined) res = await sent.catch(() => undefined)
+    else {
+      const got = await within($, ms, sent)
+      res = got.value
+      if (got.late) {
+        await stuck($, sent)
+        if (late) sent.then(late, () => {})
+      }
+    }
   }
   if (!res && checked === check) checked = undefined
   return res
 }
 
-// the value of p, or undefined once ms have passed or p fails (the request itself isn't stopped, just not waited for)
-function within<T>($: EngineInterface, ms: number, p: Promise<T>): Promise<T | undefined> {
+// p's value; late once ms have passed first (the request itself isn't stopped: the HTTP API has no way to, so it is
+// just not waited for); neither when p fails
+function within<T>($: EngineInterface, ms: number, p: Promise<T>): Promise<{ value?: T; late?: true }> {
   return new Promise(resolve => {
-    const timer = $.clock.after(ms, () => resolve(undefined))
+    const timer = $.clock.after(ms, () => resolve({ late: true }))
     p.then(
-      v => {
+      value => {
         timer.cancel()
-        resolve(v)
+        resolve({ value })
       },
       () => {
         timer.cancel()
-        resolve(undefined)
+        resolve({})
       },
     )
   })
@@ -244,18 +323,30 @@ const LOCAL_BRIDGE = /^http:\/\/(127\.0\.0\.1|localhost|\[::1\]):(\d+)\/?$/
 
 // Nothing answers at the bridge's address. When it's on this machine, start the bridge with the symphony program, if
 // it's on PATH: -background detaches it, so it keeps running after this session, and returns once it answers (a
-// session starting it at the same moment finds it running and starts nothing).
-async function startBridge($: EngineInterface, bridge: string) {
+// session starting it at the same moment finds it running and starts nothing). When symphony ran and failed, reason
+// is what it said last (the log line of its fatal error, without the time or the page key), else its exit status.
+async function startBridge($: EngineInterface, bridge: string): Promise<{ ok: boolean; reason?: string }> {
   const local = LOCAL_BRIDGE.exec(bridge)
-  if (!local) return false
+  if (!local) return { ok: false }
+  let ran
   try {
-    const ran = await $.process.run(['symphony', '-background', '-open=false', '-addr', `${local[1]}:${local[2]}`], {
+    ran = await $.process.run(['symphony', '-background', '-open=false', '-addr', `${local[1]}:${local[2]}`], {
       timeoutMs: 30_000,
     })
-    return ran.exitCode === 0
   } catch {
-    return false // no symphony on PATH, or it didn't finish in time
+    return { ok: false } // no symphony on PATH, or it didn't finish in time
   }
+  if (ran.exitCode === 0) return { ok: true }
+  const last = (s: string) =>
+    s
+      .split(/\r?\n/)
+      .map(l => l.trim())
+      .filter(Boolean)
+      .at(-1)
+  const said = (last(ran.stderr) ?? last(ran.stdout))
+    ?.replace(/^\d{4}\/\d{2}\/\d{2} \d{2}:\d{2}:\d{2}(\.\d+)? /, '')
+    .replace(/([?&]key=)[0-9a-fA-F]+/g, '$1…')
+  return { ok: false, reason: (said || `exit status ${ran.exitCode}`).slice(0, 300) }
 }
 
 // reports an event to the office page and waits for the answer (at most timeout); a failure is ignored and never
@@ -263,64 +354,136 @@ async function startBridge($: EngineInterface, bridge: string) {
 // first refused as busy, or that started before the bridge, joins through its heartbeat), so the inbox poll starts
 // here; a 401 ends everything (the token won't change while the session runs). A report refused otherwise, with no
 // inbox poll running, drops the bridge's check: between two heartbeats the bridge may stop and something else take its
-// address, and only a failed request would tell.
-async function emit($: EngineInterface, kind: string, data: object = {}, timeout = REPORT_TIMEOUT) {
+// address, and only a failed request would tell. An answer that says fresh (the bridge didn't know the session: it
+// restarted, or the session joins through this report) makes the mod tell it again what it reports only now and then.
+async function emit($: EngineInterface, kind: string, data: object = {}, timeout = REPORT_TIMEOUT, session?: string) {
   if (refused || !(await ident($))) return undefined
   let res
   try {
-    res = await call($, '/api/event', { session: await sid($), kind, ...sticky, ...data }, timeout)
+    res = await call($, '/api/event', { session: session ?? (await sid($)), kind, ...sticky, ...data }, timeout)
   } catch {
     return undefined
   }
   if (res?.status === 401) {
     refused = true
     heartbeat?.cancel()
-  } else if (res?.ok && !ended) pollInbox($)
+  } else if (res?.ok && !ended) {
+    pollInbox($)
+    if (kind !== 'session.start' && fresh(res)) tellAgain($)
+  }
   // refused (busy, say) and no inbox poll that would notice the bridge going away: check it again before the next one
   else if (!polling) checked = undefined
   return res
 }
 
-// report queues an event: the hook goes on at once, and the events reach the bridge in the order they happened.
-function report($: EngineInterface, kind: string, data: object = {}) {
-  queue = queue.then(() => emit($, kind, data))
+function fresh(res: HttpResponse) {
+  try {
+    return JSON.parse(res.text)?.fresh === true
+  } catch {
+    return false
+  }
 }
 
-// puts a pending ask on the bridge and long-polls for the page's answer.
+// what a bridge that didn't know the session can't have learned from the heartbeat: the tools, the surfaces, the
+// session's name and the background work (reported only when it changes)
+function tellAgain($: EngineInterface) {
+  background = { tasks: -1, crons: -1 }
+  void reportTools($)
+  void reportSurfaces($)
+  if (title !== undefined) report($, 'session.title', { title })
+}
+
+// report queues an event: the hook goes on at once, and the events reach the bridge in the order they happened, each
+// for the session it happened in. Once the session ended nothing more is reported for it. The queue is bounded: past
+// OUTBOX_CAP the oldest heartbeat, usage figures or streamed piece goes, else the oldest report but a start or an end.
+function report($: EngineInterface, kind: string, data: object = {}) {
+  if (ended && kind !== 'session.end') return
+  const session = sessionId
+  outbox.push({ kind, send: () => emit($, kind, data, REPORT_TIMEOUT, session) })
+  if (outbox.length > OUTBOX_CAP) {
+    let i = outbox.findIndex(r => OUTBOX_LOSSY.has(r.kind))
+    if (i < 0) i = outbox.findIndex(r => r.kind !== 'session.start' && r.kind !== 'session.end')
+    if (i >= 0) outbox.splice(i, 1)
+  }
+  sending ??= drain()
+}
+
+async function drain() {
+  for (let r = outbox.shift(); r; r = outbox.shift()) {
+    try {
+      await r.send()
+    } catch {
+      // a report is never worth more than the ones behind it
+    }
+  }
+  sending = undefined
+}
+
+// puts a pending ask on the bridge and long-polls for the page's answer, each poll at most WAIT_TIMEOUT (a bridge that
+// doesn't answer by then is stuck: the terminal asks). When the terminal interrupts (Esc and the like) the wait ends
+// at once. Anything but the page's own answer withdraws the card, so nobody answers it in vain.
 // A hook's 10-second budget counts only its own code; time inside $.http.fetch doesn't count, so it can wait as long as needed.
 async function ask(
   $: EngineInterface,
   signal: AbortSignal,
   payload: object,
 ): Promise<Answer | undefined> {
-  if (refused || !(await ident($))) return undefined
-  let id: string | undefined
+  const id = await ident($)
+  if (refused || !id) return undefined
+  const interrupted = new Promise<undefined>(resolve => {
+    if (signal.aborted) resolve(undefined)
+    else signal.addEventListener('abort', () => resolve(undefined), { once: true })
+  })
+  const withdraw = (card: string) => (withdrawLater ? withdrawLater(card) : void call($, `/api/cancel/${card}`, {}, ASK_TIMEOUT))
+  const withdrawCreated = (res: HttpResponse | undefined) => {
+    try {
+      const late = res?.ok ? JSON.parse(res.text)?.id : undefined
+      if (typeof late === 'string') withdraw(late)
+    } catch {
+      // not an ask the bridge made
+    }
+  }
   const create = async () => {
-    const created = await call($, '/api/ask', { session: await sid($), ...payload }, ASK_TIMEOUT)
+    // an ask the bridge takes only after the timeout, or after an interrupt, is withdrawn as soon as it is known
+    const sent = call($, '/api/ask', { session: await sid($), ...payload }, ASK_TIMEOUT, withdrawCreated)
+    const created = await Promise.race([sent, interrupted])
+    if (signal.aborted) {
+      void sent.then(withdrawCreated)
+      return undefined
+    }
     return created?.ok ? (JSON.parse(created.text).id as string) : undefined
   }
+  let card: string | undefined
+  let settled = false
   try {
-    id = await create()
-    if (!id) return undefined
+    card = await create()
+    if (!card) return undefined
+    if (!toldWaiting) {
+      toldWaiting = true
+      $.ui.toast(message(id.lang, 'waiting', { bridge: id.bridge }))
+    }
     while (!signal.aborted) {
-      const waited = await call($, `/api/wait/${id}`)
+      const waited = await Promise.race([call($, `/api/wait/${card}`, undefined, WAIT_TIMEOUT), interrupted])
+      if (signal.aborted) break
       // the bridge restarted and lost the ask: put it back and keep waiting
       if (waited?.status === 404) {
-        id = await create()
-        if (!id) return undefined
+        card = await create()
+        if (!card) return undefined
         continue
       }
       if (!waited?.ok) return undefined
       const body = JSON.parse(waited.text)
-      if (body.status === 'done') return body.answer && typeof body.answer === 'object' ? (body.answer as Answer) : undefined
-      if (body.status === 'cancelled') return undefined
+      if (body.status === 'done' || body.status === 'cancelled') {
+        settled = true
+        return body.status === 'done' && body.answer && typeof body.answer === 'object' ? (body.answer as Answer) : undefined
+      }
     }
+    return undefined
   } catch {
     return undefined
+  } finally {
+    if (card && !settled) withdraw(card)
   }
-  // the terminal interrupted (Esc and the like): tell the bridge to withdraw the card
-  if (id) await call($, `/api/cancel/${id}`, {}, ASK_TIMEOUT)
-  return undefined
 }
 
 // the model and thinking effort set the character's size in the office; reported only when they change.
@@ -435,30 +598,38 @@ async function reportSurfaces($: EngineInterface) {
   if (surfaces) report($, 'session.surfaces', { surfaces: [...surfaces] })
 }
 
-// the inbox: what the page sent to this session. One long poll at a time, for as long as the session runs.
+// the session's name (from --name or /rename), kept for a bridge that didn't know the session
+function reportTitle($: EngineInterface, name: string | undefined) {
+  if (typeof name === 'string' && name) title = name
+  report($, 'session.title', { title: name })
+}
+
+// the inbox: what the page sent to this session. One long poll at a time, for as long as the session runs (a session
+// after /clear starts its own at once).
 type InboxItem = { kind: 'say'; text: string } | { kind: 'abort' }
 
 function pollInbox($: EngineInterface) {
   if (polling) return
   polling = true
+  const round = pollRound
+  const stop = () => {
+    if (round === pollRound) polling = false
+  }
   const again = (ms: number) => {
     $.clock.after(ms, () => {
+      if (round !== pollRound) return // a newer session polls for itself
       polling = false
       pollInbox($)
     })
   }
   void (async () => {
-    if (ended || refused || !(await ident($))) {
-      polling = false
-      return
-    }
+    if (ended || refused || !(await ident($))) return stop()
     let items: InboxItem[] = []
     try {
       const res = await call($, `/api/inbox?session=${encodeURIComponent(await sid($))}`)
       if (res?.status === 401) {
         refused = true
-        polling = false
-        return
+        return stop()
       }
       if (!res?.ok) return again(INBOX_RETRY)
       items = (JSON.parse(res.text).items ?? []) as InboxItem[]
@@ -466,19 +637,53 @@ function pollInbox($: EngineInterface) {
       return again(INBOX_RETRY)
     }
     for (const it of items) {
-      try {
-        if (it.kind === 'say' && it.text) {
-          await $.prompt.submit({ text: it.text, asUser: true })
-          report($, 'chat.sent', { text: it.text.slice(0, 4000) })
-        } else if (it.kind === 'abort' && mainTurn) {
-          await $.turn.abort({ turnId: mainTurn })
+      if (it.kind === 'say' && it.text) {
+        // a prompt that didn't enter (a hook refused it, the engine's own limit, a failure) is dropped, with why
+        let dropped: string | undefined
+        try {
+          const entered = await $.prompt.submit({ text: it.text, asUser: true })
+          if (entered.drop !== undefined) dropped = entered.drop
+        } catch (err) {
+          dropped = err instanceof Error ? err.message : String(err)
         }
-      } catch {
-        // a prompt that couldn't enter, or a turn already over: nothing to do
+        const text = it.text.slice(0, 4000)
+        if (dropped === undefined) report($, 'chat.sent', { text })
+        else report($, 'chat.dropped', { text, reason: dropped.slice(0, 500) })
+      } else if (it.kind === 'abort' && mainTurn) {
+        try {
+          await $.turn.abort({ turnId: mainTurn })
+        } catch {
+          // a turn already over: nothing to do
+        }
       }
     }
     again(items.length ? 0 : 50)
   })()
+}
+
+// begin starts reporting a session: at the start, and again under the new id after /clear or a /resume inside it
+function begin(id: string | undefined, model: string) {
+  sessionId = id
+  ended = false
+  pollRound++
+  polling = false
+  mainTurn = undefined
+  reported = { model, effort: '' }
+  background = { tasks: -1, crons: -1 }
+  usagePending = undefined
+}
+
+// what the start told, as the heartbeat carries it: the model and effort as last reported
+function knownNow() {
+  return known ? { ...known, model: reported.model || known.model, effort: reported.effort || undefined } : {}
+}
+
+// heartbeat: after 45 seconds without any message the bridge takes the session as off duty (say the terminal was closed)
+function beat($: EngineInterface) {
+  heartbeat?.cancel()
+  heartbeat = $.clock.every(15_000, () => {
+    report($, 'heartbeat', knownNow())
+  })
 }
 
 export const register: Register = on => {
@@ -491,17 +696,15 @@ export const register: Register = on => {
       $.ui.toast(message(id.lang, 'insecure', { bridge: id.bridge }))
       return started
     }
+    withdrawLater = card => void $.clock.after(0, () => void call($, `/api/cancel/${card}`, {}, ASK_TIMEOUT))
     // sessions started from the page carry the bridge's launch id, which matches the session with its terminal in the bridge
     sticky = { cwd: e.cwd, launch: (await $.env.get('SYMPHONY_LAUNCH')) || undefined, task: (await $.env.get('SYMPHONY_TASK')) || undefined }
     const model = await $.session.model()
-    reported = { model, effort: '' }
-    background = { tasks: -1, crons: -1 }
-    ended = false
-    mainTurn = undefined
+    begin(await safe($.session.id()), model)
     // what the engine knows of itself and the folder: its version, the mod's, the repository, where it draws
     const [engine, mod, repo] = await Promise.all([safe($.session.version()), modVersion($), safe($.session.repo())])
-    const online = {
-      interactive: e.isInteractive,
+    interactive = e.isInteractive
+    known = {
       login: id.login,
       model,
       surface: e.surface ?? undefined,
@@ -510,24 +713,30 @@ export const register: Register = on => {
       // not the remote: its URL may carry credentials
       repo: repo ? { root: repo.root, name: repo.name ?? undefined, internal: repo.internal } : undefined,
     }
-    // no answer and refused: the bridge's check failed, and said why
+    const online = { interactive, ...knownNow() }
+    // no answer and refused: the bridge's check failed, and said why. Something that took the check and never answered
+    // holds the address: no bridge could start there.
     let res = await emit($, 'session.start', online, ASK_TIMEOUT)
-    if (!res && !refused && (await startBridge($, id.bridge))) {
-      res = await emit($, 'session.start', online, ASK_TIMEOUT)
-      if (res?.ok) $.ui.toast(message(id.lang, 'started', { bridge: id.bridge }))
+    let failed: string | undefined
+    if (!res && !refused && !(await isStuck($))) {
+      const ran = await startBridge($, id.bridge)
+      if (ran.ok) {
+        res = await emit($, 'session.start', online, ASK_TIMEOUT)
+        if (res?.ok) $.ui.toast(message(id.lang, 'started', { bridge: id.bridge }))
+      } else failed = ran.reason
     }
     if (!res) {
-      if (!refused) $.ui.toast(message(id.lang, 'unreachable', { bridge: id.bridge }))
+      if (refused) {
+        // said already
+      } else if (failed) $.ui.toast(message(id.lang, 'startFailed', { bridge: id.bridge, reason: failed }))
+      else $.ui.toast(message(id.lang, 'unreachable', { bridge: id.bridge }))
     } else if (res.status === 401) {
       refused = true // the token won't change while the session runs: don't knock again
       $.ui.toast(message(id.lang, 'badToken'))
     } else if (res.status === 409) $.ui.toast(message(id.lang, 'busy'))
-    // heartbeat: after 45 seconds without any message the bridge takes the session as off duty (say the terminal was closed)
     heartbeat?.cancel()
     if (!refused) {
-      heartbeat = $.clock.every(15_000, () => {
-        report($, 'heartbeat')
-      })
+      beat($)
       void reportTools($)
     }
     return started
@@ -579,15 +788,27 @@ export const register: Register = on => {
 
   // the session name (from --name or /rename): sent at start or resume and with every prompt;
   // /rename itself is caught too, so a new name shows right away.
+  // After /clear (or a /resume or fork inside the session) the conversation goes on under a new id with no
+  // session.start: its SessionStart, once the old one's end was seen, starts it as session.start does, so the bridge
+  // ends the old session and seats the new one (a task member gets its kickoff again). claude --resume fires a resume
+  // right after its session.start too: then nothing ended, and nothing starts again.
   on('classic.SessionStart', async ($, e, next) => {
     transcriptPath = e.transcript_path
-    report($, 'session.title', { title: e.session_title })
+    const goesOn = e.source === 'clear' || e.source === 'resume' || e.source === 'fork'
+    if (ended && goesOn && known && (await office($))) {
+      begin(e.session_id, (await safe($.session.model())) || reported.model || known.model)
+      if (e.cwd) sticky = { ...sticky, cwd: e.cwd }
+      report($, 'session.start', { interactive, ...knownNow() })
+      beat($)
+      void reportTools($)
+    }
+    reportTitle($, e.session_title)
     return next(e)
   })
 
   on('classic.UserPromptSubmit', async ($, e, next) => {
     transcriptPath = e.transcript_path
-    report($, 'session.title', { title: e.session_title })
+    reportTitle($, e.session_title)
     return next(e)
   })
 
@@ -600,8 +821,7 @@ export const register: Register = on => {
   on('command.run', { command: 'rename' }, async ($, e, next) => {
     const ran = await next(e)
     if (!(await office($))) return ran
-    const title = e.args.trim() || (await titleFromTranscript($))
-    report($, 'session.title', { title })
+    reportTitle($, e.args.trim() || (await titleFromTranscript($)))
     return ran
   })
 
@@ -630,9 +850,12 @@ export const register: Register = on => {
   on('session.end', async ($, e, next) => {
     heartbeat?.cancel()
     usageTimer?.cancel()
-    ended = true
+    usageTimer = undefined
     report($, 'session.end', { reason: e.reason })
-    await queue // the goodbye, and whatever was still on its way, before the session goes
+    ended = true
+    // /clear and a /resume inside the session go on under another id, which classic.SessionStart names
+    if (e.reason === 'clear' || e.reason === 'resume') sessionId = undefined
+    await sending // the goodbye, and whatever was still on its way, before the session goes
     return next(e)
   })
 
