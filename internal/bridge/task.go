@@ -46,13 +46,11 @@ var (
 	ErrTaskUnknown = newError("task_unknown", "no such task")
 	ErrTaskEnded   = newError("task_ended", "the task has ended or is ending")
 	ErrTaskRunning = newError("task_running", "the task is still running; end it first")
-	errRoomBusy    = newError("task_room_busy", "a task is already in this meeting room")
 )
 
 type Task struct {
 	ID             string            `json:"id"`
-	Room           int               `json:"room"`             // the small room's index on the page
-	RoomName       string            `json:"roomName"`         // as the page named it, for the kickoff
+	Room           *int              `json:"room,omitempty"`   // the page's hint of the small room the task was started from; nil for none (the page seats tasks itself)
 	Title          string            `json:"title"`            // the user's task description
 	Leader         string            `json:"leader,omitempty"` // the lead's account id; empty when everyone gets the task alike
 	PermissionMode string            `json:"permissionMode"`
@@ -115,7 +113,7 @@ func (t *Task) repo(dir string) *TaskRepo {
 	return nil
 }
 
-// open says whether the task still holds its room, its members and its repositories.
+// open says whether the task still holds its members and its repositories.
 func (t *Task) open() bool { return t.Status == TaskRunning || t.Status == TaskEnding }
 
 // copy is a copy the hub won't change behind its back (snapshots are encoded after the lock is let go).
@@ -228,18 +226,14 @@ func (h *Hub) nameTaken(name string) bool {
 	return false
 }
 
-// reserveTask checks that the room and the accounts are free and takes the next task id for them. Until it is
-// published the task is out of sight, but it holds the room and the accounts.
-func (h *Hub) reserveTask(room int, accounts []string) (string, error) {
+// reserveTask checks that the accounts are free and takes the next task id for them. Until it is published the
+// task is out of sight, but it holds the accounts.
+func (h *Hub) reserveTask(accounts []string) (string, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	for _, t := range h.tasks {
 		if t.Status == TaskEnded {
 			continue
-		}
-		// a failed task stays in its room until it is dismissed
-		if t.Room == room {
-			return "", errRoomBusy
 		}
 		if !t.open() {
 			continue
@@ -256,7 +250,7 @@ func (h *Hub) reserveTask(room int, accounts []string) (string, error) {
 	}
 	n := max(h.taskNext, 1)
 	h.taskNext = n + 1
-	t := &Task{ID: "T" + strconv.Itoa(n), Room: room, Status: TaskRunning, Created: h.now(), starting: true}
+	t := &Task{ID: "T" + strconv.Itoa(n), Status: TaskRunning, Created: h.now(), starting: true}
 	for _, a := range accounts {
 		t.Members = append(t.Members, &Member{Account: a})
 	}
@@ -386,15 +380,11 @@ func kickoffText(t *Task, m *Member) string {
 			team = append(team, i18n.TLang(t.Lang, "task.kickoff.teammate", map[string]string{"name": o.Name, "dir": o.Dir, "branch": o.Branch, "worktree": o.Worktree}))
 		}
 	}
-	room := t.RoomName
-	if room == "" {
-		room = strconv.Itoa(t.Room)
-	}
 	base := ""
 	if r := t.repo(m.Dir); r != nil {
 		base = r.Base
 	}
-	p := map[string]string{"task": t.ID, "room": room, "title": t.Title, "team": strings.Join(team, "\n"),
+	p := map[string]string{"task": t.ID, "title": t.Title, "team": strings.Join(team, "\n"),
 		"name": m.Name, "dir": m.Dir, "branch": m.Branch, "worktree": m.Worktree, "base": base}
 	lead := t.lead()
 	switch {

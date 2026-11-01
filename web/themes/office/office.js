@@ -1,480 +1,27 @@
-<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title data-i18n="office.title">Symphony Office</title>
-<style>
-  :root { --mono:ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }
-  html, body { margin:0; height:100%; background:#2f2e2b; color:#f2efe8; font:13px/1.45 system-ui, sans-serif; overflow:hidden; }
-  /* CJK fonts per language, so each gets its own glyph forms */
-  body:lang(zh-CN) { font-family:system-ui, "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif; }
-  body:lang(zh-TW) { font-family:system-ui, "PingFang TC", "Microsoft JhengHei", "Noto Sans CJK TC", sans-serif; }
-  body:lang(ja) { font-family:system-ui, "Hiragino Sans", "Yu Gothic UI", "Noto Sans CJK JP", sans-serif; }
-  body:lang(ko) { font-family:system-ui, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans CJK KR", sans-serif; }
-  canvas#office { position:fixed; inset:0; width:100vw; height:100vh; image-rendering:pixelated; }
-  #labels { position:fixed; inset:0; pointer-events:none; }
-  /* the HUD: a notice board in the office's own pixel style, pinned to the top in the middle; the tab under it slides it
-     up out of the way and back down */
-  #hud { position:fixed; top:0; left:50%; z-index:3; box-sizing:border-box; width:max-content; max-width:calc(100vw - 24px);
-    transform:translateX(-50%); background:#fffdf7; color:#2b2a28; border:2px solid #2b2a28; border-top:0;
-    box-shadow:4px 4px 0 rgba(0,0,0,.35); padding:8px 14px 10px; }
-  #hud.anim { transition:transform .2s ease-out; }
-  #hud.up { transform:translate(-50%, -100%); box-shadow:none; }
-  #hud .bar { display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:8px 18px; }
-  #hud .group { display:flex; align-items:center; gap:6px; }
-  #hud .logo { width:30px; height:15px; flex:none; image-rendering:pixelated; }
-  #hud h1 { margin:0 0 0 2px; font-size:15px; font-weight:800; white-space:nowrap; }
-  /* counts by state, as chips in the state colors; a click on one lights up those employees */
-  #hud .stats { display:flex; gap:6px; flex-wrap:wrap; color:#6f6b64; }
-  #hud .chip { font:inherit; white-space:nowrap; font-size:12px; line-height:1.6; cursor:pointer; background:#fff; color:#2b2a28; border:2px solid #2b2a28;
-    border-left:6px solid var(--c); padding:0 8px 0 6px; box-shadow:2px 2px 0 rgba(0,0,0,.25); }
-  #hud .chip b { font-size:13px; }
-  #hud .chip:hover { background:#f2efe8; }
-  #hud .chip.on { background:#2b2a28; color:#fffdf7; box-shadow:none; transform:translate(2px, 2px); }
-  #hud .chip.hot { background:#d64541; color:#fff; border-color:#7a1f1c; animation:nudge 1s steps(1) infinite; } /* asks wait for you */
-  @keyframes nudge { 50% { background:#e8605c; } }
-  /* the pixel size: four steps from the standard drawing to the finest, each button a finer grid */
-  #hud .pixels .lbl { font-size:12px; color:#6f6b64; white-space:nowrap; }
-  #hud .steps { display:flex; border:2px solid #2b2a28; box-shadow:2px 2px 0 rgba(0,0,0,.3); }
-  #hud .steps button { width:24px; height:18px; padding:0; border:0; border-left:2px solid #2b2a28; cursor:pointer;
-    background:#fffdf7 no-repeat center / 12px 12px; image-rendering:pixelated; }
-  #hud .steps button:first-child { border-left:0; }
-  #hud .steps button:hover { background-color:#f2efe8; }
-  #hud .steps button.on { background-color:#f2b705; }
-  #hud select.lang { width:104px; font:inherit; font-size:12px; background:#fffdf7; color:#2b2a28; border:2px solid #2b2a28; padding:0 2px;
-    cursor:pointer; box-shadow:2px 2px 0 rgba(0,0,0,.3); }
-  #hud .note { margin:8px auto 0; max-width:560px; padding:4px 8px; background:#fff3cf; border:2px solid #c9961a; color:#6b4a00; line-height:1.5; }
-  /* the tab under the HUD hides it and brings it back; while the HUD is away it shows how many asks wait. It hangs from
-     the HUD's right corner: in the middle it would cover the sign on the back wall once the HUD wraps to two lines */
-  #hud .tab { position:absolute; top:100%; right:14px; display:flex; align-items:center; gap:5px; height:18px;
-    padding:0 12px; font:inherit; color:#2b2a28; background:#fffdf7; border:2px solid #2b2a28; border-top:0;
-    box-shadow:4px 4px 0 rgba(0,0,0,.35); cursor:pointer; }
-  #hud .tab:hover { background:#f2b705; }
-  #hud .tab .ico { margin:0; width:14px; height:8px; background-image:var(--ico-up); }
-  #hud.up .tab .ico { background-image:var(--ico-down); }
-  #hud .tab .badge { font:700 11px/14px var(--mono); color:#fff; background:#d64541; padding:0 4px; }
-  #hud .tab .badge[hidden], #hud:not(.up) .tab .badge { display:none; }
-  .ico { display:inline-block; vertical-align:-1px; margin-right:6px; background:no-repeat center / contain; image-rendering:pixelated; }
-  .ico.mail { width:18px; height:12px; background-image:var(--ico-mail); }
-  /* the search box, beside the title: matches show in a list below it, the rest of the office dims */
-  #hud .find { position:relative; width:230px; }
-  #find { width:100%; box-sizing:border-box; font:inherit; font-size:12px; color:#2b2a28; border:2px solid #2b2a28; padding:3px 26px;
-    background:#fff var(--ico-find) no-repeat 7px center / 14px 14px; box-shadow:inset 2px 2px 0 rgba(0,0,0,.08); image-rendering:pixelated; }
-  #find:focus { outline:none; border-color:#f2b705; }
-  #hud .key { position:absolute; right:6px; top:50%; transform:translateY(-50%); pointer-events:none; font:11px/1.25 var(--mono);
-    color:#8a867e; background:#f2efe8; border:1px solid #b9b3a8; border-bottom-width:2px; padding:0 4px; }
-  #find:focus + .key, #find:not(:placeholder-shown) + .key { display:none; } /* the shortcut, while the box is idle */
-  #find-list { position:absolute; z-index:1; left:0; top:calc(100% + 4px); min-width:240px; max-width:380px; background:#fffdf7; color:#2b2a28;
-    border:2px solid #2b2a28; box-shadow:4px 4px 0 rgba(0,0,0,.35); }
-  #find-list[hidden] { display:none; }
-  #find-list .hit { padding:2px 8px; cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  #find-list .hit.on { background:#f2b705; }
-  #find-list .hit small { color:#6f6b64; margin-left:8px; }
-  #find-list .none { padding:2px 8px; color:#8a867e; }
-  #hud .note code { display:block; margin-top:4px; padding:2px 6px; background:#2b2a28; color:#fffdf7; user-select:all; word-break:break-all; }
-  /* the activity log: a panel at the bottom left, hidden until its HUD button opens it */
-  .logpanel { position:fixed; left:12px; bottom:12px; z-index:4; width:min(560px, calc(100vw - 24px)); max-height:40vh; display:flex; flex-direction:column;
-    background:#fffdf7; color:#2b2a28; border:2px solid #2b2a28; box-shadow:4px 4px 0 rgba(0,0,0,.35); padding:8px 12px; box-sizing:border-box; }
-  .logpanel[hidden] { display:none; }
-  .logpanel h2 { margin:0 0 4px; font-size:14px; }
-  .logpanel .close { position:absolute; right:8px; top:4px; cursor:pointer; color:#8a867e; }
-  .logpanel .lines { overflow:auto; font:12px/1.6 var(--mono); }
-  .logpanel .lines div { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .logpanel .lines:empty::before { content:attr(data-empty); color:#8a867e; }
-  .dot { display:inline-block; width:8px; height:8px; margin-right:4px; vertical-align:0; }
-  button.px { background:#fffdf7; color:#2b2a28; border:2px solid #2b2a28; padding:2px 10px; font:inherit; cursor:pointer; box-shadow:2px 2px 0 rgba(0,0,0,.3); }
-  button.px.primary { background:#2b2a28; color:#fffdf7; }
-  button.px.alert { background:#d64541; color:#fff; border-color:#7a1f1c; }
-  button.px:disabled { opacity:.5; cursor:default; }
-  /* name tags above the characters */
-  .emp-label { position:absolute; transform:translate(-50%, -100%); pointer-events:auto; cursor:pointer; background:#fffdf7; color:#2b2a28;
-    border:2px solid #2b2a28; border-left-width:5px; padding:0 6px; font-size:11px; line-height:1.35; white-space:nowrap; text-align:center;
-    box-shadow:2px 2px 0 rgba(0,0,0,.3); }
-  .emp-label { box-sizing:border-box; } /* no wider than a desk (set in placeLabels); longer text ends in … and shows in full on hover */
-  .emp-label .nm, .emp-label .st { overflow:hidden; text-overflow:ellipsis; }
-  .emp-label .nm { font-weight:700; font-size:12px; }
-  .emp-label .st { color:#6f6b64; }
-  .emp-label.off { opacity:.55; }
-  .emp-label.away .st { display:none; } /* away from the desk: the name only, so a sofa full of people stays readable */
-  .emp-label.tight .st { display:none; } /* too narrow a desk for the status to read: the name, and the color bar says the state */
-  .emp-label.dim { opacity:.25; }
-  .emp-label.match { outline:2px solid #f2b705; outline-offset:1px; }
-  .emp-label.found { animation:found .4s steps(1) 8; }
-  @keyframes found { 50% { background:#f2b705; } }
-  .room-label { position:absolute; background:rgba(43,42,40,.82); color:#fffdf7; padding:0 6px; font-size:11px; line-height:1.6; letter-spacing:1px; white-space:nowrap; }
-  /* the small meeting rooms' nameplates, beside their doors, with a light: green while the room is free, yellow while a
-     task runs in it, red while one of its members waits for you or the task failed */
-  .room-plate { position:absolute; transform:translateY(-50%); pointer-events:auto; cursor:default; box-sizing:border-box; background:#2b2a28; color:#f3e6bf;
-    border:2px solid #9a7b3c; padding:0 6px 0 5px; font-size:11px; font-weight:700; line-height:1.45; letter-spacing:1px; white-space:nowrap;
-    overflow:hidden; text-overflow:ellipsis; box-shadow:2px 2px 0 rgba(0,0,0,.3); } /* no wider than its room (placeLabels); the full name shows on hover */
-  .room-plate i { display:inline-block; width:6px; height:6px; margin-right:5px; vertical-align:1px; background:#2e9e5b; }
-  .room-plate.busy i { background:#f2b705; }
-  .room-plate.alert i { background:#d64541; }
-  .room-plate.failed i { animation:nudge-light 1s steps(1) infinite; } /* a failed task: the light blinks and an "!" follows the id */
-  @keyframes nudge-light { 50% { background:#5a2320; } }
-  .room-plate .bang { color:#ff8a80; margin-left:2px; }
-  .room-plate.small { letter-spacing:0; font-size:10px; padding:0 4px 0 3px; } /* too narrow: a step smaller first (fitPlate) */
-  .room-plate.small i { margin-right:3px; }
-  .room-plate.narrow .nm { display:none; } /* too narrow for the name beside the task id: the id alone (the name shows on hover) */
-  .room-plate.click { cursor:pointer; }
-  .room-plate.click:hover { border-color:#f2b705; }
-  .sign-text { position:absolute; transform:translate(-50%, -50%); color:#fffdf7; font:700 13px/1 var(--mono); letter-spacing:3px; white-space:nowrap; }
-  .seat-add { position:absolute; transform:translate(-50%, -50%); pointer-events:auto; cursor:pointer; width:22px; height:22px; padding:0;
-    background:#fffdf7; color:#2b2a28; border:2px solid #2b2a28; font:700 16px/16px var(--mono); box-shadow:2px 2px 0 rgba(0,0,0,.3); }
-  .seat-add:hover { background:#f2b705; }
-  .bubble { position:absolute; transform:translate(-50%, -100%); box-sizing:border-box; /* placed above its tag, clear of the others (placeLabels) */ background:#fffdf7; color:#2b2a28; border:2px solid #2b2a28;
-    padding:1px 6px; font-size:12px; max-width:220px; box-shadow:2px 2px 0 rgba(0,0,0,.3); }
-  .bubble b { font-weight:700; }
-  /* popups */
-  .modal { position:fixed; inset:0; z-index:10; background:rgba(0,0,0,.45); display:flex; align-items:center; justify-content:center; }
-  .modal[hidden] { display:none; }
-  .panel { width:min(560px, calc(100vw - 32px)); max-height:calc(100vh - 32px); overflow:auto; background:#fffdf7; color:#2b2a28;
-    border:2px solid #2b2a28; box-shadow:4px 4px 0 rgba(0,0,0,.35); padding:14px 16px; box-sizing:border-box; }
-  .panel h2 { margin:0 0 10px; font-size:15px; }
-  .panel .actions { display:flex; justify-content:flex-end; gap:8px; margin-top:12px; }
-  /* the employee window: the employee at the top, the session as a chat below, the input at the bottom */
-  .panel.chat { position:relative; width:min(1100px, 94vw); height:min(90vh, 960px); max-height:none; padding:0; display:flex; flex-direction:column; overflow:hidden; }
-  .chat .head { padding:10px 16px 8px; border-bottom:2px solid #2b2a28; background:#fffdf7; }
-  .chat .head .close { position:absolute; right:10px; top:6px; cursor:pointer; color:#8a867e; font-size:14px; }
-  .chat .who { display:flex; align-items:center; gap:8px; }
-  .chat .who .dot { width:10px; height:10px; margin:0; }
-  .chat .who h2 { margin:0; font-size:16px; }
-  .chat .who .state { color:#6f6b64; font-size:12px; }
-  .chat .meta { display:flex; flex-wrap:wrap; gap:4px 6px; margin-top:6px; }
-  .chat .meta span { font-size:11px; line-height:1.5; padding:0 6px; border:1px solid #d6d1c6; background:#f6f3ec; color:#2b2a28; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .chat .meta span b { color:#8a867e; font-weight:400; margin-right:4px; }
-  .chat .meta span.task { cursor:pointer; background:#fff3cf; border-color:#c9961a; } /* a task session's: opens the task window */
-  .chat .meta span.task:hover { background:#f2b705; }
-  .chat .btns { display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
-  .chat .btns button { font-size:12px; }
-  .chat .flow { flex:1; overflow:auto; padding:12px 16px; background:#f6f3ec; display:flex; flex-direction:column; gap:8px; }
-  .chat .flow .empty { color:#8a867e; text-align:center; margin:auto; }
-  .it { flex:none; max-width:min(82%, 820px); font-size:13px; line-height:1.5; } /* flex:none: the column never squeezes a row (an overflow:hidden row would shrink to nothing) */
-  .it .body { white-space:pre-wrap; overflow-wrap:anywhere; }
-  .it .body pre { background:#2b2a28; color:#f2efe8; padding:6px 8px; margin:4px 0; font:12px/1.5 var(--mono); overflow:auto; white-space:pre; }
-  .it .body code { background:rgba(0,0,0,.08); padding:0 3px; font:12px var(--mono); }
-  .it.user { align-self:flex-end; background:#2b2a28; color:#fffdf7; padding:6px 10px; border:2px solid #2b2a28; box-shadow:2px 2px 0 rgba(0,0,0,.3); }
-  .it.user.queued { opacity:.6; }
-  .it.user .body code { background:rgba(255,255,255,.18); }
-  .it.user .from { font-size:11px; color:#d6d1c6; margin-bottom:2px; }
-  /* the bridge's kickoff of a task: long, so folded to a line until clicked */
-  .it.user.kickoff summary { display:flex; gap:8px; align-items:baseline; cursor:pointer; list-style:none; margin:0; }
-  .it.user.kickoff summary::-webkit-details-marker { display:none; }
-  .it.user.kickoff summary b { flex:none; font-size:12px; color:#f2b705; }
-  .it.user.kickoff summary b::before { content:'▸ '; }
-  .it.user.kickoff details[open] summary b::before { content:'▾ '; }
-  .it.user.kickoff .peek { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#d6d1c6; font-size:12px; }
-  .it.user.kickoff details[open] .peek { display:none; }
-  .it.user.kickoff .body { margin-top:4px; }
-  .it.text { align-self:flex-start; background:#fff; color:#2b2a28; padding:6px 10px; border:2px solid #2b2a28; box-shadow:2px 2px 0 rgba(0,0,0,.2); }
-  /* thinking: folded by default, orange "thinking…" with three dots in turn while it goes on */
-  .it.thinking { align-self:flex-start; }
-  .it.thinking summary, .it.thinking .bare { display:inline-block; padding:1px 10px; border:1px dashed #e0a24a; background:#fff6e5; }
-  .it.thinking summary { cursor:pointer; color:#e07b00; font-weight:700; font-size:12px; list-style:none; }
-  .it.thinking summary::-webkit-details-marker { display:none; }
-  .it.thinking:not(.done) summary .dots::after { content:'·'; display:inline-block; width:1.4em; text-align:left; animation:dots 1.2s steps(1) infinite; }
-  @keyframes dots { 33% { content:'··'; } 66% { content:'···'; } }
-  .it.thinking.done summary, .it.thinking .bare { color:#a9790a; font-weight:400; font-size:12px; border-style:solid; border-color:#ead9b5; background:#fbf5e8; }
-  .it.thinking .body { margin-top:4px; padding:6px 10px; background:#fff6e5; border:1px dashed #e0a24a; color:#6b4a00; font-size:12px; max-height:320px; overflow:auto; }
-  .it.tool { align-self:flex-start; font:12px/1.5 var(--mono); color:#4a4742; padding:1px 8px; border-left:3px solid #b9b3a8; background:#edeae2; max-width:min(90%, 900px); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .it.tool.ok { border-color:#2e9e5b; } .it.tool.error { border-color:#d64541; } .it.tool.denied { border-color:#d64541; color:#8a2a26; }
-  .it.tool:not(.done) { border-color:#f2b705; }
-  .it.tool b { color:#2b2a28; } .it.tool .sub { color:#8a867e; margin-right:4px; } .it.tool .res { color:#8a867e; margin-left:6px; }
-  /* messages from and to other sessions: purple */
-  .it.message { align-self:flex-start; background:#7b4dc9; color:#fff; padding:6px 10px; border:2px solid #4a2a86; box-shadow:2px 2px 0 rgba(0,0,0,.3); }
-  .it.message.out { align-self:flex-end; background:#a58ad8; color:#1d1133; }
-  .it.message .from { font-size:11px; opacity:.85; margin-bottom:2px; font-weight:700; }
-  .it.ask { align-self:center; font-size:12px; color:#8a867e; background:#edeae2; padding:1px 10px; max-width:90%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .it.ask.pending { color:#d64541; font-weight:700; }
-  .it.ask.deny, .it.ask.cancelled { color:#8a2a26; }
-  .it.notice { align-self:center; font-size:11px; color:#8a867e; }
-  .it time { display:block; font-size:10px; color:#8a867e; margin-top:2px; }
-  .it.user time { color:#b9b3a8; text-align:right; }
-  .it.message time { color:rgba(255,255,255,.75); } .it.message.out time { color:rgba(29,17,51,.6); text-align:right; }
-  /* the dock: the input; while asks wait, their cards rise over it from the bottom and must be handled first.
-     They hang from a fixed line, so a new card goes in below and never moves the one being clicked. */
-  .chat .dock { border-top:2px solid #2b2a28; background:#fffdf7; padding:8px 12px; }
-  .chat .dock.asking { position:absolute; left:0; right:0; top:42%; bottom:0; overflow:auto; box-shadow:0 -4px 0 rgba(0,0,0,.2); animation:rise .2s ease-out; }
-  @keyframes rise { from { transform:translateY(30%); opacity:.4; } }
-  .chat .dock.asking .say, .chat .dock.asking .offline { display:none; }
-  .chat .say { display:flex; gap:8px; align-items:flex-end; }
-  .chat .say textarea { flex:1; resize:none; font:inherit; color:#2b2a28; background:#fff; border:2px solid #2b2a28; padding:5px 8px; box-sizing:border-box; }
-  .chat .say textarea:focus { outline:none; border-color:#f2b705; }
-  .chat .say[hidden] { display:none; }
-  .chat .offline { color:#8a867e; font-size:12px; padding:4px 0; }
-  .chat .offline[hidden] { display:none; }
-  /* pending cards (built by asks.js) */
-  #asks .card { border:2px solid #2b2a28; padding:10px 12px; margin-bottom:10px; background:#fff; }
-  #asks .who { display:flex; gap:8px; align-items:baseline; margin-bottom:6px; }
-  #asks .who .name { font-weight:700; }
-  #asks .who .kind, #asks .meta { color:#8a867e; font-size:12px; }
-  #asks .tool { font:700 13px var(--mono); }
-  #asks pre { background:#f2efe8; border:1px solid #d6d1c6; padding:6px 8px; max-height:200px; overflow:auto; white-space:pre-wrap; word-break:break-all; font-size:12px; margin:6px 0; }
-  #asks .row { display:flex; gap:8px; align-items:center; margin-top:6px; }
-  #asks .row input { flex:1; }
-  #asks input[type=text] { border:2px solid #2b2a28; padding:3px 6px; font:inherit; background:#fff; color:#2b2a28; }
-  #asks button { border:2px solid #2b2a28; background:#fffdf7; padding:2px 12px; font:inherit; cursor:pointer; }
-  #asks button.allow, #asks button.submit { background:#2b2a28; color:#fffdf7; }
-  #asks .q h3 { margin:4px 0; font-size:14px; } #asks .q .hd { color:#8a867e; font-weight:400; font-size:12px; margin-right:6px; }
-  #asks label.opt { display:block; cursor:pointer; padding:1px 0; } #asks label.opt small { color:#8a867e; margin-left:6px; }
-  #asks .q input.other { display:block; width:100%; box-sizing:border-box; margin-top:4px; }
-  /* launch dialog */
-  #launch label { display:block; margin:8px 0 2px; font-size:12px; color:#6f6b64; }
-  #launch input, #launch select { width:100%; box-sizing:border-box; font:inherit; color:#2b2a28; background:#fff; border:2px solid #2b2a28; padding:3px 6px; }
-  #launch input[readonly] { background:#ece8df; }
-  :is(#launch, #task) :is(input:not([type=checkbox]), select, textarea):focus { outline:none; border-color:#f2b705; }
-  #launch .row { display:flex; gap:6px; }
-  #launch .row input { flex:1; }
-  #launch .grid { display:grid; grid-template-columns:1fr 1fr; gap:0 10px; }
-  :is(#launch, #task) .browser { border:2px solid #2b2a28; margin-top:6px; background:#fff; }
-  :is(#launch, #task) .browser .cur { padding:3px 6px; background:#ece8df; font:12px var(--mono); word-break:break-all; }
-  :is(#launch, #task) .browser ul { list-style:none; margin:0; padding:0; max-height:180px; overflow:auto; }
-  :is(#launch, #task) .browser li { padding:2px 8px; cursor:pointer; font-size:13px; }
-  :is(#launch, #task) .browser li:hover { background:#f2b705; }
-  :is(#launch, #task) .browser .pick { margin:6px; }
-  :is(#launch, #task) .recent { margin-top:4px; display:flex; flex-wrap:wrap; gap:4px; }
-  :is(#launch, #task) .recent span { font:11px var(--mono); border:1px solid #b9b3a8; padding:0 5px; cursor:pointer; }
-  #launch pre { margin:10px 0 0; padding:6px 8px; background:#2b2a28; color:#f2efe8; font:12px/1.5 var(--mono); white-space:pre-wrap; overflow-wrap:anywhere; }
-  :is(#launch, #task) .status { margin-top:8px; font-size:12px; white-space:pre-wrap; }
-  :is(#launch, #task) .status.err { color:#c0392b; }
-  /* the task dialog: the launch dialog's fields, the employees ticked in order and the advisors, numbered as the team */
-  #task .panel { width:min(680px, calc(100vw - 32px)); }
-  #task label { display:block; margin:8px 0 2px; font-size:12px; color:#6f6b64; }
-  #task :is(input:not([type=checkbox]), select, textarea) { width:100%; box-sizing:border-box; font:inherit; color:#2b2a28; background:#fff; border:2px solid #2b2a28; padding:3px 6px; }
-  #task textarea { resize:vertical; }
-  #task .mem, #task .adv { border:2px solid #d6d1c6; background:#fff; margin-top:4px; padding:3px 6px; }
-  #task .mem { display:flex; align-items:center; gap:6px; }
-  #task .mem label { flex:1; min-width:0; display:flex; align-items:center; gap:6px; margin:0; font-size:13px; color:#2b2a28; cursor:pointer; }
-  #task .mem label .dot { flex:none; margin:0; }
-  #task .mem.off label { cursor:default; opacity:.5; }
-  #task .mem .nm { font-weight:700; white-space:nowrap; }
-  #task .mem small { color:#8a867e; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  #task .mem select, #task .adv .row select { width:auto; max-width:150px; }
-  #task .mem:not(.on) select { visibility:hidden; }
-  #task .on { border-color:#2b2a28; }
-  #task .on.over { border-color:#c0392b; } /* numbered past the room's seats */
-  #task .over .ord { background:#c0392b; }
-  #task .bad, #task input.bad { border-color:#c0392b; }
-  #task input.bad { background:#fdecea; }
-  #task .ord { flex:none; min-width:16px; padding:0 3px; box-sizing:border-box; text-align:center; font:700 11px/16px var(--mono); color:#fffdf7; background:#2b2a28; }
-  #task .ord:empty { background:none; }
-  #task .lead-tag { display:none; flex:none; font-size:11px; line-height:16px; padding:0 5px; background:#f2b705; color:#2b2a28; white-space:nowrap; }
-  #task .lead .lead-tag { display:inline-block; }
-  #task .adv .line { display:flex; align-items:center; gap:6px; }
-  #task .adv .line input { flex:1; }
-  #task .adv .kind { flex:none; font-size:11px; padding:0 5px; border:1px solid #b9b3a8; color:#6f6b64; white-space:nowrap; }
-  #task .adv .row { display:flex; gap:6px; margin-top:4px; }
-  #task .adv .row input { flex:1; }
-  #task .add-adv { margin-top:6px; }
-  #task label.check { display:flex; align-items:center; gap:6px; color:#2b2a28; font-size:13px; margin-top:10px; cursor:pointer; }
-  #task .actions { align-items:center; }
-  /* the status line and the buttons stay at the bottom of the dialog while the rest scrolls */
-  #task .foot { position:sticky; bottom:-14px; z-index:1; margin:10px -16px -14px; padding:0 16px 14px; background:#fffdf7; border-top:1px solid #d6d1c6; }
-  #task .foot .status:empty { display:none; }
-  #task .count { margin-right:auto; font-size:12px; color:#6f6b64; }
-  #task .count.over { color:#c0392b; font-weight:700; }
-  /* the task window: what the team is on, its members (a click opens one's window), the button to end it */
-  #taskwin > .panel { position:relative; width:min(780px, calc(100vw - 32px)); height:min(90vh, 960px); display:flex; flex-direction:column; }
-  #taskwin > .panel > :not(.tchat) { flex:none; } /* (">": a docked member's window is inside #taskwin too) */
-  #taskwin .close { position:absolute; right:10px; top:6px; cursor:pointer; color:#8a867e; font-size:14px; }
-  #taskwin .top { display:flex; align-items:center; gap:10px; margin-right:24px; }
-  #taskwin .top h2 { margin:0; }
-  #taskwin .top .actions { margin:0 0 0 auto; }
-  #taskwin .top .status { font-size:12px; line-height:1.6; padding:0 8px 0 6px; border:2px solid #2b2a28; border-left:6px solid var(--c, #a9a49b); white-space:nowrap; }
-  #taskwin .desc { margin-top:8px; padding:6px 10px; background:#f6f3ec; border:1px solid #d6d1c6; white-space:pre-wrap; overflow-wrap:anywhere; max-height:30vh; overflow:auto; }
-  #taskwin .mode { margin-top:6px; font-size:12px; color:#6f6b64; }
-  #taskwin .err { margin-top:8px; padding:4px 8px; border:2px solid #d64541; background:#fdecea; color:#8a2a26; font-size:12px; white-space:pre-wrap; overflow-wrap:anywhere; }
-  #taskwin .mode[hidden], #taskwin .err[hidden] { display:none; }
-  #taskwin .members { margin-top:10px; border-top:2px solid #2b2a28; }
-  #taskwin .mrow { display:flex; align-items:center; gap:8px; padding:5px 6px; border-bottom:1px dashed #d6d1c6; cursor:pointer; font-size:13px; }
-  #taskwin .mrow:hover { background:#f2efe8; }
-  #taskwin .mrow.wait { cursor:default; color:#8a867e; }
-  #taskwin .mrow.wait:hover { background:none; }
-  #taskwin .mrow .dot { flex:none; margin:0; }
-  #taskwin .mrow b { white-space:nowrap; }
-  #taskwin .badge { flex:none; font-size:11px; padding:0 5px; white-space:nowrap; }
-  #taskwin .badge.lead { background:#f2b705; }
-  #taskwin .badge.adv { border:1px solid #b9b3a8; color:#6f6b64; }
-  #taskwin .where { flex:1; min-width:0; color:#6f6b64; font:12px var(--mono); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  #taskwin .chip { flex:none; font-size:11px; padding:0 6px; border:1px solid #d6d1c6; background:#f6f3ec; white-space:nowrap; }
-  #taskwin .st { flex:none; color:#6f6b64; font-size:12px; white-space:nowrap; max-width:220px; overflow:hidden; text-overflow:ellipsis; }
-  /* the task chat: the members' messages to each other (purple, as everywhere on the page) and yours (dark, on the right) */
-  #taskwin .tchat { flex:1; min-height:120px; display:flex; flex-direction:column; margin-top:12px; }
-  #taskwin .tchat h3 { margin:0 0 4px; font-size:13px; }
-  #taskwin .tlist { flex:1; display:flex; flex-direction:column; gap:8px; min-height:64px; overflow:auto; padding:8px; background:#f6f3ec; border:2px solid #2b2a28; }
-  #taskwin .tlist .empty { margin:auto; color:#8a867e; font-size:12px; text-align:center; }
-  #taskwin .tmsg { flex:none; display:flex; align-items:flex-start; gap:6px; max-width:88%; align-self:flex-start; }
-  #taskwin .tmsg.me { flex-direction:row-reverse; align-self:flex-end; }
-  #taskwin .tmsg .av { flex:none; width:48px; height:24px; margin-top:4px; background-size:100% 100%; image-rendering:pixelated; }
-  #taskwin .tmsg .bub { min-width:0; padding:4px 10px 6px; background:#7b4dc9; color:#fff; border:2px solid #4a2a86; box-shadow:2px 2px 0 rgba(0,0,0,.3); font-size:13px; line-height:1.5; }
-  #taskwin .tmsg.me .bub { background:#2b2a28; border-color:#2b2a28; color:#fffdf7; }
-  #taskwin .tmsg .hd { font-size:12px; }
-  #taskwin .tmsg time { display:block; margin-top:2px; font-size:10px; opacity:.75; }
-  #taskwin .tmsg.me time { text-align:right; }
-  #taskwin .tmsg .body { white-space:pre-wrap; overflow-wrap:anywhere; }
-  #taskwin .tmsg .body .to { color:#ffe08a; }
-  #taskwin .tmsg.me .body .to { color:#f2b705; }
-  #taskwin .tmsg .body .to s { color:#a9a49b; } /* a mentioned member that was offline and didn't get it */
-  #taskwin .tmsg .body code { background:rgba(255,255,255,.18); padding:0 3px; font:12px var(--mono); }
-  #taskwin .tmsg .body pre { background:rgba(0,0,0,.3); padding:6px 8px; margin:4px 0; font:12px/1.5 var(--mono); overflow:auto; white-space:pre; }
-  #taskwin .tsay { display:flex; gap:8px; align-items:flex-end; margin-top:6px; }
-  #taskwin .tbox { position:relative; flex:1; min-width:0; display:flex; }
-  #taskwin .tsay textarea { flex:1; resize:none; font:inherit; color:#2b2a28; background:#fff; border:2px solid #2b2a28; padding:5px 8px; box-sizing:border-box; }
-  #taskwin .tsay textarea:focus { outline:none; border-color:#f2b705; }
-  #taskwin .tsay textarea:disabled { background:#ece8df; }
-  #taskwin .tstatus { margin-top:4px; font-size:12px; color:#c0392b; white-space:pre-wrap; overflow-wrap:anywhere; }
-  #taskwin .tstatus:empty { display:none; }
-  #taskwin .tstatus.note { color:#6f6b64; }
-  /* the mention picker: the task's members, over the input while an @ is being typed (like the search box's list) */
-  #taskwin .tpick { position:absolute; z-index:2; left:0; bottom:calc(100% + 4px); min-width:240px; max-width:380px; background:#fffdf7; color:#2b2a28;
-    border:2px solid #2b2a28; box-shadow:4px 4px 0 rgba(0,0,0,.35); }
-  #taskwin .tpick[hidden] { display:none; }
-  #taskwin .tpick .hit { padding:2px 8px; cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:13px; }
-  #taskwin .tpick .hit.on { background:#f2b705; }
-  #taskwin .tpick .hit small { color:#6f6b64; margin-left:8px; }
-  #taskwin .mrow.open { background:#fff3c4; box-shadow:inset 4px 0 0 #f2b705; }
-  /* a member's window docks to the right of the task window: the two side by side, centered as a pair, the task's chat
-     as tall as the member's (on a narrow screen the member's window opens over the task window instead) */
-  #taskwin.with-chat { padding:0 16px; }
-  #taskwin.with-chat > .panel { flex:0 1 720px; width:auto; min-width:0; padding-bottom:8px; } /* its input level with the member's */
-  #chat.docked:not([hidden]) { display:contents; }
-  #chat.docked .panel.chat { flex:0 1 640px; width:auto; min-width:0; margin-left:-2px; }
-  #chat.stacked { z-index:11; }
-  /* the message log: a side panel */
-  .side { position:fixed; right:12px; top:calc(var(--hud-h, 0px) + 12px); bottom:12px; z-index:5; width:min(340px, calc(100vw - 24px)); overflow:auto; background:#fffdf7; color:#2b2a28;
-    border:2px solid #2b2a28; box-shadow:4px 4px 0 rgba(0,0,0,.35); padding:10px 12px; box-sizing:border-box; }
-  .side[hidden] { display:none; }
-  .side h2 { margin:0 0 6px; font-size:15px; }
-  .side .close { position:absolute; right:8px; top:4px; cursor:pointer; color:#8a867e; }
-  .side dl { margin:0; display:grid; grid-template-columns:auto 1fr; gap:2px 10px; font-size:12px; }
-  .side dt { color:#8a867e; } .side dd { margin:0; word-break:break-all; }
-  .msg { border-bottom:1px dashed #d6d1c6; padding:5px 0; font-size:12px; }
-  .msg .meta { color:#8a867e; font-size:11px; }
-  .msg .meta b { color:#2b2a28; }
-  .msg .lost { color:#c0392b; }
-  .msg .txt { white-space:pre-wrap; overflow-wrap:anywhere; }
-  .msg .txt pre { margin:3px 0; padding:4px 6px; background:#2b2a28; color:#f2efe8; font:11px/1.5 var(--mono); white-space:pre-wrap; }
-  .msg .txt code { background:rgba(0,0,0,.08); padding:0 3px; font:11px var(--mono); }
-</style>
-</head>
-<body>
-<canvas id="office"></canvas>
-<div id="labels"></div>
-<div id="hud">
-  <div class="bar">
-    <div class="group"><canvas class="logo" width="10" height="5"></canvas><h1 data-i18n="office.title"></h1></div>
-    <div class="find"><input id="find" type="search" autocomplete="off" spellcheck="false" data-i18n-placeholder="search.placeholder" data-i18n-title="search.title"><kbd class="key">/</kbd><div id="find-list" hidden></div></div>
-    <div class="stats" id="stats" data-i18n="office.nobody"></div>
-    <div class="group btns">
-      <button class="px" id="open-msgs"><i class="ico mail"></i><span data-i18n="office.messages"></span></button>
-      <button class="px" id="open-log" data-i18n="office.log"></button>
-      <button class="px" id="new-emp" data-i18n="office.newEmployee" hidden></button>
-    </div>
-    <div class="group prefs"></div>
-  </div>
-  <div class="note" id="launch-note" hidden></div>
-  <button class="tab" id="hud-tab"><i class="ico"></i><b class="badge" hidden></b></button>
-</div>
-<div class="logpanel" id="log" hidden><span class="close">✕</span><h2 data-i18n="office.log"></h2><div class="lines"></div></div>
-
-<!-- the employee window: who they are, and the session as a chat -->
-<div class="modal" id="chat" hidden>
-  <div class="panel chat">
-    <div class="head">
-      <span class="close">✕</span>
-      <div class="who"><span class="dot"></span><h2></h2><span class="state"></span></div>
-      <div class="meta"></div>
-      <div class="btns"></div>
-    </div>
-    <div class="flow"></div>
-    <div class="dock">
-      <div id="asks"></div>
-      <form class="say" autocomplete="off">
-        <textarea rows="2" data-i18n-placeholder="chat.placeholder"></textarea>
-        <button type="submit" class="px primary" data-i18n="chat.send"></button>
-      </form>
-      <div class="offline" data-i18n="chat.offline" hidden></div>
-    </div>
-  </div>
-</div>
-
-<div class="modal" id="launch" hidden>
-  <form class="panel" autocomplete="off">
-    <h2 class="title"></h2>
-    <label data-i18n="launch.name"></label>
-    <input name="name" data-i18n-placeholder="launch.namePlaceholder" required>
-    <label data-i18n="launch.dir"></label>
-    <div class="row"><input name="dir" data-i18n-placeholder="launch.dirPlaceholder" required><button type="button" class="px browse" data-i18n="launch.browse"></button></div>
-    <div class="browser" hidden><div class="cur"></div><ul></ul><button type="button" class="px pick" data-i18n="launch.pick"></button></div>
-    <div class="recent"></div>
-    <div class="grid">
-      <div><label data-i18n="launch.model"></label><select name="model"></select></div>
-      <div><label data-i18n="launch.effort"></label><select name="effort"></select></div>
-      <div><label data-i18n="launch.permissionMode"></label><select name="permissionMode"></select></div>
-      <div><label data-i18n="launch.resume"></label><select name="resume"></select></div>
-    </div>
-    <pre class="preview"></pre>
-    <div class="status"></div>
-    <div class="actions"><button type="button" class="px cancel" data-i18n="common.cancel"></button><button type="submit" class="px primary go" data-i18n="launch.go"></button></div>
-  </form>
-</div>
-
-<!-- the task dialog: a team of sessions for one task in a small meeting room -->
-<div class="modal" id="task" hidden>
-  <form class="panel" autocomplete="off">
-    <h2 class="title"></h2>
-    <label data-i18n="task.description"></label>
-    <textarea name="desc" rows="4" data-i18n-placeholder="task.descriptionPlaceholder"></textarea>
-    <label data-i18n="task.members"></label>
-    <div class="emps"></div>
-    <div class="advs"></div>
-    <button type="button" class="px add-adv" data-i18n="task.addAdvisor" data-i18n-title="task.advisorTitle"></button>
-    <label class="check"><input type="checkbox" name="leader" checked><span data-i18n="task.leader"></span></label>
-    <label data-i18n="launch.permissionMode"></label>
-    <select name="permissionMode"></select>
-    <div class="foot">
-      <div class="status"></div>
-      <div class="actions"><span class="count"></span><button type="button" class="px cancel" data-i18n="common.cancel"></button><button type="submit" class="px primary go" data-i18n="task.go"></button></div>
-    </div>
-  </form>
-</div>
-
-<!-- the task window: what the team is on, who is in it, the button to end it -->
-<div class="modal" id="taskwin" hidden>
-  <div class="panel">
-    <span class="close">✕</span>
-    <div class="top"><h2></h2><span class="status"></span><div class="actions"></div></div>
-    <div class="desc"></div>
-    <div class="mode" data-i18n="task.flat" hidden></div>
-    <div class="err" hidden></div>
-    <div class="members"></div>
-    <div class="tchat">
-      <h3 data-i18n="task.chat"></h3>
-      <div class="tlist"></div>
-      <form class="tsay" autocomplete="off">
-        <div class="tbox"><textarea rows="1"></textarea><div class="tpick" hidden></div></div>
-        <button type="submit" class="px primary" data-i18n="chat.send"></button>
-      </form>
-      <div class="tstatus"></div>
-    </div>
-  </div>
-</div>
-
-<div class="side" id="msgs-panel" hidden><span class="close">✕</span><h2 data-i18n="office.messages"></h2><div class="msgs"></div></div>
-
-<script type="module">
+// The pixel office: one floor of a big company's building, drawn on a canvas, with the sessions as employees at their
+// desks. The bridge's client (symphony.js) keeps the state; the employee window, the launch and task dialogs and the
+// task window are the shared pieces (ui/*.js), which this theme places, names and draws figures for.
 import { t, lang, errorText, fmtTime, applyI18n, langPicker } from '/i18n.js'
-import { esc, syncCards } from '/asks.js'
+import { esc } from '/asks.js'
+import { connect } from '/symphony.js'
+import { GREEN, YELLOW, RED, GRAY, STATE_COLOR, base, lower, dot, element, hash, build, buildText, statusText as statusOf, richText } from '/ui/common.js'
+import { createChat } from '/ui/chat.js'
+import { createLaunchDialog } from '/ui/launch.js'
+import { createTaskUI } from '/ui/task.js'
+import { themePicker } from '/ui/themes.js'
+
+// the bridge's client (symphony.js) keeps the state; snapshot is its latest, taken before anything else looks at it
+const sym = connect()
+let snapshot = sym.state
+sym.on('snapshot', s => { snapshot = s })
 
 applyI18n()
-document.querySelector('#hud .prefs').appendChild(langPicker())
+const prefs = document.querySelector('#hud .prefs'), langSel = langPicker()
+prefs.appendChild(langSel)
+themePicker(sym).then(sel => prefs.insertBefore(sel, langSel))
 
 // ================= constants =================
 const T = 16 // one tile is 16 pixels
-const GREEN = '#2e9e5b', YELLOW = '#f2b705', RED = '#d64541', GRAY = '#a9a49b'
-// three state colors: idle green, working yellow, waiting for an approval or an answer red; off duty gray
-const STATE_COLOR = { idle:GREEN, thinking:YELLOW, tool:YELLOW, waiting:RED, ended:GRAY, done:GRAY }
 const COLS = 6, COL_PITCH = 3 * T, ROW_PITCH = 4 * T, WALL_H = 4 * T + 8, AISLE = 24, LABEL_ROOM = 2 * T + 10
 const DECOR = WALL_H - 48 // the back wall's windows and pictures hang below a plain band, where the HUD sits
 const CLAWD = '#d97757', CLAWD_SHADE = '#b9603f', EYE = '#2b1b14', MINI = '#e6a58d', MINI_SHADE = '#c98a72'
@@ -507,66 +54,41 @@ function weave(g, x, y, w, h, c) {
   pat.setTransform(new DOMMatrix([hair, 0, 0, hair, 0, 0]))
   g.fillStyle = pat; g.fillRect(x, y, w, h)
 }
-const base = p => (p || '').split(/[\\/]/).filter(Boolean).pop() || p || '?' // Windows paths use backslashes
-const dot = state => `<span class="dot" style="background:${STATE_COLOR[state] ?? GRAY}"></span>`
-const hash = s => [...String(s)].reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 7) >>> 0
 
-let snapshot = { accounts:[], sessions:[], asks:[], messages:[], launches:[], tasks:[] }
 let launchOpts = null // /api/launch/options: whether the page can start sessions, and the drop-down choices
 const sessionOf = acc => acc.session ? snapshot.sessions.find(s => s.id === acc.session) : null // the desk session
 const sessionById = id => id ? snapshot.sessions.find(s => s.id === id) ?? null : null
 const asking = sid => !!sid && snapshot.asks.some(a => a.session === sid) // the session waits for an approval or an answer
-// tasks: a team of sessions in a small meeting room; the snapshot has those running, ending or failed
+// tasks: a team of sessions; the snapshot has those running, ending or failed. The page seats each in a small meeting
+// room (assignRooms): the bridge knows no rooms, only the hint of the one a task was started from
 const taskById = id => snapshot.tasks.find(task => task.id === id) ?? null
-const roomTask = k => snapshot.tasks.filter(task => task.room === k).sort((a, b) => (a.status === 'failed') - (b.status === 'failed'))[0] ?? null
+const roomByTask = new Map() // task id -> the small room it sits in; a task with none has its members out of the building
+const roomOf = task => roomByTask.get(task.id) ?? null
+const roomTask = k => snapshot.tasks.find(task => roomOf(task)?.k === k) ?? null
 const roomName = k => t('room.small.' + (k % 24 + 1)) + (k < 24 ? '' : ' ' + ['II', 'III', 'IV'][Math.min(2, Math.floor(k / 24) - 1)])
-const taskRoom = task => roomName(task.room) // in this page's language (the task's roomName is the kickoff's, in the creator's)
+const taskRoom = task => { const r = roomOf(task); return r ? roomName(r.k) : t('task.noRoom') } // in this page's language
+// Every task shown (running, ending, failed) takes a room, in id order so every browser agrees: the room it was started
+// from when this layout has it and it's still free (its members may stand), else the first free room with seats enough,
+// else the largest free one; a task that finds none is out of the building. A failed task keeps its room until dismissed.
+function assignRooms() {
+  roomByTask.clear()
+  const free = new Set(smalls.map(r => r.k)), rest = []
+  for (const task of [...snapshot.tasks].sort((a, b) => +a.id.slice(1) - +b.id.slice(1))) {
+    const k = typeof task.room === 'number' ? task.room : -1
+    if (free.has(k)) { roomByTask.set(task.id, smalls[k]); free.delete(k) } else rest.push(task)
+  }
+  for (const task of rest) {
+    const rooms = [...free].map(k => smalls[k])
+    const pick = rooms.find(r => r.seats >= task.members.length) ?? rooms.sort((a, b) => b.seats - a.seats)[0]
+    if (pick) { roomByTask.set(task.id, pick); free.delete(pick.k) }
+  }
+}
 
-// what a session waits for: an approval or an answer
-function waitingText(sessionId) {
-  const kinds = new Set(snapshot.asks.filter(a => a.session === sessionId).map(a => a.kind))
-  const approval = kinds.has('permission'), answer = kinds.has('question')
-  return t(approval && answer ? 'state.waitingBoth' : approval ? 'state.waitingApproval' : answer ? 'state.waitingAnswer' : 'state.waiting')
-}
-function statusText(s) {
-  if (!s || s.state === 'ended') return t('state.ended')
-  if (s.state === 'waiting') return waitingText(s.id)
-  if (s.state === 'tool' && s.tool) return t('state.working', { tool:s.tool })
-  return t('state.' + s.state)
-}
+const statusText = s => statusOf(sym, s) // a session in words (ui/common.js)
 
 // ================= characters: size follows the model, muscles follow the effort =================
 // Modeled on the little fellow in the terminal banner (▐▛███▜▌ / ▝▜█████▛▘ / ▘▘ ▝▝): a square body,
 // two upright eyes, small hands on the sides, four feet.
-const MODEL_TIERS = [['haiku', 0], ['sonnet', 1], ['opus', 2], ['fable', 3]]
-const EFFORT_TIERS = { low:0, medium:1, high:2, xhigh:3, max:4 }
-function modelTier(model) {
-  const m = String(model || '').toLowerCase()
-  const hit = MODEL_TIERS.find(([k]) => m.includes(k))
-  return hit ? hit[1] : 1
-}
-function effortTier(effort) {
-  if (effort in EFFORT_TIERS) return EFFORT_TIERS[effort]
-  const n = Number(effort)
-  return effort && Number.isFinite(n) ? Math.max(0, Math.min(4, Math.round(n / 25))) : 1
-}
-function build(session) {
-  const size = modelTier(session?.model), muscle = effortTier(session?.effort)
-  return {
-    size, muscle,
-    bw:[10, 12, 14, 16][size], bh:[7, 8, 9, 10][size],
-    armW:[1, 2, 2, 3, 3][muscle], armH:[2, 2, 3, 3, 4][muscle],
-    headband:muscle >= 4, // at max effort it wears a red headband
-  }
-}
-const MODEL_NAME = ['Haiku', 'Sonnet', 'Opus', 'Fable']
-const EFFORT_NAME = ['low', 'medium', 'high', 'xhigh', 'max']
-function buildText(s) {
-  if (!s?.model) return ''
-  const b = build(s)
-  return t('card.build', { model:s.model + (s.effort ? ' · ' + s.effort : ''), size:MODEL_NAME[b.size], muscle:EFFORT_NAME[b.muscle] })
-}
-
 // cx: the body's center line; by: the body's bottom edge (the top of the feet)
 // pose: eyes 'open'|'down'|'closed'|'none'; armL/armR move the arms up or down; raiseL/raiseR raise a hand;
 // legs draws the feet; step is the foot stepping forward
@@ -1083,6 +605,7 @@ function layout() {
   }
   smalls = [...left, ...smalls]
   smalls.forEach((r, k) => { r.k = k; r.seats = 3 + rnd('seats/' + k) % 3 })
+  assignRooms()
   syncPlates()
   buildPlaces()
   const key = `${rows} ${W}x${H}`
@@ -1574,7 +1097,7 @@ function planLife(at) {
   // one that left goes back to its desk if its desk session is online, else out
   for (const f of figs.values()) {
     if (!f.inside) continue
-    const seats = taskSeats.get(f.task.room), e = emps.get(f.acc.id)
+    const seats = taskSeats.get(roomOf(f.task)?.k), e = emps.get(f.acc.id)
     if (!f.leaving) plan.set(f, { act:'task', spot:seats ? seats[Math.min(f.order, seats.length - 1)] : out })
     else if (isOnline(e)) plan.set(f, { act:'back', spot:{ ...desk(e), id:'home' }, hurry:true })
     else plan.set(f, { act:'out', spot:out })
@@ -2008,7 +1531,7 @@ function placeLabels(now) {
   }
   loose.sort((a, b) => b.ly - a.ly)
   for (const e of loose) {
-    const room = e.member && e.want?.act === 'task' && smalls.find(r => r.k === e.task.room)
+    const room = e.member && e.want?.act === 'task' && roomOf(e.task)
     if (room) tableTag(e, room, placed)
     else for (let k = 0; k < 12; k++) {
       const me = box(e, e.tx, e.ty), hit = placed.find(p => p.l < me.r && me.l < p.r && p.t < me.b && me.t < p.b)
@@ -2071,7 +1594,6 @@ const groupOf = e => !isOnline(e) ? 'off' : e.s.state === 'idle' ? 'idle' : e.s.
 // with a search or a chip on, the employees they pick out get a ring and the rest dims
 const filtering = () => !!findQ || !!chipOn
 const picked = e => (!findQ || matchesFind(e, findQ)) && (!chipOn || groupOf(e) === chipOn)
-const lower = s => String(s ?? '').toLowerCase()
 // a folder matches by its last part ("symphony"), or by its whole path once the query has a slash in it
 const matchesFind = (e, q) => (e.member ? [e.member.name] : [e.acc.name, e.s?.title, ...[e.s?.cwd, e.acc.last?.dir, e.acc.dir].map(d => d && (/[\\/]/.test(q) ? d : base(d)))])
   .some(v => lower(v).includes(q))
@@ -2121,10 +1643,10 @@ findList.addEventListener('mousedown', ev => { // mousedown, so the box keeps it
 })
 addEventListener('keydown', ev => { // "/" jumps to the search box; Esc lets go of a state chip
   if (ev.key === 'Escape' && chipOn) { chipOn = null; renderStats() }
-  if (ev.key === 'Escape' && !chatEl.hidden) { if (!dock.classList.contains('asking')) closeChat() } // the member's first, then its task
-  else if (ev.key === 'Escape' && !taskWin.hidden) closeTaskWin()
-  if (ev.key === 'Escape' && !taskDlg.hidden) closeTask()
-  if (ev.key !== '/' || ev.ctrlKey || ev.metaKey || ev.altKey || !chatEl.hidden || !dlg.hidden || !taskDlg.hidden || !taskWin.hidden) return
+  if (ev.key === 'Escape' && !chat.hidden) { if (!chat.asking) closeChat() } // the member's first, then its task
+  else if (ev.key === 'Escape' && !tasks.win.hidden) closeTaskWin()
+  if (ev.key === 'Escape' && !tasks.dialogHidden) tasks.closeDialog()
+  if (ev.key !== '/' || ev.ctrlKey || ev.metaKey || ev.altKey || !chat.hidden || !launch.hidden || !tasks.dialogHidden || !tasks.win.hidden) return
   if (/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName)) return
   ev.preventDefault()
   if (hud.classList.contains('up')) setHud(false)
@@ -2244,7 +1766,7 @@ function fitPlate(el) {
 function onRoomClick(r) {
   const task = roomTask(r.k)
   if (task) openTaskWin(task.id)
-  else if (launchOpts?.enabled) openTask(r)
+  else if (launchOpts?.enabled) tasks.openDialog({ room:{ k:r.k, name:roomName(r.k) } })
 }
 
 // ================= data =================
@@ -2300,23 +1822,13 @@ function showMessage(m) {
   setTimeout(() => { if (from.bubble === el) from.bubble = null; el.remove() }, 6000)
 }
 
-let first = true
-const seenMessages = new Set()
-const KEEP_MESSAGES = 300
-let messagesVersion = 0 // goes up whenever the message log changes; the panels redraw only then
-// The message log: a full snapshot (the first one, /api/state) carries it; the ones pushed on every change don't,
-// and each new or updated message comes as a "message" event instead. The snapshot names the latest message, so a
-// page that missed one (it fell behind) fetches the whole log again.
-function takeMessages(list) {
-  snapshot.messages = list
-  messagesVersion++
-  for (const m of list) noteMessage(m)
-}
-function noteMessage(m) {
-  if (seenMessages.has(m.id)) return
-  seenMessages.add(m.id)
-  if (!first) { showMessage(m); log(`${msgFrom(m)} → ${msgTo(m)}${t('common.colon')}${m.text}`) }
-}
+// The message log lives in the client (symphony.js): a new message flies across the office and goes into the activity
+// log, one that changed (paired, delivered) redraws the panels that show it
+sym.on('message', (m, isNew) => {
+  if (isNew && !sym.first) { showMessage(m); log(`${msgFrom(m)} → ${msgTo(m)}${t('common.colon')}${m.text}`) }
+  if (!msgsPanel.hidden) renderMessages()
+})
+sym.on('messages', () => { if (!msgsPanel.hidden) renderMessages() })
 // the names a message goes by; one you sent from a task's chat has no sender, and none to send to when it went to everyone
 const fromYou = m => m.origin === 'page' && !m.fromName
 const msgFrom = m => m.fromName || (fromYou(m) ? t('task.you') : '?')
@@ -2325,30 +1837,10 @@ const msgTo = m => {
   const to = m.toName || (fromYou(m) && m.task ? t('task.chatAll') : '?')
   return m.task && !to.endsWith('-' + m.task) ? `${to} · ${m.task}` : to
 }
-function applyMessage(m) {
-  const list = snapshot.messages, i = list.findIndex(x => x.id === m.id)
-  if (i >= 0) list[i] = m
-  else { list.push(m); if (list.length > KEEP_MESSAGES) list.splice(0, list.length - KEEP_MESSAGES) }
-  messagesVersion++
-  noteMessage(m)
-  if (!msgsPanel.hidden) renderMessages()
-  if (taskWinFor) renderTaskWin()
-}
-let catchingUp = false
-function catchUpMessages() {
-  if (catchingUp) return
-  catchingUp = true
-  fetch('/api/state').then(r => r.json()).then(s => { if (Array.isArray(s.messages)) { takeMessages(s.messages); if (!msgsPanel.hidden) renderMessages(); if (taskWinFor) renderTaskWin() } })
-    .catch(() => {}).finally(() => { catchingUp = false })
-}
 
-function applySnapshot(snap) {
-  const messages = Array.isArray(snap.messages) ? snap.messages : snapshot.messages
-  snapshot = snap
-  snapshot.messages = messages
-  if (!Array.isArray(snap.tasks)) snapshot.tasks = []
-  if (Array.isArray(snap.messages)) takeMessages(snap.messages)
-  else if (snap.messageTail && !messages.some(m => m.id === snap.messageTail)) catchUpMessages()
+// every snapshot: the employees for the accounts, the building for the seats, the figures for the tasks, the panels
+sym.on('snapshot', snap => {
+  const first = sym.first // the first snapshot places everyone; later ones walk them in
   const desks = snap.accounts.filter(a => !a.advisor) // an advisor has no desk: it's in the building as a task's member only
   const live = new Set(desks.map(a => a.id))
   for (const [id, e] of emps) if (!live.has(id)) dropEmployee(e)
@@ -2357,20 +1849,17 @@ function applySnapshot(snap) {
     emps.get(acc.id).acc = acc
   }
   layout()
+  assignRooms() // the tasks may have changed while the building didn't
   const away = awayInTasks()
   for (const acc of desks) updateEmployee(emps.get(acc.id), acc, !first, away.get(acc.id))
   syncFigures(!first)
-  noteTasks()
-  first = false
 
   syncPlates()
   renderStats()
   if (chatFor) showChat(chatFor)
-  if (taskWinFor) renderTaskWin()
   if (!msgsPanel.hidden) renderMessages()
   if (!findList.hidden) renderFind()
-  watchLaunch()
-}
+})
 
 function applyEvent(ev, name) {
   // a task session goes by its member's name (bob-T7)
@@ -2406,13 +1895,12 @@ function msgHTML(m) {
 // The panel shows the log newest first and is kept up to date in place: a new message is one element put in, an
 // updated one (paired, delivered) is replaced, the rest stay (300 long messages make 600 KB of HTML; rebuilding
 // them all on every message took a good part of a second)
-let msgsRendered = -1 // the messagesVersion the panel shows
+let msgsRendered = -1 // the sym.messagesVersion the panel shows
 const msgEls = new Map() // message id -> { el, sig }: its element, and what it was drawn from
 const msgSig = m => `${m.fromName}|${m.toName}|${m.delivered}|${m.received}|${m.text.length}`
-const element = html => { const tpl = document.createElement('template'); tpl.innerHTML = html; return tpl.content.firstElementChild }
 function renderMessages() {
-  if (msgsRendered === messagesVersion) return
-  msgsRendered = messagesVersion
+  if (msgsRendered === sym.messagesVersion) return
+  msgsRendered = sym.messagesVersion
   const box = msgsPanel.querySelector('.msgs'), list = snapshot.messages, ids = new Set(list.map(m => m.id))
   for (const [id, r] of msgEls) if (!ids.has(id)) { r.el.remove(); msgEls.delete(id) }
   box.querySelector('.none')?.remove()
@@ -2431,26 +1919,20 @@ document.getElementById('open-msgs').onclick = () => { renderMessages(); msgsPan
 msgsPanel.querySelector('.close').onclick = () => { msgsPanel.hidden = true }
 
 // ================= the employee window =================
-// Who they are at the top; below, the session as a chat: the prompts, the model's thinking (folded) and answers as they
-// stream, the tool calls, the messages between sessions (purple), and the asks, whose cards rise over the input until
-// they're handled. The log comes from the bridge when the window opens; while it's open, each change comes as a chat event.
-const chatEl = document.getElementById('chat'), chatPanel = chatEl.querySelector('.panel')
-const flow = chatEl.querySelector('.flow'), dock = chatEl.querySelector('.dock'), sayForm = chatEl.querySelector('.say'), sayBox = sayForm.querySelector('textarea')
+// The window itself is shared (ui/chat.js): who they are at the top, the session as a chat below, the input at the
+// bottom with the asks' cards over it. The office says what the head shows for an employee or a task member, keeps the
+// window's place (alone in the middle, or docked beside its task's window) and the status line that follows what the
+// employee does.
+const chat = createChat(sym, { askWho, onClose: () => closeChat(), onTaskChip: id => openTaskWin(id) })
+const chatEl = chat.el
 let chatFor = null // the account whose window is open
 let chatSid = null // the task session it shows; null: the account's desk session, whichever is current
-let chatName = '' // who the window is for: the account's name, a member's name (bob-T7) for a task session
-let chatSession = null // the session whose log the flow shows
-const chatItems = new Map() // item id -> item, of chatSession
-const chatShown = { meta:'', btns:'', asks:'' }
-chatEl.querySelector('.close').onclick = closeChat
-chatEl.addEventListener('click', ev => { if (ev.target === chatEl) closeChat() })
-chatEl.querySelector('.meta').addEventListener('click', ev => { const el = ev.target.closest('[data-task]'); if (el) openTaskWin(el.dataset.task) })
 function closeChat() {
   chatEl.hidden = true; chatFor = null
   if (!chatTask) return
   chatTask = null
   placeChat()
-  if (taskWinFor) renderTaskWin() // its row lets go, and the task window slides back to the middle
+  if (tasks.windowFor) tasks.render() // its row lets go, and the task window slides back to the middle
 }
 // A task member's window belongs to its task's window: docked to its right, the two centered as a pair, or over it
 // where the screen is too narrow for both. The element moves into the task window for that and back when it's alone.
@@ -2459,17 +1941,17 @@ const chatHome = document.createComment('chat')
 chatEl.before(chatHome)
 const DOCK_MIN = 1250 // narrower than this, the member's window opens over the task window
 function placeChat() {
-  const docked = !!chatTask && innerWidth >= DOCK_MIN
+  const taskWin = tasks.win, docked = !!chatTask && innerWidth >= DOCK_MIN
   if (docked ? chatEl.parentElement !== taskWin : chatHome.nextSibling !== chatEl) (docked ? taskWin.append(chatEl) : chatHome.after(chatEl))
   chatEl.classList.toggle('docked', docked)
   chatEl.classList.toggle('stacked', !!chatTask && !docked)
   taskWin.classList.toggle('with-chat', docked && !chatEl.hidden)
-  if (!taskWin.hidden) growTaskBox() // a new width: the placeholder may take more lines, or fewer
+  if (!taskWin.hidden) tasks.growBox() // a new width: the placeholder may take more lines, or fewer
 }
 // the one way to a task member's window: the task window, with the member's beside it
 function openMember(task, m) {
   if (!m?.session) return openTaskWin(task.id)
-  if (taskWinFor !== task.id || taskWin.hidden) openTaskWin(task.id)
+  if (tasks.windowFor !== task.id || tasks.win.hidden) openTaskWin(task.id)
   openChat(m.account, m.session, task.id)
 }
 
@@ -2489,9 +1971,8 @@ function openChat(id, sid = null, task = null) {
   if (!task) closeTaskWin()
   chatSid = sid; chatTask = task
   showChat(id)
-  if (task) renderTaskWin()
-  if (!chatEl.hidden && dock.classList.contains('asking')) dock.querySelector('#asks input, #asks button')?.focus()
-  else if (!chatEl.hidden && !sayBox.disabled) sayBox.focus()
+  if (task) tasks.render()
+  chat.focus()
 }
 
 function showChat(id) {
@@ -2505,202 +1986,57 @@ function showChat(id) {
   const away = chatSid ? null : emps.get(id)?.away ?? null
   const task = chatSid ? taskById(s?.task) ?? snapshot.tasks.find(k => k.members.some(m => m.session === chatSid)) ?? null : away
   const member = chatSid ? task?.members.find(m => m.session === chatSid) : away?.members.find(m => m.account === id)
-  chatName = chatSid ? member?.name || s?.title || acc.name : acc.name
-  const head = chatEl.querySelector('.head')
-  head.querySelector('h2').textContent = chatName
-  head.querySelector('.dot').style.background = STATE_COLOR[online ? s.state : 'ended'] ?? GRAY
-  refreshChatLine()
-  const chips = [['seat', chatSid ? '' : t('card.seatNo', { n:acc.seat + 1 })], ['model', online ? buildText(s) : ''], ['session', s?.title],
-    ['dir', s?.cwd || (chatSid ? member?.worktree : acc.last?.dir || acc.dir)], ['subagents', online ? Object.keys(s.agents || {}).length || '' : ''], ['tools', online ? s.tools : ''],
-    ['login', s?.login]]
-  const meta = (task ? `<span class="task" data-task="${esc(task.id)}" title="${esc(task.title)}">${esc(t('task.chip', { id:task.id, room:taskRoom(task) }))}</span>` : '') +
-    chips.filter(c => c[1] !== undefined && c[1] !== '' && c[1] !== null)
-      .map(([k, v]) => `<span title="${esc(v)}"><b>${esc(t('card.' + k))}</b>${esc(v)}</span>`).join('')
-  if (meta !== chatShown.meta) { chatShown.meta = meta; head.querySelector('.meta').innerHTML = meta }
   const busy = online && (s.state === 'thinking' || s.state === 'tool' || s.state === 'waiting')
-  const btnKey = `${id}|${chatSid}|${online}|${busy}|${online && !!s.launch}|${!!launchOpts?.enabled}|${away?.id}|${member?.session}`
-  if (btnKey !== chatShown.btns) {
-    chatShown.btns = btnKey
-    const btns = head.querySelector('.btns')
-    btns.innerHTML = ''
-    const add = (text, cls, fn, title) => { const b = document.createElement('button'); b.className = 'px ' + cls; b.textContent = text; b.onclick = fn; if (title) b.title = title; btns.appendChild(b) }
-    if (online && s.launch) add(t('chat.terminal'), 'terminal', () => openTerminal(s), t('chat.terminalTitle'))
-    if (busy) add(t('chat.stop'), 'stop', () => post(`/api/abort/${s.id}`, {}), t('chat.stopTitle'))
-    if (away && member?.session) add(t('task.openMember', { name:member.name }), 'primary to-task', () => openMember(away, member),
-      t('task.openMemberTitle', { id:away.id, room:taskRoom(away) }))
-    if (!online && !chatSid && launchOpts?.enabled) add(t('launch.go'), (away ? '' : 'primary ') + 'go-work', () => openLaunch(acc.id))
-    if (!online && !chatSid && !away) add(t('card.delete'), '', async () => {
-      if (!confirm(t('card.deleteConfirm', { name:acc.name }))) return
-      const r = await fetch(`/api/accounts/${acc.id}`, { method:'DELETE' })
-      if (!r.ok) alert(t('card.deleteFailed', { reason:errorText(await r.json().catch(() => null)) }))
-      closeChat()
-    })
-  }
-  // the chat follows the account's current desk session (an employee off duty keeps the last one's log while the bridge
-  // has it), or shows the one task session
-  const sid = chatSid || s?.id || null
-  if (sid !== chatSession) {
-    chatSession = sid
-    chatItems.clear()
-    flow.innerHTML = ''
-    if (sid) loadChat(sid)
-    else flow.innerHTML = `<div class="empty">${esc(t('chat.noSession'))}</div>`
-  }
-  const mine = snapshot.asks.filter(a => a.session === sid)
-  const askKey = mine.map(a => a.id).join(',')
-  if (askKey !== chatShown.asks) {
-    chatShown.asks = askKey
-    syncCards(document.getElementById('asks'), mine, askWho)
-    dock.classList.toggle('asking', mine.length > 0)
-  }
-  sayBox.disabled = !online
-  sayForm.hidden = !online
-  const off = dock.querySelector('.offline')
-  const offText = chatSid ? t('task.offline') : away && member ? t('chat.awayInTask', { id:away.id, name:member.name }) : t('chat.offline')
-  off.hidden = online
-  if (off.textContent !== offText) off.textContent = offText
-  chatEl.hidden = false
+  const buttons = []
+  if (online && s.launch) buttons.push({ key:'terminal', text:t('chat.terminal'), cls:'terminal', onclick:() => openTerminal(s), title:t('chat.terminalTitle') })
+  if (busy) buttons.push({ key:'stop', text:t('chat.stop'), cls:'stop', onclick:() => post(`/api/abort/${s.id}`, {}), title:t('chat.stopTitle') })
+  if (away && member?.session) buttons.push({ key:'to-task', text:t('task.openMember', { name:member.name }), cls:'primary to-task', onclick:() => openMember(away, member),
+    title:t('task.openMemberTitle', { id:away.id, room:taskRoom(away) }) })
+  if (!online && !chatSid && launchOpts?.enabled) buttons.push({ key:'go-work', text:t('launch.go'), cls:(away ? '' : 'primary ') + 'go-work', onclick:() => openLaunch(acc.id) })
+  if (!online && !chatSid && !away) buttons.push({ key:'delete', text:t('card.delete'), cls:'', onclick:async () => {
+    if (!confirm(t('card.deleteConfirm', { name:acc.name }))) return
+    const r = await sym.deleteAccount(acc.id)
+    if (!r.ok) alert(t('card.deleteFailed', { reason:errorText(r.data) }))
+    closeChat()
+  } })
+  chat.show({
+    name:chatSid ? member?.name || s?.title || acc.name : acc.name,
+    state:online ? s.state : 'ended',
+    line:chatStateLine(),
+    taskChip:task ? { id:task.id, title:task.title, label:t('task.chip', { id:task.id, room:taskRoom(task) }) } : null,
+    chips:[['seat', chatSid ? '' : t('card.seatNo', { n:acc.seat + 1 })], ['model', online ? buildText(s) : ''], ['session', s?.title],
+      ['dir', s?.cwd || (chatSid ? member?.worktree : acc.last?.dir || acc.dir)], ['subagents', online ? Object.keys(s.agents || {}).length || '' : ''], ['tools', online ? s.tools : ''],
+      ['login', s?.login]],
+    buttons, buttonsKey:`${id}|${chatSid}|${online}|${busy}|${online && !!s.launch}|${!!launchOpts?.enabled}|${away?.id}|${member?.session}`,
+    // the chat follows the account's current desk session (an employee off duty keeps the last one's log while the bridge
+    // has it), or shows the one task session
+    session:chatSid || s?.id || null,
+    online,
+    offText:chatSid ? t('task.offline') : away && member ? t('chat.awayInTask', { id:away.id, name:member.name }) : t('chat.offline'),
+  })
   placeChat()
 }
 // the status line follows what the employee (or the member) is doing
-function refreshChatLine() {
-  if (!chatFor || chatEl.hidden) return
-  const el = chatEl.querySelector('.who .state'), e = chatSid ? [...figs.values()].find(f => f.s?.id === chatSid) : emps.get(chatFor)
+function chatStateLine() {
+  const e = chatSid ? [...figs.values()].find(f => f.s?.id === chatSid) : emps.get(chatFor)
   // off duty at its desk but away in a task: where it is, as its name tag says
-  const line = e?.away && !isOnline(e) ? t('task.inRoom', { room:taskRoom(e.away), id:e.away.id }) : e ? stateLine(e) : statusText(sessionById(chatSid))
-  if (el.textContent !== line) el.textContent = line
+  return e?.away && !isOnline(e) ? t('task.inRoom', { room:taskRoom(e.away), id:e.away.id }) : e ? stateLine(e) : statusText(sessionById(chatSid))
+}
+function refreshChatLine() {
+  if (!chatFor || chat.hidden) return
+  chat.setLine(chatStateLine())
 }
 
 async function post(path, body) {
-  const r = await fetch(path, { method:'POST', headers:{ 'content-type':'application/json' }, body:JSON.stringify(body) })
-  if (!r.ok) alert(errorText(await r.json().catch(() => null)))
+  const r = await sym.post(path, body)
+  if (!r.ok) alert(errorText(r.data))
   return r.ok
 }
 // the session's terminal: the bridge opens a window on this machine attached to it (closing it changes nothing)
 async function openTerminal(s) {
-  const r = await fetch(`/api/terminal/${s.launch}/open`, { method:'POST' })
-  const data = await r.json().catch(() => null)
-  if (!r.ok) alert(errorText(data) + (data?.params?.command ? '\n' + data.params.command : ''))
+  const r = await sym.openTerminal(s.launch)
+  if (!r.ok) alert(errorText(r.data) + (r.data?.params?.command ? '\n' + r.data.params.command : ''))
 }
-
-async function loadChat(sid) {
-  let items = []
-  try { items = (await (await fetch(`/api/chat/${sid}`)).json()).items || [] } catch {}
-  if (sid !== chatSession) return
-  for (const it of items) chatItems.set(it.id, it)
-  renderFlow()
-}
-function renderFlow() {
-  flow.innerHTML = ''
-  const items = [...chatItems.values()].sort((a, b) => a.seq - b.seq)
-  if (!items.length) flow.innerHTML = `<div class="empty">${esc(t('chat.empty'))}</div>`
-  for (const it of items) flow.appendChild(itemEl(it))
-  flow.scrollTop = flow.scrollHeight
-}
-// a chat event: a whole item (new or changed), or text to append to a streaming one
-function applyChat(msg) {
-  if (msg.session !== chatSession) return
-  const nearEnd = flow.scrollTop + flow.clientHeight >= flow.scrollHeight - 40
-  if (msg.delta) {
-    const it = chatItems.get(msg.delta.id)
-    if (!it) { loadChat(chatSession); return } // a block we missed: fetch the log again
-    it.text += msg.delta.text
-    const el = flow.querySelector(`.it[data-id="${it.id}"] .body`)
-    if (el) el.innerHTML = richText(it.text)
-  } else if (msg.item) {
-    const it = msg.item, old = flow.querySelector(`.it[data-id="${it.id}"]`)
-    chatItems.set(it.id, it)
-    const el = itemEl(it, old)
-    if (old) old.replaceWith(el)
-    else { flow.querySelector('.empty')?.remove(); flow.appendChild(el) }
-  }
-  if (nearEnd) flow.scrollTop = flow.scrollHeight
-}
-// text with a little shape: fenced code, `code`, **bold**; everything is escaped first
-function richText(text) {
-  const parts = String(text ?? '').split(/(```[\s\S]*?(?:```|$))/)
-  return parts.map((p, i) => i % 2
-    ? `<pre>${esc(p.replace(/^```[^\n]*\n?/, '').replace(/\n?```$/, ''))}</pre>`
-    // a blank line next to a fenced block would double the <pre>'s own margin: drop it
-    : esc(p.replace(/\n+$/, i ? '' : '\n').replace(/^\n+/, i < parts.length - 1 ? '' : '\n')).replace(/`([^`\n]+)`/g, '<code>$1</code>').replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>')).join('')
-}
-const timeOf = it => `<time>${new Date(it.time).toLocaleTimeString(lang)}</time>`
-function itemEl(it, old) {
-  const el = document.createElement('div')
-  el.dataset.id = it.id
-  const sub = it.agentId ? `<span class="sub">${esc(t('common.subagent'))}</span>` : ''
-  switch (it.kind) {
-    case 'user':
-      el.className = `it user ${it.status || ''}`
-      if (it.origin === 'task') { // the bridge's kickoff of a task: long, so folded to its first line
-        el.classList.add('kickoff')
-        const open = old?.querySelector('details')?.open ? ' open' : '', peek = String(it.text ?? '').trim().split('\n')[0]
-        el.innerHTML = `<details${open}><summary class="from"><b>${esc(t('chat.fromTask'))}</b><span class="peek">${esc(peek)}</span></summary>` +
-          `<div class="body">${richText(it.text)}</div></details>${timeOf(it)}`
-        break
-      }
-      // from the page
-      el.innerHTML = `${it.origin === 'page' ? `<div class="from">${esc(t('task.you'))}</div>` : ''}<div class="body">${richText(it.text)}</div>${timeOf(it)}`
-      break
-    case 'thinking': {
-      el.className = `it thinking${it.done ? ' done' : ''}`
-      const open = old?.querySelector('details')?.open ? ' open' : '' // stays unfolded while it streams
-      // without words (a model whose thinking is summarized) there is nothing to unfold: just that it thought, and how long
-      const label = !it.done ? t('chat.thinking') : it.text ? t('chat.thoughtRead', { s:it.secs || 0 }) : t('chat.thoughtFor', { s:it.secs || 0 })
-      el.innerHTML = it.text || !it.done
-        ? `<details${open}><summary>${esc(label)}<span class="dots"></span></summary><div class="body">${richText(it.text)}</div></details>`
-        : `<div class="bare">${esc(label)}</div>`
-      break
-    }
-    case 'text':
-      el.className = `it text${it.done ? ' done' : ''}`
-      el.innerHTML = `<div class="body">${richText(it.text)}</div>${it.done ? timeOf(it) : ''}`
-      break
-    case 'tool': {
-      el.className = `it tool ${it.status || ''}${it.done ? ' done' : ''}`
-      // the outcome, and how long it took once it is done (the mod clocks the call); a failure's reason is in the tooltip
-      const took = it.done && it.ms >= 1000 ? ` ${(it.ms / 1000).toFixed(it.ms < 10000 ? 1 : 0)}s` : ''
-      el.innerHTML = `${sub}<b>${esc(it.tool)}</b> ${esc(it.summary || '')}` +
-        (it.done ? `<span class="res">${esc(t('chat.tool.' + (it.status || 'ok')) + took)}</span>` : '')
-      el.title = (it.summary || '') + (it.text ? '\n' + it.text : '')
-      break
-    }
-    case 'command': // a slash command that ran, as a tool row
-      el.className = 'it tool done'
-      el.innerHTML = `<b>${esc(it.text)}</b> ${esc(it.summary || '')}`
-      break
-    case 'message': {
-      const out = !!chatName && it.from === chatName // a task session sends as its member's name
-      el.className = `it message${out ? ' out' : ''}`
-      el.innerHTML = `<div class="from">${esc(out ? t('chat.msgTo', { name:it.to || '?' }) : t('chat.msgFrom', { name:it.from || '?' }))}</div><div class="body">${richText(it.text)}</div>${timeOf(it)}`
-      break
-    }
-    case 'ask':
-      el.className = `it ask ${it.status || ''}`
-      el.innerHTML = `${sub}${esc(t(it.askKind === 'question' ? 'asks.question' : 'asks.permission'))}${esc(t('common.colon'))}` +
-        `${esc(it.tool ? it.tool + ' ' : '')}${esc(it.summary || '')} · ${esc(t('chat.ask.' + (it.status || 'pending')))}${it.text ? esc(' · ' + it.text) : ''}`
-      el.title = (it.summary || '') + (it.text ? '\n' + it.text : '')
-      break
-    default: // a notice: the code translated, then the detail the bridge adds (an error's text, the models of a switch)
-      el.className = 'it notice'
-      el.textContent = t('chat.notice.' + it.text) + (it.summary ? `${t('common.colon')}${it.summary}` : '')
-  }
-  return el
-}
-
-// sending: Enter sends, Shift+Enter makes a new line; the bridge queues it for the session's mod, and the chat shows it
-// as queued until the mod has submitted it
-sayForm.addEventListener('submit', async ev => {
-  ev.preventDefault()
-  const text = sayBox.value.trim()
-  if (!text || !chatSession) return
-  sayBox.value = ''
-  if (!(await post(`/api/say/${chatSession}`, { text }))) sayBox.value = text
-  sayBox.focus()
-})
-sayBox.addEventListener('keydown', ev => {
-  if (ev.key === 'Enter' && !ev.shiftKey && !ev.isComposing) { ev.preventDefault(); sayForm.requestSubmit() }
-})
 
 // a click on a character, or else on a desk, is a click on that employee (on a task's member: the window of its task
 // session); a click on a small meeting room opens its task, or the task dialog
@@ -2720,14 +2056,13 @@ cv.addEventListener('click', ev => {
 })
 
 // ================= starting sessions from the page =================
-const dlg = document.getElementById('launch'), form = dlg.querySelector('form')
-const field = name => form.elements[name]
-let pendingLaunch = null // the launch we're waiting to see online
-let launchAccount = null // the existing employee going back to work; null for a new one
-
+// The launch dialog is shared (ui/launch.js); the office loads the options, says in the HUD why starting is off, and
+// opens the new employee's window once the launch is online
+const launch = createLaunchDialog(sym, { options:loadLaunchOptions, onOnline:l => openChat(l.account), onOpen:closeChat, log })
 async function loadLaunchOptions() {
-  try { launchOpts = await (await fetch('/api/launch/options')).json() } catch { launchOpts = null }
+  launchOpts = await sym.launchOptions(true)
   document.getElementById('new-emp').hidden = !launchOpts?.enabled
+  document.getElementById('new-task').hidden = !launchOpts?.enabled
   // when starting isn't possible, say why; for a missing mod show the install command (reload after installing)
   const note = document.getElementById('launch-note')
   note.hidden = !launchOpts || launchOpts.enabled
@@ -2737,370 +2072,19 @@ async function loadLaunchOptions() {
   }
   layout()
   syncPlates() // a free room takes clicks while the page can start sessions
+  return launchOpts
 }
-
 // why the page can't start sessions: the mod's problem, or no launcher at all
 const launchOffReason = () => launchOpts?.mod ? errorText(launchOpts.mod) : t('error.launch_disabled')
-
-// a folder field shows the end of its path, the folder's own name, rather than its start
-const showEnd = el => { el.scrollLeft = el.scrollWidth }
-// labels of the drop-downs, in this page's language; model names and effort levels stay as they are
-const optionLabel = {
-  model:o => o.value ? o.label : t('option.default'),
-  effort:o => o.value || t('option.default'),
-  permissionMode:o => o.value ? o.value + t('common.colon') + t('option.permission.' + o.value) : t('option.default'),
-  resume:o => t(o.value ? 'option.resume.' + o.value : 'option.resume.new'),
-}
-const fill = (select, options, value) => {
-  select.innerHTML = options.map(o => `<option value="${esc(o.value)}">${esc(optionLabel[select.name](o))}</option>`).join('')
-  select.value = value ?? ''
-}
-
-async function openLaunch(accountId) {
-  await loadLaunchOptions()
-  if (!launchOpts?.enabled) return alert(launchOpts ? launchOffReason() : t('error.unreachable'))
-  const acc = accountId ? snapshot.accounts.find(a => a.id === accountId) : null
-  launchAccount = acc ? acc.id : null
-  const last = acc?.last || {}
-  form.querySelector('.title').textContent = acc ? t('launch.titleExisting', { name:acc.name }) : t('launch.titleNew')
-  field('name').value = acc ? acc.name : ''
-  field('name').readOnly = !!acc
-  const recent = launchOpts.recentDirs || []
-  field('dir').value = last.dir || acc?.dir || recent[0] || launchOpts.home || ''
-  // a new employee starts with everything allowed, Opus and the most thinking; an old one as it last worked
-  fill(field('model'), launchOpts.models, acc ? last.model : 'opus')
-  fill(field('effort'), launchOpts.efforts, acc ? last.effort : 'max')
-  fill(field('permissionMode'), launchOpts.permissionModes, acc ? last.permissionMode : 'bypassPermissions')
-  fill(field('resume'), launchOpts.resumes, '')
-  form.querySelector('.recent').innerHTML = recent.map(d => `<span title="${esc(d)}">${esc(base(d))}</span>`).join('')
-  form.querySelectorAll('.recent span').forEach((el, i) => el.onclick = () => { field('dir').value = recent[i]; showEnd(field('dir')); preview() })
-  form.querySelector('.browser').hidden = true
-  setStatus('')
-  form.querySelector('.go').disabled = false
-  pendingLaunch = null
-  preview()
-  closeChat()
-  dlg.hidden = false
-  ;(acc ? field('dir') : field('name')).focus()
-  showEnd(field('dir'))
-}
-
-function closeLaunch() { dlg.hidden = true; pendingLaunch = null }
-function setStatus(text, err) {
-  const el = form.querySelector('.status')
-  el.textContent = text
-  el.className = 'status' + (err ? ' err' : '')
-}
-function request() {
-  const r = { dir:field('dir').value.trim(), model:field('model').value, effort:field('effort').value,
-    permissionMode:field('permissionMode').value, resume:field('resume').value, lang }
-  if (launchAccount) r.account = launchAccount
-  else r.name = field('name').value.trim()
-  return r
-}
-
-// command preview: the same arguments the bridge builds (it adds the environment variables, and --plugin-dir in development mode)
-function preview() {
-  const r = request()
-  const q = s => /^[\w\-./=:@]+$/.test(s) ? s : `'${s.replace(/'/g, `'\\''`)}'`
-  const args = ['claude', '--name', q(field('name').value.trim() || '?')]
-  if (r.model) args.push('--model', r.model)
-  if (r.effort) args.push('--effort', r.effort)
-  if (r.permissionMode) args.push('--permission-mode', r.permissionMode)
-  if (r.resume === 'continue') args.push('--continue')
-  const note = t(launchOpts?.mod?.dev ? 'launch.previewNoteDev' : 'launch.previewNote')
-  form.querySelector('.preview').textContent = `cd ${q(r.dir || '?')}\n${args.join(' ')}\n# ${note}`
-}
-
-// the folder browser under a folder field (the launch dialog's, an advisor's in the task dialog): box is its .browser,
-// fail shows why a folder can't be opened
-async function browse(box, path, fail) {
-  try {
-    const res = await fetch('/api/dirs?path=' + encodeURIComponent(path || launchOpts.home))
-    const data = await res.json()
-    if (!res.ok) throw new Error(errorText(data))
-    box.hidden = false
-    box.dataset.path = data.path
-    box.querySelector('.cur').textContent = data.path
-    // the bridge builds the paths, so the page never deals with / or \; at the top it lists the drives (Windows)
-    const up = data.parent ? [['⬆ ' + t('launch.up'), data.parent]] : (data.roots || []).filter(r => r !== data.path).map(r => ['💽 ' + r, r])
-    const items = up.concat((data.dirs || []).map(d => [d.name + '/', d.path]))
-    const ul = box.querySelector('ul')
-    ul.innerHTML = items.map(([label]) => `<li>${esc(label)}</li>`).join('') || `<li style="color:#8a867e;cursor:default">${esc(t('launch.noSubfolders'))}</li>`
-    ul.querySelectorAll('li').forEach((li, i) => { if (items[i]) li.onclick = () => browse(box, items[i][1], fail) })
-  } catch (err) {
-    fail(t('launch.browseFailed', { reason:err.message }))
-  }
-}
-
-form.addEventListener('input', preview)
-form.addEventListener('change', preview)
-form.querySelector('.browse').onclick = () => browse(form.querySelector('.browser'), field('dir').value.trim(), reason => setStatus(reason, true))
-form.querySelector('.pick').onclick = () => {
-  field('dir').value = form.querySelector('.browser').dataset.path
-  showEnd(field('dir'))
-  form.querySelector('.browser').hidden = true
-  preview()
-}
-form.querySelector('.cancel').onclick = closeLaunch
-dlg.addEventListener('click', ev => { if (ev.target === dlg) closeLaunch() })
+const openLaunch = accountId => launch.open(accountId)
 document.getElementById('new-emp').onclick = () => openLaunch(null)
-
-form.addEventListener('submit', async ev => {
-  ev.preventDefault()
-  const r = request()
-  if (!launchAccount && !r.name) return setStatus(t('launch.nameRequired'), true)
-  form.querySelector('.go').disabled = true
-  setStatus(t('launch.starting'))
-  try {
-    const res = await fetch('/api/launch', { method:'POST', headers:{ 'content-type':'application/json' }, body:JSON.stringify(r) })
-    const data = await res.json()
-    if (!res.ok) throw new Error(errorText(data) + (data.fix ? '\n' + data.fix : ''))
-    pendingLaunch = data.id
-    setStatus(t('launch.startingBg'))
-    watchLaunch()
-  } catch (err) {
-    setStatus(t('launch.failed', { reason:err.message }), true)
-    form.querySelector('.go').disabled = false
-  }
-})
-
-// follows the launch in the snapshot: closes the dialog once it's online, shows the reason if it failed
-function watchLaunch() {
-  if (!pendingLaunch) return
-  const l = (snapshot.launches || []).find(x => x.id === pendingLaunch)
-  if (!l) return
-  if (l.status === 'online') {
-    log(t('log.started', { name:l.name }))
-    closeLaunch()
-    openChat(l.account)
-  } else if (l.status === 'failed') {
-    setStatus(t('launch.failed', { reason:errorText({ code:l.errorCode, params:l.errorParams, error:l.error }) }), true)
-    form.querySelector('.go').disabled = false
-    pendingLaunch = null
-  }
-}
+document.getElementById('new-task').onclick = () => tasks.openDialog({})
 
 // ================= tasks =================
-// A click on a free small meeting room opens the task dialog: what the team should do, its members (employees ticked in
-// order, and advisors made for this task), whether the first one leads. The bridge starts a session for each member in a
-// git worktree of its own and sends each the kickoff. A click on a room with a task opens the task window: what it's on,
-// who is in it (a click opens a member's window), and the button to end it; a failed one says why and can be dismissed.
-const taskDlg = document.getElementById('task'), taskForm = taskDlg.querySelector('form')
-let taskFor = null // the room the dialog is for: { k, seats }
-let picks = [] // the members, in order: rows of the dialog (an employee ticked, or an advisor added)
-let taskPosting = false
-
-async function openTask(r) {
-  await loadLaunchOptions()
-  if (!launchOpts?.enabled) return alert(launchOpts ? launchOffReason() : t('error.unreachable'))
-  taskFor = { k:r.k, seats:r.seats }
-  taskForm.querySelector('.title').textContent = t('task.titleNew', { room:roomName(r.k), seats:r.seats })
-  taskForm.elements.desc.value = ''
-  taskForm.elements.leader.checked = true
-  fill(taskForm.elements.permissionMode, launchOpts.permissionModes, 'bypassPermissions')
-  // the employees: one in a running task, or without a folder to work in yet, can't be picked
-  const busy = new Map()
-  for (const task of snapshot.tasks) if (task.status !== 'failed') for (const m of task.members) busy.set(m.account, task.id)
-  picks = []
-  const list = taskForm.querySelector('.emps')
-  list.innerHTML = ''
-  for (const acc of snapshot.accounts.filter(a => !a.advisor)) {
-    const s = sessionOf(acc), dir = s?.cwd || acc.last?.dir || acc.dir || '', inTask = busy.get(acc.id), off = !!inTask || !dir
-    const row = document.createElement('div')
-    row.className = 'mem' + (off ? ' off' : '')
-    row.dataset.account = acc.id
-    row.innerHTML = `<label><input type="checkbox"${off ? ' disabled' : ''}><b class="ord"></b>` +
-      `${dot(s && s.state !== 'ended' ? s.state : 'ended')}<span class="nm">${esc(acc.name)}</span><span class="lead-tag">${esc(t('task.lead'))}</span>` +
-      `<small title="${esc(dir)}">${esc(inTask ? t('task.inTask', { id:inTask }) : dir ? base(dir) : t('task.noDir'))}</small></label>` +
-      `<select name="model" title="${esc(t('launch.model'))}"></select><select name="effort" title="${esc(t('launch.effort'))}"></select>`
-    // as it last worked, or Opus and the most thinking
-    fill(row.querySelector('[name=model]'), launchOpts.models, acc.last ? acc.last.model : 'opus')
-    fill(row.querySelector('[name=effort]'), launchOpts.efforts, acc.last ? acc.last.effort : 'max')
-    row.querySelector('input').onchange = ev => { picks = picks.filter(x => x !== row); if (ev.target.checked) picks.push(row); renderPicks() }
-    list.appendChild(row)
-  }
-  taskForm.querySelector('.advs').innerHTML = ''
-  setTaskStatus('')
-  taskPosting = false
-  renderPicks()
-  closeChat(); closeTaskWin()
-  taskDlg.hidden = false
-  taskForm.elements.desc.focus()
-}
-function closeTask() { taskDlg.hidden = true; taskFor = null }
-function setTaskStatus(text, err) {
-  const el = taskForm.querySelector('.status')
-  el.textContent = text
-  el.className = 'status' + (err ? ' err' : '')
-  if (err) el.scrollIntoView({ block:'nearest' })
-}
-// the rows an error is about, outlined in red: advisors without a name or a folder (code 'incomplete'), with a name that's
-// taken or too long, or in a folder that's missing, and the member the error names
-function markBad(code, params = {}) {
-  taskForm.querySelectorAll('.bad').forEach(el => el.classList.remove('bad'))
-  const taken = new Set(snapshot.accounts.map(a => lower(a.name))), seen = new Set()
-  for (const row of picks) {
-    const name = row.querySelector('input[name=name]'), dir = row.querySelector('input[name=dir]')
-    const who = lower(name ? name.value.trim() : row.querySelector('.nm').textContent)
-    const fields = !name ? [] : code === 'incomplete' ? [name, dir].filter(f => !f.value.trim())
-      : code === 'account_name_taken' ? (taken.has(who) || seen.has(who) ? [name] : [])
-      : code === 'account_bad_name' ? ([...name.value.trim()].length > 40 || !who ? [name] : [])
-      : code === 'launch_dir_missing' || code === 'launch_dir_not_absolute' ? (params.dir ? dir.value.trim() === params.dir : !dir.value.trim().match(/^([\/\\]|[A-Za-z]:)/)) ? [dir] : []
-      : []
-    seen.add(who)
-    if (fields.length || (params.name && lower(params.name) === who)) { row.classList.add('bad'); fields.forEach(f => f.classList.add('bad')) }
-  }
-  taskForm.querySelector('.bad')?.scrollIntoView({ block:'nearest' })
-}
-
-// an advisor: a one-off member made for this task with the launch form's fields; it joins the team at the end
-function addAdvisor() {
-  const row = document.createElement('div'), recent = launchOpts?.recentDirs || []
-  row.className = 'adv'
-  row.innerHTML = `<div class="line"><b class="ord"></b><span class="kind">${esc(t('task.advisor'))}</span><span class="lead-tag">${esc(t('task.lead'))}</span>` +
-    `<input name="name" placeholder="${esc(t('task.advisorName'))}"><button type="button" class="px rm" title="${esc(t('task.remove'))}">✕</button></div>` +
-    `<div class="row"><input name="dir" placeholder="${esc(t('launch.dirPlaceholder'))}"><button type="button" class="px browse">${esc(t('launch.browse'))}</button>` +
-    `<select name="model" title="${esc(t('launch.model'))}"></select><select name="effort" title="${esc(t('launch.effort'))}"></select></div>` +
-    `<div class="browser" hidden><div class="cur"></div><ul></ul><button type="button" class="px pick">${esc(t('launch.pick'))}</button></div>` +
-    `<div class="recent">${recent.map(d => `<span title="${esc(d)}">${esc(base(d))}</span>`).join('')}</div>`
-  const dir = row.querySelector('[name=dir]'), box = row.querySelector('.browser')
-  dir.value = recent[0] || launchOpts?.home || ''
-  row.querySelector('.browse').onclick = () => browse(box, dir.value.trim(), reason => setTaskStatus(reason, true))
-  box.querySelector('.pick').onclick = () => { dir.value = box.dataset.path; box.hidden = true; showEnd(dir) }
-  row.querySelectorAll('.recent span').forEach((el, i) => el.onclick = () => { dir.value = recent[i]; showEnd(dir) })
-  fill(row.querySelector('[name=model]'), launchOpts?.models || [], 'opus')
-  fill(row.querySelector('[name=effort]'), launchOpts?.efforts || [], 'max')
-  row.querySelector('.rm').onclick = () => { picks = picks.filter(x => x !== row); row.remove(); renderPicks() }
-  taskForm.querySelector('.advs').appendChild(row)
-  picks.push(row)
-  renderPicks()
-  row.querySelector('[name=name]').focus()
-  showEnd(dir)
-}
-
-// the members' numbers, the lead's tag, the count of seats taken; Start only for 2 members up to the room's seats
-function renderPicks() {
-  const lead = taskForm.elements.leader.checked
-  for (const row of taskForm.querySelectorAll('.mem, .adv')) {
-    const i = picks.indexOf(row)
-    row.classList.toggle('on', i >= 0)
-    row.classList.toggle('lead', i === 0 && lead)
-    row.classList.toggle('over', i >= (taskFor?.seats ?? 0)) // past the room's seats
-    row.querySelector('.ord').textContent = i >= 0 ? String(i + 1) : ''
-  }
-  const n = picks.length, seats = taskFor?.seats ?? 0, count = taskForm.querySelector('.count')
-  count.textContent = t('task.count', { n, seats })
-  count.classList.toggle('over', n > seats)
-  taskForm.querySelector('.go').disabled = taskPosting || n < 2 || n > seats
-}
-
-taskForm.querySelector('.add-adv').onclick = addAdvisor
-taskForm.elements.leader.onchange = renderPicks
-taskForm.addEventListener('input', ev => { ev.target.classList.remove('bad'); if (!ev.target.closest('.adv')?.querySelector('input.bad')) ev.target.closest('.adv')?.classList.remove('bad') })
-taskForm.querySelector('.cancel').onclick = closeTask
-taskDlg.addEventListener('click', ev => { if (ev.target === taskDlg) closeTask() })
-taskForm.addEventListener('submit', async ev => {
-  ev.preventDefault()
-  if (!taskFor) return
-  const title = taskForm.elements.desc.value.trim()
-  if (!title) return setTaskStatus(t('task.descriptionRequired'), true)
-  const members = picks.map(row => {
-    const m = { model:row.querySelector('[name=model]').value, effort:row.querySelector('[name=effort]').value }
-    if (row.dataset.account) m.account = row.dataset.account
-    else m.advisor = { name:row.querySelector('[name=name]').value.trim(), dir:row.querySelector('[name=dir]').value.trim() }
-    return m
-  })
-  if (members.some(m => m.advisor && (!m.advisor.name || !m.advisor.dir))) { markBad('incomplete'); return setTaskStatus(t('task.advisorIncomplete'), true) }
-  markBad('')
-  const body = { room:taskFor.k, roomName:roomName(taskFor.k), title, leader:taskForm.elements.leader.checked,
-    permissionMode:taskForm.elements.permissionMode.value, lang, members }
-  taskPosting = true
-  renderPicks()
-  setTaskStatus(t('launch.starting'))
-  try {
-    const res = await fetch('/api/tasks', { method:'POST', headers:{ 'content-type':'application/json' }, body:JSON.stringify(body) })
-    const data = await res.json().catch(() => null)
-    if (!res.ok) {
-      if (data?.code) markBad(data.code, data.params)
-      throw new Error(data ? errorText(data) + (data.fix ? '\n' + data.fix : '') : `${t('error.unknown')} (HTTP ${res.status})`)
-    }
-    closeTask()
-    openTaskWin(data.id, data)
-  } catch (err) {
-    setTaskStatus(t('task.failed', { reason:err.message }), true)
-  } finally {
-    taskPosting = false
-    if (!taskDlg.hidden) renderPicks()
-  }
-})
-
-// the task window; until the snapshot has a task just started, it shows what the bridge answered
-const taskWin = document.getElementById('taskwin')
-let taskWinFor = null, taskWinData = null, taskWinShown = {}
-taskWin.querySelector('.close').onclick = closeTaskWin
-taskWin.addEventListener('click', ev => { if (ev.target === taskWin) closeTaskWin() })
-function openTaskWin(id, data = null) {
-  if (id !== taskChatFor) { taskChatFor = id; tBox.value = ''; tStatus.textContent = '' } // a draft stays with its task
-  taskWinFor = id; taskWinData = data; taskWinShown = { grow:true }
-  if (chatTask !== id) closeChat() // a member's window of this task stays beside it
-  renderTaskWin()
-}
-function closeTaskWin() { taskWin.hidden = true; taskWinFor = null; closePick(); if (chatTask) closeChat() }
-const TASK_COLOR = { running:YELLOW, ending:YELLOW, failed:RED }
-function renderTaskWin() {
-  if (!taskWinFor) return
-  const known = taskById(taskWinFor)
-  if (known) taskWinData = null
-  const task = known ?? (taskWinData?.id === taskWinFor ? taskWinData : null)
-  if (!task) return closeTaskWin() // it ended, and left the snapshot
-  taskWin.querySelector('h2').textContent = `${task.id} · ${taskRoom(task)}`
-  const st = taskWin.querySelector('.top .status')
-  st.textContent = t('task.status.' + task.status)
-  st.style.setProperty('--c', TASK_COLOR[task.status] ?? GRAY)
-  taskWin.querySelector('.desc').textContent = task.title
-  taskWin.querySelector('.mode').hidden = !!task.leader
-  const err = taskWin.querySelector('.err')
-  err.hidden = task.status !== 'failed'
-  err.textContent = err.hidden ? '' : t('task.failedWhy', { reason:errorText({ code:task.errorCode, params:task.errorParams, error:task.error }) })
-  // the members: state, name, lead and advisor tags, where it works, its model; a click opens its window
-  const rows = task.members.map((m, i) => {
-    const s = sessionById(m.session), online = !!s && s.state !== 'ended', state = !online ? 'ended' : asking(m.session) ? 'waiting' : s.state
-    const runs = [s?.model || m.model, s?.effort || m.effort].filter(Boolean).join(' · ')
-    const open = m.session && chatTask === task.id && chatSid === m.session && !chatEl.hidden // its window is beside this one
-    return `<div class="mrow${m.session ? '' : ' wait'}${open ? ' open' : ''}" data-i="${i}">${dot(state)}<b>${esc(m.name)}</b>` +
-      (task.leader && m.account === task.leader ? `<span class="badge lead">${esc(t('task.lead'))}</span>` : '') +
-      (m.advisor ? `<span class="badge adv" title="${esc(t('task.advisorTitle'))}">${esc(t('task.advisor'))}</span>` : '') +
-      `<span class="where" title="${esc([m.dir, m.worktree].filter(Boolean).join('\n'))}">${esc(base(m.dir))} · ${esc(m.branch || '')}</span>` +
-      (runs ? `<span class="chip">${esc(runs)}</span>` : '') +
-      `<span class="st">${esc(!m.session ? t('task.memberStarting') : online ? statusText(s) : t('task.memberEnded'))}</span></div>`
-  }).join('')
-  if (rows !== taskWinShown.members) { taskWinShown.members = rows; taskWin.querySelector('.members').innerHTML = rows }
-  const stick = renderTaskChat(task)
-  const btnKey = task.id + '|' + task.status
-  if (btnKey !== taskWinShown.btns) {
-    taskWinShown.btns = btnKey
-    const btns = taskWin.querySelector('.actions')
-    btns.innerHTML = ''
-    const add = (text, cls, fn, title) => { const b = document.createElement('button'); b.className = 'px ' + cls; b.textContent = text; b.onclick = fn; if (title) b.title = title; btns.appendChild(b) }
-    if (task.status === 'running') add(t('task.end'), 'alert end', () => { if (confirm(t('task.endConfirm', { id:task.id }))) post(`/api/tasks/${task.id}/end`, {}) })
-    if (task.status === 'failed') add(t('task.dismiss'), 'dismiss', async () => {
-      const r = await fetch(`/api/tasks/${task.id}`, { method:'DELETE' })
-      if (!r.ok) alert(errorText(await r.json().catch(() => null)))
-      else closeTaskWin()
-    }, t('task.dismissTitle'))
-  }
-  taskWin.hidden = false
-  if (taskWinShown.grow) { taskWinShown.grow = false; growTaskBox() }
-  if (stick) tList.scrollTop = tList.scrollHeight // once it shows: a hidden list has no height to scroll
-}
-
-// The task chat: the messages between the task's members and yours to them, oldest first, each with its sender's
-// figure. "@bob-T1 …" goes to that member only, anything else to every member online; the bridge sends them on.
-const tList = taskWin.querySelector('.tlist'), tPick = taskWin.querySelector('.tpick'), tSay = taskWin.querySelector('.tsay')
-const tBox = tSay.querySelector('textarea'), tStatus = taskWin.querySelector('.tstatus')
-let taskChatFor = null // the task the input's draft and status line belong to
-let taskChatStick = false // you just sent: follow the list down when it comes back, wherever it was scrolled
+// The task dialog and the task window are shared (ui/task.js): a click on a free small meeting room opens the dialog for
+// it, a click on a room with a task opens the window. The office names a task's room, draws the members' figures for the
+// team chat, keeps a member's window beside the task window and writes the activity log's lines.
+// the figures in the team chat: a member as it looks in the office, and you
 const avatars = new Map() // what a figure is drawn from -> its picture, a CSS url()
 function avatar(key, draw, w = 24, h = 12) {
   let a = avatars.get(key)
@@ -3119,143 +2103,18 @@ function memberAvatar(m) {
 const YOU = ['...HHHHHH...', '...FFFFFF...', '...FEFFEF...', '...FFFFFF...', '....FFFF....', '.XXXXWWXXXX.', 'XXXXXYYXXXXX', 'XXXXXYYXXXXX']
 const YOU_COLOR = { H:'#2b2a28', F:'#f0c8a0', E:EYE, X:'#2b2a28', W:'#fffdf7', Y:YELLOW }
 const youAvatar = () => avatar('you', g => YOU.forEach((row, y) => [...row].forEach((c, x) => { if (c !== '.') rect(g, 2 + x, y, 1, 1, YOU_COLOR[c]) })), 16, 8)
-function taskMsgHTML(task, m) {
-  const me = fromYou(m), who = me ? null : task.members.find(x => (x.session && x.session === m.from) || x.name === m.fromName)
-  const names = m.toNames?.length ? m.toNames : m.toName ? [m.toName] : [] // one or several members, or everyone
-  const missed = m.missed || [] // of those, the ones that were offline: struck through
-  const to = names.length ? `<b class="to">${names.map(n => missed.includes(n) ? `<s title="${esc(t('task.missed', { name:n }))}">@${esc(n)}</s>` : '@' + esc(n)).join(' ')}</b> ` : ''
-  return `<div class="tmsg${me ? ' me' : ''}"><span class="av" style="background-image:${me ? youAvatar() : memberAvatar(who)}"></span>` +
-    `<div class="bub"><div class="hd"><b>${esc(msgFrom(m))}</b></div>` +
-    `<div class="body">${to}${richText(m.text)}</div><time>${esc(new Date(m.time).toLocaleTimeString(lang))}</time></div></div>`
-}
-// redrawn when the message log or the members' figures change; says whether the list should be scrolled to its end
-function renderTaskChat(task) {
-  let stick = false
-  const figures = task.members.map(m => { const s = sessionById(m.session); return `${m.name}|${m.session}|${s?.model}|${s?.effort}` }).join(',')
-  const key = `${task.id}|${messagesVersion}|${figures}`
-  if (key !== taskWinShown.chat) {
-    taskWinShown.chat = key
-    const list = snapshot.messages.filter(m => m.task === task.id)
-    const html = list.length ? list.map(m => taskMsgHTML(task, m)).join('') : `<div class="empty">${esc(t('task.chatEmpty'))}</div>`
-    if (html !== taskWinShown.chatHTML) {
-      // it follows new messages down unless you scrolled up to read; it opens at the end
-      stick = !taskWinShown.chatHTML || taskChatStick || tList.scrollTop + tList.clientHeight >= tList.scrollHeight - 40
-      const top = tList.scrollTop
-      taskWinShown.chatHTML = html
-      tList.innerHTML = html
-      tList.scrollTop = top
-      if (stick) taskChatStick = false
-    }
-  }
-  const running = task.status === 'running'
-  if (!running) closePick()
-  tBox.disabled = !running
-  tSay.querySelector('button').disabled = !running
-  const ph = running ? t('task.chatPlaceholder', { name:task.members[0]?.name || '' }) : t('task.chatOff')
-  if (tBox.placeholder !== ph) { tBox.placeholder = ph; taskWinShown.grow = true }
-  return stick
-}
-// as tall as what's in it, the placeholder too (up to a few lines, then it scrolls); a hidden one has no height to take
-function growTaskBox() {
-  if (taskWin.hidden) { taskWinShown.grow = true; return }
-  tBox.style.height = ''
-  tBox.style.height = Math.min(tBox.scrollHeight + 4, 140) + 'px'
-}
-// The mention picker: an @ typed opens a list of the task's members over the input, narrowed by what follows it;
-// arrows move, Enter or Tab (or a click) puts in "@name ", Esc, a space or no match closes it until the next @
-let pick = null // { at, q, sel }: where the @ being typed is, what follows it, the highlighted name
-let pickShut = -1 // the @ Esc closed the picker for
-function pickNames() {
-  const task = taskById(taskWinFor) ?? taskWinData
-  const q = pick ? lower(pick.q) : ''
-  return (task?.members ?? []).filter(m => lower(m.name).startsWith(q))
-}
-function closePick() { pick = null; tPick.hidden = true }
-function updatePick() {
-  const before = tBox.value.slice(0, tBox.selectionStart), hit = tBox.selectionStart === tBox.selectionEnd && /(?:^|\s)@([^\s@]*)$/.exec(before)
-  if (!hit || tBox.disabled) { pickShut = -1; return closePick() }
-  const at = before.length - hit[1].length - 1
-  if (at === pickShut) return closePick()
-  pick = { at, q:hit[1], sel:pick?.at === at ? pick.sel : 0 }
-  const names = pickNames()
-  if (!names.length) return closePick()
-  pick.sel = Math.max(0, Math.min(pick.sel, names.length - 1))
-  tPick.innerHTML = names.map((m, i) => {
-    const s = sessionById(m.session), online = !!s && s.state !== 'ended'
-    return `<div class="hit${i === pick.sel ? ' on' : ''}" data-name="${esc(m.name)}">${dot(online ? s.state : 'ended')}<b>${esc(m.name)}</b>` +
-      `<small>${esc(!m.session ? t('task.memberStarting') : online ? statusText(s) : t('task.memberEnded'))}</small></div>`
-  }).join('')
-  tPick.hidden = false
-}
-function putPick(name) {
-  const end = tBox.selectionStart, at = pick.at
-  tBox.setRangeText('@' + name + ' ', at, end, 'end')
-  closePick(); growTaskBox()
-}
-tPick.addEventListener('mousedown', ev => { // mousedown, so the box keeps its focus
-  const row = ev.target.closest('.hit')
-  if (!row || !pick) return
-  ev.preventDefault()
-  putPick(row.dataset.name)
+const tasks = createTaskUI(sym, {
+  options:loadLaunchOptions, roomLabel:taskRoom, memberAvatar, youAvatar,
+  isMemberOpen:(task, m) => chatTask === task.id && chatSid === m.session && !chat.hidden, // its window is beside this one
+  onOpenMember:openMember,
+  onWindowOpen:id => { if (chatTask !== id) closeChat() }, // a member's window of this task stays beside it
+  onWindowClose:() => { if (chatTask) closeChat() },
+  onDialogOpen:() => { closeChat(); closeTaskWin() },
+  log,
 })
-tBox.addEventListener('input', () => { growTaskBox(); updatePick() })
-tBox.addEventListener('click', updatePick)
-tBox.addEventListener('blur', closePick)
-tBox.addEventListener('keydown', ev => {
-  if (pick && !ev.isComposing) {
-    const names = pickNames()
-    if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
-      pick.sel = (pick.sel + (ev.key === 'ArrowDown' ? 1 : names.length - 1)) % names.length
-      tPick.querySelectorAll('.hit').forEach((h, i) => h.classList.toggle('on', i === pick.sel))
-    } else if ((ev.key === 'Enter' || ev.key === 'Tab') && names[pick.sel]) putPick(names[pick.sel].name)
-    else if (ev.key === 'Escape') { pickShut = pick.at; closePick(); ev.stopPropagation() } // the picker only, not the window
-    else return
-    ev.preventDefault()
-    return
-  }
-  if (ev.key === 'Enter' && !ev.shiftKey && !ev.isComposing) { ev.preventDefault(); tSay.requestSubmit() }
-})
-tSay.addEventListener('submit', async ev => {
-  ev.preventDefault()
-  const id = taskWinFor, text = tBox.value.trim()
-  if (!id || !text) return
-  tBox.value = ''; growTaskBox(); closePick()
-  tStatus.textContent = ''; tStatus.classList.remove('note')
-  taskChatStick = true
-  const r = await fetch(`/api/tasks/${id}/say`, { method:'POST', headers:{ 'content-type':'application/json' }, body:JSON.stringify({ text }) }).catch(() => null)
-  if (id !== taskChatFor) return
-  if (r?.ok) { // sent, though maybe not to every member it named: say who was offline
-    const missed = (await r.json().catch(() => null))?.missed
-    if (missed?.length && id === taskChatFor && !tStatus.textContent) {
-      tStatus.textContent = t('task.sentMissed', { names:missed.join(', ') }); tStatus.classList.add('note')
-    }
-    return
-  }
-  taskChatStick = false
-  if (!tBox.value) { tBox.value = text; growTaskBox() } // back in the box, to fix and send again
-  tStatus.textContent = t('task.sayFailed', { reason:errorText(r ? await r.json().catch(() => null) : null) })
-})
-taskWin.querySelector('.members').addEventListener('click', ev => {
-  const row = ev.target.closest('.mrow'), task = taskById(taskWinFor) ?? taskWinData, m = row && task?.members[row.dataset.i]
-  if (m?.session) openMember(task, m)
-})
+const openTaskWin = (id, data = null) => tasks.openWindow(id, data)
+const closeTaskWin = () => tasks.closeWindow()
 
-// the activity log's lines for tasks: started, ended, failed (one dismissed just goes)
-let tasksSeen = new Map() // task id -> { status, room } as the last snapshot had it
-function noteTasks() {
-  const now = new Map(snapshot.tasks.map(task => [task.id, { status:task.status, room:taskRoom(task) }]))
-  if (!first) {
-    for (const task of snapshot.tasks) {
-      const was = tasksSeen.get(task.id)?.status
-      if (!was) log(t('log.taskStarted', { id:task.id, room:taskRoom(task), names:task.members.map(m => m.name).join(', ') }))
-      if (task.status === 'failed' && was !== 'failed') {
-        log(t('log.taskFailed', { id:task.id, room:taskRoom(task), reason:errorText({ code:task.errorCode, params:task.errorParams, error:task.error }) }))
-      }
-    }
-    for (const [id, was] of tasksSeen) if (!now.has(id) && was.status !== 'failed') log(t('log.taskEnded', { id, room:was.room }))
-  }
-  tasksSeen = now
-}
 
 // ================= start-up =================
 // room signs and the company sign's lettering, drawn with web fonts (clearer than pixel fonts in every script)
@@ -3303,15 +2162,12 @@ document.getElementById('labels').appendChild(addBtn)
 
 layout()
 loadLaunchOptions()
-fetch('/api/state').then(r => r.json()).then(s => { if (first) applySnapshot(s) }).catch(() => {})
-const es = new EventSource('/api/stream')
-es.onmessage = m => {
-  const msg = JSON.parse(m.data)
-  if (msg.type === 'snapshot') applySnapshot(msg)
-  else if (msg.type === 'event') applyEvent(msg.event, msg.title)
-  else if (msg.type === 'message') applyMessage(msg.message)
-  else if (msg.type === 'chat') applyChat(msg)
-}
+sym.on('event', applyEvent)
+sym.on('protocol', (bridge, page) => { // a bridge of another generation: say so in the HUD's note, and go on as far as it goes
+  const note = document.getElementById('launch-note')
+  note.hidden = false
+  note.textContent = t('error.protocol_mismatch', { bridge, page })
+})
 let resizing = false
 addEventListener('resize', () => { // one layout per frame, however many events a drag sends
   if (resizing) return
@@ -3319,6 +2175,3 @@ addEventListener('resize', () => { // one layout per frame, however many events 
   requestAnimationFrame(() => { resizing = false; layout(); placeChat() })
 })
 requestAnimationFrame(frame)
-</script>
-</body>
-</html>

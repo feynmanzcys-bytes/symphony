@@ -117,6 +117,8 @@ func readFile(t *testing.T, path string) string {
 // goes by its session name; the desk sessions go on beside them. Ending the task stops the sessions, saves what they
 // left uncommitted, merges the plain folder's branches into it (its repository and the branches stay), keeps the
 // branches in the user's repository and deletes the advisor.
+func hint(n int) *int { return &n }
+
 func TestTaskLifecycle(t *testing.T) {
 	e := newTaskEnv(t, "")
 	repo := initRepo(t, e.folder(t, "repo"), map[string]string{"README.md": "hi\n"})
@@ -130,7 +132,7 @@ func TestTaskLifecycle(t *testing.T) {
 	bob.ok("POST", "/api/event", Event{Session: "bob-desk", Kind: "session.start", Cwd: repo})
 	e.srv.Hub.setLast(aliceAcc.ID, LaunchRequest{Dir: plain, Model: "sonnet"})
 
-	task := asTask(t, e.page.ok("POST", "/api/tasks", TaskRequest{Room: 2, RoomName: "Sonata", Title: "  build the thing  ",
+	task := asTask(t, e.page.ok("POST", "/api/tasks", TaskRequest{Room: hint(2), Title: "  build the thing  ",
 		Leader: true, PermissionMode: "bypassPermissions", Lang: "en", Members: []TaskMemberRequest{
 			{Account: bobAcc.ID, Model: "opus", Effort: "max"},
 			{Account: aliceAcc.ID, Model: "sonnet", Effort: "high"},
@@ -198,7 +200,7 @@ func TestTaskLifecycle(t *testing.T) {
 		t.Fatalf("the kickoff should be the first prompt, queued: %+v", items)
 	}
 	kickoff := items[0].Text
-	for _, want := range []string{"You are the lead of task T1 (meeting room Sonata)", "build the thing",
+	for _, want := range []string{"You are the lead of task T1. The user's task", "build the thing",
 		"- alice-T1: folder " + plain + ", branch symphony/T1/alice, worktree " + a.Worktree, "- reviewer-T1: ",
 		"You are bob-T1: you work in your own git worktree " + b.Worktree + " on branch symphony/T1/bob of " + repo + " (base branch " + repoBase + ")"} {
 		if !strings.Contains(kickoff, want) {
@@ -234,7 +236,7 @@ func TestTaskLifecycle(t *testing.T) {
 
 	// alice's: the kickoff of a member names the lead; her desk session can start next to it
 	alice.ok("POST", "/api/event", Event{Session: "alice-task", Kind: "session.start", Launch: a.Launch, Task: "T1"})
-	if text := e.srv.Hub.Chat("alice-task")[0].Text; !strings.Contains(text, "You are part of task T1 (meeting room Sonata); the lead is bob-T1.") {
+	if text := e.srv.Hub.Chat("alice-task")[0].Text; !strings.Contains(text, "You are part of task T1; the lead is bob-T1.") {
 		t.Fatalf("wrong kickoff for a member:\n%s", text)
 	}
 	alice.ok("POST", "/api/event", Event{Session: "alice-desk", Kind: "session.start", Cwd: plain})
@@ -265,11 +267,8 @@ func TestTaskLifecycle(t *testing.T) {
 		t.Fatalf("a message to alice should reach her desk session: %+v", m)
 	}
 
-	// the room and the members are taken; an advisor in a running task can't be deleted
-	if st, code := e.page.failure("POST", "/api/tasks", TaskRequest{Room: 2, Title: "x", Members: []TaskMemberRequest{{Account: aliceAcc.ID}, {Account: bobAcc.ID}}}); st != http.StatusConflict || code != "task_room_busy" {
-		t.Fatalf("a second task in the room: want 409 task_room_busy, got %d %q", st, code)
-	}
-	if st, code := e.page.failure("POST", "/api/tasks", TaskRequest{Room: 3, Title: "x", Members: []TaskMemberRequest{{Account: aliceAcc.ID}, {Account: bobAcc.ID}}}); st != http.StatusConflict || code != "task_member_busy" {
+	// the members are taken; an advisor in a running task can't be deleted
+	if st, code := e.page.failure("POST", "/api/tasks", TaskRequest{Room: hint(3), Title: "x", Members: []TaskMemberRequest{{Account: aliceAcc.ID}, {Account: bobAcc.ID}}}); st != http.StatusConflict || code != "task_member_busy" {
 		t.Fatalf("members in a running task: want 409 task_member_busy, got %d %q", st, code)
 	}
 	if st, code := e.page.failure("DELETE", "/api/accounts/"+r.Account, nil); st != http.StatusConflict || code != "account_busy" {
@@ -362,7 +361,7 @@ func TestTaskMergeConflict(t *testing.T) {
 	_, carolAcc := as(t, e.srv, e.base, "carol")
 	e.srv.Hub.setLast(bobAcc.ID, LaunchRequest{Dir: plain})
 	e.srv.Hub.setLast(carolAcc.ID, LaunchRequest{Dir: plain})
-	task := asTask(t, e.page.ok("POST", "/api/tasks", TaskRequest{Room: 0, Title: "plan it", Lang: "zh-CN",
+	task := asTask(t, e.page.ok("POST", "/api/tasks", TaskRequest{Room: hint(0), Title: "plan it", Lang: "zh-CN",
 		Members: []TaskMemberRequest{{Account: bobAcc.ID}, {Account: carolAcc.ID}, {Advisor: &AdvisorRequest{Name: "helper", Dir: plain}}}}))
 	if task.Leader != "" {
 		t.Fatalf("without leader the task has no lead: %+v", task)
@@ -371,7 +370,7 @@ func TestTaskMergeConflict(t *testing.T) {
 	e.modOf(t, helper.Account).ok("POST", "/api/event", Event{Session: "h", Kind: "session.start", Launch: helper.Launch, Task: task.ID})
 	base := mustGit(t, plain, "rev-parse", "HEAD")
 	bob.ok("POST", "/api/event", Event{Session: "b", Kind: "session.start", Launch: task.Members[0].Launch, Task: task.ID})
-	if text := e.srv.Hub.Chat("b")[0].Text; !strings.HasPrefix(text, "你是任务 T1（会议室 0）的成员。") || !strings.Contains(text, "plan it") {
+	if text := e.srv.Hub.Chat("b")[0].Text; !strings.HasPrefix(text, "你是任务 T1的成员。") || !strings.Contains(text, "plan it") {
 		t.Fatalf("wrong flat kickoff:\n%s", text)
 	}
 	if st, code := e.page.failure("DELETE", "/api/tasks/T1", nil); st != http.StatusConflict || code != "task_running" {
@@ -434,7 +433,7 @@ func TestTaskEndsWithItsLastMember(t *testing.T) {
 	alice, aliceAcc := as(t, e.srv, e.base, "alice")
 	e.srv.Hub.setLast(bobAcc.ID, LaunchRequest{Dir: plain})
 	e.srv.Hub.setLast(aliceAcc.ID, LaunchRequest{Dir: plain})
-	task := asTask(t, e.page.ok("POST", "/api/tasks", TaskRequest{Room: 1, Title: "t", Leader: true,
+	task := asTask(t, e.page.ok("POST", "/api/tasks", TaskRequest{Room: hint(1), Title: "t", Leader: true,
 		Members: []TaskMemberRequest{{Account: bobAcc.ID}, {Account: aliceAcc.ID}}}))
 	b, a := task.Members[0], task.Members[1]
 	bob.ok("POST", "/api/event", Event{Session: "b", Kind: "session.start", Launch: b.Launch, Task: task.ID})
@@ -462,7 +461,7 @@ func TestTaskStop(t *testing.T) {
 	plain := e.folder(t, "plain")
 	_, bobAcc := as(t, e.srv, e.base, "bob")
 	e.srv.Hub.setLast(bobAcc.ID, LaunchRequest{Dir: plain})
-	task := asTask(t, e.page.ok("POST", "/api/tasks", TaskRequest{Room: 1, Title: "t",
+	task := asTask(t, e.page.ok("POST", "/api/tasks", TaskRequest{Room: hint(1), Title: "t",
 		Members: []TaskMemberRequest{{Account: bobAcc.ID}, {Advisor: &AdvisorRequest{Name: "helper", Dir: plain}}}}))
 	e.srv.Hub.Stop()
 	e.srv.Launcher.Terms.KillAll()
@@ -485,7 +484,7 @@ func TestTaskSubfolder(t *testing.T) {
 	_, aliceAcc := as(t, e.srv, e.base, "alice")
 	e.srv.Hub.setLast(bobAcc.ID, LaunchRequest{Dir: app})
 	e.srv.Hub.setLast(aliceAcc.ID, LaunchRequest{Dir: repo})
-	task := asTask(t, e.page.ok("POST", "/api/tasks", TaskRequest{Room: 1, Title: "t",
+	task := asTask(t, e.page.ok("POST", "/api/tasks", TaskRequest{Room: hint(1), Title: "t",
 		Members: []TaskMemberRequest{{Account: bobAcc.ID}, {Account: aliceAcc.ID}}}))
 	b, a := task.Members[0], task.Members[1]
 	if b.Worktree != filepath.Join(app, ".symphony", "worktrees", "bob-T1") || e.named("bob-T1").dir != filepath.Join(b.Worktree, "app") ||
@@ -544,7 +543,7 @@ func TestTaskErrors(t *testing.T) {
 		"an advisor's missing folder":       {TaskRequest{Title: "t", Members: []TaskMemberRequest{{Account: bob.ID}, advisor("x", filepath.Join(plain, "nope"))}}, 400, "launch_dir_missing"},
 		"an unknown model":                  {TaskRequest{Title: "t", Members: []TaskMemberRequest{{Account: bob.ID, Model: "gpt"}, {Account: alice.ID}}}, 400, "launch_bad_option"},
 		"an unknown permission mode":        {TaskRequest{Title: "t", PermissionMode: "yolo", Members: two}, 400, "launch_bad_option"},
-		"a negative room":                   {TaskRequest{Room: -1, Title: "t", Members: two}, 400, "launch_bad_option"},
+		"a negative room":                   {TaskRequest{Room: hint(-1), Title: "t", Members: two}, 400, "launch_bad_option"},
 		"an employee and an advisor in one": {TaskRequest{Title: "t", Members: []TaskMemberRequest{{Account: alice.ID, Advisor: &AdvisorRequest{Name: "x", Dir: plain}}, {Account: bob.ID}}}, 400, "launch_bad_option"},
 		"an employee whose folder is gone":  {TaskRequest{Title: "t", Members: []TaskMemberRequest{{Account: bob.ID}, {Account: gone.ID}}}, 400, "task_dir_missing"},
 	} {
@@ -598,16 +597,13 @@ func TestTaskErrors(t *testing.T) {
 		t.Fatal("the failed task should leave nothing behind")
 	}
 
-	// the tries that failed keep their numbers (messages may have been logged under them); a room holds one task, an
-	// employee is in one at a time
-	task := asTask(t, e.page.ok("POST", "/api/tasks", TaskRequest{Room: 4, Title: "t", Members: two}))
+	// the tries that failed keep their numbers (messages may have been logged under them); an employee is in one task
+	// at a time
+	task := asTask(t, e.page.ok("POST", "/api/tasks", TaskRequest{Room: hint(4), Title: "t", Members: two}))
 	if task.ID != "T3" {
 		t.Fatalf("the first task made should be T3 (T1 and T2 went to the tries that failed), got %s", task.ID)
 	}
-	if st, code := e.page.failure("POST", "/api/tasks", TaskRequest{Room: 4, Title: "t", Members: []TaskMemberRequest{advisor("x", plain), advisor("y", plain)}}); st != http.StatusConflict || code != "task_room_busy" {
-		t.Fatalf("want 409 task_room_busy, got %d %q", st, code)
-	}
-	st, body = e.page.do("POST", "/api/tasks", TaskRequest{Room: 5, Title: "t", Members: []TaskMemberRequest{advisor("x", plain), {Account: bob.ID}}})
+	st, body = e.page.do("POST", "/api/tasks", TaskRequest{Room: hint(5), Title: "t", Members: []TaskMemberRequest{advisor("x", plain), {Account: bob.ID}}})
 	if params, _ := body["params"].(map[string]any); st != http.StatusConflict || body["code"] != "task_member_busy" || params["name"] != "bob" {
 		t.Fatalf("want 409 task_member_busy naming bob, got %d %v", st, body)
 	}
@@ -638,7 +634,7 @@ func TestTaskOpenEndsLeftovers(t *testing.T) {
 	writeFile(t, filepath.Join(plain, "notes.txt"), "notes\n")
 	_, bobAcc := as(t, e.srv, e.base, "bob")
 	e.srv.Hub.setLast(bobAcc.ID, LaunchRequest{Dir: plain})
-	task := asTask(t, e.page.ok("POST", "/api/tasks", TaskRequest{Room: 1, Title: "t", Leader: true,
+	task := asTask(t, e.page.ok("POST", "/api/tasks", TaskRequest{Room: hint(1), Title: "t", Leader: true,
 		Members: []TaskMemberRequest{{Account: bobAcc.ID}, {Advisor: &AdvisorRequest{Name: "helper", Dir: plain}}}}))
 	writeFile(t, filepath.Join(task.Members[1].Worktree, "help.txt"), "helped\n")
 	if _, err := e.srv.Hub.CreateAdvisor("ghost"); err != nil {
@@ -681,7 +677,7 @@ func TestTaskDetachedWork(t *testing.T) {
 	_, aliceAcc := as(t, e.srv, e.base, "alice")
 	e.srv.Hub.setLast(bobAcc.ID, LaunchRequest{Dir: plain})
 	e.srv.Hub.setLast(aliceAcc.ID, LaunchRequest{Dir: plain})
-	task := asTask(t, e.page.ok("POST", "/api/tasks", TaskRequest{Room: 1, Title: "t",
+	task := asTask(t, e.page.ok("POST", "/api/tasks", TaskRequest{Room: hint(1), Title: "t",
 		Members: []TaskMemberRequest{{Account: bobAcc.ID}, {Account: aliceAcc.ID}}}))
 	b, a := task.Members[0], task.Members[1]
 	writeFile(t, filepath.Join(a.Worktree, "alice.txt"), "alice's\n")
@@ -719,12 +715,12 @@ func TestTaskFolderChecks(t *testing.T) {
 	_, carolAcc := as(t, e.srv, e.base, "carol")
 	e.srv.Hub.setLast(aliceAcc.ID, LaunchRequest{Dir: plain})
 	e.srv.Hub.setLast(carolAcc.ID, LaunchRequest{Dir: plain})
-	task := asTask(t, e.page.ok("POST", "/api/tasks", TaskRequest{Room: 1, Title: "t",
+	task := asTask(t, e.page.ok("POST", "/api/tasks", TaskRequest{Room: hint(1), Title: "t",
 		Members: []TaskMemberRequest{{Account: aliceAcc.ID}, {Account: carolAcc.ID}}}))
 	wt := task.Members[0].Worktree
 
 	advisor := func(dir string) TaskRequest {
-		return TaskRequest{Room: 2, Title: "t", Members: []TaskMemberRequest{{Advisor: &AdvisorRequest{Name: "x", Dir: dir}}, {Advisor: &AdvisorRequest{Name: "y", Dir: dir}}}}
+		return TaskRequest{Room: hint(2), Title: "t", Members: []TaskMemberRequest{{Advisor: &AdvisorRequest{Name: "x", Dir: dir}}, {Advisor: &AdvisorRequest{Name: "y", Dir: dir}}}}
 	}
 	for name, tc := range map[string]struct {
 		dir    string
@@ -747,7 +743,7 @@ func TestTaskFolderChecks(t *testing.T) {
 	}
 	// bob's desk session went into alice's worktree
 	bob.ok("POST", "/api/event", Event{Session: "bob-desk", Kind: "session.start", Cwd: wt})
-	st, body := e.page.do("POST", "/api/tasks", TaskRequest{Room: 2, Title: "t",
+	st, body := e.page.do("POST", "/api/tasks", TaskRequest{Room: hint(2), Title: "t",
 		Members: []TaskMemberRequest{{Account: bobAcc.ID}, {Advisor: &AdvisorRequest{Name: "x", Dir: e.folder(t, "elsewhere")}}}})
 	if params, _ := body["params"].(map[string]any); st != 400 || body["code"] != "task_dir_in_worktree" || params["name"] != "bob" || params["dir"] != wt {
 		t.Fatalf("want 400 task_dir_in_worktree naming bob, got %d %v", st, body)
@@ -844,7 +840,7 @@ func TestTaskMemberNeverComes(t *testing.T) {
 	_, aliceAcc := as(t, e.srv, e.base, "alice")
 	e.srv.Hub.setLast(bobAcc.ID, LaunchRequest{Dir: plain})
 	e.srv.Hub.setLast(aliceAcc.ID, LaunchRequest{Dir: plain})
-	task := asTask(t, e.page.ok("POST", "/api/tasks", TaskRequest{Room: 1, Title: "t",
+	task := asTask(t, e.page.ok("POST", "/api/tasks", TaskRequest{Room: hint(1), Title: "t",
 		Members: []TaskMemberRequest{{Account: bobAcc.ID}, {Account: aliceAcc.ID}}}))
 	b, a := task.Members[0], task.Members[1]
 	bob.ok("POST", "/api/event", Event{Session: "b", Kind: "session.start", Launch: b.Launch, Task: task.ID})
@@ -866,7 +862,7 @@ func TestTaskSessionStartsAgain(t *testing.T) {
 	alice, aliceAcc := as(t, e.srv, e.base, "alice")
 	e.srv.Hub.setLast(bobAcc.ID, LaunchRequest{Dir: plain})
 	e.srv.Hub.setLast(aliceAcc.ID, LaunchRequest{Dir: plain})
-	res := e.page.ok("POST", "/api/tasks", TaskRequest{Room: 1, Title: "t", Leader: true,
+	res := e.page.ok("POST", "/api/tasks", TaskRequest{Room: hint(1), Title: "t", Leader: true,
 		Members: []TaskMemberRequest{{Account: bobAcc.ID}, {Account: aliceAcc.ID}}})
 	if _, ok := res["ended"]; ok {
 		t.Fatalf("a running task has no end time: %v", res)
@@ -953,7 +949,7 @@ func TestTaskChat(t *testing.T) {
 	alice, aliceAcc := as(t, e.srv, e.base, "alice")
 	e.srv.Hub.setLast(bobAcc.ID, LaunchRequest{Dir: plain})
 	e.srv.Hub.setLast(aliceAcc.ID, LaunchRequest{Dir: plain})
-	task := asTask(t, e.page.ok("POST", "/api/tasks", TaskRequest{Room: 1, Title: "t", Leader: true,
+	task := asTask(t, e.page.ok("POST", "/api/tasks", TaskRequest{Room: hint(1), Title: "t", Leader: true,
 		Members: []TaskMemberRequest{{Account: bobAcc.ID}, {Account: aliceAcc.ID}}}))
 	b, a := task.Members[0], task.Members[1]
 	bob.ok("POST", "/api/event", Event{Session: "b", Kind: "session.start", Launch: b.Launch, Task: task.ID})
@@ -1133,7 +1129,7 @@ func TestTaskChatMentions(t *testing.T) {
 	plain := e.folder(t, "plain")
 	bob, bobAcc := as(t, e.srv, e.base, "bob")
 	e.srv.Hub.setLast(bobAcc.ID, LaunchRequest{Dir: plain})
-	task := asTask(t, e.page.ok("POST", "/api/tasks", TaskRequest{Room: 1, Title: "t",
+	task := asTask(t, e.page.ok("POST", "/api/tasks", TaskRequest{Room: hint(1), Title: "t",
 		Members: []TaskMemberRequest{{Account: bobAcc.ID}, {Advisor: &AdvisorRequest{Name: "小 王", Dir: plain}}, {Advisor: &AdvisorRequest{Name: "John Smith", Dir: plain}}}}))
 	b, w, j := task.Members[0], task.Members[1], task.Members[2]
 	if w.Name != "小 王-"+task.ID || j.Name != "John Smith-"+task.ID {

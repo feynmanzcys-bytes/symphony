@@ -17,7 +17,7 @@ import (
 const (
 	// Protocol is the version of what the bridge gives the pages; the snapshot carries it. Additions keep the
 	// number; a removed or renamed field raises it.
-	Protocol = 1
+	Protocol = 2
 	// keepActivity is how many activity lines the hub keeps (/api/activity)
 	keepActivity = 500
 	// keepLedgerDays is how many days of the ledger stay in ledger.json

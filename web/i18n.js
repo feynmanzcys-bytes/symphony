@@ -30,13 +30,18 @@ export const lang = pickLang([new URLSearchParams(location.search).get('lang'), 
   ...(navigator.languages || [navigator.language])].filter(Boolean))
 document.documentElement.lang = lang
 
-async function load(l) {
-  const r = await fetch(`/locales/${l}.json`)
-  if (!r.ok) throw new Error(`/locales/${l}.json: ${r.status}`)
+async function load(path) {
+  const r = await fetch(path)
+  if (!r.ok) throw new Error(`${path}: ${r.status}`)
   return r.json()
 }
-const [en, own] = await Promise.all([load('en'), lang === 'en' ? null : load(lang).catch(() => null)])
-const dict = own ?? en
+// The shared catalogs (/locales/) hold the keys every page uses; a theme (data-theme on <html>) may add its own in
+// /t/<theme>/locales/<lang>.json, which go over the shared ones. A theme without catalogs is fine (404).
+const theme = document.documentElement.dataset.theme
+const own = l => Promise.all([load(`/locales/${l}.json`), theme ? load(`/t/${theme}/locales/${l}.json`).catch(() => null) : null])
+  .then(([shared, mine]) => ({ ...shared, ...mine }))
+const [en, mine] = await Promise.all([own('en'), lang === 'en' ? null : own(lang).catch(() => null)])
+const dict = mine ?? en
 
 // Keys a page asked for that its language lacks; the end-to-end test checks that this stays empty.
 window.__i18nMissing = window.__i18nMissing || []

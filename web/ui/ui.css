@@ -1,0 +1,229 @@
+/* The shared pieces of the office page (ui/*.js): the modals, the employee window and its chat, the pending asks'
+   cards, the launch and task dialogs, the task window and its team chat. Their look is the pixel office's; a theme
+   restyles them through these variables (and its own rules after this sheet). */
+:root {
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  --paper: #fffdf7; --paper-2: #f2efe8; --ink: #2b2a28; --muted: #8a867e; --muted-2: #6f6b64; --line: #d6d1c6;
+  --pane: #f6f3ec; --pane-2: #edeae2; --accent: #f2b705; --ok: #2e9e5b; --danger: #d64541; --danger-dark: #7a1f1c;
+  --purple: #7b4dc9; --purple-dark: #4a2a86; --purple-light: #a58ad8;
+}
+.dot { display:inline-block; width:8px; height:8px; margin-right:4px; vertical-align:0; }
+button.px { background:var(--paper); color:var(--ink); border:2px solid var(--ink); padding:2px 10px; font:inherit; cursor:pointer; box-shadow:2px 2px 0 rgba(0,0,0,.3); }
+button.px.primary { background:var(--ink); color:var(--paper); }
+button.px.alert { background:var(--danger); color:#fff; border-color:var(--danger-dark); }
+button.px:disabled { opacity:.5; cursor:default; }
+/* popups */
+.modal { position:fixed; inset:0; z-index:10; background:rgba(0,0,0,.45); display:flex; align-items:center; justify-content:center; }
+.modal[hidden] { display:none; }
+.panel { width:min(560px, calc(100vw - 32px)); max-height:calc(100vh - 32px); overflow:auto; background:var(--paper); color:var(--ink);
+  border:2px solid var(--ink); box-shadow:4px 4px 0 rgba(0,0,0,.35); padding:14px 16px; box-sizing:border-box; }
+.panel h2 { margin:0 0 10px; font-size:15px; }
+.panel .actions { display:flex; justify-content:flex-end; gap:8px; margin-top:12px; }
+/* the employee window: the employee at the top, the session as a chat below, the input at the bottom */
+.panel.chat { position:relative; width:min(1100px, 94vw); height:min(90vh, 960px); max-height:none; padding:0; display:flex; flex-direction:column; overflow:hidden; }
+.chat .head { padding:10px 16px 8px; border-bottom:2px solid var(--ink); background:var(--paper); }
+.chat .head .close { position:absolute; right:10px; top:6px; cursor:pointer; color:var(--muted); font-size:14px; }
+.chat .who { display:flex; align-items:center; gap:8px; }
+.chat .who .dot { width:10px; height:10px; margin:0; }
+.chat .who h2 { margin:0; font-size:16px; }
+.chat .who .state { color:var(--muted-2); font-size:12px; }
+.chat .meta { display:flex; flex-wrap:wrap; gap:4px 6px; margin-top:6px; }
+.chat .meta span { font-size:11px; line-height:1.5; padding:0 6px; border:1px solid var(--line); background:var(--pane); color:var(--ink); max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.chat .meta span b { color:var(--muted); font-weight:400; margin-right:4px; }
+.chat .meta span.task { cursor:pointer; background:#fff3cf; border-color:#c9961a; } /* a task session's: opens the task window */
+.chat .meta span.task:hover { background:var(--accent); }
+.chat .btns { display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
+.chat .btns button { font-size:12px; }
+.chat .flow { flex:1; overflow:auto; padding:12px 16px; background:var(--pane); display:flex; flex-direction:column; gap:8px; }
+.chat .flow .empty { color:var(--muted); text-align:center; margin:auto; }
+.it { flex:none; max-width:min(82%, 820px); font-size:13px; line-height:1.5; } /* flex:none: the column never squeezes a row (an overflow:hidden row would shrink to nothing) */
+.it .body { white-space:pre-wrap; overflow-wrap:anywhere; }
+.it .body pre { background:var(--ink); color:var(--paper-2); padding:6px 8px; margin:4px 0; font:12px/1.5 var(--mono); overflow:auto; white-space:pre; }
+.it .body code { background:rgba(0,0,0,.08); padding:0 3px; font:12px var(--mono); }
+.it.user { align-self:flex-end; background:var(--ink); color:var(--paper); padding:6px 10px; border:2px solid var(--ink); box-shadow:2px 2px 0 rgba(0,0,0,.3); }
+.it.user.queued { opacity:.6; }
+.it.user .body code { background:rgba(255,255,255,.18); }
+.it.user .from { font-size:11px; color:var(--line); margin-bottom:2px; }
+/* the bridge's kickoff of a task: long, so folded to a line until clicked */
+.it.user.kickoff summary { display:flex; gap:8px; align-items:baseline; cursor:pointer; list-style:none; margin:0; }
+.it.user.kickoff summary::-webkit-details-marker { display:none; }
+.it.user.kickoff summary b { flex:none; font-size:12px; color:var(--accent); }
+.it.user.kickoff summary b::before { content:'▸ '; }
+.it.user.kickoff details[open] summary b::before { content:'▾ '; }
+.it.user.kickoff .peek { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--line); font-size:12px; }
+.it.user.kickoff details[open] .peek { display:none; }
+.it.user.kickoff .body { margin-top:4px; }
+.it.text { align-self:flex-start; background:#fff; color:var(--ink); padding:6px 10px; border:2px solid var(--ink); box-shadow:2px 2px 0 rgba(0,0,0,.2); }
+/* thinking: folded by default, orange "thinking…" with three dots in turn while it goes on */
+.it.thinking { align-self:flex-start; }
+.it.thinking summary, .it.thinking .bare { display:inline-block; padding:1px 10px; border:1px dashed #e0a24a; background:#fff6e5; }
+.it.thinking summary { cursor:pointer; color:#e07b00; font-weight:700; font-size:12px; list-style:none; }
+.it.thinking summary::-webkit-details-marker { display:none; }
+.it.thinking:not(.done) summary .dots::after { content:'·'; display:inline-block; width:1.4em; text-align:left; animation:dots 1.2s steps(1) infinite; }
+@keyframes dots { 33% { content:'··'; } 66% { content:'···'; } }
+.it.thinking.done summary, .it.thinking .bare { color:#a9790a; font-weight:400; font-size:12px; border-style:solid; border-color:#ead9b5; background:#fbf5e8; }
+.it.thinking .body { margin-top:4px; padding:6px 10px; background:#fff6e5; border:1px dashed #e0a24a; color:#6b4a00; font-size:12px; max-height:320px; overflow:auto; }
+.it.tool { align-self:flex-start; font:12px/1.5 var(--mono); color:#4a4742; padding:1px 8px; border-left:3px solid #b9b3a8; background:var(--pane-2); max-width:min(90%, 900px); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.it.tool.ok { border-color:var(--ok); } .it.tool.error { border-color:var(--danger); } .it.tool.denied { border-color:var(--danger); color:#8a2a26; }
+.it.tool:not(.done) { border-color:var(--accent); }
+.it.tool b { color:var(--ink); } .it.tool .sub { color:var(--muted); margin-right:4px; } .it.tool .res { color:var(--muted); margin-left:6px; }
+/* messages from and to other sessions: purple */
+.it.message { align-self:flex-start; background:var(--purple); color:#fff; padding:6px 10px; border:2px solid var(--purple-dark); box-shadow:2px 2px 0 rgba(0,0,0,.3); }
+.it.message.out { align-self:flex-end; background:var(--purple-light); color:#1d1133; }
+.it.message .from { font-size:11px; opacity:.85; margin-bottom:2px; font-weight:700; }
+.it.ask { align-self:center; font-size:12px; color:var(--muted); background:var(--pane-2); padding:1px 10px; max-width:90%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.it.ask.pending { color:var(--danger); font-weight:700; }
+.it.ask.deny, .it.ask.cancelled { color:#8a2a26; }
+.it.notice { align-self:center; font-size:11px; color:var(--muted); }
+.it time { display:block; font-size:10px; color:var(--muted); margin-top:2px; }
+.it.user time { color:#b9b3a8; text-align:right; }
+.it.message time { color:rgba(255,255,255,.75); } .it.message.out time { color:rgba(29,17,51,.6); text-align:right; }
+/* the dock: the input; while asks wait, their cards rise over it from the bottom and must be handled first.
+   They hang from a fixed line, so a new card goes in below and never moves the one being clicked. */
+.chat .dock { border-top:2px solid var(--ink); background:var(--paper); padding:8px 12px; }
+.chat .dock.asking { position:absolute; left:0; right:0; top:42%; bottom:0; overflow:auto; box-shadow:0 -4px 0 rgba(0,0,0,.2); animation:rise .2s ease-out; }
+@keyframes rise { from { transform:translateY(30%); opacity:.4; } }
+.chat .dock.asking .say, .chat .dock.asking .offline { display:none; }
+.chat .say { display:flex; gap:8px; align-items:flex-end; }
+.chat .say textarea { flex:1; resize:none; font:inherit; color:var(--ink); background:#fff; border:2px solid var(--ink); padding:5px 8px; box-sizing:border-box; }
+.chat .say textarea:focus { outline:none; border-color:var(--accent); }
+.chat .say[hidden] { display:none; }
+.chat .offline { color:var(--muted); font-size:12px; padding:4px 0; }
+.chat .offline[hidden] { display:none; }
+/* pending cards (built by asks.js) */
+#asks .card { border:2px solid var(--ink); padding:10px 12px; margin-bottom:10px; background:#fff; }
+#asks .who { display:flex; gap:8px; align-items:baseline; margin-bottom:6px; }
+#asks .who .name { font-weight:700; }
+#asks .who .kind, #asks .meta { color:var(--muted); font-size:12px; }
+#asks .tool { font:700 13px var(--mono); }
+#asks pre { background:var(--paper-2); border:1px solid var(--line); padding:6px 8px; max-height:200px; overflow:auto; white-space:pre-wrap; word-break:break-all; font-size:12px; margin:6px 0; }
+#asks .row { display:flex; gap:8px; align-items:center; margin-top:6px; }
+#asks .row input { flex:1; }
+#asks input[type=text] { border:2px solid var(--ink); padding:3px 6px; font:inherit; background:#fff; color:var(--ink); }
+#asks button { border:2px solid var(--ink); background:var(--paper); padding:2px 12px; font:inherit; cursor:pointer; }
+#asks button.allow, #asks button.submit { background:var(--ink); color:var(--paper); }
+#asks .q h3 { margin:4px 0; font-size:14px; } #asks .q .hd { color:var(--muted); font-weight:400; font-size:12px; margin-right:6px; }
+#asks label.opt { display:block; cursor:pointer; padding:1px 0; } #asks label.opt small { color:var(--muted); margin-left:6px; }
+#asks .q input.other { display:block; width:100%; box-sizing:border-box; margin-top:4px; }
+/* launch dialog */
+#launch label { display:block; margin:8px 0 2px; font-size:12px; color:var(--muted-2); }
+#launch input, #launch select { width:100%; box-sizing:border-box; font:inherit; color:var(--ink); background:#fff; border:2px solid var(--ink); padding:3px 6px; }
+#launch input[readonly] { background:#ece8df; }
+:is(#launch, #task) :is(input:not([type=checkbox]), select, textarea):focus { outline:none; border-color:var(--accent); }
+#launch .row { display:flex; gap:6px; }
+#launch .row input { flex:1; }
+#launch .grid { display:grid; grid-template-columns:1fr 1fr; gap:0 10px; }
+:is(#launch, #task) .browser { border:2px solid var(--ink); margin-top:6px; background:#fff; }
+:is(#launch, #task) .browser .cur { padding:3px 6px; background:#ece8df; font:12px var(--mono); word-break:break-all; }
+:is(#launch, #task) .browser ul { list-style:none; margin:0; padding:0; max-height:180px; overflow:auto; }
+:is(#launch, #task) .browser li { padding:2px 8px; cursor:pointer; font-size:13px; }
+:is(#launch, #task) .browser li:hover { background:var(--accent); }
+:is(#launch, #task) .browser .pick { margin:6px; }
+:is(#launch, #task) .recent { margin-top:4px; display:flex; flex-wrap:wrap; gap:4px; }
+:is(#launch, #task) .recent span { font:11px var(--mono); border:1px solid #b9b3a8; padding:0 5px; cursor:pointer; }
+#launch pre { margin:10px 0 0; padding:6px 8px; background:var(--ink); color:var(--paper-2); font:12px/1.5 var(--mono); white-space:pre-wrap; overflow-wrap:anywhere; }
+:is(#launch, #task) .status { margin-top:8px; font-size:12px; white-space:pre-wrap; }
+:is(#launch, #task) .status.err { color:#c0392b; }
+/* the task dialog: the launch dialog's fields, the employees ticked in order and the advisors, numbered as the team */
+#task .panel { width:min(680px, calc(100vw - 32px)); }
+#task label { display:block; margin:8px 0 2px; font-size:12px; color:var(--muted-2); }
+#task :is(input:not([type=checkbox]), select, textarea) { width:100%; box-sizing:border-box; font:inherit; color:var(--ink); background:#fff; border:2px solid var(--ink); padding:3px 6px; }
+#task textarea { resize:vertical; }
+#task .mem, #task .adv { border:2px solid var(--line); background:#fff; margin-top:4px; padding:3px 6px; }
+#task .mem { display:flex; align-items:center; gap:6px; }
+#task .mem label { flex:1; min-width:0; display:flex; align-items:center; gap:6px; margin:0; font-size:13px; color:var(--ink); cursor:pointer; }
+#task .mem label .dot { flex:none; margin:0; }
+#task .mem.off label { cursor:default; opacity:.5; }
+#task .mem .nm { font-weight:700; white-space:nowrap; }
+#task .mem small { color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+#task .mem select, #task .adv .row select { width:auto; max-width:150px; }
+#task .mem:not(.on) select { visibility:hidden; }
+#task .on { border-color:var(--ink); }
+#task .on.over { border-color:#c0392b; } /* numbered past the room's seats */
+#task .over .ord { background:#c0392b; }
+#task .bad, #task input.bad { border-color:#c0392b; }
+#task input.bad { background:#fdecea; }
+#task .ord { flex:none; min-width:16px; padding:0 3px; box-sizing:border-box; text-align:center; font:700 11px/16px var(--mono); color:var(--paper); background:var(--ink); }
+#task .ord:empty { background:none; }
+#task .lead-tag { display:none; flex:none; font-size:11px; line-height:16px; padding:0 5px; background:var(--accent); color:var(--ink); white-space:nowrap; }
+#task .lead .lead-tag { display:inline-block; }
+#task .adv .line { display:flex; align-items:center; gap:6px; }
+#task .adv .line input { flex:1; }
+#task .adv .kind { flex:none; font-size:11px; padding:0 5px; border:1px solid #b9b3a8; color:var(--muted-2); white-space:nowrap; }
+#task .adv .row { display:flex; gap:6px; margin-top:4px; }
+#task .adv .row input { flex:1; }
+#task .add-adv { margin-top:6px; }
+#task label.check { display:flex; align-items:center; gap:6px; color:var(--ink); font-size:13px; margin-top:10px; cursor:pointer; }
+#task .actions { align-items:center; }
+/* the status line and the buttons stay at the bottom of the dialog while the rest scrolls */
+#task .foot { position:sticky; bottom:-14px; z-index:1; margin:10px -16px -14px; padding:0 16px 14px; background:var(--paper); border-top:1px solid var(--line); }
+#task .foot .status:empty { display:none; }
+#task .count { margin-right:auto; font-size:12px; color:var(--muted-2); }
+#task .count.over { color:#c0392b; font-weight:700; }
+/* the task window: what the team is on, its members (a click opens one's window), the button to end it */
+#taskwin > .panel { position:relative; width:min(780px, calc(100vw - 32px)); height:min(90vh, 960px); display:flex; flex-direction:column; }
+#taskwin > .panel > :not(.tchat) { flex:none; } /* (">": a docked member's window is inside #taskwin too) */
+#taskwin .close { position:absolute; right:10px; top:6px; cursor:pointer; color:var(--muted); font-size:14px; }
+#taskwin .top { display:flex; align-items:center; gap:10px; margin-right:24px; }
+#taskwin .top h2 { margin:0; }
+#taskwin .top .actions { margin:0 0 0 auto; }
+#taskwin .top .status { font-size:12px; line-height:1.6; padding:0 8px 0 6px; border:2px solid var(--ink); border-left:6px solid var(--c, #a9a49b); white-space:nowrap; }
+#taskwin .desc { margin-top:8px; padding:6px 10px; background:var(--pane); border:1px solid var(--line); white-space:pre-wrap; overflow-wrap:anywhere; max-height:30vh; overflow:auto; }
+#taskwin .mode { margin-top:6px; font-size:12px; color:var(--muted-2); }
+#taskwin .err { margin-top:8px; padding:4px 8px; border:2px solid var(--danger); background:#fdecea; color:#8a2a26; font-size:12px; white-space:pre-wrap; overflow-wrap:anywhere; }
+#taskwin .mode[hidden], #taskwin .err[hidden] { display:none; }
+#taskwin .members { margin-top:10px; border-top:2px solid var(--ink); }
+#taskwin .mrow { display:flex; align-items:center; gap:8px; padding:5px 6px; border-bottom:1px dashed var(--line); cursor:pointer; font-size:13px; }
+#taskwin .mrow:hover { background:var(--paper-2); }
+#taskwin .mrow.wait { cursor:default; color:var(--muted); }
+#taskwin .mrow.wait:hover { background:none; }
+#taskwin .mrow .dot { flex:none; margin:0; }
+#taskwin .mrow b { white-space:nowrap; }
+#taskwin .badge { flex:none; font-size:11px; padding:0 5px; white-space:nowrap; }
+#taskwin .badge.lead { background:var(--accent); }
+#taskwin .badge.adv { border:1px solid #b9b3a8; color:var(--muted-2); }
+#taskwin .where { flex:1; min-width:0; color:var(--muted-2); font:12px var(--mono); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+#taskwin .chip { flex:none; font-size:11px; padding:0 6px; border:1px solid var(--line); background:var(--pane); white-space:nowrap; }
+#taskwin .st { flex:none; color:var(--muted-2); font-size:12px; white-space:nowrap; max-width:220px; overflow:hidden; text-overflow:ellipsis; }
+/* the task chat: the members' messages to each other (purple, as everywhere on the page) and yours (dark, on the right) */
+#taskwin .tchat { flex:1; min-height:120px; display:flex; flex-direction:column; margin-top:12px; }
+#taskwin .tchat h3 { margin:0 0 4px; font-size:13px; }
+#taskwin .tlist { flex:1; display:flex; flex-direction:column; gap:8px; min-height:64px; overflow:auto; padding:8px; background:var(--pane); border:2px solid var(--ink); }
+#taskwin .tlist .empty { margin:auto; color:var(--muted); font-size:12px; text-align:center; }
+#taskwin .tmsg { flex:none; display:flex; align-items:flex-start; gap:6px; max-width:88%; align-self:flex-start; }
+#taskwin .tmsg.me { flex-direction:row-reverse; align-self:flex-end; }
+#taskwin .tmsg .av { flex:none; width:48px; height:24px; margin-top:4px; background-size:100% 100%; image-rendering:pixelated; }
+#taskwin .tmsg .bub { min-width:0; padding:4px 10px 6px; background:var(--purple); color:#fff; border:2px solid var(--purple-dark); box-shadow:2px 2px 0 rgba(0,0,0,.3); font-size:13px; line-height:1.5; }
+#taskwin .tmsg.me .bub { background:var(--ink); border-color:var(--ink); color:var(--paper); }
+#taskwin .tmsg .hd { font-size:12px; }
+#taskwin .tmsg time { display:block; margin-top:2px; font-size:10px; opacity:.75; }
+#taskwin .tmsg.me time { text-align:right; }
+#taskwin .tmsg .body { white-space:pre-wrap; overflow-wrap:anywhere; }
+#taskwin .tmsg .body .to { color:#ffe08a; }
+#taskwin .tmsg.me .body .to { color:var(--accent); }
+#taskwin .tmsg .body .to s { color:#a9a49b; } /* a mentioned member that was offline and didn't get it */
+#taskwin .tmsg .body code { background:rgba(255,255,255,.18); padding:0 3px; font:12px var(--mono); }
+#taskwin .tmsg .body pre { background:rgba(0,0,0,.3); padding:6px 8px; margin:4px 0; font:12px/1.5 var(--mono); overflow:auto; white-space:pre; }
+#taskwin .tsay { display:flex; gap:8px; align-items:flex-end; margin-top:6px; }
+#taskwin .tbox { position:relative; flex:1; min-width:0; display:flex; }
+#taskwin .tsay textarea { flex:1; resize:none; font:inherit; color:var(--ink); background:#fff; border:2px solid var(--ink); padding:5px 8px; box-sizing:border-box; }
+#taskwin .tsay textarea:focus { outline:none; border-color:var(--accent); }
+#taskwin .tsay textarea:disabled { background:#ece8df; }
+#taskwin .tstatus { margin-top:4px; font-size:12px; color:#c0392b; white-space:pre-wrap; overflow-wrap:anywhere; }
+#taskwin .tstatus:empty { display:none; }
+#taskwin .tstatus.note { color:var(--muted-2); }
+/* the mention picker: the task's members, over the input while an @ is being typed (like the search box's list) */
+#taskwin .tpick { position:absolute; z-index:2; left:0; bottom:calc(100% + 4px); min-width:240px; max-width:380px; background:var(--paper); color:var(--ink);
+  border:2px solid var(--ink); box-shadow:4px 4px 0 rgba(0,0,0,.35); }
+#taskwin .tpick[hidden] { display:none; }
+#taskwin .tpick .hit { padding:2px 8px; cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:13px; }
+#taskwin .tpick .hit.on { background:var(--accent); }
+#taskwin .tpick .hit small { color:var(--muted-2); margin-left:8px; }
+#taskwin .mrow.open { background:#fff3c4; box-shadow:inset 4px 0 0 var(--accent); }
+/* a member's window docks to the right of the task window: the two side by side, centered as a pair, the task's chat
+   as tall as the member's (on a narrow screen the member's window opens over the task window instead) */
+#taskwin.with-chat { padding:0 16px; }
+#taskwin.with-chat > .panel { flex:0 1 720px; width:auto; min-width:0; padding-bottom:8px; } /* its input level with the member's */
+#chat.docked:not([hidden]) { display:contents; }
+#chat.docked .panel.chat { flex:0 1 640px; width:auto; min-width:0; margin-left:-2px; }
+#chat.stacked { z-index:11; }

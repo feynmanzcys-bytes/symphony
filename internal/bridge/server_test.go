@@ -14,12 +14,22 @@ import (
 )
 
 var testWeb = fstest.MapFS{
-	"office.html":     {Data: []byte("<html>office</html>")},
-	"approve.html":    {Data: []byte("<html>approve</html>")},
-	"asks.js":         {Data: []byte("export const x = 1")},
-	"i18n.js":         {Data: []byte("export const t = key => key")},
-	"locales/en.json": {Data: []byte(`{"error.unknown": "something went wrong"}`)},
-	"locales/xx.json": {Data: []byte(`{}`)}, // not a supported language: the bridge must not serve it
+	"themes/office/index.html": {Data: []byte("<html>office</html>")},
+	"themes/office/theme.json": {Data: []byte(`{"name":"office","title":{"en":"Pixel office"},"since":1}`)},
+	"themes/zen/index.html":    {Data: []byte("<html>zen</html>")},
+	"themes/zen/theme.json":    {Data: []byte(`{"name":"zen","title":{"en":"Zen","zh-CN":"禅"},"since":1}`)},
+	"themes/zen/zen.css":       {Data: []byte("body{}")},
+	"themes/bad/index.html":    {Data: []byte("<html>bad</html>")}, // no manifest: not a theme
+	"themes/wrong/index.html":  {Data: []byte("<html>wrong</html>")},
+	"themes/wrong/theme.json":  {Data: []byte(`{"name":"other"}`)}, // the manifest's name must be the folder's
+	"approve.html":             {Data: []byte("<html>approve</html>")},
+	"asks.js":                  {Data: []byte("export const x = 1")},
+	"i18n.js":                  {Data: []byte("export const t = key => key")},
+	"symphony.js":              {Data: []byte("export const connect = () => {}")},
+	"ui/chat.js":               {Data: []byte("export const chat = 1")},
+	"ui/ui.css":                {Data: []byte(".it{}")},
+	"locales/en.json":          {Data: []byte(`{"error.unknown": "something went wrong"}`)},
+	"locales/xx.json":          {Data: []byte(`{}`)}, // not a supported language: the bridge must not serve it
 }
 
 type client struct {
@@ -501,8 +511,8 @@ func TestStreamStartsWithSnapshot(t *testing.T) {
 func TestPages(t *testing.T) {
 	_, base := newBridge(t)
 	for path, want := range map[string]string{
-		"/": "text/html", "/approve": "text/html", "/asks.js": "text/javascript",
-		"/i18n.js": "text/javascript", "/locales/en.json": "application/json",
+		"/": "text/html", "/approve": "text/html", "/asks.js": "text/javascript", "/symphony.js": "text/javascript",
+		"/i18n.js": "text/javascript", "/locales/en.json": "application/json", "/ui/chat.js": "text/javascript", "/ui/ui.css": "text/css",
 	} {
 		resp, err := http.Get(base + path)
 		if err != nil {
@@ -512,6 +522,79 @@ func TestPages(t *testing.T) {
 		if resp.StatusCode != 200 || !strings.HasPrefix(resp.Header.Get("content-type"), want) {
 			t.Fatalf("%s: %d %s", path, resp.StatusCode, resp.Header.Get("content-type"))
 		}
+	}
+}
+
+// TestThemes: / serves the theme picked with ?theme= or remembered in the cookie, else the default; /t/<name>/ picks
+// one; a theme's files come from its folder only; /api/themes lists the themes with a manifest.
+func TestThemes(t *testing.T) {
+	srv, base := newBridge(t)
+	get := func(path string, cookie string) (*http.Response, string) {
+		t.Helper()
+		req, _ := http.NewRequest("GET", base+path, nil)
+		if cookie != "" {
+			req.Header.Set("Cookie", "symphony.theme="+cookie)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(resp.Body)
+		return resp, string(body)
+	}
+	cookieOf := func(resp *http.Response) string {
+		for _, c := range resp.Cookies() {
+			if c.Name == "symphony.theme" {
+				return c.Value
+			}
+		}
+		return ""
+	}
+	if names := func() (n []string) {
+		for _, th := range srv.Themes() {
+			n = append(n, th.Name)
+		}
+		return
+	}(); strings.Join(names, ",") != "office,zen" {
+		t.Fatalf("themes: %v (the default first, a folder without a good manifest left out)", names)
+	}
+	if resp, body := get("/", ""); body != "<html>office</html>" || cookieOf(resp) != "" {
+		t.Fatalf("/ without a cookie should be the default theme and set none: %q %q", body, cookieOf(resp))
+	}
+	if resp, body := get("/?theme=zen", ""); body != "<html>zen</html>" || cookieOf(resp) != "zen" {
+		t.Fatalf("/?theme=zen should serve zen and remember it: %q %q", body, cookieOf(resp))
+	}
+	if _, body := get("/", "zen"); body != "<html>zen</html>" {
+		t.Fatalf("/ with the cookie should serve the remembered theme: %q", body)
+	}
+	if _, body := get("/", "nope"); body != "<html>office</html>" {
+		t.Fatalf("an unknown theme in the cookie means the default: %q", body)
+	}
+	if _, body := get("/?theme=nope", "zen"); body != "<html>zen</html>" {
+		t.Fatalf("an unknown ?theme= is ignored: %q", body)
+	}
+	if resp, body := get("/t/zen/", ""); body != "<html>zen</html>" || cookieOf(resp) != "zen" || !strings.HasPrefix(resp.Header.Get("content-type"), "text/html") {
+		t.Fatalf("/t/zen/ should serve zen and remember it: %q %q", body, cookieOf(resp))
+	}
+	if resp, body := get("/t/zen/zen.css", ""); body != "body{}" || !strings.HasPrefix(resp.Header.Get("content-type"), "text/css") {
+		t.Fatalf("/t/zen/zen.css: %q %s", body, resp.Header.Get("content-type"))
+	}
+	for _, path := range []string{"/t/nope/", "/t/bad/", "/t/wrong/", "/t/zen/nope.css", "/t/zen/..%2Foffice%2Findex.html", "/t/zen/..%2F..%2Fasks.js"} {
+		if resp, _ := get(path, ""); resp.StatusCode != http.StatusNotFound {
+			t.Errorf("%s: want 404, got %d", path, resp.StatusCode)
+		}
+	}
+	resp, body := get("/api/themes", "zen")
+	var list struct {
+		Themes  []Theme `json:"themes"`
+		Current string  `json:"current"`
+	}
+	if err := json.Unmarshal([]byte(body), &list); err != nil || resp.StatusCode != 200 {
+		t.Fatalf("/api/themes: %d %q %v", resp.StatusCode, body, err)
+	}
+	if len(list.Themes) != 2 || list.Themes[1].Title["zh-CN"] != "禅" || list.Current != "zen" {
+		t.Fatalf("/api/themes: %+v", list)
 	}
 }
 

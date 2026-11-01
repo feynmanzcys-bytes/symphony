@@ -151,7 +151,14 @@ func TestWebKeysInUse(t *testing.T) {
 	literal := regexp.MustCompile("['\"`]((?:common|office|hud|pixels|room|state|idle|search|stats|log|asks|msg|card|chat|launch|option|approve|error|task)\\.[A-Za-z0-9_.]*[A-Za-z0-9_])['\"`]")
 	attr := regexp.MustCompile(`data-i18n(?:-placeholder|-title)?="([^"]+)"`)
 	used := 0
-	for _, name := range []string{"office.html", "approve.html", "asks.js", "i18n.js"} {
+	files := []string{"approve.html", "asks.js", "i18n.js"}
+	for _, pattern := range []string{"symphony.js", "ui/*.js", "themes/*/index.html", "themes/*/*.js"} {
+		hits, _ := filepath.Glob("../../web/" + pattern)
+		for _, h := range hits {
+			files = append(files, strings.TrimPrefix(filepath.ToSlash(h), "../../web/"))
+		}
+	}
+	for _, name := range files {
 		src, err := os.ReadFile("../../web/" + name)
 		if err != nil {
 			t.Fatal(err)
@@ -167,6 +174,21 @@ func TestWebKeysInUse(t *testing.T) {
 	}
 	if used < 50 {
 		t.Fatalf("found only %d keys in the pages; is the scan looking in the right place?", used)
+	}
+}
+
+// TestThemeCatalogs checks every theme's own catalogs (web/themes/<name>/locales/<lang>.json) the way the shared ones
+// are checked: a theme with an en.json has every language, with the same keys and placeholders. A theme without
+// catalogs is fine.
+func TestThemeCatalogs(t *testing.T) {
+	dirs, _ := filepath.Glob("../../web/themes/*/locales")
+	for _, dir := range dirs {
+		if _, err := os.Stat(filepath.Join(dir, "en.json")); err != nil {
+			continue
+		}
+		t.Run(filepath.Base(filepath.Dir(dir)), func(t *testing.T) {
+			checkCatalogs(t, func(lang string) ([]byte, error) { return os.ReadFile(filepath.Join(dir, lang+".json")) })
+		})
 	}
 }
 

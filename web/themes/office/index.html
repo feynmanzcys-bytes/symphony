@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en" data-theme="office">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title data-i18n="office.title">Symphony Office</title>
+<link rel="stylesheet" href="/ui/ui.css">
+<style>
+  html, body { margin:0; height:100%; background:#2f2e2b; color:#f2efe8; font:13px/1.45 system-ui, sans-serif; overflow:hidden; }
+  /* CJK fonts per language, so each gets its own glyph forms */
+  body:lang(zh-CN) { font-family:system-ui, "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif; }
+  body:lang(zh-TW) { font-family:system-ui, "PingFang TC", "Microsoft JhengHei", "Noto Sans CJK TC", sans-serif; }
+  body:lang(ja) { font-family:system-ui, "Hiragino Sans", "Yu Gothic UI", "Noto Sans CJK JP", sans-serif; }
+  body:lang(ko) { font-family:system-ui, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans CJK KR", sans-serif; }
+  canvas#office { position:fixed; inset:0; width:100vw; height:100vh; image-rendering:pixelated; }
+  #labels { position:fixed; inset:0; pointer-events:none; }
+  /* the HUD: a notice board in the office's own pixel style, pinned to the top in the middle; the tab under it slides it
+     up out of the way and back down */
+  #hud { position:fixed; top:0; left:50%; z-index:3; box-sizing:border-box; width:max-content; max-width:calc(100vw - 24px);
+    transform:translateX(-50%); background:#fffdf7; color:#2b2a28; border:2px solid #2b2a28; border-top:0;
+    box-shadow:4px 4px 0 rgba(0,0,0,.35); padding:8px 14px 10px; }
+  #hud.anim { transition:transform .2s ease-out; }
+  #hud.up { transform:translate(-50%, -100%); box-shadow:none; }
+  #hud .bar { display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:8px 18px; }
+  #hud .group { display:flex; align-items:center; gap:6px; }
+  #hud .logo { width:30px; height:15px; flex:none; image-rendering:pixelated; }
+  #hud h1 { margin:0 0 0 2px; font-size:15px; font-weight:800; white-space:nowrap; }
+  /* counts by state, as chips in the state colors; a click on one lights up those employees */
+  #hud .stats { display:flex; gap:6px; flex-wrap:wrap; color:#6f6b64; }
+  #hud .chip { font:inherit; white-space:nowrap; font-size:12px; line-height:1.6; cursor:pointer; background:#fff; color:#2b2a28; border:2px solid #2b2a28;
+    border-left:6px solid var(--c); padding:0 8px 0 6px; box-shadow:2px 2px 0 rgba(0,0,0,.25); }
+  #hud .chip b { font-size:13px; }
+  #hud .chip:hover { background:#f2efe8; }
+  #hud .chip.on { background:#2b2a28; color:#fffdf7; box-shadow:none; transform:translate(2px, 2px); }
+  #hud .chip.hot { background:#d64541; color:#fff; border-color:#7a1f1c; animation:nudge 1s steps(1) infinite; } /* asks wait for you */
+  @keyframes nudge { 50% { background:#e8605c; } }
+  /* the pixel size: four steps from the standard drawing to the finest, each button a finer grid */
+  #hud .pixels .lbl { font-size:12px; color:#6f6b64; white-space:nowrap; }
+  #hud .steps { display:flex; border:2px solid #2b2a28; box-shadow:2px 2px 0 rgba(0,0,0,.3); }
+  #hud .steps button { width:24px; height:18px; padding:0; border:0; border-left:2px solid #2b2a28; cursor:pointer;
+    background:#fffdf7 no-repeat center / 12px 12px; image-rendering:pixelated; }
+  #hud .steps button:first-child { border-left:0; }
+  #hud .steps button:hover { background-color:#f2efe8; }
+  #hud .steps button.on { background-color:#f2b705; }
+  #hud select.lang, #hud select.theme { width:104px; font:inherit; font-size:12px; background:#fffdf7; color:#2b2a28; border:2px solid #2b2a28; padding:0 2px;
+    cursor:pointer; box-shadow:2px 2px 0 rgba(0,0,0,.3); }
+  #hud .note { margin:8px auto 0; max-width:560px; padding:4px 8px; background:#fff3cf; border:2px solid #c9961a; color:#6b4a00; line-height:1.5; }
+  /* the tab under the HUD hides it and brings it back; while the HUD is away it shows how many asks wait. It hangs from
+     the HUD's right corner: in the middle it would cover the sign on the back wall once the HUD wraps to two lines */
+  #hud .tab { position:absolute; top:100%; right:14px; display:flex; align-items:center; gap:5px; height:18px;
+    padding:0 12px; font:inherit; color:#2b2a28; background:#fffdf7; border:2px solid #2b2a28; border-top:0;
+    box-shadow:4px 4px 0 rgba(0,0,0,.35); cursor:pointer; }
+  #hud .tab:hover { background:#f2b705; }
+  #hud .tab .ico { margin:0; width:14px; height:8px; background-image:var(--ico-up); }
+  #hud.up .tab .ico { background-image:var(--ico-down); }
+  #hud .tab .badge { font:700 11px/14px var(--mono); color:#fff; background:#d64541; padding:0 4px; }
+  #hud .tab .badge[hidden], #hud:not(.up) .tab .badge { display:none; }
+  .ico { display:inline-block; vertical-align:-1px; margin-right:6px; background:no-repeat center / contain; image-rendering:pixelated; }
+  .ico.mail { width:18px; height:12px; background-image:var(--ico-mail); }
+  /* the search box, beside the title: matches show in a list below it, the rest of the office dims */
+  #hud .find { position:relative; width:230px; }
+  #find { width:100%; box-sizing:border-box; font:inherit; font-size:12px; color:#2b2a28; border:2px solid #2b2a28; padding:3px 26px;
+    background:#fff var(--ico-find) no-repeat 7px center / 14px 14px; box-shadow:inset 2px 2px 0 rgba(0,0,0,.08); image-rendering:pixelated; }
+  #find:focus { outline:none; border-color:#f2b705; }
+  #hud .key { position:absolute; right:6px; top:50%; transform:translateY(-50%); pointer-events:none; font:11px/1.25 var(--mono);
+    color:#8a867e; background:#f2efe8; border:1px solid #b9b3a8; border-bottom-width:2px; padding:0 4px; }
+  #find:focus + .key, #find:not(:placeholder-shown) + .key { display:none; } /* the shortcut, while the box is idle */
+  #find-list { position:absolute; z-index:1; left:0; top:calc(100% + 4px); min-width:240px; max-width:380px; background:#fffdf7; color:#2b2a28;
+    border:2px solid #2b2a28; box-shadow:4px 4px 0 rgba(0,0,0,.35); }
+  #find-list[hidden] { display:none; }
+  #find-list .hit { padding:2px 8px; cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  #find-list .hit.on { background:#f2b705; }
+  #find-list .hit small { color:#6f6b64; margin-left:8px; }
+  #find-list .none { padding:2px 8px; color:#8a867e; }
+  #hud .note code { display:block; margin-top:4px; padding:2px 6px; background:#2b2a28; color:#fffdf7; user-select:all; word-break:break-all; }
+  /* the activity log: a panel at the bottom left, hidden until its HUD button opens it */
+  .logpanel { position:fixed; left:12px; bottom:12px; z-index:4; width:min(560px, calc(100vw - 24px)); max-height:40vh; display:flex; flex-direction:column;
+    background:#fffdf7; color:#2b2a28; border:2px solid #2b2a28; box-shadow:4px 4px 0 rgba(0,0,0,.35); padding:8px 12px; box-sizing:border-box; }
+  .logpanel[hidden] { display:none; }
+  .logpanel h2 { margin:0 0 4px; font-size:14px; }
+  .logpanel .close { position:absolute; right:8px; top:4px; cursor:pointer; color:#8a867e; }
+  .logpanel .lines { overflow:auto; font:12px/1.6 var(--mono); }
+  .logpanel .lines div { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .logpanel .lines:empty::before { content:attr(data-empty); color:#8a867e; }
+  /* name tags above the characters */
+  .emp-label { position:absolute; transform:translate(-50%, -100%); pointer-events:auto; cursor:pointer; background:#fffdf7; color:#2b2a28;
+    border:2px solid #2b2a28; border-left-width:5px; padding:0 6px; font-size:11px; line-height:1.35; white-space:nowrap; text-align:center;
+    box-shadow:2px 2px 0 rgba(0,0,0,.3); }
+  .emp-label { box-sizing:border-box; } /* no wider than a desk (set in placeLabels); longer text ends in … and shows in full on hover */
+  .emp-label .nm, .emp-label .st { overflow:hidden; text-overflow:ellipsis; }
+  .emp-label .nm { font-weight:700; font-size:12px; }
+  .emp-label .st { color:#6f6b64; }
+  .emp-label.off { opacity:.55; }
+  .emp-label.away .st { display:none; } /* away from the desk: the name only, so a sofa full of people stays readable */
+  .emp-label.tight .st { display:none; } /* too narrow a desk for the status to read: the name, and the color bar says the state */
+  .emp-label.dim { opacity:.25; }
+  .emp-label.match { outline:2px solid #f2b705; outline-offset:1px; }
+  .emp-label.found { animation:found .4s steps(1) 8; }
+  @keyframes found { 50% { background:#f2b705; } }
+  .room-label { position:absolute; background:rgba(43,42,40,.82); color:#fffdf7; padding:0 6px; font-size:11px; line-height:1.6; letter-spacing:1px; white-space:nowrap; }
+  /* the small meeting rooms' nameplates, beside their doors, with a light: green while the room is free, yellow while a
+     task runs in it, red while one of its members waits for you or the task failed */
+  .room-plate { position:absolute; transform:translateY(-50%); pointer-events:auto; cursor:default; box-sizing:border-box; background:#2b2a28; color:#f3e6bf;
+    border:2px solid #9a7b3c; padding:0 6px 0 5px; font-size:11px; font-weight:700; line-height:1.45; letter-spacing:1px; white-space:nowrap;
+    overflow:hidden; text-overflow:ellipsis; box-shadow:2px 2px 0 rgba(0,0,0,.3); } /* no wider than its room (placeLabels); the full name shows on hover */
+  .room-plate i { display:inline-block; width:6px; height:6px; margin-right:5px; vertical-align:1px; background:#2e9e5b; }
+  .room-plate.busy i { background:#f2b705; }
+  .room-plate.alert i { background:#d64541; }
+  .room-plate.failed i { animation:nudge-light 1s steps(1) infinite; } /* a failed task: the light blinks and an "!" follows the id */
+  @keyframes nudge-light { 50% { background:#5a2320; } }
+  .room-plate .bang { color:#ff8a80; margin-left:2px; }
+  .room-plate.small { letter-spacing:0; font-size:10px; padding:0 4px 0 3px; } /* too narrow: a step smaller first (fitPlate) */
+  .room-plate.small i { margin-right:3px; }
+  .room-plate.narrow .nm { display:none; } /* too narrow for the name beside the task id: the id alone (the name shows on hover) */
+  .room-plate.click { cursor:pointer; }
+  .room-plate.click:hover { border-color:#f2b705; }
+  .sign-text { position:absolute; transform:translate(-50%, -50%); color:#fffdf7; font:700 13px/1 var(--mono); letter-spacing:3px; white-space:nowrap; }
+  .seat-add { position:absolute; transform:translate(-50%, -50%); pointer-events:auto; cursor:pointer; width:22px; height:22px; padding:0;
+    background:#fffdf7; color:#2b2a28; border:2px solid #2b2a28; font:700 16px/16px var(--mono); box-shadow:2px 2px 0 rgba(0,0,0,.3); }
+  .seat-add:hover { background:#f2b705; }
+  .bubble { position:absolute; transform:translate(-50%, -100%); box-sizing:border-box; /* placed above its tag, clear of the others (placeLabels) */ background:#fffdf7; color:#2b2a28; border:2px solid #2b2a28;
+    padding:1px 6px; font-size:12px; max-width:220px; box-shadow:2px 2px 0 rgba(0,0,0,.3); }
+  .bubble b { font-weight:700; }
+  /* the message log: a side panel */
+  .side { position:fixed; right:12px; top:calc(var(--hud-h, 0px) + 12px); bottom:12px; z-index:5; width:min(340px, calc(100vw - 24px)); overflow:auto; background:#fffdf7; color:#2b2a28;
+    border:2px solid #2b2a28; box-shadow:4px 4px 0 rgba(0,0,0,.35); padding:10px 12px; box-sizing:border-box; }
+  .side[hidden] { display:none; }
+  .side h2 { margin:0 0 6px; font-size:15px; }
+  .side .close { position:absolute; right:8px; top:4px; cursor:pointer; color:#8a867e; }
+  .side dl { margin:0; display:grid; grid-template-columns:auto 1fr; gap:2px 10px; font-size:12px; }
+  .side dt { color:#8a867e; } .side dd { margin:0; word-break:break-all; }
+  .msg { border-bottom:1px dashed #d6d1c6; padding:5px 0; font-size:12px; }
+  .msg .meta { color:#8a867e; font-size:11px; }
+  .msg .meta b { color:#2b2a28; }
+  .msg .lost { color:#c0392b; }
+  .msg .txt { white-space:pre-wrap; overflow-wrap:anywhere; }
+  .msg .txt pre { margin:3px 0; padding:4px 6px; background:#2b2a28; color:#f2efe8; font:11px/1.5 var(--mono); white-space:pre-wrap; }
+  .msg .txt code { background:rgba(0,0,0,.08); padding:0 3px; font:11px var(--mono); }
+</style>
+</head>
+<body>
+<canvas id="office"></canvas>
+<div id="labels"></div>
+<div id="hud">
+  <div class="bar">
+    <div class="group"><canvas class="logo" width="10" height="5"></canvas><h1 data-i18n="office.title"></h1></div>
+    <div class="find"><input id="find" type="search" autocomplete="off" spellcheck="false" data-i18n-placeholder="search.placeholder" data-i18n-title="search.title"><kbd class="key">/</kbd><div id="find-list" hidden></div></div>
+    <div class="stats" id="stats" data-i18n="office.nobody"></div>
+    <div class="group btns">
+      <button class="px" id="open-msgs"><i class="ico mail"></i><span data-i18n="office.messages"></span></button>
+      <button class="px" id="open-log" data-i18n="office.log"></button>
+      <button class="px" id="new-emp" data-i18n="office.newEmployee" hidden></button>
+      <button class="px" id="new-task" data-i18n="office.newTask" hidden></button>
+    </div>
+    <div class="group prefs"></div>
+  </div>
+  <div class="note" id="launch-note" hidden></div>
+  <button class="tab" id="hud-tab"><i class="ico"></i><b class="badge" hidden></b></button>
+</div>
+<div class="logpanel" id="log" hidden><span class="close">✕</span><h2 data-i18n="office.log"></h2><div class="lines"></div></div>
+
+<div class="side" id="msgs-panel" hidden><span class="close">✕</span><h2 data-i18n="office.messages"></h2><div class="msgs"></div></div>
+
+<script type="module" src="/t/office/office.js"></script>
+</script>
+</body>
+</html>

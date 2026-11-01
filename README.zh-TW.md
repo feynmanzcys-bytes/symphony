@@ -29,7 +29,7 @@ symphony 由兩個部分組成，兩個都要裝：
 uname -sm                 # Linux/macOS：決定下面用哪個壓縮檔（x86_64 → amd64；arm64/aarch64 → arm64）
 claude --version          # 需要 Claude Code 2.1.x（在 2.1.316 上測試過）
 git --version             # 只有協作任務需要；沒有的話在回報裡註明，不要停下來
-symphony -version         # 已經裝了？會印出 "symphony v0.8.0 (darwin/arm64)"
+symphony -version         # 已經裝了？會印出 "symphony v0.9.0 (darwin/arm64)"
 curl -s http://127.0.0.1:7788/api/state | head -c 40   # 已經有 bridge 在執行？會印出 {"type":"snapshot",...
 claude plugin list --json # mod 已經裝了？找 "id":"symphony-bridge@symphony"
 ```
@@ -73,7 +73,7 @@ claude plugin list --json # mod 已經裝了？找 "id":"symphony-bridge@symphon
 tar xzf /tmp/symphony-dl/symphony_<os>_<arch>.tar.gz -C /tmp/symphony-dl
 install -m 755 /tmp/symphony-dl/symphony ~/.local/bin/symphony
 xattr -d com.apple.quarantine ~/.local/bin/symphony 2>/dev/null || true   # macOS：這個執行檔沒有簽章
-symphony -version          # 會印出 "symphony v0.8.0 (linux/amd64)"：版本和平台
+symphony -version          # 會印出 "symphony v0.9.0 (linux/amd64)"：版本和平台
 ```
 
 在 Windows 上：`Expand-Archive symphony_windows_<arch>.zip -DestinationPath "$env:LOCALAPPDATA\Programs\symphony"`，然後把那個資料夾加進使用者的 `Path`（`[Environment]::SetEnvironmentVariable('Path', "$([Environment]::GetEnvironmentVariable('Path','User'));$env:LOCALAPPDATA\Programs\symphony", 'User')`），再開一個新的 shell。第一次執行時 SmartScreen 可能會跳出警告：按「其他資訊」，再按「仍要執行」。
@@ -117,7 +117,7 @@ symphony now starts when you log in (<where>); it's running at http://127.0.0.1:
 curl -s http://127.0.0.1:7788/api/launch/options
 ```
 
-回應裡會有 `"enabled":true` 和 `"mod":{"ok":true,"id":"symphony-bridge@symphony","version":"0.8.0"}`：表示 bridge 在執行、找到了 `claude`，而且 mod 安裝在工作階段會載入的地方。如果是 `"enabled":false`，`mod.code` 說明哪裡有問題，`mod.fix` 給出修正的指令：`mod_not_installed` 或 `mod_project_scope`（回到第 4 步）、`mod_disabled`（啟用它）、`mod_check_failed`（`claude plugin list --json` 執行失敗，多半是 Claude Code 版本太舊）。`"mod":null` 表示 bridge 在它的 `PATH` 裡完全找不到 `claude`（紀錄裡會寫）：把它放進去，或用 `-claude /path/to/claude` 啟動 bridge。
+回應裡會有 `"enabled":true` 和 `"mod":{"ok":true,"id":"symphony-bridge@symphony","version":"0.9.0"}`：表示 bridge 在執行、找到了 `claude`，而且 mod 安裝在工作階段會載入的地方。如果是 `"enabled":false`，`mod.code` 說明哪裡有問題，`mod.fix` 給出修正的指令：`mod_not_installed` 或 `mod_project_scope`（回到第 4 步）、`mod_disabled`（啟用它）、`mod_check_failed`（`claude plugin list --json` 執行失敗，多半是 Claude Code 版本太舊）。`"mod":null` 表示 bridge 在它的 `PATH` 裡完全找不到 `claude`（紀錄裡會寫）：把它放進去，或用 `-claude /path/to/claude` 啟動 bridge。
 
 bridge 的紀錄是資料目錄裡的 `bridge.log`（Linux 上是 `~/.config/symphony`，macOS 上是 `~/Library/Application Support/symphony`，Windows 上是 `%AppData%\symphony`）；隨登入啟動時，Linux 上的紀錄在 `journalctl --user -u symphony`，macOS 上在 `~/Library/Logs/symphony.log`。
 

@@ -141,8 +141,7 @@ func TestScreens(t *testing.T) {
 	// dialog does, members reported in as the mod would, from their worktrees
 	createTaskIn := func(s *screens, room int, title string, leader bool, members []map[string]any) *bridge.Task {
 		t.Helper()
-		roomName := s.js(fmt.Sprintf(`document.querySelectorAll('.room-plate')[%d].textContent`, room))
-		body, _ := json.Marshal(map[string]any{"room": room, "roomName": roomName, "title": title, "leader": leader,
+		body, _ := json.Marshal(map[string]any{"room": room, "title": title, "leader": leader,
 			"permissionMode": "bypassPermissions", "lang": s.lang, "members": members})
 		res := s.fetch("POST", "/api/tasks", string(body))
 		var task bridge.Task
@@ -252,11 +251,13 @@ func TestScreens(t *testing.T) {
 	p.run(`document.querySelector('#task [name=leader]').click()`)
 	p.tick("alice")
 	p.tick("carol")
+	p.tick("erin")
 	if !p.is(`document.querySelector('#task .count').classList.contains('over') && document.querySelector('#task .go').disabled`) {
-		t.Fatalf("5 members in a room for 3 should be too many: %s", p.js(`document.querySelector('#task .count').textContent`))
+		t.Fatalf("6 members should be too many (a task takes 5 at most): %s", p.js(`document.querySelector('#task .count').textContent`))
 	}
 	p.shot("task-dialog-over")
 	p.check()
+	p.tick("erin")
 	p.tick("alice")
 	p.tick("carol")
 	// the bridge refuses an advisor named like an employee: the error shows in the dialog's status line

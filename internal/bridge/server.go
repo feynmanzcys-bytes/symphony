@@ -7,10 +7,12 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"mime"
 	"net"
 	"net/http"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -33,8 +35,9 @@ type Server struct {
 	// AttachCommand is the command such a window runs to attach to a launch's terminal (symphony attach ...)
 	AttachCommand func(launchID string) []string
 
-	web fs.FS
-	mux *http.ServeMux
+	web    fs.FS
+	mux    *http.ServeMux
+	themes []Theme // the page's themes, from web (themes.go)
 }
 
 var (
@@ -42,15 +45,21 @@ var (
 	errLaunchDisabled = newError("launch_disabled", "this bridge can't start sessions from the page (claude not found, or -mod isn't a mod folder; see the bridge's startup log)")
 )
 
-// NewServer builds a bridge; web must hold office.html, approve.html, asks.js, i18n.js and locales/*.json.
+// NewServer builds a bridge; web must hold the pages: themes/<name>/{theme.json,index.html,...} (the office page's
+// themes), approve.html, the shared modules symphony.js, asks.js, i18n.js and ui/*, and locales/*.json.
 func NewServer(hub *Hub, web fs.FS) *Server {
 	s := &Server{Hub: hub, WaitTimeout: 20 * time.Second, AllowedHosts: []string{"localhost", "127.0.0.1", "::1"},
-		web: web, mux: http.NewServeMux()}
+		web: web, mux: http.NewServeMux(), themes: loadThemes(web)}
 
-	s.mux.HandleFunc("GET /{$}", s.file("office.html"))
+	s.mux.HandleFunc("GET /{$}", s.themeIndex)
+	s.mux.HandleFunc("GET /t/{theme}/{$}", s.themeRoot)
+	s.mux.HandleFunc("GET /t/{theme}/{file...}", s.themeFile)
+	s.mux.HandleFunc("GET /api/themes", s.themesAPI)
 	s.mux.HandleFunc("GET /approve", s.file("approve.html"))
 	s.mux.HandleFunc("GET /asks.js", s.file("asks.js"))
 	s.mux.HandleFunc("GET /i18n.js", s.file("i18n.js"))
+	s.mux.HandleFunc("GET /symphony.js", s.file("symphony.js"))
+	s.mux.HandleFunc("GET /ui/{file}", func(w http.ResponseWriter, r *http.Request) { s.serveFile(w, r, "ui/"+r.PathValue("file")) })
 	s.mux.HandleFunc("GET /locales/{file}", s.locale)
 	s.mux.HandleFunc("GET /api/state", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, 200, hub.Snapshot()) })
 	s.mux.HandleFunc("GET /api/stream", s.stream)
@@ -132,7 +141,7 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 
 // errStatus is the HTTP status of errors made on the spot (with params), which errors.Is can't tell apart.
 var errStatus = map[string]int{
-	"task_room_busy": http.StatusConflict, "task_member_busy": http.StatusConflict, "task_ended": http.StatusConflict,
+	"task_member_busy": http.StatusConflict, "task_ended": http.StatusConflict,
 	"task_running": http.StatusConflict, "task_unknown": http.StatusNotFound, "task_no_git": http.StatusPreconditionFailed,
 	"task_git_failed": http.StatusInternalServerError, "pty_start_failed": http.StatusInternalServerError, "task_repo_in_use": http.StatusConflict,
 }
@@ -312,31 +321,41 @@ func (s *Server) stream(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) file(name string) http.HandlerFunc {
-	ctype := "text/html; charset=utf-8"
-	switch {
-	case strings.HasSuffix(name, ".js"):
-		ctype = "text/javascript; charset=utf-8"
-	case strings.HasSuffix(name, ".json"):
-		ctype = "application/json; charset=utf-8"
+	return func(w http.ResponseWriter, r *http.Request) { s.serveFile(w, r, name) }
+}
+
+// contentTypes are the types of the pages' files, by extension; anything else is served as what the OS says.
+var contentTypes = map[string]string{
+	".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".mjs": "text/javascript; charset=utf-8",
+	".json": "application/json; charset=utf-8", ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml",
+	".png": "image/png", ".ico": "image/x-icon", ".woff2": "font/woff2", ".txt": "text/plain; charset=utf-8",
+}
+
+// serveFile serves one of the pages' files from web (a name as fs.FS has it, / separated).
+func (s *Server) serveFile(w http.ResponseWriter, r *http.Request, name string) {
+	data, err := fs.ReadFile(s.web, name)
+	if err != nil {
+		http.NotFound(w, r)
+		return
 	}
-	return func(w http.ResponseWriter, r *http.Request) {
-		data, err := fs.ReadFile(s.web, name)
-		if err != nil {
-			http.NotFound(w, r)
-			return
-		}
-		// no-cache means "ask again": with the ETag an unchanged page is a 304, not a download
-		sum := sha256.Sum256(data)
-		etag := `"` + hex.EncodeToString(sum[:8]) + `"`
-		w.Header().Set("etag", etag)
-		w.Header().Set("cache-control", "no-cache")
-		if strings.Contains(r.Header.Get("if-none-match"), etag) {
-			w.WriteHeader(http.StatusNotModified)
-			return
-		}
-		w.Header().Set("content-type", ctype)
-		_, _ = w.Write(data)
+	// no-cache means "ask again": with the ETag an unchanged page is a 304, not a download
+	sum := sha256.Sum256(data)
+	etag := `"` + hex.EncodeToString(sum[:8]) + `"`
+	w.Header().Set("etag", etag)
+	w.Header().Set("cache-control", "no-cache")
+	if strings.Contains(r.Header.Get("if-none-match"), etag) {
+		w.WriteHeader(http.StatusNotModified)
+		return
 	}
+	ctype := contentTypes[strings.ToLower(path.Ext(name))]
+	if ctype == "" {
+		ctype = mime.TypeByExtension(path.Ext(name))
+	}
+	if ctype == "" {
+		ctype = "application/octet-stream"
+	}
+	w.Header().Set("content-type", ctype)
+	_, _ = w.Write(data)
 }
 
 // locale serves the page's translations, locales/<lang>.json, for the supported languages only.
