@@ -843,7 +843,7 @@ func (s *screens) waitPlates(pairs ...any) {
 func (s *screens) check() {
 	s.t.Helper()
 	raw := s.js(`(() => {
-		const re = /\b(?:task|room|chat|launch|error|asks|log|office|search|pixels|common|msg|approve|hq)\.[a-z][A-Za-z0-9]*(?:\.[A-Za-z0-9]+)*/g
+		const re = /\b(?:task|room|chat|launch|error|asks|log|office|search|pixels|common|msg|approve|hq|msgr)\.[a-z][A-Za-z0-9]*(?:\.[A-Za-z0-9]+)*/g
 		const text = document.body.innerText + '\n' + [...document.querySelectorAll('[title], [placeholder]')].map(e => (e.title || '') + ' ' + (e.placeholder || '')).join('\n')
 		return [...new Set(text.match(re) || [])].join(', ')
 	})()`)

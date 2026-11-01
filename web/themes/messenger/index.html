@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en" data-theme="messenger">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title data-i18n="msgr.title">Symphony Messenger</title>
+<link rel="stylesheet" href="/ui/ui.css">
+<link rel="stylesheet" href="/t/messenger/messenger.css">
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <div class="side-head">
+      <h1 data-i18n="msgr.title"></h1>
+      <div class="side-actions"><button class="px icon" id="dark" data-i18n-title="msgr.dark"></button><div class="prefs"></div></div>
+    </div>
+    <div class="find"><input id="find" type="search" autocomplete="off" spellcheck="false" data-i18n-placeholder="msgr.search"></div>
+    <div class="note" id="launch-note" hidden></div>
+    <div class="lists">
+      <h2 data-i18n="msgr.coworkers"></h2>
+      <div id="people" class="rows"></div>
+      <h2><span data-i18n="msgr.groups"></span><b class="count" id="groups-count" hidden></b></h2>
+      <div id="groups" class="rows"></div>
+    </div>
+    <div class="side-foot">
+      <button class="px primary" id="new-emp" data-i18n="msgr.newCoworker" hidden></button>
+      <button class="px" id="new-task" data-i18n="msgr.newGroup" hidden></button>
+    </div>
+  </aside>
+  <main class="center" id="center">
+    <div class="placeholder" id="placeholder"><div class="face big" id="placeholder-face"></div><p data-i18n="msgr.pick"></p></div>
+  </main>
+  <aside class="profile" id="profile" hidden></aside>
+</div>
+<script type="module" src="/t/messenger/messenger.js"></script>
+</body>
+</html>

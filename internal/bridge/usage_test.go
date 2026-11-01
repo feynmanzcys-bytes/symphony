@@ -34,8 +34,12 @@ func TestSessionDetails(t *testing.T) {
 	c.ok("POST", "/api/event", Event{Session: "s1", Kind: "todo.create", Todo: "1", Subject: "write tests", Teammate: "bob"})
 	c.ok("POST", "/api/event", Event{Session: "s1", Kind: "todo.create", Todo: "2", Subject: "ship"})
 	c.ok("POST", "/api/event", Event{Session: "s1", Kind: "todo.done", Todo: "1"})
+	c.ok("POST", "/api/event", Event{Session: "s1", Kind: "session.model", Model: "claude-opus-5-5", Effort: "max"})
 	c.ok("POST", "/api/event", Event{Session: "s1", Kind: "agent.start", AgentID: "ag1", AgentType: "Explore", Description: "find the tests", Model: "claude-haiku-5-5", Background: true})
 	s = session(t, srv, "s1")
+	if s.Model != "claude-opus-5-5" || s.Effort != "max" {
+		t.Fatalf("a subagent's model must not become the session's: %s %s", s.Model, s.Effort)
+	}
 	if len(s.Surfaces) != 2 || s.ToolCount != 42 || strings.Join(s.MCP, ",") != "github,slack" || s.BgTasks != 2 || s.BgCrons != 1 || s.Cwd != "/w/sub" {
 		t.Fatalf("details: %+v", s)
 	}

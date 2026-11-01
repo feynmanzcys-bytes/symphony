@@ -466,10 +466,11 @@ func (h *Hub) Apply(ev Event, acc *Account) error {
 	if ev.Login != "" {
 		s.Login = ev.Login
 	}
-	if ev.Model != "" {
+	// the model and effort are the session's; a subagent's start names its own (kept on the agent, detailsLocked)
+	if ev.Model != "" && ev.Kind != "agent.start" {
 		s.Model = ev.Model
 	}
-	if ev.Effort != "" {
+	if ev.Effort != "" && ev.Kind != "agent.start" {
 		s.Effort = ev.Effort
 	}
 	// every mod event carries the folder and the launch id, so a restarted bridge can restore them

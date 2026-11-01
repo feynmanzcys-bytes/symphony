@@ -1,0 +1,22 @@
+{
+  "name": "messenger",
+  "title": {
+    "en": "Messenger", "zh-CN": "聊天", "zh-TW": "聊天", "ja": "メッセンジャー", "ko": "메신저",
+    "es": "Mensajería", "fr": "Messagerie", "de": "Messenger", "pt-BR": "Mensageiro", "ru": "Мессенджер"
+  },
+  "description": {
+    "en": "The sessions as coworkers in a messaging app: a list of them on the left, their faces showing what they do, the conversation in the middle, the profile and the computer on the right; the tasks as group chats.",
+    "zh-CN": "会话是聊天软件里的同事：左栏是同事列表，头像的动作就是状态，中间是对话，右边是档案和电脑；任务是群聊。",
+    "zh-TW": "工作階段是聊天軟體裡的同事：左欄是同事列表，頭像的動作就是狀態，中間是對話，右邊是檔案和電腦；任務是群組聊天。",
+    "ja": "セッションはメッセージアプリの同僚：左に一覧、顔が状態を示し、中央に会話、右にプロフィールとコンピュータ。タスクはグループチャット。",
+    "ko": "세션은 메신저 속 동료: 왼쪽 목록, 얼굴이 상태를 보여주고, 가운데 대화, 오른쪽 프로필과 컴퓨터. 작업은 그룹 채팅.",
+    "es": "Las sesiones como compañeros en una app de mensajería: la lista a la izquierda, sus caras muestran qué hacen, la conversación en medio, el perfil y el ordenador a la derecha; las tareas como chats de grupo.",
+    "fr": "Les sessions comme collègues dans une messagerie : la liste à gauche, leur visage dit ce qu'ils font, la conversation au milieu, le profil et l'ordinateur à droite ; les tâches en discussions de groupe.",
+    "de": "Die Sitzungen als Kollegen in einem Messenger: links die Liste, ihre Gesichter zeigen, was sie tun, in der Mitte das Gespräch, rechts Profil und Rechner; die Aufgaben als Gruppenchats.",
+    "pt-BR": "As sessões como colegas em um app de mensagens: a lista à esquerda, os rostos mostrando o que fazem, a conversa no meio, o perfil e o computador à direita; as tarefas como chats em grupo.",
+    "ru": "Сессии как коллеги в мессенджере: список слева, их лица показывают, чем они заняты, разговор в центре, профиль и компьютер справа; задачи — групповые чаты."
+  },
+  "version": "0.11.0",
+  "since": 2,
+  "icon": "chat"
+}

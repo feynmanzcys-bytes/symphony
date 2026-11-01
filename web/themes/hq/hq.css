@@ -11,7 +11,7 @@ html[data-dark] {
   --paper: #161b22; --paper-2: #1c2129; --ink: #e6edf3; --muted: #8b949e; --muted-2: #a3acb6; --line: #30363d;
   --pane: #0d1117; --pane-2: #21262d; --accent: #4493f8; --ok: #3fb950; --danger: #f85149; --danger-dark: #ff7b72;
   --purple: #a371f7; --purple-dark: #8957e5; --purple-light: #6e40c9;
-  --warn: #d29922; --bg: #0d1117; --shadow: 0 1px 2px rgba(0,0,0,.4);
+  --warn: #d29922; --bg: #0d1117; --shadow: 0 1px 2px rgba(0,0,0,.4); --tool-ink: #a3acb6;
 }
 html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--ink); font: 13px/1.5 var(--sans); }
 body:lang(zh-CN) { font-family: var(--sans), "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC"; }
@@ -33,6 +33,7 @@ button.px.alert { background: var(--danger); border-color: var(--danger); }
 #asks button.allow, #asks button.submit { background: var(--accent); border-color: var(--accent); }
 .chat .head, .chat .dock { border-color: var(--line); }
 .it.user { border-color: var(--ink); }
+.chat .meta span.task { background: color-mix(in srgb, var(--accent) 12%, var(--paper)); border-color: var(--accent); color: var(--ink); }
 .it.text { border-color: var(--line); box-shadow: none; }
 #taskwin .top .status, #taskwin .members, #taskwin .tlist { border-color: var(--line); }
 

@@ -6,9 +6,11 @@ Claude Code 세션들을 한 팀으로 꾸려 픽셀 아트 사무실에 앉혀 
 
 ![사무실](docs/office.png)
 
-페이지에는 테마가 있습니다. 위의 픽셀 오피스와 **HQ 콘솔**(KPI 띠, 명단, 승인 대기열, 프로젝트 보드, 활동 타임라인을 갖춘 관리 콘솔)입니다. 상단 바에서 고르면 bridge가 기억합니다.
+페이지에는 테마가 있습니다. 위의 픽셀 오피스, **HQ 콘솔**(KPI 띠, 명단, 승인 대기열, 프로젝트 보드, 활동 타임라인을 갖춘 관리 콘솔), 그리고 **메신저**(세션이 메신저 속 동료가 되고, 얼굴이 상태를 보여주며, 가운데 대화, 오른쪽 프로필과 컴퓨터)입니다. 상단 바에서 고르면 bridge가 기억합니다.
 
 ![HQ 콘솔](docs/hq.png)
+
+![메신저](docs/messenger.png)
 
 ## 설치
 
@@ -33,7 +35,7 @@ symphony는 두 부분으로 되어 있고, 둘 다 있어야 합니다.
 uname -sm                 # Linux/macOS: 아래에서 고를 압축 파일이 정해집니다 (x86_64 → amd64; arm64/aarch64 → arm64)
 claude --version          # Claude Code 2.1.x 필요 (2.1.316에서 테스트)
 git --version             # 협업 작업에만 필요. 없으면 보고에 적되 멈추지는 마세요
-symphony -version         # 이미 설치돼 있나? "symphony v0.10.0 (darwin/arm64)" 출력
+symphony -version         # 이미 설치돼 있나? "symphony v0.11.0 (darwin/arm64)" 출력
 curl -s http://127.0.0.1:7788/api/state | head -c 40   # bridge가 이미 실행 중인가? {"type":"snapshot",... 출력
 claude plugin list --json # mod가 이미 설치돼 있나? "id":"symphony-bridge@symphony"를 찾으세요
 ```
@@ -77,7 +79,7 @@ Windows에서는 PowerShell을 쓰세요. `$env:PROCESSOR_ARCHITECTURE`는 `AMD6
 tar xzf /tmp/symphony-dl/symphony_<os>_<arch>.tar.gz -C /tmp/symphony-dl
 install -m 755 /tmp/symphony-dl/symphony ~/.local/bin/symphony
 xattr -d com.apple.quarantine ~/.local/bin/symphony 2>/dev/null || true   # macOS: 바이너리에 서명이 없습니다
-symphony -version          # "symphony v0.10.0 (linux/amd64)" 출력: 버전과 플랫폼
+symphony -version          # "symphony v0.11.0 (linux/amd64)" 출력: 버전과 플랫폼
 ```
 
 Windows에서는 `Expand-Archive symphony_windows_<arch>.zip -DestinationPath "$env:LOCALAPPDATA\Programs\symphony"`를 실행한 다음, 그 폴더를 사용자의 `Path`에 추가하고(`[Environment]::SetEnvironmentVariable('Path', "$([Environment]::GetEnvironmentVariable('Path','User'));$env:LOCALAPPDATA\Programs\symphony", 'User')`) 새 셸을 여세요. 처음 실행할 때 SmartScreen이 경고할 수 있습니다. "추가 정보"를 누른 뒤 "실행"을 누르세요.
@@ -121,7 +123,7 @@ symphony now starts when you log in (<where>); it's running at http://127.0.0.1:
 curl -s http://127.0.0.1:7788/api/launch/options
 ```
 
-응답에 `"enabled":true`와 `"mod":{"ok":true,"id":"symphony-bridge@symphony","version":"0.10.0"}`가 있으면, bridge가 실행 중이고 `claude`를 찾았으며 세션이 로드할 위치에 mod가 설치된 것입니다. `"enabled":false`이면 `mod.code`가 무엇이 문제인지, `mod.fix`가 그것을 고치는 명령을 알려 줍니다. `mod_not_installed`나 `mod_project_scope`(4단계로 돌아가기), `mod_disabled`(활성화하기), `mod_check_failed`(`claude plugin list --json`이 실패한 것이니 Claude Code가 너무 오래된 버전일 가능성이 큽니다)입니다. `"mod":null`은 bridge가 자기 `PATH`에서 `claude`를 아예 찾지 못했다는 뜻입니다(로그에 나옵니다). claude를 거기에 넣거나 `-claude /path/to/claude`로 bridge를 시작하세요.
+응답에 `"enabled":true`와 `"mod":{"ok":true,"id":"symphony-bridge@symphony","version":"0.11.0"}`가 있으면, bridge가 실행 중이고 `claude`를 찾았으며 세션이 로드할 위치에 mod가 설치된 것입니다. `"enabled":false`이면 `mod.code`가 무엇이 문제인지, `mod.fix`가 그것을 고치는 명령을 알려 줍니다. `mod_not_installed`나 `mod_project_scope`(4단계로 돌아가기), `mod_disabled`(활성화하기), `mod_check_failed`(`claude plugin list --json`이 실패한 것이니 Claude Code가 너무 오래된 버전일 가능성이 큽니다)입니다. `"mod":null`은 bridge가 자기 `PATH`에서 `claude`를 아예 찾지 못했다는 뜻입니다(로그에 나옵니다). claude를 거기에 넣거나 `-claude /path/to/claude`로 bridge를 시작하세요.
 
 bridge의 로그는 데이터 폴더(Linux는 `~/.config/symphony`, macOS는 `~/Library/Application Support/symphony`, Windows는 `%AppData%\symphony`)의 `bridge.log`입니다. 로그인할 때 시작된 bridge는 Linux에서는 `journalctl --user -u symphony`, macOS에서는 `~/Library/Logs/symphony.log`에 로그를 남깁니다.
 
