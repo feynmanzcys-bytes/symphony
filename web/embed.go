@@ -4,5 +4,5 @@ package web
 
 import "embed"
 
-//go:embed approve.html asks.js i18n.js symphony.js locales/*.json ui themes
+//go:embed approve.html approve.js asks.js i18n.js symphony.js locales/*.json ui themes
 var FS embed.FS

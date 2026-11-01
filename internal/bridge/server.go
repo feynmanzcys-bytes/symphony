@@ -34,6 +34,9 @@ type Server struct {
 	Window *Window
 	// AttachCommand is the command such a window runs to attach to a launch's terminal (symphony attach ...)
 	AttachCommand func(launchID string) []string
+	// Key is the page key every request but the mod's must show (key.go); NewServer makes one, the bridge sets the one
+	// in its data folder, so a page's cookie outlives a restart
+	Key string
 
 	web    fs.FS
 	mux    *http.ServeMux
@@ -46,9 +49,9 @@ var (
 )
 
 // NewServer builds a bridge; web must hold the pages: themes/<name>/{theme.json,index.html,...} (the office page's
-// themes), approve.html, the shared modules symphony.js, asks.js, i18n.js and ui/*, and locales/*.json.
+// themes), approve.html and approve.js, the shared modules symphony.js, asks.js, i18n.js and ui/*, and locales/*.json.
 func NewServer(hub *Hub, web fs.FS) *Server {
-	s := &Server{Hub: hub, WaitTimeout: 20 * time.Second, AllowedHosts: []string{"localhost", "127.0.0.1", "::1"},
+	s := &Server{Hub: hub, WaitTimeout: 20 * time.Second, AllowedHosts: []string{"localhost", "127.0.0.1", "::1"}, Key: newKey(),
 		web: web, mux: http.NewServeMux(), themes: loadThemes(web)}
 
 	s.mux.HandleFunc("GET /{$}", s.themeIndex)
@@ -56,6 +59,7 @@ func NewServer(hub *Hub, web fs.FS) *Server {
 	s.mux.HandleFunc("GET /t/{theme}/{file...}", s.themeFile)
 	s.mux.HandleFunc("GET /api/themes", s.themesAPI)
 	s.mux.HandleFunc("GET /approve", s.file("approve.html"))
+	s.mux.HandleFunc("GET /approve.js", s.file("approve.js"))
 	s.mux.HandleFunc("GET /asks.js", s.file("asks.js"))
 	s.mux.HandleFunc("GET /i18n.js", s.file("i18n.js"))
 	s.mux.HandleFunc("GET /symphony.js", s.file("symphony.js"))
@@ -68,7 +72,8 @@ func NewServer(hub *Hub, web fs.FS) *Server {
 	})
 	s.mux.HandleFunc("GET /api/ledger", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, 200, map[string]any{"rows": hub.Ledger()}) })
 
-	// called by the mod, with the account's token
+	// called by the mod, with the account's token (modEndpoint in key.go lists these)
+	s.mux.HandleFunc("POST /api/hello", s.hello)
 	s.mux.HandleFunc("POST /api/event", s.event)
 	s.mux.HandleFunc("POST /api/ask", s.ask)
 	s.mux.HandleFunc("GET /api/wait/{id}", s.wait)
@@ -105,15 +110,17 @@ func NewServer(hub *Hub, web fs.FS) *Server {
 func (s *Server) SetLauncher(l *Launcher) {
 	s.Launcher = l
 	s.Hub.mu.Lock()
-	s.Hub.AttachHint = l.Term.Attach
+	s.Hub.AttachHint = l.AttachFor
 	s.Hub.terms = l.Terms
 	s.Hub.mu.Unlock()
 }
 
 // ServeHTTP first refuses two kinds of cross-site requests: a Host that isn't this machine (DNS
 // rebinding), and writes another site sends through the browser (an Origin that isn't this site).
-// The mod and curl send no Origin.
+// The mod and curl send no Origin. Only this machine may connect at all, and every request but the
+// mod's (which carry the account's token) must show the page key (key.go).
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	securityHeaders(w.Header())
 	host := r.Host
 	if h, _, err := net.SplitHostPort(r.Host); err == nil {
 		host = h
@@ -122,12 +129,25 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "host not allowed", http.StatusForbidden)
 		return
 	}
+	if !loopback(r.RemoteAddr) {
+		http.Error(w, "only this machine may connect", http.StatusForbidden)
+		return
+	}
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		if origin := r.Header.Get("Origin"); origin != "" {
 			if u, err := url.Parse(origin); err != nil || u.Host != r.Host {
 				http.Error(w, "cross-origin request refused", http.StatusForbidden)
 				return
 			}
+		}
+	}
+	if !modEndpoint(r) {
+		if s.signIn(w, r) {
+			return
+		}
+		if !s.keyOK(r) {
+			s.refuse(w, r)
+			return
 		}
 	}
 	s.mux.ServeHTTP(w, r)

@@ -2,17 +2,19 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md) | [繁體中文](README.zh-TW.md) | [日本語](README.ja.md) | [한국어](README.ko.md) | **Español** | [Français](README.fr.md) | [Deutsch](README.de.md) | [Português (Brasil)](README.pt-BR.md) | [Русский](README.ru.md)
 
+symphony es un proyecto independiente. No está afiliado a Anthropic ni cuenta con su respaldo ni su patrocinio. Claude y Claude Code son marcas comerciales de Anthropic, PBC.
+
 Pon a trabajar a un equipo de sesiones de Claude Code en una oficina en pixel art: ve de un vistazo quién está trabajando y quién te está esperando, habla con cada uno en su propia ventana, y atiende allí las solicitudes de permiso y las preguntas de AskUserQuestion con un solo clic.
 
-![La oficina](docs/office.png)
+![La oficina pixelada: los empleados en sus puestos de la zona de trabajo, las pequeñas salas de reuniones a la izquierda, la sala de reuniones y la zona de descanso a la derecha](docs/office.png)
 
-La página tiene temas: la oficina pixelada de arriba, la **consola HQ**, una consola de gestión con una franja de indicadores, la plantilla, una cola de aprobaciones, un tablero de proyectos y una cronología de actividad, la **Mensajería**, las sesiones como compañeros en una app de mensajes, sus caras muestran qué hacen, la conversación en medio, el perfil y el ordenador a la derecha, y el **Control de misión**, la pared de una sala de control para una segunda pantalla: un panel de telemetría por sesión, las peticiones como alarmas, la actividad como rótulo. Elige uno en la barra superior; el bridge lo recuerda.
+La página tiene temas: la oficina pixelada de arriba; la **consola HQ**, una consola de gestión con una franja de indicadores, la plantilla, una cola de aprobaciones, un tablero de proyectos y una cronología de actividad; **Compañeros**, las sesiones como compañeros en una app de mensajes, sus caras muestran qué hacen, la conversación en medio, el perfil y el ordenador a la derecha; y el **Control de misión**, la pared de una sala de control para una segunda pantalla: un panel de telemetría por sesión, las peticiones como alarmas, la actividad como rótulo. Elige uno en la barra superior; el bridge lo recuerda.
 
-![La consola HQ](docs/hq.png)
+![La consola HQ: las cifras clave en una franja arriba, los empleados y su trabajo debajo](docs/hq.png)
 
-![La Mensajería](docs/messenger.png)
+![Compañeros: las sesiones en una lista a la izquierda con sus caras, una conversación en medio, el perfil y el ordenador a la derecha](docs/coworkers.png)
 
-![Control de misión](docs/mission.png)
+![Control de misión: una pared oscura con un panel de telemetría por sesión y un rótulo de actividad abajo](docs/mission.png)
 
 ## Instalación
 
@@ -20,15 +22,15 @@ La forma más rápida: abre Claude Code y pega
 
 > Instálame https://github.com/feynmanzcys-bytes/symphony
 
-Claude Code lee este README y hace todo lo que se describe en la sección siguiente. Para instalarlo a mano, sigue los mismos pasos.
+Claude Code lee este README y hace los pasos de la sección siguiente; te pregunta antes de cualquier cambio que dure más allá de la instalación. Para instalarlo a mano, sigue los mismos pasos.
 
 ### Para agentes de IA: el procedimiento de instalación
 
-Lees esto porque un usuario te ha pedido que instales symphony. Haz los pasos de abajo en orden, en una shell, y termina con el informe del paso 6. No le preguntes nada al usuario salvo que un paso lo diga; toma tú las decisiones rutinarias y enuméralas en el informe.
+Lees esto porque un usuario te ha pedido que instales symphony. Haz los pasos de abajo en orden, en una shell, y termina con el informe del paso 6. Toma tú las decisiones rutinarias (el archivo que descargar, la carpeta del `PATH`), pero pregunta al usuario antes de cualquier cambio que perdure más allá de esta instalación: iniciar symphony en cada inicio de sesión, editar un archivo rc de la shell o cambiar el `PATH` del usuario. Enumera todas las decisiones en el informe.
 
 symphony tiene dos partes y necesita las dos:
 
-1. **El programa `symphony`** (el bridge): un único binario, un servidor web local en `http://127.0.0.1:7788/` que sirve la página de la oficina y ejecuta las sesiones. Tiene que estar en el `PATH` del usuario, con el nombre `symphony`, porque el mod lo inicia con `symphony -background` cuando una sesión no encuentra ningún bridge en marcha.
+1. **El programa `symphony`** (el bridge): un único binario, un servidor web local en `http://127.0.0.1:7788/` que sirve la página de la oficina y ejecuta las sesiones. Debería estar en el `PATH` del usuario, con el nombre `symphony`, porque el mod lo inicia con `symphony -background` cuando una sesión no encuentra ningún bridge en marcha.
 2. **El plugin `symphony-bridge`** (el mod): un plugin de Claude Code del marketplace de este repositorio, instalado en el ámbito de usuario. Solo actúa en las sesiones iniciadas con `SYMPHONY_TOKEN` y no hace nada en las demás.
 
 #### Paso 1: revisa la máquina
@@ -37,33 +39,60 @@ symphony tiene dos partes y necesita las dos:
 uname -sm                 # Linux/macOS: decide el archivo de abajo (x86_64 → amd64; arm64/aarch64 → arm64)
 claude --version          # hace falta Claude Code 2.1.x (probado con 2.1.316)
 git --version             # solo para las tareas en equipo; si falta, anótalo en el informe, no te detengas
-symphony -version         # ¿ya está instalado? muestra "symphony v0.12.0 (darwin/arm64)"
-curl -s http://127.0.0.1:7788/api/state | head -c 40   # ¿ya hay un bridge en marcha? muestra {"type":"snapshot",...
+symphony -version         # ¿ya está instalado? muestra "symphony v1.0.0 (darwin/arm64)"
+curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:7788/api/state   # ¿hay un bridge en marcha? 401: symphony 1.x; 200: uno más antiguo; 000: ninguno
 claude plugin list --json # ¿el mod ya está instalado? busca "id":"symphony-bridge@symphony"
 ```
 
-En Windows usa PowerShell: `$env:PROCESSOR_ARCHITECTURE` es `AMD64` o `ARM64`, y `Invoke-WebRequest http://127.0.0.1:7788/api/state` en lugar de curl.
+En Windows usa PowerShell: `$env:PROCESSOR_ARCHITECTURE` es `AMD64` o `ARM64`.
 
-Si falta `claude`, detente y dile al usuario que instale primero Claude Code. Si el programa y el mod ya están los dos, ve a «Actualizar», más abajo.
+Si falta `claude`, detente y dile al usuario que instale primero Claude Code. Si el programa y el mod ya están los dos, ve a «Actualizar», más abajo. Un bridge que ya está en marcha sigue con el programa con el que se inició: si hay uno, lo detendrás antes del paso 5.
 
 #### Paso 2: consigue el programa
 
-Usa la primera opción que funcione:
+Descarga el archivo para esta máquina y el `checksums.txt` de la versión en una carpeta nueva solo para ellos, y comprueba el archivo antes de instalar nada. Los archivos son `symphony_<os>_<arch>.tar.gz`, con `<os>` `linux` o `darwin` (macOS) y `<arch>` `amd64` o `arm64`, y `symphony_windows_<arch>.zip`.
 
-- **A. Con `gh`** (funciona mientras este repositorio sea privado, siempre que `gh auth status` tenga una sesión iniciada):
-  ```bash
-  gh release download -R feynmanzcys-bytes/symphony --pattern 'symphony_<os>_<arch>.tar.gz' -D /tmp/symphony-dl
-  ```
-- **B. Con `curl`** (solo cuando el repositorio sea público; un 404 significa que uses A o C):
-  ```bash
-  curl -fL -o /tmp/symphony-dl/symphony_<os>_<arch>.tar.gz https://github.com/feynmanzcys-bytes/symphony/releases/latest/download/symphony_<os>_<arch>.tar.gz
-  ```
-- **C. Desde el código fuente** (Go 1.27 o posterior; el clon se reutiliza en el paso 4):
-  ```bash
-  git clone https://github.com/feynmanzcys-bytes/symphony.git /tmp/symphony-src
-  cd /tmp/symphony-src && go build -o symphony ./cmd/bridge
-  ```
-  Compila el binario; `go run` no sirve, porque `-autostart` rechaza una compilación de `go run`.
+En Linux y macOS:
+
+```bash
+d=$(mktemp -d)   # una carpeta nueva que solo tú puedes leer
+echo "$d"        # anótala: el paso 3 instala desde ella
+cd "$d"
+curl -fLO https://github.com/feynmanzcys-bytes/symphony/releases/latest/download/symphony_<os>_<arch>.tar.gz
+curl -fLO https://github.com/feynmanzcys-bytes/symphony/releases/latest/download/checksums.txt
+sha256sum -c --ignore-missing checksums.txt      # Linux: tiene que mostrar "symphony_<os>_<arch>.tar.gz: OK"
+shasum -a 256 -c --ignore-missing checksums.txt  # macOS: la misma comprobación
+tar xzf symphony_<os>_<arch>.tar.gz              # el programa queda en "$d/symphony"
+```
+
+Si la comprobación no muestra `OK`, detente: no instales el programa y avisa al usuario. Con `gh` en lugar de curl, descarga en `$d` (gh crea la carpeta si todavía no existe) y luego haz allí la misma comprobación y el `tar`:
+
+```bash
+gh release download -R feynmanzcys-bytes/symphony -p 'symphony_<os>_<arch>.tar.gz' -p checksums.txt -D "$d"
+```
+
+En Windows, en PowerShell:
+
+```powershell
+$arch = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'arm64' } else { 'amd64' }
+$zip = "symphony_windows_$arch.zip"
+$d = Join-Path $env:TEMP ("symphony-" + [guid]::NewGuid())   # una carpeta nueva
+New-Item -ItemType Directory -Path $d | Out-Null
+$url = 'https://github.com/feynmanzcys-bytes/symphony/releases/latest/download'
+Invoke-WebRequest -UseBasicParsing -Uri "$url/$zip" -OutFile (Join-Path $d $zip)
+Invoke-WebRequest -UseBasicParsing -Uri "$url/checksums.txt" -OutFile (Join-Path $d 'checksums.txt')
+$want = ((Select-String -SimpleMatch -Path (Join-Path $d 'checksums.txt') -Pattern $zip).Line -split '\s+')[0]
+$got = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $d $zip)).Hash
+if ($got -ne $want) { throw "checksum mismatch: $zip" } else { 'checksum OK' }
+```
+
+**Desde el código fuente** en Linux o macOS, si el usuario lo prefiere (Go 1.27 o posterior). Compila el binario; `go run` no sirve, porque `-autostart` rechaza una compilación de `go run`:
+
+```bash
+d=$(mktemp -d)
+git clone https://github.com/feynmanzcys-bytes/symphony.git "$d/src"
+cd "$d/src" && go build -o "$d/symphony" ./cmd/bridge   # el programa queda en "$d/symphony", como desde un archivo
+```
 
 | Sistema | x86-64 | ARM64 |
 | --- | --- | --- |
@@ -71,20 +100,33 @@ Usa la primera opción que funcione:
 | macOS | [`symphony_darwin_amd64.tar.gz`](https://github.com/feynmanzcys-bytes/symphony/releases/latest/download/symphony_darwin_amd64.tar.gz) (Intel) | [`symphony_darwin_arm64.tar.gz`](https://github.com/feynmanzcys-bytes/symphony/releases/latest/download/symphony_darwin_arm64.tar.gz) (Apple silicon) |
 | Windows | [`symphony_windows_amd64.zip`](https://github.com/feynmanzcys-bytes/symphony/releases/latest/download/symphony_windows_amd64.zip) | [`symphony_windows_arm64.zip`](https://github.com/feynmanzcys-bytes/symphony/releases/latest/download/symphony_windows_arm64.zip) |
 
-Cada archivo contiene el programa (`symphony`, o `symphony.exe` en Windows), `LICENSE` y `README.md`. El `checksums.txt` de la versión tiene el SHA-256 de cada archivo (`sha256sum -c --ignore-missing checksums.txt`, o `shasum -a 256 -c` en macOS).
+Cada archivo contiene el programa (`symphony`, o `symphony.exe` en Windows), `LICENSE` y `README.md`. El `checksums.txt` de la versión tiene el SHA-256 de cada archivo.
 
 #### Paso 3: ponlo en el PATH
 
-Elige una carpeta que ya esté en el `PATH` del usuario y en la que se pueda escribir sin `sudo`: `~/.local/bin`, `/usr/local/bin` o `/opt/homebrew/bin`, en ese orden. Si no existe ninguna, crea `~/.local/bin`, añádela al archivo rc de la shell (`~/.zshrc` o `~/.bashrc`) e indícalo en el informe.
+Instala el programa del paso 2, `$d/symphony` (si tu shell no conserva las variables entre comandos, escribe la carpeta que mostró el paso 2). Usa una carpeta que ya esté en el `PATH` del usuario y en la que se pueda escribir sin `sudo`: `~/.local/bin`, `/usr/local/bin` o `/opt/homebrew/bin`, en ese orden.
 
 ```bash
-tar xzf /tmp/symphony-dl/symphony_<os>_<arch>.tar.gz -C /tmp/symphony-dl
-install -m 755 /tmp/symphony-dl/symphony ~/.local/bin/symphony
+install -m 755 "$d/symphony" ~/.local/bin/symphony
 xattr -d com.apple.quarantine ~/.local/bin/symphony 2>/dev/null || true   # macOS: el binario no está firmado
-symphony -version          # muestra "symphony v0.12.0 (linux/amd64)": la versión y la plataforma
+symphony -version          # muestra "symphony v1.0.0 (linux/amd64)": la versión y la plataforma
 ```
 
-En Windows: `Expand-Archive symphony_windows_<arch>.zip -DestinationPath "$env:LOCALAPPDATA\Programs\symphony"`, luego añade esa carpeta al `Path` del usuario (`[Environment]::SetEnvironmentVariable('Path', "$([Environment]::GetEnvironmentVariable('Path','User'));$env:LOCALAPPDATA\Programs\symphony", 'User')`) y abre una shell nueva. SmartScreen puede avisar en la primera ejecución: «Más información» y luego «Ejecutar de todas formas».
+Si ninguna de estas carpetas está en el `PATH`, pregunta al usuario antes de cambiar nada. Si dice que sí, crea `~/.local/bin`, añádela al archivo rc de la shell (`~/.zshrc` o `~/.bashrc`) e indícalo en el informe; si dice que no, instala el programa donde te diga y avísale de que el mod no puede iniciar el bridge por su cuenta mientras `symphony` no esté en el `PATH` de sus sesiones de Claude Code (el inicio al iniciar sesión, del paso 5, sigue funcionando).
+
+En Windows, descomprímelo en una carpeta propia (`$d` y `$zip` vienen del paso 2; en una shell nueva, vuelve a definirlos):
+
+```powershell
+$dest = Join-Path $env:LOCALAPPDATA 'Programs\symphony'
+Expand-Archive -LiteralPath (Join-Path $d $zip) -DestinationPath $dest -Force
+& (Join-Path $dest 'symphony.exe') -version   # muestra "symphony v1.0.0 (windows/amd64)"
+```
+
+Añadir esa carpeta al `Path` del usuario es un cambio duradero: pregunta antes al usuario. Si dice que sí, ejecuta la línea de abajo y abre una shell nueva; si dice que no, usa la ruta completa. SmartScreen puede avisar en la primera ejecución: «Más información» y luego «Ejecutar de todas formas».
+
+```powershell
+[Environment]::SetEnvironmentVariable('Path', [Environment]::GetEnvironmentVariable('Path', 'User') + ";$dest", 'User')
+```
 
 Si después de esto tu propia shell no encuentra `symphony` (leyó su `PATH` antes de que lo cambiaras), usa la ruta absoluta en el resto de los pasos.
 
@@ -94,7 +136,7 @@ Si después de esto tu propia shell no encuentra `symphony` (leyó su `PATH` ant
 claude plugin install symphony-bridge --marketplace feynmanzcys-bytes/symphony
 ```
 
-Esto añade el repositorio como el marketplace de plugins `symphony` e instala el mod en el ámbito de usuario, sin preguntas. Clona el repositorio con git, así que mientras el repositorio sea privado necesita acceso por git a GitHub; si falla por eso, usa un clon como marketplace (el del paso 2 C, o haz uno): `claude plugin install symphony-bridge --marketplace /absolute/path/to/symphony`. Con un clon como marketplace, las sesiones leen el mod de esa carpeta, y un `git pull` allí lo actualiza.
+Esto añade el repositorio como el marketplace de plugins `symphony` e instala el mod en el ámbito de usuario, sin preguntas. En su lugar, un clon local del repositorio puede servir de marketplace: `claude plugin install symphony-bridge --marketplace /absolute/path/to/symphony`. Entonces las sesiones leen el mod de esa carpeta, y un `git pull` allí lo actualiza, así que guarda ese clon en un sitio duradero, no en una carpeta temporal.
 
 Comprueba:
 
@@ -107,67 +149,117 @@ claude plugin list --json   # una entrada tiene "id":"symphony-bridge@symphony",
 
 #### Paso 5: inicia el bridge
 
+Si el paso 1 encontró un bridge en marcha, detenlo primero, como en «Actualizar», más abajo: ejecuta el programa antiguo, y el nuevo solo lo encontraría ahí y se apartaría. Detenerlo termina las sesiones que inició, así que avisa antes al usuario.
+
+Pregunta al usuario si symphony debe iniciarse cada vez que inicie sesión.
+
+Si dice que sí:
+
 ```bash
 symphony -autostart on -open=false
 ```
 
-Esto inicia el bridge ahora y en cada inicio de sesión (un servicio de usuario de systemd en Linux, un agente de launchd en macOS, la clave Run del registro en Windows), y muestra
+Esto inicia el bridge ahora y en cada inicio de sesión (un servicio de usuario de systemd en Linux, un agente de launchd en macOS, la clave Run del registro en Windows), y muestra, tras la fecha y la hora:
 
 ```
-symphony now starts when you log in (<where>); it's running at http://127.0.0.1:7788/
+symphony now starts when you log in (<where>); it's running at http://127.0.0.1:7788/?key=<key>
 ```
 
-Si el usuario dijo que no quiere que se inicie al iniciar sesión, ejecuta en su lugar `symphony -background -open=false`: inicia el bridge separado de la terminal y muestra `the symphony bridge runs in the background at http://127.0.0.1:7788/; its log: <data folder>/bridge.log`. Los dos comandos responden `a symphony bridge is already running at http://127.0.0.1:7788/` cuando ya hay uno; no pasa nada, no inicies otro.
-
-Comprueba toda la cadena con una sola petición:
+Si dice que no:
 
 ```bash
-curl -s http://127.0.0.1:7788/api/launch/options
+symphony -background -open=false
 ```
 
-La respuesta contiene `"enabled":true` y `"mod":{"ok":true,"id":"symphony-bridge@symphony","version":"0.12.0"}`: el bridge está en marcha, encontró `claude` y el mod está instalado donde las sesiones lo cargarán. Con `"enabled":false`, `mod.code` dice qué falla y `mod.fix`, el comando que lo arregla: `mod_not_installed` o `mod_project_scope` (vuelve al paso 4), `mod_disabled` (actívalo), `mod_check_failed` (`claude plugin list --json` falló, así que seguramente Claude Code es demasiado antiguo). `"mod":null` significa que el bridge no encontró `claude` en su `PATH` (su registro lo dice): ponlo ahí, o inicia el bridge con `-claude /path/to/claude`.
+Esto inicia el bridge separado de la terminal (no vuelve a iniciarse después de reiniciar la máquina) y muestra:
 
-El registro del bridge es `bridge.log` en la carpeta de datos (`~/.config/symphony` en Linux, `~/Library/Application Support/symphony` en macOS, `%AppData%\symphony` en Windows); si se inició al iniciar sesión, registra en `journalctl --user -u symphony` en Linux y en `~/Library/Logs/symphony.log` en macOS.
+```
+the symphony bridge runs in the background at http://127.0.0.1:7788/?key=<key>; its log: <data folder>/bridge.log
+```
+
+Si ya hay en marcha un bridge de esta versión, muestra en su lugar `a symphony bridge is already running at http://127.0.0.1:7788/?key=<key>`; no pasa nada, no inicies otro. `<key>` es la clave de las páginas, que inicia la sesión de un navegador en la oficina: no la pegues en ningún otro sitio. Si el programa responde `127.0.0.1:7788 is taken: another program, or a symphony bridge with another data folder, answers there`, dile al usuario qué responde ahí (un bridge de symphony más antiguo también cuenta: detenlo como en «Actualizar») y no elijas otra dirección sin preguntar.
+
+Comprueba toda la cadena con una sola petición, que presenta la clave de las páginas de la carpeta de datos (por la entrada estándar, para que la clave no aparezca en una línea de comandos que otros usuarios podrían ver):
+
+```bash
+printf 'X-Symphony-Key: %s\n' "$(cat ~/.config/symphony/key)" | curl -s -H @- http://127.0.0.1:7788/api/launch/options                         # Linux
+printf 'X-Symphony-Key: %s\n' "$(cat ~/"Library/Application Support/symphony/key")" | curl -s -H @- http://127.0.0.1:7788/api/launch/options   # macOS
+```
+
+```powershell
+(Invoke-WebRequest -UseBasicParsing -Headers @{ 'X-Symphony-Key' = (Get-Content "$env:APPDATA\symphony\key") } -Uri http://127.0.0.1:7788/api/launch/options).Content
+```
+
+La carpeta de datos es `~/.config/symphony` en Linux (`$XDG_CONFIG_HOME/symphony` si esa variable está definida), `~/Library/Application Support/symphony` en macOS y `%AppData%\symphony` en Windows, o `SYMPHONY_DATA` si está definida.
+
+La respuesta contiene `"enabled":true` y `"mod":{"ok":true,"id":"symphony-bridge@symphony","version":"1.0.0"}`: el bridge está en marcha, encontró `claude` y el mod está instalado donde las sesiones lo cargarán. Con `"enabled":false`, `mod.code` dice qué falla y `mod.fix`, el comando que lo arregla: `mod_not_installed` o `mod_project_scope` (vuelve al paso 4), `mod_disabled` (actívalo), `mod_check_failed` (`claude plugin list --json` falló, así que seguramente Claude Code es demasiado antiguo). `"mod":null` significa que el bridge no encontró `claude` en su `PATH` en absoluto (su registro lo dice): ponlo ahí, o inicia el bridge con `-claude /path/to/claude`. Una respuesta con `"code":"page_key"` significa que el archivo de la clave no es el del bridge en marcha: se inició con otra carpeta de datos.
+
+El registro del bridge es `bridge.log` en la carpeta de datos; si se inició al iniciar sesión, registra en `journalctl --user -u symphony` en Linux y en `~/Library/Logs/symphony.log` en macOS.
 
 #### Paso 6: informa al usuario
 
-Abre la oficina en el navegador (`open http://127.0.0.1:7788/` en macOS, `xdg-open` en Linux, `start` en Windows) y dile al usuario:
+Abre la oficina ejecutando `symphony`: con el bridge en marcha, abre la oficina en el navegador predeterminado, ya con la sesión iniciada, y sale. También muestra la dirección con `?key=`, que inicia la sesión en cualquier navegador de esta máquina.
 
-- La oficina está en `http://127.0.0.1:7788/`. Haz clic en el «+» de un puesto vacío para contratar al primer empleado: elige una carpeta y se inicia allí una sesión de Claude Code, dentro del bridge; su ventana en la página es su chat.
+Dile al usuario:
+
+- Para abrir la oficina, ejecuta `symphony` (o haz doble clic en él); `http://127.0.0.1:7788/` a secas funciona en un navegador que ya tenga la sesión iniciada. Haz clic en el «+» de un puesto vacío para contratar al primer empleado: elige una carpeta y se inicia allí una sesión de Claude Code, dentro del bridge; su ventana en la página es su chat.
+- Los empleados nuevos siguen la configuración de Claude Code del usuario (modelo, esfuerzo de razonamiento, modo de permisos) salvo que elija otros valores en el diálogo. `bypassPermissions` ejecuta cada comando y cada edición sin preguntar, y lo que lea una sesión puede entonces hacer que ejecute comandos en nombre del usuario; el diálogo avisa cuando se elige.
+- Cada sesión gasta el plan de Claude o el crédito de API del usuario, como cualquier sesión de Claude Code; una tarea ejecuta de 2 a 5 sesiones a la vez.
 - En la oficina solo aparecen las sesiones abiertas desde la página (o a mano con `SYMPHONY_TOKEN`, ver «Abrir sesiones» más abajo). Sus otras sesiones de Claude Code, incluida la que hace esta instalación, no se muestran.
-- Qué se instaló y dónde: la ruta del programa, el mod en el ámbito de usuario, el bridge iniciado al iniciar sesión o en segundo plano, cualquier cambio en el `PATH`, y que falta `git`, si falta.
+- Qué se instaló y dónde: la ruta del programa, el mod en el ámbito de usuario, el bridge iniciado al iniciar sesión o en segundo plano, cualquier cambio en el `PATH` o en un archivo rc, las decisiones que tomaste, y que falta `git`, si falta.
 - Cómo deshacerlo todo: «Desinstalar», más abajo.
 
-Reglas: no pongas el bridge a escuchar en nada que no sea esta máquina (`-addr` se queda en `127.0.0.1:7788`; la página no tiene inicio de sesión), no lo ejecutes con `sudo` y no inicies un segundo bridge en la misma dirección.
+Reglas: el bridge solo escucha en esta máquina (rechaza cualquier otra dirección, así que `-addr` se queda en `127.0.0.1:7788`), no lo ejecutes con `sudo` y no inicies un segundo bridge en la misma dirección.
 
 #### Actualizar
 
-Descarga la nueva versión como en el paso 2 y sustituye el programa como en el paso 3; el mod se actualiza con `claude plugin update symphony-bridge@symphony` (con un clon como marketplace, haz `git pull` allí). El bridge en marcha sigue con el programa antiguo hasta que se reinicia: `symphony -autostart off` y luego `symphony -autostart on -open=false` (o detenlo e inícialo como se inició). Detener el bridge termina las sesiones que inició, así que avisa antes al usuario. El programa y el mod comparten número de versión; [CHANGELOG.md](CHANGELOG.md) recoge qué cambió en cada versión.
+Descarga la nueva versión como en el paso 2. El bridge en marcha sigue con el programa antiguo hasta que se reinicia (y en Windows no se puede sustituir un programa en ejecución), así que detenlo, sustituye el programa como en el paso 3 y vuelve a iniciarlo. Detener el bridge termina las sesiones que inició, así que avisa antes al usuario:
+
+- Iniciado al iniciar sesión: `symphony -autostart off` (en Linux y macOS esto también lo detiene; en Windows cierra además la ventana de consola del bridge, o ejecuta `Stop-Process -Name symphony`), sustituye el programa y luego `symphony -autostart on -open=false`.
+- Iniciado con `-background`: no tiene un comando para detenerlo. Termina su proceso: `pkill -x symphony` en Linux y macOS (que también termina cualquier `symphony attach`), `Stop-Process -Name symphony` en Windows. Sustituye el programa y luego `symphony -background -open=false`.
+
+El mod se actualiza con `claude plugin update symphony-bridge@symphony` (con un clon como marketplace, haz `git pull` allí).
+
+El programa y el mod comparten número de versión; [CHANGELOG.md](CHANGELOG.md) recoge qué cambió en cada versión.
 
 #### Desinstalar
 
 ```bash
-symphony -autostart off                           # detiene el bridge y sus sesiones, y deja de iniciarlo al iniciar sesión
+symphony -autostart off                           # deja de iniciarlo al iniciar sesión, y detiene el bridge y sus sesiones
+pkill -x symphony                                 # detiene un bridge iniciado con -background
 claude plugin uninstall symphony-bridge@symphony  # el mod
 claude plugin marketplace remove symphony         # la entrada del marketplace
 rm ~/.local/bin/symphony                          # el programa, donde lo haya puesto el paso 3
 ```
 
-La carpeta de datos (las cuentas con sus tokens, el registro de mensajes, las tareas) se queda; bórrala para eliminarlo todo.
+Si el paso 3 añadió `~/.local/bin` a un archivo rc de la shell, borra también esa línea. En Windows, en PowerShell:
+
+```powershell
+symphony -autostart off                                      # deja de iniciarlo al iniciar sesión
+Stop-Process -Name symphony -ErrorAction SilentlyContinue    # detiene el bridge
+claude plugin uninstall symphony-bridge@symphony
+claude plugin marketplace remove symphony
+$dest = Join-Path $env:LOCALAPPDATA 'Programs\symphony'
+Remove-Item -Recurse -Force $dest                            # el programa
+$p = ([Environment]::GetEnvironmentVariable('Path', 'User') -split ';' | Where-Object { $_ -and $_ -ne $dest }) -join ';'
+[Environment]::SetEnvironmentVariable('Path', $p, 'User')    # la entrada de Path que añadió el paso 3
+```
+
+La carpeta de datos (las cuentas con sus tokens, la clave de las páginas, el registro de mensajes, las tareas) se queda; bórrala para eliminarlo todo. Al borrarla también se borra la clave de las páginas: el siguiente arranque crea una nueva y todos los navegadores tienen que volver a iniciar sesión. En Linux con un navegador snap o flatpak, `open.html` está en la carpeta propia de ese navegador (`~/snap/<snap>/common` o `~/.var/app/<app id>`); bórralo también.
 
 ## Qué hace
 
 - **Cada sesión como un chat**: haz clic en un empleado y su ventana se abre en el centro de la página: arriba quién es, y debajo la sesión como un chat: las instrucciones, el razonamiento del modelo (plegado, «Pensando…» en naranja mientras dura), sus respuestas según llegan, las llamadas a herramientas y los mensajes de otras sesiones en morado. Escribe abajo y llega a la sesión como tu instrucción; el botón Detener la interrumpe.
-- **Aprobaciones en el navegador**: las solicitudes de permiso (para ejecutar comandos o editar archivos) y las preguntas de AskUserQuestion suben como tarjetas sobre el cuadro de texto de la ventana de ese empleado, y el contador rojo de la barra superior te lleva a ellas. Si el bridge no está en marcha o no reconoce la cuenta, la sesión vuelve a la terminal como siempre y nunca se queda colgada.
+- **Aprobaciones en el navegador**: las solicitudes de permiso (para ejecutar comandos o editar archivos) y las preguntas de AskUserQuestion suben como tarjetas sobre el cuadro de texto de la ventana de ese empleado, y el contador rojo de la barra superior te lleva a ellas. Si el bridge no está en marcha, no reconoce la cuenta o no es de confianza, la sesión vuelve a la terminal como siempre y nunca se queda colgada.
 - **Una oficina en pixel art**: cada sesión es un empleado con su propio puesto fijo. El verde indica que está libre; el amarillo, que está trabajando; el rojo, que espera tu aprobación o tu respuesta, y el gris, que está fuera de servicio. Si no tienen nada que hacer, primero se quedan en su puesto con el teléfono o los videojuegos y luego se van de paseo: ven la tele en el sofá de la zona de descanso, juegan al futbolín o a pillar, charlan en la mesa redonda, se sirven un café o miran por la ventana; al rato se echan una siesta, casi siempre escondidos en la sala de reuniones. El tamaño del personaje depende del modelo, y sus músculos, del esfuerzo de razonamiento. La oficina es una planta del edificio de una gran empresa y llena la ventana: la zona de trabajo en el centro, pequeñas salas de reuniones para 3 a 5 personas con su placa a la izquierda, la sala de reuniones y la zona de descanso a la derecha, y ascensores por los que se entra y se sale. En la barra superior también eliges el tamaño del píxel, en cuatro pasos: la misma oficina, dibujada con píxeles más finos y más detalle en cada paso.
 - **Encuentra a cualquiera y llámalo**: haz clic en un empleado libre y volverá a su puesto (y se quedará allí hasta su siguiente tarea); el buscador de la barra superior encuentra empleados por nombre, nombre de sesión o carpeta (pulsa `/` para ir a él), y un clic en un contador junto a él (libre, trabajando, pendiente, fuera de servicio) resalta a todos los que están en ese estado. La pestaña bajo la barra la recoge hacia arriba y la vuelve a bajar.
 - **Mensajes entre sesiones**: cuando las sesiones se envían mensajes (SendMessage), un sobre cruza la oficina volando y el registro de mensajes los guarda.
-- **Abre sesiones desde la página, sin que se abra nada**: haz clic en el «+» de un puesto vacío para contratar a alguien nuevo y elige la carpeta, el modelo, el esfuerzo de razonamiento y el modo de permisos (un empleado nuevo empieza con todo permitido, Opus y el máximo razonamiento); haz clic en «A trabajar» en un empleado fuera de servicio para que vuelva a su mismo puesto. La sesión corre en una terminal propia dentro del bridge, así que no se abre ninguna ventana ni se lleva el foco; «Abrir terminal» en la ventana del empleado muestra esa terminal cuando quieras, y cerrar la ventana no cambia nada.
+- **Abre sesiones desde la página, sin que se abra nada**: haz clic en el «+» de un puesto vacío para contratar a alguien nuevo y elige la carpeta. El modelo, el esfuerzo de razonamiento y el modo de permisos siguen tu configuración de Claude Code («Predeterminado») salvo que elijas otros; al elegir `bypassPermissions` aparece un aviso en rojo de lo que permite. Haz clic en «A trabajar» en un empleado fuera de servicio para que vuelva a su mismo puesto, con las opciones con las que trabajó la última vez. La sesión corre en una terminal propia dentro del bridge, así que no se abre ninguna ventana ni se lleva el foco; «Abrir terminal» en la ventana del empleado muestra esa terminal cuando quieras, y cerrar la ventana no cambia nada.
 - **Equipos en las salas de reuniones**: haz clic en una sala de reuniones pequeña libre, escribe una tarea y elige de 2 a 5 miembros: empleados, que reciben cada uno una segunda sesión solo para la tarea, o asesores de un solo uso. Por defecto el primer miembro dirige y reparte las partes con SendMessage; cada miembro trabaja en su propio worktree de git, en su propia rama, así que nadie pisa los archivos de nadie. Los miembros se quedan sentados en la sala hasta que termina la tarea.
 - **10 idiomas**: English, 简体中文, 繁體中文, 日本語, 한국어, Español, Français, Deutsch, Português (Brasil) y Русский. La página usa el idioma de tu navegador y tiene un selector de idioma en la barra superior; los mensajes del bridge usan `-lang`, si no el idioma de tu sistema (`LANG` y similares), si no inglés; los del mod usan `SYMPHONY_LANG` (el idioma de la página, en una sesión abierta desde la página), si no el idioma de tu sistema, si no inglés.
-- **Todo en local**: el bridge es un único programa en Go (solo con la biblioteca estándar; las pruebas de extremo a extremo usan además chromedp), las páginas son JavaScript puro y nada depende de servicios de terceros.
+- **Todo en local**: el bridge es un único programa en Go (solo con la biblioteca estándar; las pruebas de extremo a extremo usan además chromedp) que solo escucha en esta máquina, las páginas son JavaScript puro y nada depende de servicios de terceros.
 
-![Aprobaciones en el navegador](docs/approve.png)
+![La ventana de un empleado: la sesión como un chat, con tarjetas de aprobación sobre su cuadro de texto](docs/approve.png)
 
 ## Requisitos
 
@@ -178,20 +270,22 @@ La carpeta de datos (las cuentas con sus tokens, el registro de mensajes, las ta
 
 ## Ejecutar el bridge
 
-`symphony` inicia el bridge y abre la oficina en tu navegador en <http://127.0.0.1:7788/> (`-open=false` lo desactiva); <http://127.0.0.1:7788/approve> es una página más sencilla, solo para aprobaciones. Si inicias el bridge otra vez mientras ya está en marcha, solo se abre la oficina. En Windows, con doble clic, `symphony.exe` se abre en su propia ventana, y al cerrarla se detiene el bridge.
+`symphony` inicia el bridge y abre la oficina en tu navegador, ya con la sesión iniciada (`-open=false` lo desactiva). El navegador recibe la clave de las páginas del bridge como cookie a través de `open.html`, un archivo de la carpeta de datos que solo tú puedes leer, así que la clave nunca aparece en una línea de comandos; en Linux, si tu navegador es un snap o un flatpak, ese archivo va a la carpeta propia del navegador, porque esos navegadores no pueden leer la carpeta de datos. Si abres <http://127.0.0.1:7788/> en un navegador sin la sesión iniciada, verás una página que explica cómo entrar: ejecuta `symphony` otra vez, o abre la dirección con `?key=` que el bridge escribió en su registro. <http://127.0.0.1:7788/approve> es una página más sencilla, solo para aprobaciones. Si inicias `symphony` otra vez mientras ya está en marcha, solo se abre la oficina. En Windows, con doble clic, `symphony.exe` se abre en su propia ventana, y al cerrarla se detiene el bridge.
 
 | Opción | Predeterminado | Qué hace |
 | --- | --- | --- |
-| `-addr` | `127.0.0.1:7788` | Dirección en la que escucha. La página todavía no tiene inicio de sesión, así que no uses una dirección que no sea de esta máquina |
-| `-data` | `$SYMPHONY_DATA`; si no, `symphony` en tu carpeta de configuración | La carpeta de datos: las cuentas con sus tokens (`accounts.json`), el registro de mensajes (`messages.json`), las tareas (`tasks.json`) y el registro de `-background` (`bridge.log`) |
+| `-addr` | `127.0.0.1:7788` | Dirección en la que escucha. Su host tiene que ser `127.0.0.1`, `localhost` o `::1` (como en `[::1]:7788`); el bridge rechaza cualquier otro |
+| `-data` | `$SYMPHONY_DATA`; si no, `symphony` en tu carpeta de configuración | La carpeta de datos: las cuentas con sus tokens (`accounts.json`), la clave de las páginas (`key`) y `open.html`, el registro de mensajes (`messages.json`), las tareas (`tasks.json`) y el registro de `-background` (`bridge.log`) |
 | `-claude` | `claude` | El ejecutable de claude |
 | `-lang` | el idioma de tu sistema; si no, `en` | Idioma de los mensajes del bridge (`SYMPHONY_LANG`, `LC_ALL`, `LC_MESSAGES` o `LANG` fijan el predeterminado) |
 | `-mod` | vacío | Para desarrollo: pasa a las sesiones el mod de esta carpeta con `--plugin-dir`, en lugar de la copia instalada |
 | `-web` | vacío | Para desarrollo: sirve las páginas desde esta carpeta, así los cambios se ven al recargar |
-| `-open` | `true` | Abre la oficina en el navegador cuando el bridge arranca; si ya hay un bridge en `-addr`, solo abre su oficina |
+| `-open` | `true` | Abre la oficina en el navegador cuando el bridge arranca; si el bridge de esta carpeta de datos ya está en marcha en `-addr`, solo abre su oficina |
 | `-autostart` | — | `on`: inicia el bridge cada vez que inicias sesión, con las demás opciones dadas, y lo inicia ya; `off`: lo deshace |
 | `-background` | — | Inicia el bridge en segundo plano, separado de la terminal y con su registro en `bridge.log` de la carpeta de datos, y vuelve cuando responde |
 | `-version` | — | Muestra la versión y sale |
+
+Si en `-addr` responde otra cosa (otro programa, un bridge con otra carpeta de datos o un bridge de symphony más antiguo), symphony lo dice y se detiene; solo presenta la clave de las páginas a un bridge que demuestre tenerla.
 
 **Iniciarlo al iniciar sesión**: `symphony -autostart on` hace que el bridge se inicie cada vez que inicias sesión, con las opciones que pases junto (por ejemplo `-addr`), y lo inicia ya; `symphony -autostart off` lo deshace. En Linux es un servicio de usuario de systemd (`journalctl --user -u symphony` muestra su registro), en macOS un agente de launchd (registro en `~/Library/Logs/symphony.log`) y en Windows un valor bajo la clave Run del registro (el bridge corre en una ventana de consola; al cerrarla se detiene hasta el próximo inicio de sesión). Necesita el programa symphony en sí, no `go run`.
 
@@ -199,35 +293,47 @@ La carpeta de datos (las cuentas con sus tokens, el registro de mensajes, las ta
 
 ## Abrir sesiones
 
-**Desde la página**: haz clic en el «+» de un puesto vacío, escribe un nombre y elige la carpeta y las opciones. El bridge ejecuta `claude` en una terminal propia, dentro del bridge: no se abre ninguna ventana. La ventana del empleado muestra la sesión como un chat, y su botón «Abrir terminal» abre una ventana de terminal conectada a la sesión (`symphony attach <id>` hace lo mismo desde cualquier terminal; `Ctrl-]` o cerrar la ventana desconecta, y la sesión sigue). Las sesiones son procesos hijos del bridge: detener el bridge las termina.
+**Desde la página**: haz clic en el «+» de un puesto vacío, escribe un nombre y elige la carpeta y las opciones. El bridge ejecuta `claude` en una terminal propia, dentro del bridge: no se abre ninguna ventana. La ventana del empleado muestra la sesión como un chat, y su botón «Abrir terminal» abre una ventana de terminal conectada a la sesión (`symphony attach <id>` hace lo mismo desde cualquier terminal, con `-addr` y `-data` cuando el bridge no usa los valores predeterminados; cuando no se puede abrir ninguna ventana de terminal, la página muestra el comando exacto. `Ctrl-]` o cerrar la ventana desconecta, y la sesión sigue). Las sesiones son procesos hijos del bridge: detener el bridge las termina.
 
-**Desde una terminal**: crea una cuenta para obtener un token y luego inicia `claude` con él:
+**Desde una terminal**: crea una cuenta para obtener un token, presentando la clave de las páginas, y luego inicia `claude` con el token:
 
 ```bash
-curl -X POST 127.0.0.1:7788/api/accounts -d '{"name":"frontend-alice"}'   # la respuesta incluye el token
+printf 'X-Symphony-Key: %s\n' "$(cat ~/.config/symphony/key)" | curl -H @- -X POST 127.0.0.1:7788/api/accounts -d '{"name":"frontend-alice"}'   # la respuesta incluye el token
 SYMPHONY_TOKEN=<token> claude --name frontend-alice --permission-mode manual
 ```
 
-Se recomienda el modo de permisos `manual`: en el modo `auto` la mayoría de las acciones no le preguntan a nadie, así que llegan pocas aprobaciones a la página. Si el bridge no está en la dirección predeterminada, define también `SYMPHONY_BRIDGE=http://host:port`. `SYMPHONY_LANG` elige el idioma de los mensajes del mod (si no, el idioma de tu sistema; si no, inglés).
+El archivo de la clave es `~/.config/symphony/key` en Linux, `~/Library/Application Support/symphony/key` en macOS y `%AppData%\symphony\key` en Windows, o `key` en la carpeta que indiquen `-data` / `SYMPHONY_DATA`.
 
-Si nada responde en la dirección del bridge en esta máquina, la sesión inicia el bridge ella misma con `symphony -background -open=false -addr <that address>` (si `symphony` está en tu PATH), y el bridge sigue en marcha cuando la sesión termina. Define `SYMPHONY_DATA` si tus cuentas no están en la carpeta de datos predeterminada.
+Se recomienda el modo de permisos `manual`: en el modo `auto` la mayoría de las acciones no le preguntan a nadie, así que llegan pocas aprobaciones a la página. Si el bridge no está en la dirección predeterminada, define también `SYMPHONY_BRIDGE`: `http://127.0.0.1:<port>`, `http://localhost:<port>` o `http://[::1]:<port>` en esta máquina, o una dirección `https://`; con cualquier otra cosa el mod nunca contacta con el bridge. `SYMPHONY_LANG` elige el idioma de los mensajes del mod (si no, el idioma de tu sistema; si no, inglés).
+
+Antes de que la sesión envíe su token a ningún sitio, el mod comprueba que el bridge de esa dirección conoce el token, sin enviarlo (`POST /api/hello`). Cuando el bridge no puede aceptar la sesión, la sesión muestra uno de estos mensajes, sus aprobaciones se quedan en la terminal y nunca se queda colgada:
+
+| Mensaje | Qué significa |
+| --- | --- |
+| `no se puede conectar con el bridge` / `can't reach the bridge` | Nada responde en la dirección del bridge, e iniciar el bridge no sirvió (o la dirección no es de esta máquina). |
+| `el bridge no reconoce este SYMPHONY_TOKEN` / `the bridge doesn't know this SYMPHONY_TOKEN` | El bridge no tiene ninguna cuenta con este token: se borró, o el bridge usa otra carpeta de datos. |
+| `no es un bridge de symphony en el que esta sesión pueda confiar` / `isn't a symphony bridge this session can trust` | Algo responde en la dirección pero no puede demostrar que conoce el token: otro programa, o un symphony más antiguo que el mod (actualízalo). El token no se envía. |
+| `SYMPHONY_BRIDGE (...) debe estar en esta máquina o usar https` / `SYMPHONY_BRIDGE ... must be on this machine or use https` | La dirección no es una de las que acepta el mod; nunca se contacta con el bridge. |
+| `esta cuenta ya tiene una sesión en línea` / `this account already has a session online` | Una cuenta sirve para una sola sesión a la vez; crea otra cuenta para esta sesión. |
+
+Si nada responde en la dirección del bridge en esta máquina, la sesión inicia el bridge ella misma con `symphony -background -open=false -addr <that address>` (si `symphony` está en tu PATH) y lo dice (`se inició el bridge (...) en segundo plano` / `started the bridge ... in the background`); el bridge sigue en marcha cuando la sesión termina. Define `SYMPHONY_DATA` si tus cuentas no están en la carpeta de datos predeterminada.
 
 ## Tareas en equipo
 
-Una sala de reuniones pequeña es donde un equipo de 2 a 5 sesiones trabaja junto en una misma tarea. Las tareas necesitan `git` y el mod en la versión 0.7.0 (`claude plugin update symphony-bridge@symphony`).
+Una sala de reuniones pequeña es donde un equipo de 2 a 5 sesiones trabaja junto en una misma tarea. Las tareas necesitan `git`.
 
-**Empezar una tarea**: haz clic en una sala de reuniones pequeña libre y describe lo que hay que hacer. Marca a los miembros en el orden que quieras (de 2 hasta las plazas de la sala), elige el modelo y el esfuerzo de razonamiento de cada uno y el modo de permisos del equipo (todo permitido por defecto), y haz clic en «Empezar la tarea». Un miembro puede ser:
+**Empezar una tarea**: haz clic en una sala de reuniones pequeña libre y describe lo que hay que hacer. Marca a los miembros en el orden que quieras (de 2 hasta las plazas de la sala), elige el modelo y el esfuerzo de razonamiento de cada uno y el modo de permisos del equipo (por defecto, la configuración propia de Claude Code; un empleado que ya ha trabajado empieza con su último modelo y esfuerzo; al elegir `bypassPermissions` aparece el aviso), y haz clic en «Empezar la tarea». Un miembro puede ser:
 
 - **Un empleado**: recibe una segunda sesión solo para la tarea, que trabaja en la carpeta del empleado; su propia sesión, la de su puesto, se queda como estaba. Un empleado solo está en una tarea a la vez, y el que nunca ha trabajado todavía no tiene carpeta: haz clic antes una vez en «A trabajar».
 - **Un asesor**: un participante de un solo uso creado para la tarea con los campos de siempre (nombre, carpeta, modelo, esfuerzo de razonamiento). No tiene puesto, sube en el ascensor y se va cuando termina la tarea.
 
 **El líder**: por defecto el primer miembro dirige: divide la tarea, reparte las partes con SendMessage, revisa el trabajo, fusiona las ramas de los demás en la suya y te cuenta lo que se ha hecho. Desmarca la casilla del líder y cada uno recibe la tarea entera, y se la reparten entre ellos. En los dos casos, el bridge le da a cada miembro su primera instrucción: quién está en el equipo (los miembros se encuentran por su nombre con SendMessage), la rama de cada uno y las reglas.
 
-**Git**: cada miembro trabaja en su propio worktree de git, en su propia rama de su carpeta, `symphony/<task id>/<member>` (por ejemplo `symphony/T1/bob`; un segundo miembro con el mismo nombre recibe `-2`), así que nadie pisa los archivos de nadie y tu copia de trabajo se queda como estaba. Los worktrees están en `.symphony/worktrees/` dentro de la carpeta, ocultos para git con `.git/info/exclude` (tu `.gitignore` no se toca). Cuando termina la tarea, los cambios que un miembro tenga sin commit se guardan con un commit en su rama, así que no se pierde nada, y los worktrees se eliminan.
+**Git**: cada miembro trabaja en su propio worktree de git, en su propia rama de su carpeta, `symphony/<task id>/<member>` (por ejemplo `symphony/T1/bob`; un segundo miembro con el mismo nombre recibe `-2`), así que nadie pisa los archivos de nadie y tu copia de trabajo se queda como estaba. Los worktrees están en `.symphony/worktrees/` dentro de la carpeta, ocultos para git con `.git/info/exclude` (tu `.gitignore` no se toca). Cuando termina la tarea, los cambios que un miembro tenga sin commit se guardan con un commit en su rama, los archivos que git ignora en su worktree (resultados de compilación, `.env`, `node_modules` y similares) se mueven a `.symphony/kept/<member>-<task id>/` dentro de la carpeta, y los worktrees se eliminan. symphony nunca borra `.symphony/kept/`; bórralo tú cuando ya no necesites lo que contiene.
 
 - En tus propios repositorios no se fusiona nada: las ramas se quedan para que las fusiones tú; si hay líder, su rama reúne el trabajo de todos.
-- Una carpeta que no es un repositorio de git se convierte en uno para la tarea (`git init` y un commit con todo lo que contiene) y lo sigue siendo. Cuando termina la tarea, las ramas de los miembros se fusionan en ella, así que la carpeta tiene el resultado; el `.git` y las ramas se conservan.
-- Si una fusión falla, se deshace y la base queda como estaba; las ramas se quedan con el trabajo hecho en ellas, y la ventana de la tarea dice qué rama tiene conflictos.
+- Una carpeta que no es un repositorio de git se convierte en uno para la tarea y lo sigue siendo: `git init` y luego un commit con todo lo que contiene, salvo los archivos que suelen guardar secretos o que ocupan mucho (`.env`, `.env.*`, `*.pem`, `*.key`, `*.p12`, `*.pfx`, `id_rsa*`, `id_ecdsa*`, `id_ed25519*`, `.npmrc`, `.netrc`, `.pypirc`, `node_modules/`, `.DS_Store`), que anota en `.git/info/exclude`. Esos archivos se quedan en la carpeta, pero no están en los worktrees de los miembros, así que el miembro que los necesite instala o crea los suyos. Cuando termina la tarea, las ramas de los miembros se fusionan en la rama de la carpeta, así que la carpeta tiene el resultado; el `.git` y las ramas se conservan. Si la tarea no llega a iniciarse, la carpeta vuelve a ser una carpeta normal.
+- Si una fusión falla, se deshace y la base queda como estaba; las ramas se quedan con el trabajo hecho en ellas, y la ventana de la tarea dice qué rama tiene conflictos. Cualquier otra cosa que falle al terminar una tarea se queda como está, y la ventana de la tarea dice qué falló.
 
 **En la oficina**: los miembros se sientan a la mesa de la sala durante toda la tarea, y mientras tanto el puesto de un empleado muestra una silla vacía. La placa de la sala muestra el id de la tarea; su luz, verde mientras la sala está libre, se pone amarilla mientras la tarea está en marcha y roja mientras un miembro espera tu aprobación o tu respuesta. Haz clic en la sala para abrir la ventana de la tarea: la tarea, los miembros con sus carpetas y ramas, el chat del equipo y «Terminar la tarea». Un clic en la figura de un miembro en la sala también abre la ventana de la tarea; un clic en un miembro dentro de ella abre su ventana de chat acoplada al lado, igual que la ventana de un empleado, un miembro a la vez (haz clic en otro miembro para cambiar). El contador rojo de la barra superior y el buscador abren a un miembro de una tarea de la misma forma.
 
@@ -239,13 +345,25 @@ Una tarea termina cuando la terminas desde la ventana de la tarea o cuando termi
 
 - En symphony, una identidad es un nombre, un token y un puesto fijo. Una cuenta sirve para una sola sesión a la vez, más otra en la tarea en la que participa; cualquier otra sesión se rechaza y sus aprobaciones se quedan en la terminal.
 - Aquí no se gestiona el inicio de sesión en Claude: todas las sesiones pueden compartir la misma cuenta de Claude.
-- Los datos se guardan en `~/.config/symphony` (Linux), `~/Library/Application Support/symphony` (macOS) o `%AppData%\symphony` (Windows), o donde indiquen `-data` / `SYMPHONY_DATA`. `accounts.json` contiene los tokens y solo su propietario puede leerlo (0600); en Windows lo protegen los permisos de la carpeta del usuario.
+- Los datos se guardan en `~/.config/symphony` (Linux), `~/Library/Application Support/symphony` (macOS) o `%AppData%\symphony` (Windows), o donde indiquen `-data` / `SYMPHONY_DATA`. `accounts.json` contiene los tokens y `key`, la clave de las páginas; solo su propietario puede leerlos (0600); en Windows los protegen los permisos de la carpeta del usuario.
+
+## Coste y permisos
+
+- Cada sesión que inicia symphony es una sesión de Claude Code y gasta tu plan de Claude o tu crédito de API como cualquier otra. Opus con el máximo esfuerzo lo agota rápido, y una tarea ejecuta de 2 a 5 sesiones a la vez.
+- `bypassPermissions` ejecuta cada comando y cada edición sin preguntar. Lo que lea una sesión (un archivo, una página web, la salida de una herramienta) puede entonces hacer que ejecute comandos en tu nombre. Los diálogos de inicio y de tarea muestran un aviso en rojo cuando lo eliges; por defecto siguen tu configuración de Claude Code.
+- En las sesiones abiertas desde la página, el bridge responde por ti a la pregunta «confiar en esta carpeta» de Claude Code, así que abre sesiones solo en carpetas de las que te fíes.
 
 ## Seguridad
 
-- El bridge solo acepta peticiones dirigidas a esta máquina y rechaza las peticiones de escritura que otro sitio web envíe a través de tu navegador: la página puede abrir sesiones, y eso equivale a ejecutar comandos en esta máquina.
-- La página todavía no tiene inicio de sesión, así que **no** pongas el bridge a escuchar en una dirección que no sea de esta máquina.
-- Los programas no están firmados. macOS puede rechazar una copia descargada con el navegador porque no puede verificar al desarrollador: haz clic en «Abrir igualmente» en Ajustes del Sistema → Privacidad y seguridad, o ejecuta una vez `xattr -d com.apple.quarantine symphony`. SmartScreen de Windows también puede avisarte: haz clic en «Más información» y luego en «Ejecutar de todas formas». El `checksums.txt` de la versión tiene el SHA-256 de cada archivo.
+La página puede abrir sesiones, lo que equivale a ejecutar comandos en esta máquina, así que el bridge vigila quién llega hasta él:
+
+- **La clave de las páginas**: la oficina y su API necesitan la clave de las páginas, una cookie que tu navegador recibe a través del enlace que abre `symphony`. La clave es el archivo `key` de la carpeta de datos, que solo tú puedes leer; los programas la presentan en la cabecera `X-Symphony-Key`.
+- **Solo esta máquina**: el bridge solo escucha en esta máquina y solo acepta conexiones de ella. Rechaza las peticiones dirigidas a cualquier otro host (DNS rebinding) y las escrituras que otros sitios web envíen a través de tu navegador, y otros sitios no pueden incrustar sus páginas en un marco. Las páginas solo cargan los archivos del propio bridge (una Content Security Policy).
+- **El mod comprueba el bridge** antes de enviar su token, y el programa `symphony` lo comprueba antes de presentar la clave de las páginas, así que otra cosa que escuche en la dirección del bridge no recibe ninguno de los dos.
+- **Contra qué no protege**: los programas que se ejecutan con tu propio usuario pueden leer la clave de las páginas y los tokens de la carpeta de datos, como cualquiera de tus archivos. Y los navegadores envían las cookies de un sitio a todos sus puertos: un servidor que otro usuario de esta máquina ejecute en `127.0.0.1` recibe la cookie de la clave de las páginas cuando tu navegador lo abre, o cuando ocupa el puerto del bridge mientras el bridge está detenido y la oficina sigue abierta en una pestaña. En una máquina compartida, cierra la oficina antes de detener el bridge y, si la clave puede haberse filtrado, borra el archivo `key` de la carpeta de datos (el siguiente arranque crea una nueva).
+- Los programas no están firmados. macOS puede rechazar una copia descargada con el navegador porque no puede verificar al desarrollador: haz clic en «Abrir igualmente» en Ajustes del Sistema → Privacidad y seguridad, o ejecuta una vez `xattr -d com.apple.quarantine symphony`. SmartScreen de Windows también puede avisarte: haz clic en «Más información» y luego en «Ejecutar de todas formas». El `checksums.txt` de la versión tiene el SHA-256 de cada archivo; el paso 2 de la instalación lo comprueba.
+
+Para informar de una vulnerabilidad, consulta [SECURITY.md](SECURITY.md).
 
 ## Plataformas
 
@@ -267,12 +385,14 @@ claude plugin validate mods/symphony-bridge  # comprueba el mod
 SYMPHONY_E2E=1 go test -tags e2e -v -count=1 -timeout 20m ./e2e/   # de extremo a extremo: abre sesiones reales y gasta tokens
 ```
 
+- Contribuir: [CONTRIBUTING.md](CONTRIBUTING.md) explica cómo preparar el entorno, las comprobaciones que hay que pasar antes de un pull request y las reglas; [CLAUDE.md](CLAUDE.md) es el mapa detallado del código.
 - Para trabajar en el mod: ejecuta `go run ./cmd/bridge -mod mods/symphony-bridge` y las sesiones abiertas desde la página recibirán tu copia del mod con `--plugin-dir`; en las sesiones que abras a mano, añade `--plugin-dir mods/symphony-bridge` por tu cuenta.
 - Para trabajar en las páginas: ejecuta `go run ./cmd/bridge -web web` y verás tus cambios al recargar.
-- Para ver la oficina sin sesiones reales: inicia un segundo bridge y llénalo de actividad inventada con `go run ./cmd/bridge -addr 127.0.0.1:7799 -data /tmp/demo` y luego `go run ./cmd/demo -base http://127.0.0.1:7799`.
+- Para ver la oficina sin sesiones reales: inicia un segundo bridge con una carpeta de datos propia y llénalo de actividad inventada: `D=$(mktemp -d)`, `go run ./cmd/bridge -addr 127.0.0.1:7799 -data "$D"` y luego, en otra terminal (con el mismo valor de `D`), `go run ./cmd/demo -base http://127.0.0.1:7799 -data "$D"` (la demo lee la clave de las páginas del bridge en esa carpeta de datos).
+- Las capturas de pantalla de este README: `SYMPHONY_E2E=1 SYMPHONY_E2E_DOCS=1 go test -tags e2e -run TestDocsScreens ./e2e/` las vuelve a hacer con actividad inventada (sin gastar tokens).
 - Traducciones: cada idioma es un archivo, `web/locales/<lang>.json` para las páginas y `internal/i18n/locales/<lang>.json` para el bridge, con las mismas claves que `en.json`; los pocos mensajes del mod están en `mods/symphony-bridge/hooks/messages.ts`. Las pruebas unitarias comprueban que cada idioma tenga todas las claves y los mismos `{placeholders}`, y la prueba de extremo a extremo `TestI18n` abre las páginas en todos los idiomas.
-- Las pruebas de extremo a extremo necesitan claude, tmux (para las sesiones que las propias pruebas manejan) y Chromium o Chrome, así que se ejecutan en Linux y macOS. Por defecto usan el mod de este repositorio; define `SYMPHONY_E2E_MOD=installed` para usar el mod instalado. Las capturas de pantalla se guardan en `e2e/artifacts/`.
-- Versiones: sube la versión en `mods/symphony-bridge/.claude-plugin/plugin.json`, añade una sección `## vX.Y.Z (date)` a `CHANGELOG.md`, lleva dev a main, luego etiqueta ese commit en main y sube la etiqueta (`git tag -a v0.7.0 -m v0.7.0 && git push origin v0.7.0`); GitHub Actions comprueba que la etiqueta sea la versión de `plugin.json` y que la sección exista, compila el programa para todas las plataformas y publica una versión cuyas notas empiezan con esa sección (`.github/workflows/release.yml`; un sufijo como `-rc.1` la convierte en preversión). `.github/release.sh v0.7.0 dist` genera los mismos archivos en local.
+- Las pruebas de extremo a extremo necesitan claude, tmux (para las sesiones que las propias pruebas manejan) y Chromium o Chrome, así que se ejecutan en Linux y macOS. `TestOffice` y `TestModStartsBridge` abren sesiones reales y gastan tokens; las demás no. Por defecto usan el mod de este repositorio; define `SYMPHONY_E2E_MOD=installed` para usar el mod instalado. Las capturas de pantalla se guardan en `e2e/artifacts/`.
+- Versiones: sube la versión en `mods/symphony-bridge/.claude-plugin/plugin.json`, añade una sección `## vX.Y.Z (date)` a `CHANGELOG.md`, lleva dev a main, luego etiqueta ese commit en main y sube la etiqueta (`git tag -a v1.0.0 -m v1.0.0 && git push origin v1.0.0`); GitHub Actions comprueba que la etiqueta sea la versión de `plugin.json` y que la sección exista, compila el programa para todas las plataformas y publica una versión cuyas notas empiezan con esa sección (`.github/workflows/release.yml`; un sufijo como `-rc.1` la convierte en preversión). `.github/release.sh v1.0.0 dist` genera los mismos archivos en local.
 
 | Carpeta | Qué es |
 | --- | --- |
@@ -283,7 +403,10 @@ SYMPHONY_E2E=1 go test -tags e2e -v -count=1 -timeout 20m ./e2e/   # de extremo 
 | `web/` | Las páginas de la oficina y de aprobaciones, con sus traducciones, integradas en el bridge |
 | `cmd/demo/` | Actividad inventada para la oficina |
 | `e2e/` | Pruebas de extremo a extremo |
+| `docs/` | El protocolo entre el bridge y las páginas, y las capturas de pantalla |
 
 ## Licencia
 
 [MIT](LICENSE)
+
+symphony es un proyecto independiente. No está afiliado a Anthropic ni cuenta con su respaldo ni su patrocinio. Claude y Claude Code son marcas comerciales de Anthropic, PBC.

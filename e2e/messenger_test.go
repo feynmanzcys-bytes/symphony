@@ -104,6 +104,10 @@ func TestMessenger(t *testing.T) {
 	waitUntil(t, 20*time.Second, "the sidebar lists the five coworkers, carol first", func() bool {
 		return p.is(`document.querySelectorAll('#people .row').length === 5 && document.querySelector('#people .row .nm').textContent.trim() === 'carol'`)
 	})
+	// the theme is called Coworkers on the page (its folder and URLs stay messenger)
+	if !p.is(`document.querySelector('h1[data-i18n="msgr.title"]').textContent === 'Symphony Coworkers' && document.title.endsWith('Symphony Coworkers')`) {
+		t.Fatalf("the title should be Symphony Coworkers: %s | %s", p.js(`document.querySelector('h1[data-i18n="msgr.title"]').textContent`), p.js(`document.title`))
+	}
 	if !p.is(`document.querySelector('#people .row[data-account] .face').dataset.state === 'waiting' && document.querySelector('#people .row .sub.hot')?.textContent.includes('Waiting for you: Should the README')`) {
 		t.Fatalf("carol's face should wave and her line say what she waits for: %s", p.js(`document.querySelector('#people .row .sub').textContent`))
 	}
@@ -208,6 +212,9 @@ func TestMessenger(t *testing.T) {
 	waitUntil(t, 20*time.Second, "zh-CN: the sidebar", func() bool {
 		return q.is(`document.querySelectorAll('#people .row').length === 5 && document.documentElement.lang === 'zh-CN'`)
 	})
+	if title := q.js(`document.querySelector('h1[data-i18n="msgr.title"]').textContent`); title != "Symphony 同事" {
+		t.Fatalf("zh-CN: the title should be Symphony 同事: %s", title)
+	}
 	q.run(`[...document.querySelectorAll('#people .row')].find(r => r.textContent.includes('alice')).click()`)
 	waitUntil(t, 10*time.Second, "zh-CN: alice's conversation", func() bool { return q.is(`!document.getElementById('chat').hidden`) })
 	q.shot("conversation")

@@ -1,0 +1,14 @@
+# Weekly pull requests that update the GitHub Actions the workflows use and the Go modules (chromedp, for the
+# end-to-end tests). They go to dev, like every other pull request.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: dev
+    schedule:
+      interval: weekly
+  - package-ecosystem: gomod
+    directory: /
+    target-branch: dev
+    schedule:
+      interval: weekly

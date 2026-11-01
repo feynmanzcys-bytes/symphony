@@ -29,6 +29,7 @@ const DIALOG = `
     <label class="check"><input type="checkbox" name="leader" checked><span data-i18n="task.leader"></span></label>
     <label data-i18n="launch.permissionMode"></label>
     <select name="permissionMode"></select>
+    <div class="warn" data-i18n="launch.bypassWarning" hidden></div>
     <div class="foot">
       <div class="status"></div>
       <div class="actions"><span class="count"></span><button type="button" class="px cancel" data-i18n="common.cancel"></button><button type="submit" class="px primary go" data-i18n="task.go"></button></div>
@@ -132,8 +133,8 @@ export function createTaskUI(sym, {
     row.querySelector('.browse').onclick = () => browse(sym, box, dir.value.trim(), reason => setStatus(reason, true), opts?.home)
     box.querySelector('.pick').onclick = () => { dir.value = box.dataset.path; box.hidden = true; showEnd(dir) }
     row.querySelectorAll('.recent span').forEach((el, i) => el.onclick = () => { dir.value = recent[i]; showEnd(dir) })
-    fill(row.querySelector('[name=model]'), opts?.models || [], 'opus')
-    fill(row.querySelector('[name=effort]'), opts?.efforts || [], 'max')
+    fill(row.querySelector('[name=model]'), opts?.models || [], '')
+    fill(row.querySelector('[name=effort]'), opts?.efforts || [], '')
     row.querySelector('.rm').onclick = () => { picks = picks.filter(x => x !== row); row.remove(); renderPicks() }
     form.querySelector('.advs').appendChild(row)
     picks.push(row)
@@ -156,8 +157,16 @@ export function createTaskUI(sym, {
     count.classList.toggle('over', n > MAX_MEMBERS)
     form.querySelector('.go').disabled = posting || n < 2 || n > MAX_MEMBERS
   }
+  // bypassPermissions runs everything without asking: a red line under the select says what that means. It's the last
+  // field, so picked, the dialog scrolls down to it, above the buttons that stay at the bottom
+  function warn(reveal) {
+    const el = form.querySelector('.warn')
+    el.hidden = form.elements.permissionMode.value !== 'bypassPermissions'
+    if (reveal && !el.hidden) form.scrollTop = form.scrollHeight
+  }
   form.querySelector('.add-adv').onclick = addAdvisor
   form.elements.leader.onchange = renderPicks
+  form.elements.permissionMode.onchange = () => warn(true)
   form.addEventListener('input', ev => { ev.target.classList.remove('bad'); if (!ev.target.closest('.adv')?.querySelector('input.bad')) ev.target.closest('.adv')?.classList.remove('bad') })
   form.querySelector('.cancel').onclick = () => tasks.closeDialog()
   dialog.addEventListener('click', ev => { if (ev.target === dialog) tasks.closeDialog() })
@@ -401,7 +410,8 @@ export function createTaskUI(sym, {
       form.querySelector('.title').textContent = room ? t('task.titleNew', { room: room.name }) : t('task.titleNewHud')
       form.elements.desc.value = ''
       form.elements.leader.checked = true
-      fill(form.elements.permissionMode, opts.permissionModes, 'bypassPermissions')
+      fill(form.elements.permissionMode, opts.permissionModes, '') // Claude Code's own settings
+      warn()
       // the employees: one in a running task, or without a folder to work in yet, can't be picked
       const busy = new Map()
       for (const task of sym.state.tasks) if (task.status !== 'failed') for (const m of task.members) busy.set(m.account, task.id)
@@ -417,9 +427,9 @@ export function createTaskUI(sym, {
           `${dot(s && s.state !== 'ended' ? s.state : 'ended')}<span class="nm">${esc(acc.name)}</span><span class="lead-tag">${esc(t('task.lead'))}</span>` +
           `<small title="${esc(dir)}">${esc(inTask ? t('task.inTask', { id: inTask }) : dir ? base(dir) : t('task.noDir'))}</small></label>` +
           `<select name="model" title="${esc(t('launch.model'))}"></select><select name="effort" title="${esc(t('launch.effort'))}"></select>`
-        // as it last worked, or Opus and the most thinking
-        fill(row.querySelector('[name=model]'), opts.models, acc.last ? acc.last.model : 'opus')
-        fill(row.querySelector('[name=effort]'), opts.efforts, acc.last ? acc.last.effort : 'max')
+        // as it last worked, or Claude Code's own settings
+        fill(row.querySelector('[name=model]'), opts.models, acc.last ? acc.last.model : '')
+        fill(row.querySelector('[name=effort]'), opts.efforts, acc.last ? acc.last.effort : '')
         row.querySelector('input').onchange = ev => { picks = picks.filter(x => x !== row); if (ev.target.checked) picks.push(row); renderPicks() }
         list.appendChild(row)
       }

@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -28,6 +29,7 @@ import (
 
 type testBridge struct {
 	URL      string
+	Key      string // the page key: browsers get it as a cookie (newBrowser), raw page calls as a header (pageReq)
 	Data     string // the data folder (accounts.json with the tokens, tasks.json)
 	Hub      *bridge.Hub
 	Launcher *bridge.Launcher
@@ -49,7 +51,7 @@ func startBridge(t *testing.T, mod string) *testBridge {
 		t.Fatal(err)
 	}
 	srv := bridge.NewServer(hub, web.FS)
-	b := &testBridge{Hub: hub, Data: data}
+	b := &testBridge{Hub: hub, Data: data, Key: srv.Key}
 	ts := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if isModAPI(r.URL.Path) && r.Header.Get("Authorization") == "" {
 			b.anon.Add(1)
@@ -57,6 +59,8 @@ func startBridge(t *testing.T, mod string) *testBridge {
 		srv.ServeHTTP(w, r)
 	}))
 	b.URL = "http://" + ts.Listener.Addr().String()
+	pageKeys.Store(b.URL, b.Key)
+	t.Cleanup(func() { pageKeys.Delete(b.URL) })
 	// sessions started from the page run on pseudo-terminals inside the bridge, as in the real thing
 	b.Launcher = bridge.NewLauncher("claude", mod, b.URL, bridge.NewPTYTerminal())
 	srv.SetLauncher(b.Launcher)
@@ -92,6 +96,22 @@ func (b *testBridge) post(t *testing.T, token, path string, body any) {
 	if res.StatusCode != 200 {
 		t.Fatalf("POST %s: %s", path, res.Status)
 	}
+}
+
+// pageKeys are the page keys of the bridges this test runs, by URL: newBrowser signs its browser in to each, and pageReq
+// shows the key on raw calls to the page's endpoints.
+var pageKeys sync.Map
+
+// pageReq is a request to one of the page's endpoints of the bridge at base (its URL), with the bridge's page key.
+func pageReq(method, base, path string, body io.Reader) *http.Request {
+	req, err := http.NewRequest(method, base+path, body)
+	if err != nil {
+		panic(err)
+	}
+	if key, ok := pageKeys.Load(base); ok {
+		req.Header.Set("X-Symphony-Key", key.(string))
+	}
+	return req
 }
 
 func isModAPI(path string) bool {
@@ -298,6 +318,16 @@ func newBrowser(t *testing.T) context.Context {
 	if err := chromedp.Do(ctx); err != nil {
 		t.Fatalf("the browser failed to start: %v", err)
 	}
+	// signed in to every bridge the test runs (start the bridge first), the way symphony opens the office: the address
+	// with ?key= sets the cookie and takes the key out of the address; the cookie is the browser's, for every tab
+	pageKeys.Range(func(base, key any) bool {
+		do(t, ctx, 30*time.Second, chromedp.Navigate(base.(string)+"/api/themes?key="+key.(string)))
+		if page := get(t, ctx, 10*time.Second, chromedp.Evaluate[string](`location.href + ' ' + document.body.innerText`)); strings.Contains(page, "key=") || !strings.Contains(page, `"themes"`) {
+			t.Fatalf("signing the browser in to %s failed: %s", base, page)
+		}
+		return true
+	})
+	do(t, ctx, 30*time.Second, chromedp.Navigate("about:blank"))
 	return ctx
 }
 

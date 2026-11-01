@@ -5,6 +5,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -92,6 +93,47 @@ func TestGitInit(t *testing.T) {
 	mustGit(t, bare, "init", "-q")
 	if _, err := gitBase(bare); err == nil {
 		t.Fatal("a repository without a commit has no base")
+	}
+}
+
+// TestGitInitLeavesSecretsOut: a folder made a repository doesn't commit secrets, keys, node_modules or .symphony: they
+// stay in the folder, listed in the repository's own exclude file (each once), not in a .gitignore of the user's.
+func TestGitInitLeavesSecretsOut(t *testing.T) {
+	needGit(t)
+	dir := t.TempDir()
+	left := []string{".env", ".env.local", "server.key", "cert.pem", "store.p12", "id_ed25519", "id_rsa.pub", "sub/.npmrc", ".netrc",
+		"node_modules/x/index.js", ".DS_Store", ".symphony/kept/bob-T1/out/app.bin"}
+	for _, name := range append([]string{"main.go", "sub/notes.txt"}, left...) {
+		writeFile(t, filepath.Join(dir, filepath.FromSlash(name)), "x")
+	}
+	if err := gitInit(dir, "T1"); err != nil {
+		t.Fatal(err)
+	}
+	if files := mustGit(t, dir, "ls-files"); files != "main.go\nsub/notes.txt" {
+		t.Fatalf("only the plain files should be committed: %q", files)
+	}
+	for _, name := range left {
+		if !exists(filepath.Join(dir, filepath.FromSlash(name))) {
+			t.Fatalf("%s should stay in the folder", name)
+		}
+	}
+	if st := mustGit(t, dir, "status", "--porcelain"); st != "" || exists(filepath.Join(dir, ".gitignore")) {
+		t.Fatalf("the left-out files are ignored through the exclude file: %q", st)
+	}
+	exclude := filepath.Join(dir, ".git", "info", "exclude")
+	before := readFile(t, exclude)
+	if err := gitExclude(dir); err != nil {
+		t.Fatal(err)
+	}
+	after := readFile(t, exclude)
+	lines := strings.Split(after, "\n")
+	for _, p := range append([]string{".symphony/"}, initExcludes...) {
+		if n := slices.Index(lines, p); n < 0 || slices.Index(lines[n+1:], p) >= 0 {
+			t.Fatalf("%s should be in the exclude file once: %q", p, after)
+		}
+	}
+	if after != before {
+		t.Fatalf("listing .symphony/ again should change nothing: %q", after)
 	}
 }
 

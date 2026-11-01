@@ -26,7 +26,7 @@ func TestThemesLoad(t *testing.T) {
 		Themes  []struct{ Name string } `json:"themes"`
 		Current string                  `json:"current"`
 	}
-	resp, err := http.Get(b.URL + "/api/themes")
+	resp, err := http.DefaultClient.Do(pageReq("GET", b.URL, "/api/themes", nil))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,9 +37,11 @@ func TestThemesLoad(t *testing.T) {
 	if listed.Themes[0].Name != "office" || listed.Current != "office" {
 		t.Fatalf("the default theme should be the pixel office, listed first: %+v", listed)
 	}
+	// what the bridge's content security policy blocks counts as an error too
 	script := `window.__errors = []
 addEventListener('error', e => window.__errors.push(String(e.message) + ' @' + e.filename + ':' + e.lineno))
-addEventListener('unhandledrejection', e => window.__errors.push('rejection: ' + String(e.reason && e.reason.stack || e.reason)))`
+addEventListener('unhandledrejection', e => window.__errors.push('rejection: ' + String(e.reason && e.reason.stack || e.reason)))
+addEventListener('securitypolicyviolation', e => window.__errors.push('csp: ' + e.violatedDirective + ' ' + e.blockedURI + ' @' + e.sourceFile + ':' + e.lineNumber))`
 	for _, th := range listed.Themes {
 		ctx, cancel := chromedp.NewContext(browser)
 		if err := chromedp.Do(ctx); err != nil {

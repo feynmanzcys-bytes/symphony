@@ -125,6 +125,9 @@ button.px:disabled { opacity:.5; cursor:default; }
 #launch pre { margin:10px 0 0; padding:6px 8px; background:var(--ink); color:var(--paper-2); font:12px/1.5 var(--mono); white-space:pre-wrap; overflow-wrap:anywhere; }
 :is(#launch, #task) .status { margin-top:8px; font-size:12px; white-space:pre-wrap; }
 :is(#launch, #task) .status.err { color:#c0392b; }
+/* under the permission select while bypassPermissions is picked: what it lets the session do */
+:is(#launch, #task) .warn { margin-top:4px; font-size:12px; font-weight:700; color:var(--danger); }
+#launch .grid .warn { grid-column:1 / -1; }
 /* the task dialog: the launch dialog's fields, the employees ticked in order and the advisors, numbered as the team */
 #task .panel { width:min(680px, calc(100vw - 32px)); }
 #task label { display:block; margin:8px 0 2px; font-size:12px; color:var(--muted-2); }

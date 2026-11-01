@@ -1,6 +1,6 @@
 # Plan: everything the mod can report, a page protocol, and themes
 
-**Status (2026-11-01): shipped.** v0.8.0 (the mod reports everything, the ledger and the activity log), v0.9.0 (the protocol, `symphony.js`, `ui/*`, themes, tasks loose from the rooms), v0.10.0 (HQ), v0.11.0 (Messenger) and v0.12.0 (Mission Control) are in `dev`. Deferred, each noted where it belongs below: the asks' cards inline in the chat flow (`chat.js` `asks: 'inline'`, §3.2), an in-page terminal view (`terminal.js`, §2.3 and §3.2), `prompt.compose` office context and "remember this allow" (§1.4), MCP Elicitation as a third ask kind (§1.4), the performance tests on the new themes (§2.6; they drive the pixel office), a light mode for Mission Control (§3.3). The pixel office's keys stay in the shared catalogs (§2.4).
+**Status (2026-11-01): shipped.** v0.8.0 (the mod reports everything, the ledger and the activity log), v0.9.0 (the protocol, `symphony.js`, `ui/*`, themes, tasks loose from the rooms), v0.10.0 (HQ), v0.11.0 (Messenger, shown to users as Coworkers since v1.0.0) and v0.12.0 (Mission Control) are in `dev`. Deferred, each noted where it belongs below: the asks' cards inline in the chat flow (`chat.js` `asks: 'inline'`, §3.2), an in-page terminal view (`terminal.js`, §2.3 and §3.2), `prompt.compose` office context and "remember this allow" (§1.4), MCP Elicitation as a third ask kind (§1.4), the performance tests on the new themes (§2.6; they drive the pixel office), a light mode for Mission Control (§3.3). The pixel office's keys stay in the shared catalogs (§2.4).
 
 Written as a draft for approval, 2026-11-01. Design only; no code changes come with it. Implementation follows the repository's rules: a branch and worktree per change, full tests before any commit, the mod's version bumped (it is the project's version) and a `CHANGELOG.md` section per release.
 
@@ -10,9 +10,9 @@ Three deliverables, in this order, each its own release:
 | --- | --- | --- |
 | v0.8.0 | The mod reports everything the Claude Code mod API offers that describes a session; the bridge keeps it and pushes it, even where no page shows it yet | Data before pages: the themes below are designed on this data, and it needs real sessions to validate |
 | v0.9.0 | The bridge-to-page protocol written down and versioned; the page's state and transport pulled out of `office.html` into a client library and shared UI modules; themes as a folder each, switchable; the pixel office moved onto it with no visible change | The refactor is the risky part; doing it alone, with the existing e2e suite as the net, keeps a theme bug and a refactor bug apart |
-| v0.10.0, v0.11.0, v0.12.0 | Three new themes, one per release: **HQ** (an enterprise management console), **Messenger** (the Grok Bot–like coworker chat), **Mission Control** (a telemetry wall) | Each theme is small once the framework exists; shipping them one at a time keeps each release testable |
+| v0.10.0, v0.11.0, v0.12.0 | Three new themes, one per release: **HQ** (an enterprise management console), **Messenger** (the sessions as coworkers in an agent-messaging app; shown to users as **Coworkers**), **Mission Control** (a telemetry wall) | Each theme is small once the framework exists; shipping them one at a time keeps each release testable |
 
-Decisions already taken with the owner: "Grok Bot–like" means the agent-messaging-app interaction model (a sidebar of named coworkers with a title line and a progress line, the avatar's motion as its status, cards in the chat, layered oversight), not xAI's trade dress; the fourth theme is Mission Control; this document is English and lives in `docs/`.
+Decisions made before this design: the Messenger theme follows the agent-messaging-app layout (a sidebar of named coworkers with a title line and a progress line, the avatar's motion as its status, cards in the chat, layered oversight), drawn in symphony's own style; the fourth theme is Mission Control; this document is English and lives in `docs/`.
 
 ## 1. v0.8.0: everything the mod can report
 
@@ -61,9 +61,9 @@ Payload budget: a `session.usage` push is under 300 bytes; `chat.stop` grows by 
 
 ### 1.4 Considered and not done now
 
-- `$.session.identity()`: answers `{deny}` to any mod the organization's managed settings didn't install, so the `.claude.json` read stays for the login email.
+- `$.session.identity()`: answers `{deny}` to any mod the organization's managed settings didn't install, so the `.claude.json` read stays for the login email. *Changed in v1.0.0: the mod no longer reads `.claude.json`; the login is only what `identity()` answers, usually nothing.*
 - `ui.render`, `$.ui.open`, bands and status lines: symphony's UI is the page; the mod stays invisible in the terminal beyond its toasts.
-- `prompt.compose` (injecting "who else is in the office" into the system prompt) and `tool.check` honoring a "remember this allow for the session" rule from the page: both wanted for the Messenger theme's approval cards; they change what the model does, so they get their own design later.
+- `prompt.compose` (injecting "who else is in the office" into the system prompt) and `tool.check` honoring a "remember this allow for the session" rule from the page: both wanted for the Messenger (Coworkers) theme's approval cards; they change what the model does, so they get their own design later.
 - `classic.Elicitation` (an MCP server asks the person a form): a third ask kind for the page, later.
 - `classic.FileChanged`: too chatty; at most a count per turn, later if a theme wants it.
 - `classic.MessageDisplay`: duplicates `turn.step` text.
@@ -194,7 +194,7 @@ The office as the management page of a large company's internal tooling: dense, 
 - **Activity**: `/api/activity` and the message log as one timeline, filterable by person; "Today $…" and the per-account cost columns come from the ledger (§1.3).
 - New strings: about 60 keys × 10 languages. Charts follow the `dataviz` skill when the time comes (one palette, no color-only meaning).
 
-### 3.2 Messenger: the Grok Bot–like coworker chat (v0.11.0)
+### 3.2 Messenger, shown as Coworkers: the coworker chat (v0.11.0)
 
 The sessions as coworkers in a messaging app: identity and status in one avatar, a conversation per coworker, cards in the chat, oversight in layers.
 
@@ -216,10 +216,10 @@ The sessions as coworkers in a messaging app: identity and status in one avatar,
 - **Sidebar**: one row per account: the avatar, the name, a title line (the model and effort read as a job title: "opus / max"; the folder's last segment), a progress line (the running tool's summary, the last answer's first line, "waiting: <question>", "off duty since 10:12"). Sorted waiting first, then working, idle, off duty; a search box over names, session names and folders (as the HUD's).
 - **Avatar as status**: a simple geometric face per account (drawn from the account id, Canvas or SVG, our own design), whose motion is the state: still when idle, a slow pulse when thinking, a quick tick when a tool runs, a raised hand and a red ring when waiting, gray and eyes closed off duty, a check mark on a task member whose task ended. Hover shows the current action in words. No separate status dots.
 - **Chat**: the shared `chat.js` flow, styled as bubbles; the asks come as cards inline in the flow (the overlay form is the pixel office's; here a card sits where it happened, and the input stays usable for a message that doesn't answer it) — this is a `chat.js` option (`asks: 'overlay' | 'inline'`). *Shipped in v0.11.0 with the overlay; the inline option is still to do.*
-- **Oversight in three layers** (the Grok Bot idea, mapped to ours): a small icon in the header while a tool runs (the status), a docked right panel with the in-page terminal view read-only (the preview, `terminal.js`), and "Take over" which opens the full terminal (`/api/terminal/<id>/open`, or the in-page view with input when it exists). *Shipped in v0.11.0 as the status (the computer block's pulsing dot and the running tool), the last tool rows as the preview, and Take over opening the terminal window; `terminal.js` is still to do.*
+- **Oversight in three layers**: a small icon in the header while a tool runs (the status), a docked right panel with the in-page terminal view read-only (the preview, `terminal.js`), and "Take over" which opens the full terminal (`/api/terminal/<id>/open`, or the in-page view with input when it exists). *Shipped in v0.11.0 as the status (the computer block's pulsing dot and the running tool), the last tool rows as the preview, and Take over opening the terminal window; `terminal.js` is still to do.*
 - **Group chats**: the collaborative tasks, listed under the coworkers; a group's chat is the task window's team chat (`task.js`) with the members' avatars; "New group" is the task dialog.
 - **Right panel**: the coworker's profile: folder, repository, engine version, context fill, cost, MCP servers, subagents; "Routines" is a placeholder for scheduled runs, later.
-- New strings: about 40 keys. Sources on the Grok Bot model are listed at the end.
+- New strings: about 40 keys.
 
 ### 3.3 Mission Control: the telemetry wall (v0.12.0)
 
@@ -261,6 +261,4 @@ A NASA-style control room: the whole screen a wall of panels, one per session, w
 
 1. v0.8.0: mod hooks and bridge fields; `claude plugin validate`, `claude plugin test`, `go test -race ./...`, cross-compile, `TestOffice` with real sessions showing the new fields in `/api/state`.
 2. v0.9.0: `docs/protocol.md`, `symphony.js`, `ui/*`, themes folder and routing, the pixel office moved; the full e2e suite; the pixel office compared screen by screen with v0.8.0.
-3. v0.10.0 HQ, v0.11.0 Messenger, v0.12.0 Mission Control: each with its `TestScreens` tour, `TestPerf`, its ten catalogs, a README section with a screenshot, and the mod unchanged unless a theme needs a new field.
-
-Sources on the Grok Bot interaction model (read for the Messenger theme; nothing of theirs is copied): the design critique at [rar.design](https://rar.design/posts/grok-bot-agent-interface-design), the product documentation at [docs.x.ai](https://docs.x.ai/grok-bot/mobile), and the forum note on the missing API at [forum.cursor.com](https://forum.cursor.com/t/grok-bot-official-api-to-create-bots-and-send-receive-chat-for-companion-uis/170985).
+3. v0.10.0 HQ, v0.11.0 Messenger (Coworkers), v0.12.0 Mission Control: each with its `TestScreens` tour, `TestPerf`, its ten catalogs, a README section with a screenshot, and the mod unchanged unless a theme needs a new field.

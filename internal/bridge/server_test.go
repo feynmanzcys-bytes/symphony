@@ -23,6 +23,7 @@ var testWeb = fstest.MapFS{
 	"themes/wrong/index.html":  {Data: []byte("<html>wrong</html>")},
 	"themes/wrong/theme.json":  {Data: []byte(`{"name":"other"}`)}, // the manifest's name must be the folder's
 	"approve.html":             {Data: []byte("<html>approve</html>")},
+	"approve.js":               {Data: []byte("export const approve = 1")},
 	"asks.js":                  {Data: []byte("export const x = 1")},
 	"i18n.js":                  {Data: []byte("export const t = key => key")},
 	"symphony.js":              {Data: []byte("export const connect = () => {}")},
@@ -32,29 +33,46 @@ var testWeb = fstest.MapFS{
 	"locales/xx.json":          {Data: []byte(`{}`)}, // not a supported language: the bridge must not serve it
 }
 
+// testKey is the page key of the bridges these tests start.
+const testKey = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+
+// client sends what the page sends, with the page key, or with modOnly what the mod sends: no page key, its token in
+// header.
 type client struct {
-	t      *testing.T
-	base   string
-	header map[string]string
+	t       *testing.T
+	base    string
+	header  map[string]string
+	modOnly bool
 }
 
 func newBridge(t *testing.T) (*Server, string) {
 	t.Helper()
 	srv := NewServer(NewHub(), testWeb)
+	srv.Key = testKey
 	srv.WaitTimeout = 300 * time.Millisecond
 	ts := httptest.NewServer(srv)
 	t.Cleanup(ts.Close)
 	return srv, ts.URL
 }
 
-// as creates an account and returns a client that carries its token.
+// as creates an account and returns a client that carries its token, as its session's mod.
 func as(t *testing.T, srv *Server, base, name string) (client, *Account) {
 	t.Helper()
 	acc, err := srv.Hub.CreateAccount(name)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return client{t: t, base: base, header: map[string]string{"authorization": "Bearer " + acc.Token}}, acc
+	return client{t: t, base: base, header: map[string]string{"authorization": "Bearer " + acc.Token}, modOnly: true}, acc
+}
+
+// pageGet is a GET with the page key, as a signed-in page sends it.
+func pageGet(url string) (*http.Response, error) {
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set(keyHeader, testKey)
+	return http.DefaultClient.Do(req)
 }
 
 func (c client) do(method, path string, body any) (int, map[string]any) {
@@ -66,6 +84,9 @@ func (c client) do(method, path string, body any) (int, map[string]any) {
 	}
 	req, _ := http.NewRequest(method, c.base+path, r)
 	req.Header.Set("content-type", "application/json")
+	if !c.modOnly {
+		req.Header.Set(keyHeader, testKey)
+	}
 	for k, v := range c.header {
 		req.Header.Set(k, v)
 	}
@@ -190,8 +211,8 @@ func TestStateSince(t *testing.T) {
 
 func TestTokenRequired(t *testing.T) {
 	srv, base := newBridge(t)
-	anon := client{t: t, base: base}
-	bad := client{t: t, base: base, header: map[string]string{"authorization": "Bearer nope"}}
+	anon := client{t: t, base: base, modOnly: true}
+	bad := client{t: t, base: base, header: map[string]string{"authorization": "Bearer nope"}, modOnly: true}
 	for _, c := range []client{anon, bad} {
 		if st, code := c.failure("POST", "/api/event", Event{Session: "s1", Kind: "session.start"}); st != http.StatusUnauthorized || code != "token_invalid" {
 			t.Fatalf("a missing or wrong token should get 401 token_invalid, got %d %q", st, code)
@@ -324,7 +345,7 @@ func TestAccountAPI(t *testing.T) {
 		t.Fatalf("a duplicate name should get 409 account_name_taken, got %d %v", st, body)
 	}
 	id := res["id"].(string)
-	mod := client{t: t, base: base, header: map[string]string{"authorization": "Bearer " + res["token"].(string)}}
+	mod := client{t: t, base: base, header: map[string]string{"authorization": "Bearer " + res["token"].(string)}, modOnly: true}
 	mod.ok("POST", "/api/event", Event{Session: "s1", Kind: "session.start"})
 	if st, code := c.failure("DELETE", "/api/accounts/"+id, nil); st != http.StatusConflict || code != "account_busy" {
 		t.Fatalf("an online account can't be deleted: want 409 account_busy, got %d %q", st, code)
@@ -408,7 +429,7 @@ func TestCancel(t *testing.T) {
 	if got := c.ok("GET", "/api/wait/"+id, nil)["status"]; got != AskCancelled {
 		t.Fatalf("want cancelled, got %v", got)
 	}
-	if st, code := c.failure("POST", "/api/answer/"+id, map[string]any{}); st != http.StatusConflict || code != "ask_settled" {
+	if st, code := (client{t: t, base: base}).failure("POST", "/api/answer/"+id, map[string]any{}); st != http.StatusConflict || code != "ask_settled" {
 		t.Fatalf("an answer after the cancel should get 409 ask_settled, got %d %q", st, code)
 	}
 	if st, code := c.failure("GET", "/api/wait/nope", nil); st != http.StatusNotFound || code != "ask_unknown" {
@@ -434,6 +455,7 @@ func TestMessagesPairEitherOrderAndPersist(t *testing.T) {
 		t.Fatal(err)
 	}
 	srv := NewServer(hub, testWeb)
+	srv.Key = testKey
 	ts := httptest.NewServer(srv)
 	defer ts.Close()
 	a, _ := as(t, srv, ts.URL, "xiaowang")
@@ -473,7 +495,7 @@ func TestMessagesPairEitherOrderAndPersist(t *testing.T) {
 
 func TestStreamStartsWithSnapshot(t *testing.T) {
 	srv, base := newBridge(t)
-	resp, err := http.Get(base + "/api/stream")
+	resp, err := pageGet(base + "/api/stream")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -511,10 +533,10 @@ func TestStreamStartsWithSnapshot(t *testing.T) {
 func TestPages(t *testing.T) {
 	_, base := newBridge(t)
 	for path, want := range map[string]string{
-		"/": "text/html", "/approve": "text/html", "/asks.js": "text/javascript", "/symphony.js": "text/javascript",
+		"/": "text/html", "/approve": "text/html", "/approve.js": "text/javascript", "/asks.js": "text/javascript", "/symphony.js": "text/javascript",
 		"/i18n.js": "text/javascript", "/locales/en.json": "application/json", "/ui/chat.js": "text/javascript", "/ui/ui.css": "text/css",
 	} {
-		resp, err := http.Get(base + path)
+		resp, err := pageGet(base + path)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -532,6 +554,7 @@ func TestThemes(t *testing.T) {
 	get := func(path string, cookie string) (*http.Response, string) {
 		t.Helper()
 		req, _ := http.NewRequest("GET", base+path, nil)
+		req.Header.Set(keyHeader, testKey)
 		if cookie != "" {
 			req.Header.Set("Cookie", "symphony.theme="+cookie)
 		}
@@ -603,7 +626,7 @@ func TestLocales(t *testing.T) {
 	_, base := newBridge(t)
 	get := func(path string) (int, string) {
 		t.Helper()
-		resp, err := http.Get(base + path)
+		resp, err := pageGet(base + path)
 		if err != nil {
 			t.Fatal(err)
 		}

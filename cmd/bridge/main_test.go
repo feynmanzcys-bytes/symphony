@@ -2,16 +2,24 @@ package main
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"io"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/feynmanzcys-bytes/symphony/internal/bridge"
 )
 
 // built is the bridge built once for these tests, the way .github/release.sh builds it.
@@ -64,17 +72,12 @@ func TestVersion(t *testing.T) {
 	}
 }
 
-// TestOpen runs the bridge with a stand-in browser that notes what it was asked to open: the office opens once the
-// bridge is up; started again at the same address, it opens the running bridge's office and exits; with -open=false
-// nothing opens.
-func TestOpen(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("the stand-in browser is a shell script")
-	}
-	exe := buildBridge(t)
-	dir := t.TempDir()
+// standInBrowser puts a stand-in for the system's opener (xdg-open, open) in a folder for PATH; asked lists what it was
+// asked to open.
+func standInBrowser(t *testing.T, dir string) (bin string, asked func() []string) {
+	t.Helper()
 	opened := filepath.Join(dir, "opened")
-	bin := filepath.Join(dir, "bin")
+	bin = filepath.Join(dir, "bin")
 	if err := os.Mkdir(bin, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -84,25 +87,56 @@ func TestOpen(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	addr := freeAddr(t)
-	office := "http://" + addr + "/"
-	cmd := func(ctx context.Context, args ...string) *exec.Cmd {
-		// no claude here, so the bridge doesn't look for the mod
-		c := exec.CommandContext(ctx, exe, append([]string{"-addr", addr, "-data", filepath.Join(dir, "data"), "-claude", filepath.Join(dir, "no-claude")}, args...)...)
-		c.Env = append(os.Environ(), "PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"), "DISPLAY=:0", "SYMPHONY_LANG=en")
-		return c
+	// no program is set to open .html files, so the file that opens the office stays in the data folder, never in
+	// the folder of this machine's own browser if that's a snap or a flatpak (ConfinedDir)
+	if err := os.WriteFile(filepath.Join(bin, "xdg-mime"), []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
 	}
-	asked := func() []string {
+	return bin, func() []string {
 		data, _ := os.ReadFile(opened)
 		return strings.Fields(string(data))
 	}
+}
+
+// bridgeCmd runs the bridge at addr with the data folder data, a stand-in browser first on PATH (bin) and no claude,
+// so it doesn't look for the mod.
+func bridgeCmd(ctx context.Context, exe, addr, data, bin string, args ...string) *exec.Cmd {
+	c := exec.CommandContext(ctx, exe, append([]string{"-addr", addr, "-data", data, "-claude", filepath.Join(data, "no-claude")}, args...)...)
+	c.Env = append(os.Environ(), "PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"), "DISPLAY=:0", "SYMPHONY_LANG=en")
+	return c
+}
+
+// TestOpen runs the bridge with a stand-in browser that notes what it was asked to open: the office opens once the
+// bridge is up, signed in, through open.html in the data folder (so the key is on no command line); started again at
+// the same address, it opens the running bridge's office and exits; with -open=false nothing opens.
+func TestOpen(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the stand-in browser is a shell script")
+	}
+	exe := buildBridge(t)
+	dir := t.TempDir()
+	bin, asked := standInBrowser(t, dir)
+	addr := freeAddr(t)
+	data := filepath.Join(dir, "data")
+	cmd := func(ctx context.Context, args ...string) *exec.Cmd {
+		return bridgeCmd(ctx, exe, addr, data, bin, args...)
+	}
+	page := bridge.FileURL(runtime.GOOS, filepath.Join(data, "open.html"))
 
 	first := cmd(context.Background())
 	if err := first.Start(); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { first.Process.Kill(); first.Wait() })
-	waitFor(t, 10*time.Second, "the office opens once the bridge is up", func() bool { return slices.Equal(asked(), []string{office}) })
+	waitFor(t, 10*time.Second, "the office opens once the bridge is up", func() bool { return slices.Equal(asked(), []string{page}) })
+	key, err := bridge.ReadKey(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	office := "http://" + addr + "/?key=" + key
+	if html, _ := os.ReadFile(filepath.Join(data, "open.html")); !strings.Contains(string(html), `content="0;url=`+office+`"`) {
+		t.Fatalf("open.html should send the browser on to %s:\n%s", office, html)
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -110,7 +144,7 @@ func TestOpen(t *testing.T) {
 	if err != nil || !strings.Contains(string(out), "already running at "+office) {
 		t.Fatalf("started again, the bridge should say it's already running and exit: %v\n%s", err, out)
 	}
-	waitFor(t, 10*time.Second, "started again, it opens the running bridge's office", func() bool { return slices.Equal(asked(), []string{office, office}) })
+	waitFor(t, 10*time.Second, "started again, it opens the running bridge's office", func() bool { return slices.Equal(asked(), []string{page, page}) })
 
 	if out, err := cmd(ctx, "-open=false").CombinedOutput(); err != nil || !strings.Contains(string(out), "already running") {
 		t.Fatalf("with -open=false it should still find the running bridge and exit: %v\n%s", err, out)
@@ -119,8 +153,116 @@ func TestOpen(t *testing.T) {
 	if got := asked(); len(got) != 2 {
 		t.Errorf("-open=false opened something: %q", got)
 	}
-	if !bridgeAt("http://" + addr) {
+	if bridgeAt("http://"+addr, key) != ours {
 		t.Error("the first bridge should still be running")
+	}
+	if bridgeAt("http://"+addr, strings.Repeat("0", 64)) != another {
+		t.Error("with another key, the bridge is someone else's")
+	}
+}
+
+// TestAddrTaken: when something other than this data folder's bridge answers at the address (another program, or a
+// bridge with another data folder), the bridge says so and exits 1 without opening anything, -background too.
+func TestAddrTaken(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the stand-in browser is a shell script")
+	}
+	exe := buildBridge(t)
+	dir := t.TempDir()
+	bin, asked := standInBrowser(t, dir)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	refused := func(addr string, args ...string) {
+		t.Helper()
+		out, err := bridgeCmd(ctx, exe, addr, filepath.Join(dir, "mine"), bin, args...).CombinedOutput()
+		var exit *exec.ExitError
+		if !errors.As(err, &exit) || exit.ExitCode() != 1 || !strings.Contains(string(out), addr+" is taken: another program, or a symphony bridge with another data folder") {
+			t.Fatalf("%v: want exit 1 saying %s is taken, got %v:\n%s", args, addr, err, out)
+		}
+	}
+
+	// what every request to the squatters carried: the page key must never be among it
+	var heard strings.Builder
+	var mu sync.Mutex
+	listen := func(h http.HandlerFunc) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			body, _ := io.ReadAll(r.Body)
+			mu.Lock()
+			fmt.Fprintf(&heard, "%s %s %v %s\n", r.Method, r.URL, r.Header, body)
+			mu.Unlock()
+			h(w, r)
+		}
+	}
+	for _, h := range []http.HandlerFunc{
+		func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusUnauthorized) },
+		func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(`{"hello":"world"}`)) },
+		// one that answers everything as a bridge would, a made-up proof included
+		func(w http.ResponseWriter, r *http.Request) {
+			w.Write([]byte(`{"type":"snapshot","proof":"` + strings.Repeat("ab", 32) + `"}`))
+		},
+	} {
+		other := httptest.NewServer(listen(h))
+		addr := strings.TrimPrefix(other.URL, "http://")
+		refused(addr)
+		refused(addr, "-background")
+		other.Close()
+	}
+	mine, err := bridge.ReadKey(filepath.Join(dir, "mine"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(heard.String(), mine) || heard.Len() == 0 {
+		t.Fatalf("the page key went to a program at the address, or nothing was asked:\n%s", heard.String())
+	}
+
+	addr := freeAddr(t)
+	theirs := bridgeCmd(context.Background(), exe, addr, filepath.Join(dir, "theirs"), bin, "-open=false")
+	if err := theirs.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { theirs.Process.Kill(); theirs.Wait() })
+	waitFor(t, 10*time.Second, "the other bridge is up", func() bool {
+		key, err := bridge.ReadKey(filepath.Join(dir, "theirs"))
+		return err == nil && bridgeAt("http://"+addr, key) == ours
+	})
+	refused(addr)
+	if got := asked(); len(got) != 0 {
+		t.Errorf("nothing should open when the address is taken: %q", got)
+	}
+}
+
+// TestAddrNotLocal: the bridge listens on this machine only; any other host in -addr stops it before it starts.
+func TestAddrNotLocal(t *testing.T) {
+	for addr, want := range map[string]bool{
+		"127.0.0.1:7788": true, "localhost:7788": true, "[::1]:7788": true,
+		"0.0.0.0:7788": false, "[::]:7788": false, ":7788": false, "192.168.1.5:7788": false, "example.com:7788": false,
+		"127.0.0.2:7788": false, "127.0.0.1": false, "127.0.0.1:": false, "::1:7788": false,
+		"127.0.0.1:0": false, "127.0.0.1:http": false, "127.0.0.1:70000": false, "127.0.0.1:-1": false,
+	} {
+		host, port, ok := localAddr(addr)
+		// localhost is listened on as 127.0.0.1, so a browser can't end up on whoever holds ::1
+		if ok != want || (ok && net.JoinHostPort(host, port) != strings.Replace(addr, "localhost", "127.0.0.1", 1)) {
+			t.Errorf("localAddr(%q) = %q %q %v, want ok %v", addr, host, port, ok, want)
+		}
+	}
+	exe := buildBridge(t)
+	data := t.TempDir()
+	for _, addr := range []string{"0.0.0.0:7788", ":7788"} {
+		cmd := exec.Command(exe, "-addr", addr, "-data", data, "-open=false")
+		cmd.Env = append(os.Environ(), "SYMPHONY_LANG=en")
+		out, err := cmd.CombinedOutput()
+		if err == nil || !strings.Contains(string(out), "-addr "+addr+": the bridge listens on this machine only") {
+			t.Errorf("-addr %s: want a refusal, got %v:\n%s", addr, err, out)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(data, "key")); err == nil {
+		t.Error("a refused start should leave the data folder alone")
+	}
+	// attach checks its address the same way
+	cmd := exec.Command(exe, "attach", "-addr", "0.0.0.0:7788", "x")
+	cmd.Env = append(os.Environ(), "SYMPHONY_LANG=en")
+	if out, err := cmd.CombinedOutput(); err == nil || !strings.Contains(string(out), "the bridge listens on this machine only") {
+		t.Errorf("attach -addr 0.0.0.0:7788: want a refusal, got %v:\n%s", err, out)
 	}
 }
 
@@ -136,7 +278,6 @@ func TestBackground(t *testing.T) {
 	data := filepath.Join(dir, "data")
 	t.Cleanup(func() { exec.Command("pkill", "-f", "--", "-data="+data).Run() })
 	addr := freeAddr(t)
-	office := "http://" + addr + "/"
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	run := func() string {
@@ -149,14 +290,23 @@ func TestBackground(t *testing.T) {
 		return string(out)
 	}
 
-	if out := run(); !strings.Contains(out, "runs in the background at "+office) {
-		t.Fatalf("-background should say where the bridge runs:\n%s", out)
+	out := run()
+	key, err := bridge.ReadKey(data)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if !bridgeAt("http://" + addr) {
-		t.Fatal("the bridge should keep running after -background returns")
+	office := "http://" + addr + "/?key=" + key
+	if !strings.Contains(out, "runs in the background at "+office) {
+		t.Fatalf("-background should say where the bridge runs, signed in:\n%s", out)
 	}
-	if log, err := os.ReadFile(filepath.Join(data, "bridge.log")); err != nil || !strings.Contains(string(log), "symphony bridge v9.8.7: http://"+addr) {
+	if bridgeAt("http://"+addr, key) != ours {
+		t.Fatal("the bridge should keep running after -background returns, with the data folder's key")
+	}
+	if log, err := os.ReadFile(filepath.Join(data, "bridge.log")); err != nil || !strings.Contains(string(log), "symphony bridge v9.8.7: "+office) {
 		t.Errorf("bridge.log should have the bridge's own log: %v\n%s", err, log)
+	}
+	if fi, err := os.Stat(filepath.Join(data, "bridge.log")); err != nil || fi.Mode().Perm() != 0o600 {
+		t.Errorf("bridge.log holds the key: only the user may read it (%v %v)", fi.Mode(), err)
 	}
 	if out := run(); !strings.Contains(out, "already running at "+office) {
 		t.Fatalf("a second -background should find the running bridge:\n%s", out)
@@ -214,12 +364,17 @@ func TestAutostartRefuses(t *testing.T) {
 	for i, name := range []string{"GOCACHE", "GOMODCACHE", "GOPATH"} {
 		env = append(env, name+"="+strings.Split(strings.TrimSpace(string(caches)), "\n")[i])
 	}
+	// something else holds the address: nothing is turned on that would only step aside at every login
+	squatter := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusNotFound) }))
+	defer squatter.Close()
+	taken := strings.TrimPrefix(squatter.URL, "http://")
 	for _, c := range []struct {
 		cmd  *exec.Cmd
 		want string
 	}{
 		{exec.Command(gobin, "run", ".", "-autostart", "on"), "-autostart needs the symphony program itself, not go run"},
 		{exec.Command(buildBridge(t), "-autostart", "maybe"), "-autostart takes on or off, not maybe"},
+		{exec.Command(buildBridge(t), "-autostart", "on", "-addr", taken), taken + " is taken"},
 	} {
 		c.cmd.Env = env
 		out, err := c.cmd.CombinedOutput()
@@ -233,5 +388,17 @@ func TestAutostartRefuses(t *testing.T) {
 		if _, err := os.Stat(dir); err == nil {
 			t.Errorf("a refused -autostart wrote %s", dir)
 		}
+	}
+}
+
+// The page's hint for reaching a session's terminal by hand names the address and the data folder when they aren't
+// the defaults, since attach needs both to find the bridge and its key.
+func TestAttachHint(t *testing.T) {
+	if got := attachHint(defaultAddr, bridge.DefaultDataDir())("L1"); got != "symphony attach L1" {
+		t.Errorf("defaults: %q", got)
+	}
+	dir := filepath.Join(t.TempDir(), "my data")
+	if got, want := attachHint("127.0.0.1:7799", dir)("L2"), "symphony attach -addr 127.0.0.1:7799 -data "+strconv.Quote(dir)+" L2"; got != want {
+		t.Errorf("got %q, want %q", got, want)
 	}
 }

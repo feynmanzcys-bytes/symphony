@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -36,6 +37,24 @@ type RepoInfo struct {
 	Remote   string `json:"remote,omitempty"`
 	Name     string `json:"name,omitempty"`
 	Internal bool   `json:"internal,omitempty"`
+}
+
+// withoutUserinfo is a remote's address without the user name and password it may hold: whatever comes before an @
+// in the part before the first slash goes, so https://<user>:<token>@host/path becomes https://host/path and
+// <user>@host:path (scp-like) host:path. A local path's / or \ comes first and leaves it alone.
+func withoutUserinfo(remote string) string {
+	prefix, rest := "", remote
+	if i := strings.Index(remote, "://"); i >= 0 {
+		prefix, rest = remote[:i+3], remote[i+3:]
+	}
+	host := rest
+	if i := strings.IndexAny(rest, `/\`); i >= 0 {
+		host = rest[:i]
+	}
+	if at := strings.LastIndex(host, "@"); at >= 0 {
+		return prefix + rest[at+1:]
+	}
+	return remote
 }
 
 // Tokens is what a response, a turn or a session cost in tokens.
@@ -80,6 +99,22 @@ type Usage struct {
 	Cost       *Cost              `json:"cost,omitempty"`
 	Totals     map[string]*Tokens `json:"totals,omitempty"`
 	Updated    time.Time          `json:"updated"`
+}
+
+// copy is a copy of u the hub won't change: the totals are added up in place (the other figures are replaced whole).
+func (u *Usage) copy() *Usage {
+	if u == nil {
+		return nil
+	}
+	cp := *u
+	if u.Totals != nil {
+		cp.Totals = make(map[string]*Tokens, len(u.Totals))
+		for model, t := range u.Totals {
+			tc := *t
+			cp.Totals[model] = &tc
+		}
+	}
+	return &cp
 }
 
 // Refusal is what the API said about a turn it refused.
@@ -187,8 +222,7 @@ func (h *Hub) pushUsageLocked(s *Session) {
 	if len(h.subs) == 0 || s.Usage == nil {
 		return
 	}
-	cp := *s.Usage
-	p := &Push{Value: map[string]any{"type": "usage", "session": s.ID, "usage": &cp}}
+	p := newPush(map[string]any{"type": "usage", "session": s.ID, "usage": s.Usage})
 	for ch := range h.subs {
 		select {
 		case ch <- p:

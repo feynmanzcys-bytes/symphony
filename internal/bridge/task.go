@@ -86,6 +86,9 @@ type Member struct {
 	Effort   string `json:"effort,omitempty"`
 	Launch   string `json:"launch,omitempty"`
 	Session  string `json:"session,omitempty"` // set when the session reports in
+	// Kept is where what git ignored in the worktree (build output, .env ...) went when the task ended:
+	// <folder>/.symphony/kept/<slug>-<task id>; empty when there was nothing
+	Kept string `json:"kept,omitempty"`
 }
 
 func (t *Task) member(account string) *Member {
@@ -684,6 +687,11 @@ func (h *Hub) finishTask(id string) {
 	}
 	now := h.now()
 	task.Status, task.Ended = TaskEnded, &now
+	for _, m := range t.Members { // tidyTask worked on a copy
+		if mm := task.member(m.Account); mm != nil && m.Kept != "" {
+			mm.Kept = m.Kept
+		}
+	}
 	if fail != nil {
 		task.Status, task.Error, task.ErrorCode, task.ErrorParams = TaskFailed, fail.Text, fail.Code, fail.Params
 	} else {
@@ -717,10 +725,11 @@ func (h *Hub) dropTaskPeopleLocked(t *Task) {
 
 // tidyTask puts the members' folders in order after a task. What a member left uncommitted is committed to its
 // branch and its worktree goes (commits on a detached HEAD that no ref holds get a branch first, <branch>-detached,
-// or they would go with it). In a repository the bridge made, uncommitted changes in the folder itself are committed
-// too and every member's branch is merged into the base branch in member order; when a merge fails, the merges are
-// taken back and the task fails. Nothing else is ever removed: the repositories, the bridge's own included, and the
-// branches stay. The first failure is the answer, and whatever it concerns stays as it is, so nothing is lost.
+// or they would go with it; what git ignores in it is moved to <folder>/.symphony/kept/<slug>-<task id>, Member.Kept).
+// In a repository the bridge made, uncommitted changes in the folder itself are committed too and every member's
+// branch is merged into the base branch in member order; when a merge fails, the merges are taken back and the task
+// fails. Nothing else is ever removed: the repositories, the bridge's own included, and the branches stay. The first
+// failure is the answer, and whatever it concerns stays as it is, so nothing is lost.
 func tidyTask(t *Task) *Error {
 	var fail *Error
 	note := func(e *Error) {
@@ -753,6 +762,19 @@ func tidyTask(t *Task) *Error {
 		}
 		if !isDir(m.Dir) {
 			continue // the folder is gone; so is everything in it
+		}
+		// what git ignores isn't on the branch: it goes to .symphony/kept first, or the worktree stays
+		if isDir(m.Worktree) {
+			kept := filepath.Join(m.Dir, symphonyDir, "kept", filepath.Base(m.Worktree))
+			moved, err := gitKeepIgnored(m.Worktree, kept)
+			if moved {
+				m.Kept = kept
+			}
+			if err != nil {
+				note(gitFailed(m.Worktree, err))
+				broken[rootOf[m.Dir]] = true
+				continue
+			}
 		}
 		if err := gitRemoveWorktree(m.Dir, m.Worktree); err != nil {
 			note(gitFailed(m.Dir, err))

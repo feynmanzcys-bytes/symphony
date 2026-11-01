@@ -1,11 +1,15 @@
-# Checks every push to dev and main: the Go code (format, vet, unit tests, builds for the three platforms), the mod
-# (validation and unit tests, with the Claude Code version it's tested with) and the pages in a real browser.
-# TestOffice starts real Claude sessions and spends tokens, so it runs on a developer's machine only (see CLAUDE.md).
-# A private repo on GitHub Free can't require these checks; look at the run after each push (gh run list).
+# Checks every push to dev and main and every pull request to them: the Go code (format, vet, unit tests, builds for
+# the three platforms), the mod (validation and unit tests, with the Claude Code version it's tested with) and the pages
+# in a real browser. The commit messages are history.yml's, which docs-only changes don't skip. It uses no secrets and
+# its token can only read, so pull requests from forks get the same checks. TestOffice and TestModStartsBridge start
+# real Claude sessions and spend tokens, so they run on a developer's machine only (see CONTRIBUTING.md).
 name: CI
 
 on:
   push:
+    branches: [dev, main]
+    paths-ignore: ['**.md', 'docs/**', 'LICENSE']
+  pull_request:
     branches: [dev, main]
     paths-ignore: ['**.md', 'docs/**', 'LICENSE']
   workflow_dispatch:

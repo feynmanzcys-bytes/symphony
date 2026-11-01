@@ -1,5 +1,6 @@
-// Fills a bridge with made-up activity to show off the office: go run ./cmd/demo [-base http://127.0.0.1:7788] [-seconds 60]
-// It creates a few demo accounts (skipping names that exist already) and reports events with their tokens.
+// Fills a bridge with made-up activity to show off the office: go run ./cmd/demo [-base http://127.0.0.1:7788]
+// [-data folder] [-seconds 60]. It creates a few demo accounts (skipping names that exist already), with the page key
+// from the bridge's data folder, and reports events with their tokens.
 package main
 
 import (
@@ -11,21 +12,26 @@ import (
 	"math/rand/v2"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
+	"github.com/feynmanzcys-bytes/symphony/internal/bridge"
 	"github.com/feynmanzcys-bytes/symphony/internal/i18n"
 )
 
-var base string
+var base, key string
 
 type member struct{ id, name, token string }
 
+// post sends what the mod sends with a member's token, and what the page sends (no token) with the page key.
 func post(token, path string, body any) map[string]any {
 	data, _ := json.Marshal(body)
 	req, _ := http.NewRequest("POST", base+path, bytes.NewReader(data))
 	req.Header.Set("content-type", "application/json")
 	if token != "" {
 		req.Header.Set("authorization", "Bearer "+token)
+	} else {
+		req.Header.Set("X-Symphony-Key", key)
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -63,7 +69,19 @@ func main() {
 	i18n.SetLang(i18n.Detect(os.Getenv))
 	flag.StringVar(&base, "base", "http://127.0.0.1:7788", i18n.T("demo.flag.base"))
 	seconds := flag.Float64("seconds", 0, i18n.T("demo.flag.seconds"))
+	dataDir := flag.String("data", bridge.DefaultDataDir(), i18n.T("demo.flag.data"))
 	flag.Parse()
+	var err error
+	if key, err = bridge.ReadKey(*dataDir); err != nil {
+		log.Fatal(i18n.T("demo.no_key", "reason", err.Error()))
+	}
+	// the key goes only to the bridge that proves it has it
+	switch ok, err := bridge.ProveKey(base, key); {
+	case err != nil:
+		log.Fatal(err)
+	case !ok:
+		log.Fatal(i18n.T("log.key_unproven", "addr", strings.TrimPrefix(base, "http://")))
+	}
 
 	// name, model, effort, role: every character has its own size and muscles, and the names come from around the
 	// world. Two wait for you (a question, a permission), some keep busy, and the idle ones have nothing to do: they

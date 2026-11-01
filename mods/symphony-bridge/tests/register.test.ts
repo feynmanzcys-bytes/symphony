@@ -3,38 +3,65 @@
 // and every message it shows is recorded.
 import type { On } from 'claude-code'
 import { expect, mock, test } from 'claude-code/testing'
+import { hmacSha256 } from '../hooks/register'
 
-type Req = { url: string; method?: string; auth?: string; body?: Record<string, unknown> }
-// 'down' means the bridge isn't running and can't be reached
-type Reply = { status: number; text: string } | 'down'
+// answered: the request got an answer (not 'down' or 'hang'); proved: a hello the bridge answered with the right proof
+type Req = { url: string; method?: string; auth?: string; body?: Record<string, unknown>; answered?: boolean; proved?: boolean }
+// 'down' means the bridge isn't running and can't be reached; 'hang' that it never answers
+type Reply = { status: number; text: string } | 'down' | 'hang'
 // what running symphony does: exits with a code, or 'missing' when it isn't on PATH
 type Ran = { exitCode: number } | 'missing'
 
+const utf8 = (s: string) => new TextEncoder().encode(s)
+const hex = (bytes: Uint8Array) => [...bytes].map(b => b.toString(16).padStart(2, '0')).join('')
+const sha256hex = async (s: string) => hex(new Uint8Array(await crypto.subtle.digest('SHA-256', utf8(s))))
+
+// the token the test bridge knows; it answers /api/hello for any other with a 401
+const KNOWN = 'tok'
+
+// The test bridge answers POST /api/hello as symphony's bridge does (unless it's down or hangs): the HMAC-SHA256 of
+// "symphony-hello:" + nonce keyed with the token whose SHA-256 is the id. hello, when given, answers the hellos
+// instead; undefined from it means as the bridge would.
 function world(
   on: On,
   env: Record<string, string>,
   reply: (r: Req) => Reply = () => ({ status: 200, text: '{}' }),
   run: (argv: readonly string[]) => Ran = () => 'missing',
+  hello?: (r: Req) => Reply | undefined,
 ) {
   mock.env(on, env)
   const clock = mock.clock(on)
+  const all: Req[] = [] // every request, in order
   const reqs: Req[] = []
   const polls: Req[] = [] // the inbox long polls, apart from the reports
+  const hellos: Req[] = [] // the bridge's checks, apart from the reports
   const toasts: string[] = []
   const runs: string[][] = []
+  const reads: string[] = []
   on('process.run', (_$, e) => {
     runs.push([...e.argv])
     const ran = run(e.argv)
     if (ran === 'missing') return { deny: `${e.argv[0]}: not found` }
     return { value: { exitCode: ran.exitCode, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
   })
-  on('http.fetch', (_$, e) => {
+  const asBridge = async (r: Req): Promise<Reply> => {
+    const answer = reply(r)
+    if (answer === 'down' || answer === 'hang') return answer
+    if (r.body?.id !== (await sha256hex(KNOWN))) return { status: 401, text: '{"error":"no valid account token"}' }
+    r.proved = true
+    return { status: 200, text: JSON.stringify({ proof: hex(await hmacSha256(utf8(KNOWN), utf8(`symphony-hello:${r.body?.nonce}`))) }) }
+  }
+  on('http.fetch', async (_$, e) => {
     const headers = (e.init?.headers ?? {}) as Record<string, string>
     const body = typeof e.init?.body === 'string' ? JSON.parse(e.init.body) : undefined
     const r: Req = { url: e.url, method: e.init?.method, auth: headers.authorization, body }
-    ;(r.url.includes('/api/inbox') ? polls : reqs).push(r)
-    const answer = reply(r)
+    all.push(r)
+    const isHello = r.url.endsWith('/api/hello')
+    ;(isHello ? hellos : r.url.includes('/api/inbox') ? polls : reqs).push(r)
+    const answer = isHello ? (hello?.(r) ?? (await asBridge(r))) : reply(r)
+    r.answered = answer !== 'down' && answer !== 'hang'
     if (answer === 'down') return { deny: 'connection refused' }
+    if (answer === 'hang') return new Promise<never>(() => {})
     const { status, text } = answer
     return { value: { status, ok: status >= 200 && status < 300, headers: {}, text } }
   })
@@ -44,9 +71,27 @@ function world(
   })
   on('session.id', () => ({ value: 'sess-1' }))
   on('session.model', () => ({ value: 'claude-sonnet-5-5' }))
-  on('fs.read', () => ({ deny: 'tests read no files' }))
+  on('fs.read', (_$, e) => {
+    reads.push(e.path)
+    return { deny: 'tests read no files' }
+  })
   on('session.start', (_$, e) => ({ cwd: e.cwd }))
-  return { reqs, polls, toasts, runs, clock }
+  return { all, reqs, polls, hellos, toasts, runs, reads, clock }
+}
+
+// The token leaves the session only for a bridge that has just proved it knows it: every request that carries it
+// comes after a hello with the right proof, with no request that got no answer in between.
+function expectCheckedBeforeToken(all: Req[]) {
+  let trusted = false
+  for (const r of all) {
+    if (r.url.endsWith('/api/hello')) {
+      expect(r.auth).toBeUndefined()
+      trusted = r.proved === true
+      continue
+    }
+    if (r.auth !== undefined) expect({ url: r.url, trusted }).toEqual({ url: r.url, trusted: true })
+    if (!r.answered) trusted = false
+  }
 }
 
 const start = { cwd: '/work', surface: 'terminal', isInteractive: true } as const
@@ -67,12 +112,12 @@ test('a session without SYMPHONY_TOKEN: no bridge, no messages, approvals as usu
 })
 
 test('a session with a token: reports itself online with the token, then a heartbeat every 15 seconds', async ($, on) => {
-  const w = world(on, { SYMPHONY_TOKEN: 'tok', SYMPHONY_BRIDGE: 'http://bridge.test', SYMPHONY_LAUNCH: 'L1' })
+  const w = world(on, { SYMPHONY_TOKEN: 'tok', SYMPHONY_BRIDGE: 'https://bridge.test', SYMPHONY_LAUNCH: 'L1' })
 
   await $.session.start(start)
   expect(w.reqs.length).toBe(1)
   expect(w.reqs[0]).toEqual(
-    expect.objectContaining({ url: 'http://bridge.test/api/event', method: 'POST', auth: 'Bearer tok' }),
+    expect.objectContaining({ url: 'https://bridge.test/api/event', method: 'POST', auth: 'Bearer tok' }),
   )
   expect(w.reqs[0].body).toEqual(
     expect.objectContaining({ kind: 'session.start', session: 'sess-1', cwd: '/work', launch: 'L1', model: 'claude-sonnet-5-5' }),
@@ -87,7 +132,7 @@ test('a session with a token: reports itself online with the token, then a heart
 
 test('the account is busy at the start: once the bridge takes the heartbeat (the other session left), the inbox poll starts', async ($, on) => {
   let busy = true
-  const w = world(on, { SYMPHONY_TOKEN: 'tok', SYMPHONY_BRIDGE: 'http://bridge.test' }, () =>
+  const w = world(on, { SYMPHONY_TOKEN: 'tok', SYMPHONY_BRIDGE: 'https://bridge.test' }, () =>
     busy ? { status: 409, text: '{}' } : { status: 200, text: '{}' },
   )
 
@@ -106,7 +151,7 @@ test('the account is busy at the start: once the bridge takes the heartbeat (the
 
 test('the bridge rejects the token later (the account was deleted): nothing more is sent, not even heartbeats', async ($, on) => {
   let gone = false
-  const w = world(on, { SYMPHONY_TOKEN: 'tok', SYMPHONY_BRIDGE: 'http://bridge.test' }, () =>
+  const w = world(on, { SYMPHONY_TOKEN: 'tok', SYMPHONY_BRIDGE: 'https://bridge.test' }, () =>
     gone ? { status: 401, text: '{}' } : { status: 200, text: '{}' },
   )
 
@@ -126,7 +171,7 @@ test('the bridge rejects the token later (the account was deleted): nothing more
 })
 
 test('a task member (SYMPHONY_TASK): every event carries the task id, so the bridge seats it in the meeting room', async ($, on) => {
-  const w = world(on, { SYMPHONY_TOKEN: 'tok', SYMPHONY_BRIDGE: 'http://bridge.test', SYMPHONY_LAUNCH: 'L2', SYMPHONY_TASK: 'T7' })
+  const w = world(on, { SYMPHONY_TOKEN: 'tok', SYMPHONY_BRIDGE: 'https://bridge.test', SYMPHONY_LAUNCH: 'L2', SYMPHONY_TASK: 'T7' })
 
   await $.session.start(start)
   expect(w.reqs[0].body).toEqual(expect.objectContaining({ kind: 'session.start', launch: 'L2', task: 'T7' }))
@@ -136,7 +181,7 @@ test('a task member (SYMPHONY_TASK): every event carries the task id, so the bri
   expect(w.reqs.at(-1)?.body).toEqual(expect.objectContaining({ kind: 'heartbeat', task: 'T7' }))
 })
 
-test('the bridge rejects the token: one message, approvals stay in the terminal, and nothing more is sent', async ($, on) => {
+test('the bridge rejects the token at its check: one message, approvals stay in the terminal, and the token is never sent', async ($, on) => {
   const w = world(on, { SYMPHONY_TOKEN: 'bad' }, () => ({ status: 401, text: '{"error":"no valid account token"}' }))
   on('tool.check', () => ({ decision: 'ask' }))
   on('tool.call', () => ({ result: {} }))
@@ -147,13 +192,15 @@ test('the bridge rejects the token: one message, approvals stay in the terminal,
   await $.tool.call({ tool: 'Bash', command: 'ls' })
   await w.clock.advance(60_000)
   await w.clock.settle()
-  expect(w.reqs.length).toBe(1)
+  expect(w.hellos.length).toBe(1) // the check the bridge refused, and nothing after it
+  expect(w.all.length).toBe(1)
+  expect(w.all.filter(r => r.auth !== undefined)).toEqual([])
 })
 
 test('a tool call is reported before and after, in order, without waiting for the bridge', async ($, on) => {
   let answered = 0
   const w = world(on, { SYMPHONY_TOKEN: 'tok' }, r => {
-    if (!r.url.includes('/api/inbox')) answered++
+    if (r.url.endsWith('/api/event')) answered++
     return { status: 200, text: '{}' }
   })
   on('tool.call', () => ({ result: {} }))
@@ -190,10 +237,12 @@ test('a bridge on this machine that is down: the mod starts it with symphony -ba
 
   await $.session.start(start)
   expect(w.runs).toEqual([['symphony', '-background', '-open=false', '-addr', 'localhost:7790']])
+  expect(w.hellos.map(h => h.answered)).toEqual([false, true]) // nothing answered the first check; the started bridge did
   const starts = w.reqs.filter(r => r.body?.kind === 'session.start')
-  expect(starts.length).toBe(2)
-  expect(starts[1]).toEqual(expect.objectContaining({ url: 'http://localhost:7790/api/event', auth: 'Bearer tok' }))
-  expect(w.toasts).toEqual(['symphony: started the bridge (http://localhost:7790) in the background'])
+  expect(starts.length).toBe(1)
+  expect(starts[0]).toEqual(expect.objectContaining({ url: 'http://localhost:7790/api/event', auth: 'Bearer tok' }))
+  expect(w.toasts).toEqual(['symphony: started the bridge (http://localhost:7790) in the background; run symphony to open the office'])
+  expectCheckedBeforeToken(w.all)
 })
 
 test('symphony fails to start the bridge: the usual message, and no second try', async ($, on) => {
@@ -201,16 +250,17 @@ test('symphony fails to start the bridge: the usual message, and no second try',
 
   await $.session.start(start)
   expect(w.runs.length).toBe(1)
-  expect(w.reqs.filter(r => r.body?.kind === 'session.start').length).toBe(1)
+  expect(w.hellos.length).toBe(1)
+  expect(w.reqs).toEqual([]) // the token never left: nothing answered the check
   expect(w.toasts).toEqual(["symphony: can't reach the bridge (http://127.0.0.1:7788); approvals stay in the terminal for now"])
 })
 
 test('a bridge on another machine is never started from here', async ($, on) => {
-  const w = world(on, { SYMPHONY_TOKEN: 'tok', SYMPHONY_BRIDGE: 'http://bridge.test' }, () => 'down', () => ({ exitCode: 0 }))
+  const w = world(on, { SYMPHONY_TOKEN: 'tok', SYMPHONY_BRIDGE: 'https://bridge.test' }, () => 'down', () => ({ exitCode: 0 }))
 
   await $.session.start(start)
   expect(w.runs).toEqual([])
-  expect(w.toasts).toEqual(["symphony: can't reach the bridge (http://bridge.test); approvals stay in the terminal for now"])
+  expect(w.toasts).toEqual(["symphony: can't reach the bridge (https://bridge.test); approvals stay in the terminal for now"])
 })
 
 test('with a token: a call that needs a person waits on the bridge and goes ahead once the page allows it', async ($, on) => {
@@ -227,6 +277,300 @@ test('with a token: a call that needs a person waits on the bridge and goes ahea
   expect((await $.tool.check(bash)).decision).toBe('allow')
   const ask = w.reqs.find(r => r.url.endsWith('/api/ask'))
   expect(ask?.body).toEqual(expect.objectContaining({ kind: 'permission', tool: 'Bash', session: 'sess-1' }))
+})
+
+// what the page can't decide leaves the engine's verdict: what the bridge answers to the ask and the wait for it
+const created = { status: 200, text: '{"id":"a1"}' }
+const answering = (wait: string): ((r: Req) => Reply) => r =>
+  r.url.endsWith('/api/ask') ? created : r.url.endsWith('/api/wait/a1') ? { status: 200, text: wait } : { status: 200, text: '{}' }
+const unanswered: [string, (r: Req) => Reply][] = [
+  ['the bridge is down', () => 'down'],
+  ['the ask gets a 500', r => (r.url.endsWith('/api/ask') ? { status: 500, text: 'oops' } : { status: 200, text: '{}' })],
+  ['the ask gets an answer that is not JSON', r => (r.url.endsWith('/api/ask') ? { status: 200, text: '<html>' } : { status: 200, text: '{}' })],
+  ['the wait gets a 500', r => (r.url.endsWith('/api/ask') ? created : r.url.endsWith('/api/wait/a1') ? { status: 500, text: '' } : { status: 200, text: '{}' })],
+  ['the wait gets an answer that is not JSON', answering('done')],
+  ['the answer is neither allow nor deny', answering('{"status":"done","answer":{"decision":"maybe"}}')],
+  ['the answer is not an object', answering('{"status":"done","answer":"allow"}')],
+  ['the answer is null', answering('{"status":"done","answer":null}')],
+]
+for (const [what, reply] of unanswered) {
+  test(`a call that needs a person stays with the engine's ask when ${what}`, async ($, on) => {
+    world(on, { SYMPHONY_TOKEN: 'tok' }, reply)
+    on('tool.check', () => ({ decision: 'ask', reason: 'ask a person' }))
+
+    await $.session.start(start)
+    expect(await $.tool.check(bash)).toEqual(expect.objectContaining({ decision: 'ask', reason: 'ask a person' }))
+  })
+}
+
+test("a call that needs a person stays with the engine's ask when the bridge doesn't take the ask in time", async ($, on) => {
+  const w = world(on, { SYMPHONY_TOKEN: 'tok' }, r => (r.url.endsWith('/api/ask') ? 'hang' : { status: 200, text: '{}' }))
+  on('tool.check', () => ({ decision: 'ask', reason: 'ask a person' }))
+
+  await $.session.start(start)
+  const verdict = $.tool.check(bash)
+  await w.clock.settle()
+  await w.clock.advance(10_000)
+  expect(await verdict).toEqual(expect.objectContaining({ decision: 'ask', reason: 'ask a person' }))
+})
+
+// ---------- the bridge's check: the token goes only to a bridge that proves it knows it ----------
+
+test('HMAC-SHA256 gives the RFC 4231 test vectors', async () => {
+  const bytes = (b: number, n: number) => new Uint8Array(n).fill(b)
+  const vectors: [Uint8Array, Uint8Array, string][] = [
+    [bytes(0x0b, 20), utf8('Hi There'), 'b0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff7'],
+    [utf8('Jefe'), utf8('what do ya want for nothing?'), '5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843'],
+    [bytes(0xaa, 20), bytes(0xdd, 50), '773ea91e36800e46854db8ebd09181a72959098b3ef8c122d9635514ced565fe'],
+    [Uint8Array.from({ length: 25 }, (_, i) => i + 1), bytes(0xcd, 50), '82558a389a443c0ea4cc819899f2083a85f0faa3e578f8077a2e3ff46729665b'],
+    // case 5's output is truncated to 128 bits
+    [bytes(0x0c, 20), utf8('Test With Truncation'), 'a3b6167473100ee06e0c796c2955552b'],
+    // cases 6 and 7: a key longer than SHA-256's block is hashed first
+    [bytes(0xaa, 131), utf8('Test Using Larger Than Block-Size Key - Hash Key First'), '60e431591ee0b67f0d8a26aacbf5b77f8e0bc6213728c5140546040f0ee37f54'],
+    [
+      bytes(0xaa, 131),
+      utf8('This is a test using a larger than block-size key and a larger than block-size data. The key needs to be hashed before being used by the HMAC algorithm.'),
+      '9b09ffa71b942fcb27635fbcd5b0e944bfdc63644f0713938a7f51535c3a35e2',
+    ],
+  ]
+  for (const [key, data, mac] of vectors) expect(hex(await hmacSha256(key, data)).slice(0, mac.length)).toBe(mac)
+})
+
+test('the check carries the token\'s hash and a fresh nonce, never the token; once the bridge proves it, the reports carry the token', async ($, on) => {
+  const w = world(on, { SYMPHONY_TOKEN: 'tok', SYMPHONY_BRIDGE: 'https://bridge.test' })
+
+  await $.session.start(start)
+  await w.clock.advance(15_000)
+  await w.clock.settle()
+  expect(w.hellos.length).toBe(1) // once, for as long as the bridge answers
+  const hello = w.hellos[0]!
+  expect(w.all[0]).toBe(hello) // before anything else
+  expect(hello).toEqual(expect.objectContaining({ url: 'https://bridge.test/api/hello', method: 'POST', auth: undefined }))
+  expect(Object.keys(hello.body ?? {}).sort()).toEqual(['id', 'nonce'])
+  expect(hello.body?.id).toBe(await sha256hex('tok'))
+  expect(String(hello.body?.nonce)).toMatch(/^[0-9a-f]{32}$/)
+  expect(w.reqs.map(r => r.body?.kind)).toEqual(['session.start', 'heartbeat'])
+  expect([...w.reqs, ...w.polls].every(r => r.auth === 'Bearer tok')).toBe(true)
+  expectCheckedBeforeToken(w.all)
+})
+
+const notBridge = (bridge: string) =>
+  `symphony: what answers at ${bridge} isn't a symphony bridge this session can trust, or it's older than this plugin (update symphony); approvals stay in the terminal`
+
+const strangers: [string, Reply][] = [
+  ['a wrong proof', { status: 200, text: JSON.stringify({ proof: '00'.repeat(32) }) }],
+  ['no proof', { status: 200, text: '{}' }],
+  ['a 404 (a bridge older than the mod)', { status: 404, text: '404 page not found' }],
+  ['an answer that is not JSON', { status: 200, text: '<html>hello</html>' }],
+  ['a 500', { status: 500, text: 'oops' }],
+]
+for (const [what, answer] of strangers) {
+  test(`what answers the check with ${what} never gets the token: one message, approvals in the terminal, nothing more sent`, async ($, on) => {
+    const w = world(on, { SYMPHONY_TOKEN: 'tok' }, () => ({ status: 200, text: '{}' }), () => ({ exitCode: 0 }), () => answer)
+    on('tool.check', () => ({ decision: 'ask' }))
+    on('tool.call', () => ({ result: {} }))
+
+    await $.session.start(start)
+    expect(w.toasts).toEqual([notBridge('http://127.0.0.1:7788')])
+    expect((await $.tool.check(bash)).decision).toBe('ask')
+    await $.tool.call({ tool: 'Bash', command: 'ls' })
+    await w.clock.advance(60_000)
+    await w.clock.settle()
+    expect(w.all.length).toBe(1) // the check, and nothing after it
+    expect(w.all.filter(r => r.auth !== undefined)).toEqual([])
+    expect(w.runs).toEqual([]) // something answered: no bridge to start
+  })
+}
+
+test('a proof for another nonce (a replayed answer) fails the check', async ($, on) => {
+  const replayed = hex(await hmacSha256(utf8('tok'), utf8(`symphony-hello:${'00'.repeat(16)}`)))
+  const w = world(on, { SYMPHONY_TOKEN: 'tok' }, undefined, undefined, () => ({ status: 200, text: JSON.stringify({ proof: replayed }) }))
+
+  await $.session.start(start)
+  expect(w.toasts).toEqual([notBridge('http://127.0.0.1:7788')])
+  expect(w.all.filter(r => r.auth !== undefined)).toEqual([])
+})
+
+test('after a request that gets no answer, the bridge is checked again before the token goes out', async ($, on) => {
+  let down = false
+  const w = world(on, { SYMPHONY_TOKEN: 'tok' }, () => (down ? 'down' : { status: 200, text: '{}' }))
+
+  await $.session.start(start)
+  await w.clock.advance(15_000)
+  await w.clock.settle()
+  expect(w.hellos.length).toBe(1)
+
+  down = true // the bridge stops
+  await w.clock.advance(15_000)
+  await w.clock.settle()
+  down = false // and comes back
+  const before = w.hellos.length
+  await w.clock.advance(15_000)
+  await w.clock.settle()
+  expect(w.hellos.length).toBeGreaterThan(before)
+  expect(w.reqs.at(-1)).toEqual(expect.objectContaining({ auth: 'Bearer tok', body: expect.objectContaining({ kind: 'heartbeat' }) }))
+  expect(new Set(w.hellos.map(h => h.body?.nonce)).size).toBe(w.hellos.length) // a fresh nonce every time
+  expectCheckedBeforeToken(w.all)
+  expect(w.toasts).toEqual([])
+})
+
+test('something else takes the bridge\'s address while it is away: it never gets the token', async ($, on) => {
+  let now: 'bridge' | 'down' | 'other' = 'bridge'
+  const w = world(
+    on,
+    { SYMPHONY_TOKEN: 'tok' },
+    () => (now === 'down' ? 'down' : { status: 200, text: '{}' }), // the other server takes anything
+    undefined,
+    () => (now === 'other' ? { status: 404, text: '404 page not found' } : undefined),
+  )
+  on('tool.check', () => ({ decision: 'ask' }))
+
+  await $.session.start(start)
+  await w.clock.advance(15_000)
+  await w.clock.settle()
+  now = 'down'
+  await w.clock.advance(15_000)
+  await w.clock.settle()
+  now = 'other'
+  const from = w.all.length
+  await w.clock.advance(60_000)
+  await w.clock.settle()
+  expect((await $.tool.check(bash)).decision).toBe('ask')
+  expect(w.all.slice(from).map(r => r.url)).toEqual(['http://127.0.0.1:7788/api/hello']) // the check it failed, then nothing
+  expect(w.toasts).toEqual([notBridge('http://127.0.0.1:7788')])
+  expectCheckedBeforeToken(w.all)
+})
+
+test('a session refused as busy checks the bridge again before each report: what takes the address in between never gets the token', async ($, on) => {
+  let now: 'bridge' | 'other' = 'bridge'
+  const w = world(
+    on,
+    { SYMPHONY_TOKEN: 'tok' },
+    () => ({ status: 409, text: '{}' }), // the account is busy; the other server takes anything just the same
+    undefined,
+    () => (now === 'other' ? { status: 404, text: '404 page not found' } : undefined),
+  )
+
+  await $.session.start(start)
+  await w.clock.advance(15_000)
+  await w.clock.settle()
+  expect(w.hellos.length).toBe(2) // one before each report: no inbox poll keeps an eye on the bridge
+  now = 'other' // the bridge stops and something else takes its address, with no failed request in between
+  const from = w.all.length
+  await w.clock.advance(15_000)
+  await w.clock.settle()
+  expect(w.all.slice(from).filter(r => r.auth !== undefined)).toEqual([])
+  expect(w.toasts).toEqual([
+    'symphony: this account already has a session online; approvals go to the terminal for now',
+    notBridge('http://127.0.0.1:7788'),
+  ])
+  expectCheckedBeforeToken(w.all)
+})
+
+test('an error from the bridge is still an answer: the check stands', async ($, on) => {
+  let failing = false
+  const w = world(on, { SYMPHONY_TOKEN: 'tok' }, r => (failing && r.url.endsWith('/api/event') ? { status: 500, text: '' } : { status: 200, text: '{}' }))
+
+  await $.session.start(start)
+  failing = true
+  await w.clock.advance(15_000)
+  await w.clock.settle()
+  failing = false
+  await w.clock.advance(15_000)
+  await w.clock.settle()
+  expect(w.reqs.filter(r => r.body?.kind === 'heartbeat').length).toBe(2)
+  expect(w.hellos.length).toBe(1)
+})
+
+test('a bridge that never answers the check: the session goes on, approvals in the terminal, the token stays', async ($, on) => {
+  const w = world(on, { SYMPHONY_TOKEN: 'tok' }, () => 'hang')
+  on('tool.check', () => ({ decision: 'ask' }))
+
+  const started = $.session.start(start)
+  await w.clock.settle()
+  await w.clock.advance(5_000)
+  await started
+  expect(w.toasts).toEqual(["symphony: can't reach the bridge (http://127.0.0.1:7788); approvals stay in the terminal for now"])
+  const verdict = $.tool.check(bash)
+  await w.clock.settle()
+  await w.clock.advance(5_000)
+  expect((await verdict).decision).toBe('ask')
+  expect(w.all.length).toBeGreaterThan(0)
+  expect(w.all.every(r => r.url.endsWith('/api/hello'))).toBe(true)
+})
+
+// SYMPHONY_BRIDGE: plain http only on this machine (with a port), else https
+const insecure = ['http://bridge.test:7788', 'http://192.168.1.20:7788', 'http://127.0.0.1:7788@evil.test', 'http://localhost.evil.test:7788', 'http://127.0.0.1', 'ftp://127.0.0.1:7788']
+for (const bridge of insecure) {
+  test(`SYMPHONY_BRIDGE=${bridge}: neither on this machine nor https, so the bridge is never contacted`, async ($, on) => {
+    const w = world(on, { SYMPHONY_TOKEN: 'tok', SYMPHONY_BRIDGE: bridge }, undefined, () => ({ exitCode: 0 }))
+    on('tool.check', () => ({ decision: 'ask' }))
+    on('tool.call', () => ({ result: {} }))
+
+    await $.session.start(start)
+    expect(w.toasts).toEqual([`symphony: SYMPHONY_BRIDGE (${bridge}) must be on this machine or use https; approvals stay in the terminal`])
+    expect((await $.tool.check(bash)).decision).toBe('ask')
+    await $.tool.call({ tool: 'Bash', command: 'ls' })
+    await w.clock.advance(60_000)
+    await w.clock.settle()
+    expect(w.all).toEqual([])
+    expect(w.runs).toEqual([])
+  })
+}
+
+const accepted = [
+  ['http://localhost:7790', 'http://localhost:7790'],
+  ['http://[::1]:7790', 'http://[::1]:7790'],
+  ['http://127.0.0.1:7790/', 'http://127.0.0.1:7790'],
+  ['https://office.example.com:8443/symphony', 'https://office.example.com:8443/symphony'],
+] as const
+for (const [bridge, base] of accepted) {
+  test(`SYMPHONY_BRIDGE=${bridge} is accepted: the check and then the reports go there`, async ($, on) => {
+    const w = world(on, { SYMPHONY_TOKEN: 'tok', SYMPHONY_BRIDGE: bridge })
+
+    await $.session.start(start)
+    expect(w.hellos.map(r => r.url)).toEqual([`${base}/api/hello`])
+    expect(w.reqs.map(r => r.url)).toEqual([`${base}/api/event`])
+    expect(w.toasts).toEqual([])
+  })
+}
+
+// ---------- the login ----------
+
+test('the login is the email $.session.identity() tells', async ($, on) => {
+  const w = world(on, { SYMPHONY_TOKEN: 'tok' })
+  on('session.identity', () => ({ value: { kind: 'claude.ai', email: 'ada@example.com', isVerified: true } }))
+
+  await $.session.start(start)
+  expect(w.reqs[0]?.body).toEqual(expect.objectContaining({ kind: 'session.start', login: 'ada@example.com' }))
+})
+
+test('$.session.identity() answers { deny } (the organization did not install the mod): no login, and no config file is read for one', async ($, on) => {
+  const w = world(on, { SYMPHONY_TOKEN: 'tok', HOME: '/home/ada', CLAUDE_CONFIG_DIR: '/home/ada/.claude' })
+  on('session.identity', () => ({ value: { deny: 'not installed by managed settings' } }))
+
+  await $.session.start(start)
+  expect(w.reqs[0]?.body?.kind).toBe('session.start')
+  expect(w.reqs[0]?.body?.login).toBeUndefined()
+  expect(w.reads.filter(p => p.includes('.claude.json'))).toEqual([])
+})
+
+test('a session without an email (an API key) reports no login', async ($, on) => {
+  const w = world(on, { SYMPHONY_TOKEN: 'tok' })
+  on('session.identity', () => ({ value: { kind: 'api-key', isVerified: false } }))
+
+  await $.session.start(start)
+  expect(w.reqs[0]?.body?.kind).toBe('session.start')
+  expect(w.reqs[0]?.body?.login).toBeUndefined()
+})
+
+test('an engine that does not answer $.session.identity(): no login', async ($, on) => {
+  const w = world(on, { SYMPHONY_TOKEN: 'tok' })
+  on('session.identity', () => ({ deny: 'not here' }))
+
+  await $.session.start(start)
+  expect(w.reqs[0]?.body?.kind).toBe('session.start')
+  expect(w.reqs[0]?.body?.login).toBeUndefined()
 })
 
 // ---------- the language of the mod's messages ----------
@@ -441,10 +785,10 @@ test('a tool call carries its main argument for the chat', async ($, on) => {
 const kinds = (w: { reqs: Req[] }) => w.reqs.map(r => r.body?.kind)
 const find = (w: { reqs: Req[] }, kind: string) => w.reqs.find(r => r.body?.kind === kind)?.body
 
-test('the start names the engine, the mod, the repository and the surface; the tools follow', async ($, on) => {
+test('the start names the engine, the mod, the repository (not its remote) and the surface; the tools follow', async ($, on) => {
   const w = world(on, { SYMPHONY_TOKEN: 'tok' })
   on('session.version', () => ({ value: { version: '2.1.316', base: '2.1.316', builtAt: '2026-10-01T00:00:00Z' } }))
-  on('session.repo', () => ({ value: { root: '/work', remote: 'git@github.com:x/y.git', internal: false, name: 'y' } }))
+  on('session.repo', () => ({ value: { root: '/work', remote: 'https://user:secret@github.com/x/y.git', internal: false, name: 'y' } }))
   on('tool.list', () => ({
     value: [
       { name: 'Bash', description: '', mcp: false },
@@ -461,9 +805,10 @@ test('the start names the engine, the mod, the repository and the surface; the t
       kind: 'session.start',
       surface: 'terminal',
       engine: { version: '2.1.316', base: '2.1.316' },
-      repo: { root: '/work', remote: 'git@github.com:x/y.git', name: 'y', internal: false },
+      repo: { root: '/work', name: 'y', internal: false },
     }),
   )
+  expect(JSON.stringify(w.reqs[0]?.body)).not.toContain('github.com') // a remote's URL may carry credentials
   expect(w.reqs[0].body?.mod).toBeUndefined() // the tests read no files: the manifest's version stays unknown
   expect(find(w, 'session.tools')).toEqual(expect.objectContaining({ toolCount: 4, mcp: ['github', 'slack'] }))
 })

@@ -223,18 +223,23 @@ type Snapshot struct {
 	Ledger []*LedgerRow `json:"ledger"`
 }
 
-// Push is one message for the subscribers: an event or a snapshot, encoded once for all of them.
+// Push is one message for the subscribers: an event or a snapshot, encoded once for all of them when it is made, under
+// the hub's lock: what it holds (a chat item, a message, a session's usage) is the hub's own and keeps changing.
 type Push struct {
+	// Value is what was encoded, for Go code in this process (tests); it may share what the hub changes later, so read
+	// only what never changes (an id, a kind), or JSON
 	Value any
-	once  sync.Once
 	data  []byte
 }
 
-// JSON is the message encoded, the same bytes for every subscriber.
-func (p *Push) JSON() []byte {
-	p.once.Do(func() { p.data, _ = json.Marshal(p.Value) })
-	return p.data
+// newPush encodes v; the hub's lock must be held.
+func newPush(v any) *Push {
+	data, _ := json.Marshal(v)
+	return &Push{Value: v, data: data}
 }
+
+// JSON is the message encoded, the same bytes for every subscriber.
+func (p *Push) JSON() []byte { return p.data }
 
 // Hub holds all the state.
 type Hub struct {
@@ -295,7 +300,7 @@ func (h *Hub) Subscribe() (<-chan *Push, func()) {
 	ch := make(chan *Push, 64)
 	h.mu.Lock()
 	h.subs[ch] = struct{}{}
-	ch <- &Push{Value: h.snapshotLocked(true)}
+	ch <- newPush(h.snapshotLocked(true))
 	h.mu.Unlock()
 	return ch, func() {
 		h.mu.Lock()
@@ -312,9 +317,9 @@ func (h *Hub) broadcastLocked(extra any) {
 	}
 	var ev *Push
 	if extra != nil {
-		ev = &Push{Value: extra}
+		ev = newPush(extra)
 	}
-	snap := &Push{Value: h.snapshotLocked(false)}
+	snap := newPush(h.snapshotLocked(false))
 	for ch := range h.subs {
 		if ev != nil {
 			select {
@@ -329,11 +334,24 @@ func (h *Hub) broadcastLocked(extra any) {
 	}
 }
 
-// Snapshot is the whole state, message log included.
+// Snapshot is the whole state, message log included. It is read or encoded once the lock is let go (/api/state), so
+// unlike the pushes it gets copies of what the hub changes in place too: the usage totals and the todos.
 func (h *Hub) Snapshot() Snapshot {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	return h.snapshotLocked(true)
+	snap := h.snapshotLocked(true)
+	for _, s := range snap.Sessions { // copies of the hub's sessions
+		s.Usage = s.Usage.copy()
+		if s.Todos != nil {
+			todos := make([]*Todo, len(s.Todos))
+			for i, t := range s.Todos {
+				tc := *t
+				todos[i] = &tc
+			}
+			s.Todos = todos
+		}
+	}
+	return snap
 }
 
 // snapshotLocked builds a snapshot; a full one carries the message log, the others leave it null.
@@ -491,7 +509,11 @@ func (h *Hub) Apply(ev Event, acc *Account) error {
 		s.Mod = ev.Mod
 	}
 	if ev.Repo != nil {
-		s.Repo = ev.Repo
+		// an older mod reports the remote as git has it, credentials and all: neither the session nor the event pushed
+		// to the pages keeps them
+		repo := *ev.Repo
+		repo.Remote = withoutUserinfo(repo.Remote)
+		ev.Repo, s.Repo = &repo, &repo
 	}
 	if ev.Surface != "" {
 		s.Surface = ev.Surface

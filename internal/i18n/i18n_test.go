@@ -151,7 +151,7 @@ func TestWebKeysInUse(t *testing.T) {
 	literal := regexp.MustCompile("['\"`]((?:common|office|hud|pixels|room|state|idle|search|stats|log|asks|msg|card|chat|launch|option|approve|error|task|hq|msgr|mc)\\.[A-Za-z0-9_.]*[A-Za-z0-9_])['\"`]")
 	attr := regexp.MustCompile(`data-i18n(?:-placeholder|-title)?="([^"]+)"`)
 	used := 0
-	files := []string{"approve.html", "asks.js", "i18n.js"}
+	files := []string{"approve.html", "approve.js", "asks.js", "i18n.js"}
 	for _, pattern := range []string{"symphony.js", "ui/*.js", "themes/*/index.html", "themes/*/*.js"} {
 		hits, _ := filepath.Glob("../../web/" + pattern)
 		for _, h := range hits {

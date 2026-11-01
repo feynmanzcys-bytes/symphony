@@ -227,6 +227,9 @@ func TestScreens(t *testing.T) {
 
 	// ---------- the task dialog, in each of its states, making T2 ----------
 	p.dialogOpen(roomT2)
+	if !p.is(`document.querySelector('#task [name=permissionMode]').value === '' && document.querySelector('#task .warn').hidden`) {
+		t.Fatalf("a new task should start on Claude Code's own permission mode, without the warning: %q", p.js(`document.querySelector('#task [name=permissionMode]').value`))
+	}
 	p.shot("task-dialog-empty")
 	p.check()
 	p.run(`document.querySelector('#task [name=desc]').value = 'Add a CHANGELOG and a Makefile, and document the release steps in the README'`)
@@ -234,7 +237,14 @@ func TestScreens(t *testing.T) {
 	p.tick("dave")
 	p.shot("task-dialog-picked")
 	p.check()
+	p.bypass("#task")
+	p.shot("task-dialog-bypass")
+	p.check()
+	p.run(`(s => { s.value = ''; s.dispatchEvent(new Event('change', { bubbles:true })) })(document.querySelector('#task [name=permissionMode]'))`)
 	p.run(`document.querySelector('#task .add-adv').click()`)
+	if !p.is(`(r => r.querySelector('[name=model]').value === '' && r.querySelector('[name=effort]').value === '')(document.querySelector('#task .adv'))`) {
+		t.Fatal("a new advisor should start on Claude Code's own model and effort")
+	}
 	p.run(fmt.Sprintf(`(r => { r.querySelector('[name=name]').value = 'rev'; r.querySelector('[name=dir]').value = %q; r.querySelector('.browse').click() })(document.querySelector('#task .adv'))`, work))
 	waitUntil(t, 10*time.Second, "the advisor's folder browser lists the work folder", func() bool {
 		return p.is(`(b => !b.hidden && b.querySelectorAll('li').length >= 5)(document.querySelector('#task .adv .browser'))`)
@@ -523,7 +533,13 @@ func TestScreens(t *testing.T) {
 	p.run(`document.querySelector('#log .close').click()`)
 	p.run(`document.getElementById('new-emp').click()`)
 	waitUntil(t, 10*time.Second, "the launch dialog opens", func() bool { return p.is(`!document.getElementById('launch').hidden`) })
+	if !p.is(`(f => f.elements.model.value === '' && f.elements.effort.value === '' && f.elements.permissionMode.value === '' && f.querySelector('.warn').hidden)(document.querySelector('#launch form'))`) {
+		t.Fatalf("a new employee should start on Claude Code's own settings, without the warning: %s", p.js(`(f => [f.elements.model.value, f.elements.effort.value, f.elements.permissionMode.value].join())(document.querySelector('#launch form'))`))
+	}
 	p.shot("launch-dialog")
+	p.check()
+	p.bypass("#launch")
+	p.shot("launch-dialog-bypass")
 	p.check()
 	p.run(`document.querySelector('#launch .cancel').click()`)
 
@@ -665,9 +681,18 @@ func TestScreens(t *testing.T) {
 		q.run(`document.querySelector('#task .add-adv').click()`)
 		q.tick("alice")
 		q.tick("frank")
-		q.shot("task-dialog")
+		q.bypass("#task")
+		q.shot("task-dialog-bypass")
 		q.check()
+		q.run(`document.querySelector('#task .panel').scrollTop = 0`)
+		q.shot("task-dialog")
 		q.run(`document.querySelector('#task .cancel').click()`)
+		q.run(`document.getElementById('new-emp').click()`)
+		waitUntil(t, 10*time.Second, lang+": the launch dialog opens", func() bool { return q.is(`!document.getElementById('launch').hidden`) })
+		q.bypass("#launch")
+		q.shot("launch-dialog-bypass")
+		q.check()
+		q.run(`document.querySelector('#launch .cancel').click()`)
 		q.openPlate(roomT2)
 		q.shot("taskwin-running")
 		q.check()
@@ -818,6 +843,16 @@ func (s *screens) dialogOpen(room int) {
 	waitUntil(s.t, 10*time.Second, "the task dialog opens", func() bool {
 		return s.is(`!document.getElementById('task').hidden && document.querySelectorAll('#task .mem').length === 8`)
 	})
+}
+
+// bypass picks bypassPermissions in a dialog (#launch or #task) and checks that the warning shows under the select, in
+// sight (not under the task dialog's buttons).
+func (s *screens) bypass(dialog string) {
+	s.t.Helper()
+	s.run(fmt.Sprintf(`(s => { s.value = 'bypassPermissions'; s.dispatchEvent(new Event('change', { bubbles:true })) })(document.querySelector('%s [name=permissionMode]'))`, dialog))
+	if !s.is(fmt.Sprintf(`(w => { if (w.hidden || w.textContent.length < 20) return false; const r = w.getBoundingClientRect(); return w.contains(document.elementFromPoint(r.left + 4, r.top + r.height / 2)) })(document.querySelector('%s .warn'))`, dialog)) {
+		s.t.Fatalf("%s: bypassPermissions should show the warning under the select", dialog)
+	}
 }
 
 // tick ticks (or unticks) an employee in the task dialog.

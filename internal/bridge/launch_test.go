@@ -116,6 +116,7 @@ func fakeTerminal(f *fakeStarts) *ptyTerminal {
 func newLaunchBridge(t *testing.T) (*Server, string, *fakeStarts) {
 	t.Helper()
 	srv := NewServer(NewHub(), testWeb)
+	srv.Key = testKey
 	f := &fakeStarts{}
 	srv.SetLauncher(NewLauncher("claude", "/mods/sb", "http://127.0.0.1:7788", fakeTerminal(f)))
 	srv.Launcher.OnlineTimeout = 3 * time.Second
@@ -151,6 +152,32 @@ func envMap(env []string) map[string]string {
 		m[k] = v
 	}
 	return m
+}
+
+// TestLaunchAttachHint: the program's attach command (with its address and data folder) is what the launch, the session
+// and a session that reports in after a restart carry, not the backend's bare one.
+func TestLaunchAttachHint(t *testing.T) {
+	srv, base, _ := newLaunchBridge(t)
+	srv.Launcher.AttachHint = func(id string) string { return "symphony attach -addr 127.0.0.1:7799 " + id }
+	web := client{t: t, base: base}
+	res := web.ok("POST", "/api/launch", LaunchRequest{Name: "a", Dir: t.TempDir()})
+	id := res["id"].(string)
+	want := "symphony attach -addr 127.0.0.1:7799 " + id
+	if res["attach"] != want {
+		t.Fatalf("the launch's attach: %v", res["attach"])
+	}
+	acc := srv.Hub.Account(srv.Hub.Snapshot().Accounts[0].ID)
+	mod := client{t: t, base: base, header: map[string]string{"authorization": "Bearer " + acc.Token}, modOnly: true}
+	mod.ok("POST", "/api/event", Event{Session: "s1", Kind: "session.start", Launch: id})
+	if s := session(t, srv, "s1"); s.Attach != want {
+		t.Fatalf("the session's attach: %q", s.Attach)
+	}
+	_, b := as(t, srv, base, "b")
+	modB := client{t: t, base: base, header: map[string]string{"authorization": "Bearer " + b.Token}, modOnly: true}
+	modB.ok("POST", "/api/event", Event{Session: "s2", Kind: "heartbeat", Launch: "gone"}) // no launch record: after a restart
+	if s := session(t, srv, "s2"); s.Attach != "symphony attach -addr 127.0.0.1:7799 gone" {
+		t.Fatalf("after a restart: %q", s.Attach)
+	}
 }
 
 func TestLaunchNewAccount(t *testing.T) {
@@ -194,7 +221,7 @@ func TestLaunchNewAccount(t *testing.T) {
 
 	// the session comes online with the token and the launch id, which ties it to its terminal;
 	// until it reports its own model and effort, it shows the ones picked at launch
-	mod := client{t: t, base: base, header: map[string]string{"authorization": "Bearer " + acc.Token}}
+	mod := client{t: t, base: base, header: map[string]string{"authorization": "Bearer " + acc.Token}, modOnly: true}
 	mod.ok("POST", "/api/event", Event{Session: "s1", Kind: "session.start", Cwd: dir, Launch: id})
 	s := session(t, srv, "s1")
 	if s.Launch != id || s.Attach != "symphony attach "+id || s.Model != "sonnet" || s.Effort != "high" {
@@ -357,6 +384,7 @@ const installedMod = `[{"id":"cowork@synced","version":"1.0.0","scope":"synced",
 
 func TestLaunchUsesInstalledMod(t *testing.T) {
 	srv := NewServer(NewHub(), testWeb)
+	srv.Key = testKey
 	starts := &fakeStarts{}
 	plugins := &fakePlugins{out: `[]`}
 	now := time.Now()

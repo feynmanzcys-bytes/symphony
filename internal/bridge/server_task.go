@@ -382,7 +382,9 @@ func (u *taskUndo) run(hub *Hub, terms *Terms) {
 	}
 	for _, dir := range u.inited {
 		_ = os.RemoveAll(filepath.Join(dir, ".git"))
-		_ = os.RemoveAll(filepath.Join(dir, symphonyDir))
+		// only what this start made: files kept from earlier tasks' worktrees (.symphony/kept) stay
+		_ = os.RemoveAll(filepath.Join(dir, symphonyDir, "worktrees"))
+		removeIfEmpty(filepath.Join(dir, symphonyDir))
 	}
 	for _, id := range u.advisors {
 		_ = hub.DeleteAccount(id)

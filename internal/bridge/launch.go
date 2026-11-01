@@ -101,11 +101,22 @@ type Launcher struct {
 	OnlineTimeout time.Duration
 	// ListPlugins runs `claude plugin list --json`; tests swap in a fake
 	ListPlugins func(ctx context.Context) ([]byte, error)
+	// AttachHint, when set, is the command for reaching a session's terminal by hand, by launch id (the program sets
+	// it: its own name, with the address and the data folder when they aren't the defaults); else the backend's
+	AttachHint func(launchID string) string
 
 	modMu sync.Mutex
 	mod   ModStatus
 	modAt time.Time
 	now   func() time.Time // tests move the clock
+}
+
+// AttachFor is the command for reaching a launch's terminal by hand.
+func (l *Launcher) AttachFor(launchID string) string {
+	if l.AttachHint != nil {
+		return l.AttachHint(launchID)
+	}
+	return l.Term.Attach(launchID)
 }
 
 func NewLauncher(claude, modDir, bridgeURL string, term Terminal) *Launcher {
@@ -312,7 +323,7 @@ func (l *Launcher) Start(launch *Launch, req LaunchRequest, env map[string]strin
 		shown = append(shown, shellQuote(a))
 	}
 	launch.Command = strings.Join(shown, " ")
-	launch.Attach = l.Term.Attach(launch.ID)
+	launch.Attach = l.AttachFor(launch.ID)
 	return l.Term.Start(launch, req.Dir, env, argv)
 }
 

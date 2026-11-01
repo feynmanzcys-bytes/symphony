@@ -1,11 +1,11 @@
 // symphony bridge: go run ./cmd/bridge [-addr 127.0.0.1:7788] [-data folder] [-claude claude] [-mod folder] [-web web]
-// [-lang en] [-open=false] [-autostart on|off] [-background] [-version]; symphony attach [-addr host:port] <launch id> shows a session's terminal.
+// [-lang en] [-open=false] [-autostart on|off] [-background] [-version]; symphony attach [-addr host:port] [-data folder]
+// <launch id> shows a session's terminal.
 // Releases ship it as the symphony program (.github/release.sh).
 package main
 
 import (
 	"context"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"io/fs"
@@ -18,6 +18,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"runtime/debug"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -27,6 +28,9 @@ import (
 	"github.com/feynmanzcys-bytes/symphony/internal/i18n"
 	"github.com/feynmanzcys-bytes/symphony/web"
 )
+
+// defaultAddr is where the bridge listens unless -addr says otherwise.
+const defaultAddr = "127.0.0.1:7788"
 
 // version is set by release builds: -ldflags "-X main.version=v0.3.0".
 var version string
@@ -53,8 +57,8 @@ func main() {
 		attach(os.Args[2:])
 		return
 	}
-	addr := flag.String("addr", "127.0.0.1:7788", i18n.T("flag.addr"))
-	dataDir := flag.String("data", defaultDataDir(), i18n.T("flag.data"))
+	addr := flag.String("addr", defaultAddr, i18n.T("flag.addr"))
+	dataDir := flag.String("data", bridge.DefaultDataDir(), i18n.T("flag.data"))
 	webDir := flag.String("web", "", i18n.T("flag.web"))
 	modDir := flag.String("mod", "", i18n.T("flag.mod"))
 	claude := flag.String("claude", "claude", i18n.T("flag.claude"))
@@ -70,37 +74,38 @@ func main() {
 		return
 	}
 
-	host, port, err := net.SplitHostPort(*addr)
-	if err != nil {
-		log.Fatal(err)
-	}
-	named := host != "" && host != "0.0.0.0" && host != "::"
-	if !named {
-		host = "127.0.0.1"
+	host, port, ok := localAddr(*addr)
+	if !ok {
+		log.Fatal(i18n.T("log.addr_not_local", "addr", *addr))
 	}
 	base := "http://" + net.JoinHostPort(host, port)
 	if *auto != "" {
 		set := map[string]string{}
 		flag.Visit(func(f *flag.Flag) { set[f.Name] = f.Value.String() })
-		setAutostart(*auto, autostartArgs(set, *dataDir), base, *open)
+		setAutostart(*auto, autostartArgs(set, *dataDir), base, *dataDir, *open)
 		return
 	}
 	if *background {
 		startBackground(base, *dataDir)
 		return
 	}
-	// The address first: when a bridge already answers there (symphony started a second time, say with a
-	// double-click), there is nothing to start, so show its office and stop.
-	ln, err := net.Listen("tcp", *addr)
+	key := loadKey(*dataDir)
+	office := officeURL(base, key)
+	// The address first: when this data folder's bridge already answers there (symphony started a second time, say
+	// with a double-click), there is nothing to start, so show its office and stop.
+	ln, err := net.Listen("tcp", net.JoinHostPort(host, port))
 	if err != nil {
-		if !bridgeAt(base) {
-			log.Fatal(err)
+		switch bridgeAt(base, key) {
+		case ours:
+			log.Print(i18n.T("log.already_running", "url", office))
+			if *open {
+				openOffice(*dataDir, office)
+			}
+			return
+		case another:
+			addrTaken(base)
 		}
-		log.Print(i18n.T("log.already_running", "url", base+"/"))
-		if *open {
-			openBrowser(base + "/")
-		}
-		return
+		log.Fatal(err)
 	}
 
 	var pages fs.FS = web.FS
@@ -113,14 +118,18 @@ func main() {
 		log.Fatal(err)
 	}
 	srv := bridge.NewServer(hub, pages)
-	if named {
-		srv.AllowedHosts = append(srv.AllowedHosts, host)
-	}
+	srv.Key = key
 	if l := launcher(*modDir, *claude, base); l != nil {
+		l.AttachHint = attachHint(net.JoinHostPort(host, port), *dataDir)
 		srv.SetLauncher(l)
 		srv.Window = bridge.NewWindow(runtime.GOOS, exec.LookPath, os.Getenv)
 		if exe, err := os.Executable(); err == nil {
-			srv.AttachCommand = func(id string) []string { return []string{exe, "attach", "-addr", *addr, id} }
+			// the data folder, where attach finds the key (the key itself stays off the command line); absolute, as the
+			// window starts in another folder
+			data, _ := filepath.Abs(*dataDir)
+			srv.AttachCommand = func(id string) []string {
+				return []string{exe, "attach", "-addr", net.JoinHostPort(host, port), "-data", data, id}
+			}
 		}
 		// the sessions are the bridge's children: stopping it ends them, cleanly rather than by surprise
 		stop := make(chan os.Signal, 1)
@@ -148,34 +157,88 @@ func main() {
 		}
 	}()
 
-	log.Print(i18n.T("log.listening", "version", buildVersion(), "addr", *addr, "data", *dataDir))
+	log.Print(i18n.T("log.listening", "version", buildVersion(), "url", office, "data", *dataDir))
 	if *open {
-		openBrowser(base + "/")
+		go openOffice(*dataDir, office) // the bridge answers meanwhile, however long finding the browser takes
 	}
 	log.Fatal(http.Serve(ln, srv))
 }
 
-// bridgeAt says whether a symphony bridge answers at base (http://host:port).
-func bridgeAt(base string) bool {
-	c := http.Client{Timeout: 2 * time.Second}
-	res, err := c.Get(base + "/api/state")
+// localAddr splits -addr into its host and port. The host has to be this machine's own (127.0.0.1, localhost or ::1):
+// the bridge never listens where other machines reach it. localhost becomes 127.0.0.1: listening on localhost takes
+// one of its two addresses, and a browser that tries the other (::1) first would reach whoever holds that one. The port
+// is a number, not 0: the office's address has to be known before the bridge listens.
+func localAddr(addr string) (host, port string, ok bool) {
+	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
-		return false
+		return "", "", false
 	}
-	defer res.Body.Close()
-	var state struct {
-		Type string `json:"type"`
+	if p, err := strconv.Atoi(port); err != nil || p < 1 || p > 65535 {
+		return "", "", false
 	}
-	return res.StatusCode == http.StatusOK && json.NewDecoder(res.Body).Decode(&state) == nil && state.Type == "snapshot"
+	switch host {
+	case "localhost":
+		return "127.0.0.1", port, true
+	case "127.0.0.1", "::1":
+		return host, port, true
+	}
+	return "", "", false
+}
+
+// loadKey is the data folder's page key, made on the first start; the bridge can't run without it.
+func loadKey(dataDir string) string {
+	key, err := bridge.LoadKey(dataDir)
+	if err != nil {
+		log.Fatal(i18n.T("log.key_failed", "dir", dataDir, "reason", err.Error()))
+	}
+	return key
+}
+
+// officeURL is the office's address with the page key, which signs a browser in: for the log, and for open.html.
+func officeURL(base, key string) string { return base + "/?key=" + key }
+
+// what answers at the bridge's address
+type answer int
+
+const (
+	nobody  answer = iota // nothing (yet)
+	ours                  // a symphony bridge that takes this data folder's key
+	another               // another program, or a symphony bridge with another data folder
+)
+
+// bridgeAt says what answers at base (http://host:port). The answer has to prove it knows the page key before the key
+// goes anywhere (bridge.ProveKey), so a program that took the address never sees it; an older bridge, without page
+// keys, counts as another.
+func bridgeAt(base, key string) answer {
+	ok, err := bridge.ProveKey(base, key)
+	switch {
+	case err != nil:
+		return nobody
+	case ok:
+		return ours
+	}
+	return another
+}
+
+// addrTaken stops the program: something other than this data folder's bridge answers at base, so there is no office
+// to open and no address to listen on.
+func addrTaken(base string) {
+	log.Fatal(i18n.T("log.addr_taken", "addr", strings.TrimPrefix(base, "http://")))
 }
 
 // startBackground starts a copy of this program without -background, detached from this terminal and writing its log
 // to bridge.log in the data folder, and returns once it answers. The mod starts the bridge this way, so it keeps
 // running after the session; when a bridge already answers at the address, there's nothing to start.
 func startBackground(base, dataDir string) {
-	if bridgeAt(base) {
-		log.Print(i18n.T("log.already_running", "url", base+"/"))
+	// made before the copy starts, so both have the same one
+	key := loadKey(dataDir)
+	office := officeURL(base, key)
+	switch bridgeAt(base, key) {
+	case ours:
+		log.Print(i18n.T("log.already_running", "url", office))
 		return
+	case another:
+		addrTaken(base)
 	}
 	exe, err := os.Executable()
 	if err != nil {
@@ -208,31 +271,40 @@ func startBackground(base, dataDir string) {
 	exited := make(chan error, 1)
 	go func() { exited <- cmd.Wait() }()
 	deadline := time.After(15 * time.Second)
-	for !bridgeAt(base) {
+	for {
+		switch bridgeAt(base, key) {
+		case ours:
+			log.Print(i18n.T("log.background", "url", office, "log", logPath))
+			return
+		case another:
+			addrTaken(base)
+		}
 		select {
 		case err := <-exited:
 			// another bridge may have taken the address a moment ago; then this one stepped aside
-			if bridgeAt(base) {
-				log.Print(i18n.T("log.already_running", "url", base+"/"))
+			switch bridgeAt(base, key) {
+			case ours:
+				log.Print(i18n.T("log.already_running", "url", office))
 				return
+			case another:
+				addrTaken(base)
 			}
 			log.Fatal(i18n.T("log.background_failed", "reason", fmt.Sprint(err), "log", logPath))
 		case <-deadline:
-			log.Fatal(i18n.T("log.background_slow", "url", base+"/", "log", logPath))
+			log.Fatal(i18n.T("log.background_slow", "url", office, "log", logPath))
 		case <-time.After(200 * time.Millisecond):
 		}
 	}
-	log.Print(i18n.T("log.background", "url", base+"/", "log", logPath))
 }
 
-// waitBridge waits for a bridge to answer at base, and says whether one did in time.
-func waitBridge(base string, timeout time.Duration) bool {
-	for deadline := time.Now().Add(timeout); !bridgeAt(base); time.Sleep(200 * time.Millisecond) {
-		if time.Now().After(deadline) {
-			return false
+// waitBridge waits for something to answer at base, and says what did: this data folder's bridge, something else, or
+// nobody in time.
+func waitBridge(base, key string, timeout time.Duration) answer {
+	for deadline := time.Now().Add(timeout); ; time.Sleep(200 * time.Millisecond) {
+		if a := bridgeAt(base, key); a != nobody || time.Now().After(deadline) {
+			return a
 		}
 	}
-	return true
 }
 
 // autostartArgs are the flags of this command line that the bridge started at login gets too, with folders made
@@ -260,10 +332,13 @@ func autostartArgs(set map[string]string, dataDir string) []string {
 
 // setAutostart turns starting the bridge at login on or off. On, it also starts the bridge now, waits for it and
 // opens its office.
-func setAutostart(mode string, args []string, base string, open bool) {
+func setAutostart(mode string, args []string, base, dataDir string, open bool) {
 	sys := autostart.Default("symphony")
 	switch mode {
 	case "on":
+		// made before the bridge starts, so both have the same one
+		key := loadKey(dataDir)
+		office := officeURL(base, key)
 		exe, err := os.Executable()
 		if err == nil {
 			exe, err = filepath.EvalSymlinks(exe)
@@ -275,17 +350,25 @@ func setAutostart(mode string, args []string, base string, open bool) {
 		if strings.Contains(filepath.ToSlash(exe), "/go-build") {
 			log.Fatal(i18n.T("log.autostart_go_run"))
 		}
+		// something else at the address: the bridge started at login would only step aside, at every login
+		if bridgeAt(base, key) == another {
+			addrTaken(base)
+		}
 		where, err := sys.Enable(autostart.Entry{Exe: exe, Args: args, Path: os.Getenv("PATH")})
 		if err != nil {
 			log.Fatal(i18n.T("log.autostart_failed", "reason", err.Error()))
 		}
-		if !waitBridge(base, 15*time.Second) {
-			log.Print(i18n.T("log.autostart_slow", "where", where, "url", base+"/"))
+		switch waitBridge(base, key, 15*time.Second) {
+		case nobody:
+			log.Print(i18n.T("log.autostart_slow", "where", where, "url", office))
 			return
+		case another: // it took the address in the meantime: leave nothing behind that steps aside at every login
+			_, _ = sys.Disable()
+			addrTaken(base)
 		}
-		log.Print(i18n.T("log.autostart_on", "where", where, "url", base+"/"))
+		log.Print(i18n.T("log.autostart_on", "where", where, "url", office))
 		if open {
-			openBrowser(base + "/")
+			openOffice(dataDir, office)
 		}
 	case "off":
 		where, err := sys.Disable()
@@ -304,18 +387,63 @@ func setAutostart(mode string, args []string, base string, open bool) {
 	}
 }
 
-// openBrowser shows url in the default browser. Without one (no graphical session) the address in the log has to do.
-func openBrowser(url string) {
-	argv, ok := bridge.BrowserCommand(runtime.GOOS, url, os.Getenv, exec.LookPath)
+// openOffice shows the office in the default browser, signed in. Without a browser (no graphical session) the address
+// in the log has to do. The key never goes on a command line, where other users of this machine could read it (ps):
+// the browser opens open.html in the data folder, which only this user may read and which sends it on to office (the
+// way Jupyter does it). A snap or flatpak browser can't read the data folder; it gets the file in its own folder.
+func openOffice(dataDir, office string) {
+	dir := dataDir
+	if runtime.GOOS == "linux" {
+		home, _ := os.UserHomeDir()
+		exists := func(p string) bool { _, err := os.Stat(p); return err == nil }
+		if confined := bridge.ConfinedDir(htmlHandler(), home, exists); confined != "" {
+			dir = confined
+		}
+	}
+	path, err := bridge.WriteOpenFile(dir, office)
+	if err != nil {
+		log.Print(i18n.T("log.open_failed", "url", office, "reason", err.Error()))
+		return
+	}
+	argv, ok := bridge.BrowserCommand(runtime.GOOS, bridge.FileURL(runtime.GOOS, path), os.Getenv, exec.LookPath)
 	if !ok {
 		return
 	}
 	cmd := exec.Command(argv[0], argv[1:]...)
 	if err := cmd.Start(); err != nil {
-		log.Print(i18n.T("log.open_failed", "url", url, "reason", err.Error()))
+		log.Print(i18n.T("log.open_failed", "url", office, "reason", err.Error()))
 		return
 	}
 	go cmd.Wait()
+}
+
+// attachHint is the command the page shows for reaching a session's terminal by hand: symphony attach <id>, with the
+// address and the data folder (where attach finds the key) when they aren't the defaults.
+func attachHint(addr, dataDir string) func(launchID string) string {
+	cmd := "symphony attach "
+	if addr != defaultAddr {
+		cmd += "-addr " + addr + " "
+	}
+	if abs, err := filepath.Abs(dataDir); err == nil && abs != bridge.DefaultDataDir() {
+		if strings.ContainsAny(abs, " '\"") {
+			abs = strconv.Quote(abs)
+		}
+		cmd += "-data " + abs + " "
+	}
+	return func(launchID string) string { return cmd + launchID }
+}
+
+// htmlHandler is the desktop file of the program that opens .html files on Linux (xdg-mime), or "" when unknown.
+func htmlHandler() string {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "xdg-mime", "query", "default", "text/html")
+	cmd.WaitDelay = time.Second // xdg-mime is a script: a child it started may hold the output after it's killed
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
 }
 
 // langArg finds -lang in the arguments before the flags are parsed: -lang x, -lang=x, --lang x, --lang=x.
@@ -336,18 +464,6 @@ func langArg(args []string) string {
 		}
 	}
 	return ""
-}
-
-// defaultDataDir is SYMPHONY_DATA, else symphony in the user config folder. The environment variable reaches a bridge
-// started by the mod too, which gets no -data.
-func defaultDataDir() string {
-	if dir := os.Getenv("SYMPHONY_DATA"); dir != "" {
-		return dir
-	}
-	if dir, err := os.UserConfigDir(); err == nil {
-		return filepath.Join(dir, "symphony")
-	}
-	return ".symphony"
 }
 
 // launcher prepares what starting sessions from the page needs; without claude the feature stays off. A

@@ -2,7 +2,6 @@ package bridge
 
 import (
 	"bufio"
-	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -61,6 +60,47 @@ func TestSessionDetails(t *testing.T) {
 	}
 }
 
+// TestRemoteWithoutUserinfo: an older mod reports the repository's remote as git has it, a token in it maybe; neither
+// the session nor the event pushed to the pages keeps the user name and password.
+func TestRemoteWithoutUserinfo(t *testing.T) {
+	for remote, want := range map[string]string{
+		"https://x-access-token:ghp_secret@github.com/o/r.git": "https://github.com/o/r.git",
+		"https://ghp_secret@github.com/o/r":                    "https://github.com/o/r",
+		"https://user:p%40ss%2Fw@host.example/o/r.git":         "https://host.example/o/r.git",
+		"https://user:p@ss@host.example/o/r.git":               "https://host.example/o/r.git",
+		"https://user:p#ss@host.example:8443/o/r.git":          "https://host.example:8443/o/r.git",
+		"ssh://git@github.com:22/o/r.git":                      "ssh://github.com:22/o/r.git",
+		"git@github.com:o/r.git":                               "github.com:o/r.git",
+		"user:secret@host:o/r.git":                             "host:o/r.git",
+		"https://github.com/o/r.git":                           "https://github.com/o/r.git",
+		"https://github.com/o/r@v2.git":                        "https://github.com/o/r@v2.git",
+		"github.com:o/r@v2.git":                                "github.com:o/r@v2.git",
+		"file:///home/me@corp/r":                               "file:///home/me@corp/r",
+		"/home/me@corp/r":                                      "/home/me@corp/r",
+		`C:\Users\me@corp\r`:                                   `C:\Users\me@corp\r`,
+		"":                                                     "",
+	} {
+		if got := withoutUserinfo(remote); got != want {
+			t.Errorf("withoutUserinfo(%q) = %q, want %q", remote, got, want)
+		}
+	}
+
+	srv, base := newBridge(t)
+	c, _ := as(t, srv, base, "a")
+	ch, stop := srv.Hub.Subscribe()
+	defer stop()
+	<-ch
+	c.ok("POST", "/api/event", Event{Session: "s1", Kind: "session.start", Repo: &RepoInfo{Root: "/w", Remote: "https://bob:ghp_secret@github.com/o/r.git", Name: "r"}})
+	if s := session(t, srv, "s1"); s.Repo == nil || s.Repo.Remote != "https://github.com/o/r.git" || s.Repo.Name != "r" || s.Repo.Root != "/w" {
+		t.Fatalf("the session should keep the remote without its credentials: %+v", s.Repo)
+	}
+	for range 2 { // the event, then the snapshot
+		if data := string((<-ch).JSON()); strings.Contains(data, "ghp_secret") || strings.Contains(data, "bob") || !strings.Contains(data, "https://github.com/o/r.git") {
+			t.Fatalf("a push should carry the remote without its credentials: %s", data)
+		}
+	}
+}
+
 // TestUsageAndLedger: the usage figures update the session and reach the pages as a "usage" push without a snapshot;
 // the tokens of every response add up by model; the cost and the tokens go to the account's row of today's ledger,
 // which is on disk and comes back after a restart.
@@ -71,6 +111,7 @@ func TestUsageAndLedger(t *testing.T) {
 		t.Fatal(err)
 	}
 	srv := NewServer(hub, testWeb)
+	srv.Key = testKey
 	server := httptest.NewServer(srv)
 	t.Cleanup(server.Close)
 	ts := server.URL
@@ -78,7 +119,7 @@ func TestUsageAndLedger(t *testing.T) {
 	c.ok("POST", "/api/event", Event{Session: "s1", Kind: "session.start", Cwd: "/w", Model: "claude-opus-5-5"})
 
 	// subscribe, then watch what the usage report pushes
-	resp, err := http.Get(ts + "/api/stream")
+	resp, err := pageGet(ts + "/api/stream")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,7 +185,7 @@ func TestUsageAndLedger(t *testing.T) {
 		t.Fatalf("the row's day: %s", rows[0].Day)
 	}
 	// the usage push carries the totals too
-	if items := c.ok("GET", "/api/ledger", nil); len(items["rows"].([]any)) != 1 {
+	if items := (client{t: t, base: ts}).ok("GET", "/api/ledger", nil); len(items["rows"].([]any)) != 1 {
 		t.Fatalf("/api/ledger: %v", items)
 	}
 	// on disk, and back after a restart

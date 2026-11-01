@@ -61,14 +61,18 @@ func TestPerfTasks(t *testing.T) {
 // perfHTTP keeps connections open: thousands of posts a second would otherwise run out of ports.
 var perfHTTP = &http.Client{Transport: &http.Transport{MaxIdleConns: 400, MaxIdleConnsPerHost: 400}, Timeout: 30 * time.Second}
 
-// send posts like the mod does, from any goroutine; it returns the status and how long the call took.
+// send posts like the mod does (with a token) or the page (without, with the page key), from any goroutine; it
+// returns the status and how long the call took.
 func send(base, token, path string, body any) (int, time.Duration, []byte, error) {
 	data, _ := json.Marshal(body)
-	req, _ := http.NewRequest("POST", base+path, bytes.NewReader(data))
-	req.Header.Set("content-type", "application/json")
+	var req *http.Request
 	if token != "" {
+		req, _ = http.NewRequest("POST", base+path, bytes.NewReader(data))
 		req.Header.Set("authorization", "Bearer "+token)
+	} else {
+		req = pageReq("POST", base, path, bytes.NewReader(data))
 	}
+	req.Header.Set("content-type", "application/json")
 	start := time.Now()
 	res, err := perfHTTP.Do(req)
 	if err != nil {
@@ -90,7 +94,7 @@ func mustSend(t *testing.T, base, token, path string, body any) []byte {
 
 func stateBytes(t *testing.T, base string) int {
 	t.Helper()
-	res, err := perfHTTP.Get(base + "/api/state")
+	res, err := perfHTTP.Do(pageReq("GET", base, "/api/state", nil))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,7 +149,7 @@ func probe(base, token, session string) *prober {
 			default:
 			}
 			start := time.Now()
-			if res, err := perfHTTP.Get(base + "/api/state"); err == nil {
+			if res, err := perfHTTP.Do(pageReq("GET", base, "/api/state", nil)); err == nil {
 				_, _ = io.Copy(io.Discard, res.Body)
 				res.Body.Close()
 			}
@@ -395,8 +399,7 @@ func sseCount(t *testing.T, base string, d time.Duration) map[string]*sseStat {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), d)
 	defer cancel()
-	req, _ := http.NewRequestWithContext(ctx, "GET", base+"/api/stream", nil)
-	res, err := http.DefaultClient.Do(req)
+	res, err := http.DefaultClient.Do(pageReq("GET", base, "/api/stream", nil).WithContext(ctx))
 	if err != nil {
 		t.Fatal(err)
 	}

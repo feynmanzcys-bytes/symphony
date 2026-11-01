@@ -24,7 +24,6 @@ themePicker(sym).then(sel => prefs.insertBefore(sel, langSel))
 const T = 16 // one tile is 16 pixels
 const COLS = 6, COL_PITCH = 3 * T, ROW_PITCH = 4 * T, WALL_H = 4 * T + 8, AISLE = 24, LABEL_ROOM = 2 * T + 10
 const DECOR = WALL_H - 48 // the back wall's windows and pictures hang below a plain band, where the HUD sits
-const CLAWD = '#d97757', CLAWD_SHADE = '#b9603f', EYE = '#2b1b14', MINI = '#e6a58d', MINI_SHADE = '#c98a72'
 const OFF = '#3b3e44' // laptop light of an empty desk
 
 // Drawing the office at a finer pixel size, a line a pixel of the office thick (a highlight, an edge, a seam) comes out
@@ -87,49 +86,96 @@ function assignRooms() {
 const statusText = s => statusOf(sym, s) // a session in words (ui/common.js)
 
 // ================= characters: size follows the model, muscles follow the effort =================
-// Modeled on the little fellow in the terminal banner (▐▛███▜▌ / ▝▜█████▛▘ / ▘▘ ▝▝): a square body,
-// two upright eyes, small hands on the sides, four feet.
-// cx: the body's center line; by: the body's bottom edge (the top of the feet)
-// pose: eyes 'open'|'down'|'closed'|'none'; armL/armR move the arms up or down; raiseL/raiseR raise a hand;
-// legs draws the feet; step is the foot stepping forward
-function drawClawd(g, cx, by, b, pose, body = CLAWD, shade = CLAWD_SHADE) {
-  const left = cx - (b.bw >> 1), top = by - b.bh
-  solid(g, left, top, b.bw, b.bh, body)
-  rect(g, left + b.bw - 1, top + 1, 1, b.bh - 1, shade)
-  rect(g, left, by - 1, b.bw, 1, shade)
-  if (detail >= 2 && hair) solid(g, left, top, b.bw - 1, hair, 'rgba(255,255,255,.25)') // light on its head
-  const ex1 = left + 2, ex2 = left + b.bw - 3
-  if (pose.eyes === 'open') {
-    solid(g, ex1, top + 2, 1, 2, EYE); solid(g, ex2, top + 2, 1, 2, EYE)
-    if (detail && hair && hair < 1) { solid(g, ex1, top + 2, hair, hair, '#fffdf7'); solid(g, ex2, top + 2, hair, hair, '#fffdf7') } // a glint
+// A small person: hair on top, a face with dot eyes, a shirt with the arms in its color and the hands at their ends, two
+// legs. Everyone has a look of their own (lookOf): the shirt, the skin and the hair come from palettes by seat, the
+// shirts in blues, purples and a pink, away from the state colors, so the desk lights and the name tags still tell the
+// state.
+const EYE = '#2b2a28'
+const SHIRTS = [['#4a78b5', '#3b6194'], ['#7d5ba6', '#644886'], ['#2f7d8c', '#246371'], ['#c25488', '#9f416e'],
+  ['#34466e', '#283656'], ['#7fa9d6', '#6690bd'], ['#5a5fae', '#474b8f'], ['#a68fd0', '#8c75b6']] // [shirt, its shade]
+// skin and hair in pairs that stand apart; long: the hair comes down the sides of the face
+const HEADS = [{ skin:'#f3d2b0', hair:'#4a3020' }, { skin:'#e8b98f', hair:'#1f1f2a', long:true }, { skin:'#c98f62', hair:'#2b2420' },
+  { skin:'#f6dcc4', hair:'#b48a52', long:true }, { skin:'#8d5a3b', hair:'#16161b' }, { skin:'#e8b98f', hair:'#7a3a24' },
+  { skin:'#f3d2b0', hair:'#2b2420', long:true }, { skin:'#6b432c', hair:'#121216', long:true }, { skin:'#c98f62', hair:'#5b3a24' }]
+const PANTS = ['#3a3f4b', '#2f4060', '#4a4038', '#2b2a28']
+// off duty, or a subagent that's done: all gray
+const GRAY_LOOK = { shirt:GRAY, shade:'#8f8a82', skin:'#cdc8bf', hair:'#7d7870', pants:'#8f8a82', shoe:'#7d7870', eye:'#5d5953' }
+// an account's look: by its seat, so neighbors differ; an advisor (no seat) by its name
+const looks = new Map()
+function lookOf(acc) {
+  const k = acc?.seat >= 0 ? acc.seat : hash(acc?.name ?? '')
+  if (!looks.has(k)) {
+    const [shirt, shade] = SHIRTS[k % SHIRTS.length], head = HEADS[(k * 4) % HEADS.length]
+    looks.set(k, { shirt, shade, ...head, pants:PANTS[(k + Math.floor(k / COLS)) % PANTS.length], shoe:'#2b2a28', eye:EYE })
   }
-  else if (pose.eyes === 'down') { solid(g, ex1, top + 3, 1, 2, EYE); solid(g, ex2, top + 3, 1, 2, EYE) }
-  else if (pose.eyes === 'closed') { solid(g, ex1 - 1, top + 3, 2, 1, EYE); solid(g, ex2, top + 3, 2, 1, EYE) }
-  if (b.headband) {
-    solid(g, left, top + 1, b.bw, 1, RED)
-    solid(g, left + b.bw, top + 1, 2, 1, RED); solid(g, left + b.bw + 1, top + 2, 2, 1, RED)
-  }
-  const armY = top + Math.floor(b.bh / 2) - 1
-  if (pose.raiseL) solid(g, left - b.armW, top - 4, b.armW, b.armH + 4, body)
-  else solid(g, left - b.armW, armY + (pose.armL || 0), b.armW, b.armH, body)
-  if (pose.raiseR) solid(g, left + b.bw, top - 4, b.armW, b.armH + 4, body)
-  else solid(g, left + b.bw, armY + (pose.armR || 0), b.armW, b.armH, body)
-  if (b.muscle >= 3) { // biceps
-    if (!pose.raiseL) solid(g, left - b.armW - 1, armY + (pose.armL || 0), 1, b.armH - 1, body)
-    if (!pose.raiseR) solid(g, left + b.bw + b.armW, armY + (pose.armR || 0), 1, b.armH - 1, body)
-  }
+  return looks.get(k)
+}
+const headRows = b => b.bh - (b.bh >= 9 ? 4 : 3) // the head's height in the body's box; the shirt is below it
+// cx: the body's center line; by: the body's bottom edge (the top of the legs)
+// pose: eyes 'open'|'down'|'closed'|'none' (none: facing away, the back of the head); armL/armR move the arms up or
+// down; raiseL/raiseR raise a hand; legs draws the legs; step is the leg stepping forward
+function drawPerson(g, cx, by, b, pose, look) {
+  const left = cx - (b.bw >> 1), top = by - b.bh, right = left + b.bw, headH = headRows(b), shoulder = top + headH
+  const headW = b.bw - 4, hl = left + 2, hr = hl + headW
+  // the legs first: one stepping forward is lifted under the shirt, so only its shoe shows
   if (pose.legs) {
-    const xs = [left + 1, left + 3, left + b.bw - 4, left + b.bw - 2]
-    xs.forEach((x, i) => solid(g, x, by - (pose.step === (i < 2 ? 0 : 1) ? 1 : 0), 1, 2, body))
+    const inset = b.bw >= 16 ? 3 : 2, lw = (b.bw - 2 * inset - 2) >> 1
+    ;[left + inset, right - inset - lw].forEach((x, i) => {
+      const y = by - (pose.step === i ? 1 : 0)
+      solid(g, x, y, lw, 1, look.pants); solid(g, x, y + 1, lw, 1, look.shoe)
+    })
+  }
+  // the shirt with a shade down its right side, the neck
+  solid(g, left, shoulder, b.bw, b.bh - headH, look.shirt)
+  solid(g, right - 1, shoulder + 1, 1, b.bh - headH - 1, look.shade)
+  if (pose.eyes !== 'none') solid(g, cx - 1, shoulder, 2, 1, look.skin)
+  // the head: the hair on top (two rows on a bigger head) and down the sides, the face below; from the back, all hair
+  const hairH = headH >= 5 ? 2 : 1, eyeY = top + headH - 2, side = (look.long ? headH : eyeY - top + 1) - hairH
+  solid(g, hl + 1, top, headW - 2, 1, look.hair)
+  solid(g, hl, top + 1, headW, headH - 1, look.skin)
+  if (pose.eyes === 'none') {
+    solid(g, hl, top + 1, headW, headH - 2, look.hair)
+    solid(g, hl, top + headH - 1, 1, 1, look.hair); solid(g, hr - 1, top + headH - 1, 1, 1, look.hair)
+  } else {
+    if (hairH > 1) solid(g, hl, top + 1, headW, hairH - 1, look.hair)
+    solid(g, hl, top + hairH, 1, side, look.hair); solid(g, hr - 1, top + hairH, 1, side, look.hair)
+    const ex1 = hl + Math.max(1, headW >> 2), ex2 = hr - 1 - Math.max(1, headW >> 2)
+    if (pose.eyes === 'open') {
+      solid(g, ex1, eyeY, 1, 1, look.eye); solid(g, ex2, eyeY, 1, 1, look.eye)
+      if (detail && hair && hair < 1) { solid(g, ex1, eyeY, hair, hair, '#fffdf7'); solid(g, ex2, eyeY, hair, hair, '#fffdf7') } // a glint
+    }
+    else if (pose.eyes === 'down') { solid(g, ex1, eyeY + 1, 1, 1, look.eye); solid(g, ex2, eyeY + 1, 1, 1, look.eye) }
+    else if (pose.eyes === 'closed') { solid(g, ex1 - 1, eyeY, 2, 1, look.eye); solid(g, ex2, eyeY, 2, 1, look.eye) }
+  }
+  if (detail >= 2 && hair) solid(g, hl + 1, top, headW - 2, hair, 'rgba(255,255,255,.3)') // light on the hair
+  if (b.headband) {
+    solid(g, hl, top + 1, headW, 1, RED)
+    solid(g, hr, top + 1, 2, 1, RED); solid(g, hr + 1, top + 2, 2, 1, RED)
+  }
+  // the arms: the sleeve in the shirt's color, the hand at its end; a raised one reaches above the head
+  const arm = (x, raised, dy) => {
+    if (raised) { solid(g, x, top - 3, b.armW, headH + 4, look.shirt); solid(g, x, top - 3, b.armW, 1, look.skin) }
+    else { solid(g, x, shoulder + dy, b.armW, b.armH - 1, look.shirt); solid(g, x, shoulder + dy + b.armH - 1, b.armW, 1, look.skin) }
+  }
+  arm(left - b.armW, pose.raiseL, pose.armL || 0)
+  arm(right, pose.raiseR, pose.armR || 0)
+  if (b.muscle >= 3) { // biceps
+    if (!pose.raiseL) solid(g, left - b.armW - 1, shoulder + (pose.armL || 0), 1, b.armH - 1, look.shirt)
+    if (!pose.raiseR) solid(g, right + b.armW, shoulder + (pose.armR || 0), 1, b.armH - 1, look.shirt)
   }
 }
 
-const MINI_ROWS = ['..XXXXXX..', '..XEXXEX..', 'AXXXXXXXXB', '..SSSSSS..', '..L.LR.R..']
-function drawMini(g, x, y, body, shade) {
-  MINI_ROWS.forEach((row, r) => [...row].forEach((ch, c) => {
-    if (ch === '.') return
-    rect(g, x + c, y + r, 1, 1, ch === 'E' ? EYE : ch === 'S' ? shade : body)
-  }))
+// a small person: a subagent beside its employee's desk; x, y is its top left, 8 by 7
+const MINI_ROWS = ['..HHHH..', '.HHHHHH.', '.HEFFEH.', '..FFFF..', 'FSSSSSSF', '.SSSSSS.', '.PP..PP.']
+function drawMiniPerson(g, x, y, look) {
+  const c = { H:look.hair, E:look.eye, F:look.skin, S:look.shirt, P:look.pants }
+  MINI_ROWS.forEach((row, r) => [...row].forEach((ch, k) => { if (ch !== '.') rect(g, x + k, y + r, 1, 1, c[ch]) }))
+}
+
+// symphony's mark: two beamed eighth notes, the beam in the accent color; x, y is its top left, 9 by 8
+const MARK_ROWS = ['...BBBBBB', '...BBBBBB', '...N....N', '...N....N', '...N....N', '.NNN..NNN', 'NNNN.NNNN', '.NN...NN.']
+function drawMark(g, x, y, note, beam) {
+  MARK_ROWS.forEach((row, r) => [...row].forEach((ch, k) => { if (ch !== '.') rect(g, x + k, y + r, 1, 1, ch === 'B' ? beam : note) }))
 }
 
 // ---------- idle pastimes ----------
@@ -165,7 +211,7 @@ function drawZzz(g, x, top, b, t) {
   }
 }
 // the right hand of a character standing at cx, by: where it holds a mug, a can or a cup
-const handOf = (cx, by, b, armR = 0) => ({ x:cx - (b.bw >> 1) + b.bw + b.armW, y:by - b.bh + Math.floor(b.bh / 2) - 1 + armR })
+const handOf = (cx, by, b, armR = 0) => ({ x:cx - (b.bw >> 1) + b.bw + b.armW, y:by - b.bh + headRows(b) + 1 + armR })
 function drawMug(g, h, t) {
   rect(g, h.x, h.y - 2, 3, 4, '#fbfbf8'); rect(g, h.x + 3, h.y - 1, 1, 2, '#fbfbf8'); rect(g, h.x, h.y - 2, 3, 1, '#6e5138')
   for (let i = 0; i < 2; i++) { // steam
@@ -345,7 +391,7 @@ function drawLoungeTV(g, x, y) { // on a low cabinet, the screen facing the sofa
   box(g, x, y, 36, 19, '#2b2a28'); rect(g, x + 2, y + 2, 32, 15, '#1f2a33'); rect(g, x + 4, y + 3, 6, 1, '#34475a')
   ground(g, x - 4, y + 26, 44)
 }
-// what's on while someone watches: football, the countryside, a cartoon; the screen is 32x15 at x+2, y+2
+// what's on while someone watches: football, the countryside, a music show; the screen is 32x15 at x+2, y+2
 function drawTVShow(g, x, y, t) {
   const sx = x + 2, sy = y + 2, tri = (period, span) => Math.round(Math.abs(((t / period) % 2) - 1) * span)
   switch (Math.floor(t / 7000) % 3) {
@@ -363,7 +409,7 @@ function drawTVShow(g, x, y, t) {
     default:
       rect(g, sx, sy, 32, 15, '#2d4b6b')
       for (let i = 0; i < 4; i++) rect(g, sx + 3 + i * 8, sy + 2 + (i % 2) * 3, 1, 1, (Math.floor(t / 400) + i) % 2 ? '#fbfbf8' : '#2d4b6b')
-      drawMini(g, sx + 11, sy + 8 - tri(500, 5), CLAWD, CLAWD_SHADE)
+      drawMark(g, sx + 12, sy + 6 - tri(500, 4), '#fbfbf8', YELLOW) // the notes dance
   }
   rect(g, sx, sy + (Math.floor(t / 60) % 15), 32, 1, 'rgba(255,255,255,.08)') // a faint scan line
 }
@@ -426,7 +472,7 @@ function drawPainting(g, x, y, w, h, colors) {
 }
 function drawSign(g, x, y) {
   box(g, x, y, 100, 20, '#2b2a28'); rect(g, x + 1, y + 1, 98, 1, '#55534f')
-  drawMini(g, x + 6, y + 8, CLAWD, CLAWD_SHADE)
+  drawMark(g, x + 7, y + 6, '#fffdf7', YELLOW)
 }
 function drawBigPlant(g, x, y) {
   rect(g, x + 4, y + 20, 10, 10, '#d9d5cc'); rect(g, x + 4, y + 20, 10, 2, '#efece6')
@@ -1304,8 +1350,8 @@ function frame(now) {
       const ax = e.desk.x + (i % 2 ? 35 : -13), ay = e.desk.y + 2 + Math.floor(i / 2) * 8
       const busy = a.state === 'tool' || a.state === 'thinking'
       const bob = busy && Math.floor((now + i * 90) / 200) % 2 ? -1 : 0
-      const color = a.state === 'done' ? GRAY : MINI, shade = a.state === 'done' ? '#8f8a82' : MINI_SHADE
-      items.push({ y:ay + 5, draw:() => drawMini(g, ax, ay + bob, color, shade) })
+      const look = a.state === 'done' ? GRAY_LOOK : lookOf(e.acc)
+      items.push({ y:ay + 5, draw:() => drawMiniPerson(g, ax + 1, ay - 2 + bob, look) })
     })
   }
   for (const f of figs.values()) { // a task's members, in its meeting room or on their way
@@ -1438,14 +1484,14 @@ function employeeItem(g, e, now, at) {
   }
   if (face < 0) pose.eyes = 'none'
   const lit = online || e.goal?.id === 'home' // a member on its way back to its desk session
-  const body = lit ? CLAWD : GRAY, shade = lit ? CLAWD_SHADE : '#8f8a82'
+  const look = lit ? lookOf(e.acc) : GRAY_LOOK
   const dim = filtering() && !picked(e), ring = (filtering() && !dim) || now - (e.foundAt ?? -1e9) < 4000
   return { y:y + 10, draw:() => {
     if (dim) g.globalAlpha = 0.3
     if (detail && pose.legs && hair) solid(g, x - (b.bw >> 1) - 1, y + 1, b.bw + 2, 2 * hair, 'rgba(43,42,40,.18)') // a shadow
     if (ring) drawRing(g, x, y, b, now)
-    drawClawd(g, x, y, b, pose, body, shade)
-    if (e.member?.advisor && face > 0) solid(g, x + 1, y - 4, 2, 2, '#fbfbf8') // an advisor's visitor badge, on the chest
+    drawPerson(g, x, y, b, pose, look)
+    if (e.member?.advisor && face > 0) solid(g, x + 1, y - 3, 2, 2, '#fbfbf8') // an advisor's visitor badge, on the chest
     const top = y - b.bh
     extra?.(top)
     if (now - (e.popAt ?? -1e9) < 1200) drawSay(g, x + (b.bw >> 1) + b.armW + 1, top - 1, '!') // called back
@@ -2091,12 +2137,13 @@ function avatar(key, draw, w = 24, h = 12) {
   if (!a) { const was = hair; hair = 0; a = pixelArt(w, h, draw); hair = was; avatars.set(key, a) }
   return a
 }
-// a member as it looks in the office: its size from the model, its arms from the effort, an advisor's visitor badge
+// a member as it looks in the office: its look, its size from the model, its arms from the effort, an advisor's visitor badge
 function memberAvatar(m) {
   const s = m && sessionById(m.session), b = build(s?.model ? s : m)
-  return avatar(`${b.size}|${b.muscle}|${!!m?.advisor}`, g => {
-    drawClawd(g, 12, 10, b, { eyes:'open', legs:true })
-    if (m?.advisor) solid(g, 13, 6, 2, 2, '#fbfbf8')
+  const acc = m && (snapshot.accounts.find(a => a.id === m.account) ?? { name:m.name, seat:-1 }), look = lookOf(acc)
+  return avatar(`${b.size}|${b.muscle}|${!!m?.advisor}|${Object.values(look).join()}`, g => {
+    drawPerson(g, 12, 10, b, { eyes:'open', legs:true }, look)
+    if (m?.advisor) solid(g, 13, 7, 2, 2, '#fbfbf8')
   })
 }
 // you: a person in a dark suit with a yellow tie, on a smaller canvas, so it shows as big as a member
@@ -2128,7 +2175,7 @@ for (const [key, text] of [['work', t('room.work')], ['meeting', t('room.meeting
 }
 rooms.sign = {}
 // the HUD's pixel art, drawn with the office's own helpers: the logo from the sign, a magnifier, an envelope
-drawMini(document.querySelector('#hud .logo').getContext('2d'), 0, 0, CLAWD, CLAWD_SHADE)
+drawMark(document.querySelector('#hud .logo').getContext('2d'), 0, 0, '#2b2a28', YELLOW)
 const pixelArt = (w, h, draw) => { const c = document.createElement('canvas'); c.width = w; c.height = h; draw(c.getContext('2d')); return `url(${c.toDataURL()})` }
 const MAGNIFIER = ['.XXX...', 'X.o.X..', 'X...X..', 'X...X..', '.XXX...', '....XX.', '.....XX']
 document.documentElement.style.setProperty('--ico-find', pixelArt(7, 7, g => MAGNIFIER.forEach((row, y) => [...row].forEach((c, x) => {

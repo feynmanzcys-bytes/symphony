@@ -1,0 +1,36 @@
+# Checks the commit messages of every push to dev and main and every pull request to them, docs-only ones included:
+# none may have a line starting with Claude-Session: (a link to a private Claude Code session, which tools add by
+# default). It reads the whole history, uses no secrets and its token can only read.
+name: History
+
+on:
+  push:
+    branches: [dev, main]
+  pull_request:
+    branches: [dev, main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: history-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  history:
+    name: Commit messages
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # the whole history
+      - name: No Claude-Session lines
+        run: |
+          found=$(git log --format='%h %s' -E --grep='^Claude-Session:' HEAD)
+          if [ -n "$found" ]; then
+            echo "::error::these commit messages have a line starting with Claude-Session: (drop it and rewrite them)"
+            echo "$found"
+            exit 1
+          fi

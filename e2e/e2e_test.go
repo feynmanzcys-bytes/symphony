@@ -56,26 +56,6 @@ func workDir(t *testing.T, name string) string {
 	return dir
 }
 
-// loginEmail reads this machine's Claude login email, to check what the mod detects.
-func loginEmail() string {
-	home, _ := os.UserHomeDir()
-	path := filepath.Join(home, ".claude.json")
-	if dir := os.Getenv("CLAUDE_CONFIG_DIR"); dir != "" {
-		path = filepath.Join(dir, ".claude.json")
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return ""
-	}
-	var cfg struct {
-		OAuthAccount struct {
-			EmailAddress string `json:"emailAddress"`
-		} `json:"oauthAccount"`
-	}
-	_ = json.Unmarshal(data, &cfg)
-	return cfg.OAuthAccount.EmailAddress
-}
-
 func exists(path string) bool { _, err := os.Stat(path); return err == nil }
 
 func TestOffice(t *testing.T) {
@@ -141,8 +121,10 @@ func TestOffice(t *testing.T) {
 	if s := b.session(sidA); !strings.Contains(s.Model, model) {
 		t.Fatalf("the mod should report model %q, got %q", model, s.Model)
 	}
-	if email := loginEmail(); email != "" {
-		waitUntil(t, 10*time.Second, "the mod detects the Claude login email", func() bool { return b.session(sidA).Login == email })
+	// the mod reports a login only when $.session.identity() gives it one, which it does for a mod an organization's
+	// managed settings install; it reads no config file for it
+	if s := b.session(sidA); s.Login != "" {
+		t.Fatalf("the mod should report no login when managed settings didn't install it, got %q", s.Login)
 	}
 	// C comes with A's token: A is online, so C is refused and falls back to the terminal
 	paneC := startClaude(t, "sym-e2e-"+stamp+"-c", dirC, env(accA.Token), claudeArgs("--name", "intruder-"+stamp)...)

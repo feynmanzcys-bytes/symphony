@@ -112,7 +112,7 @@ func (h *Hub) pushChatLocked(session string, it *ChatItem, delta string) {
 	} else {
 		ev["item"] = it
 	}
-	p := &Push{Value: ev}
+	p := newPush(ev)
 	for ch := range h.subs {
 		select {
 		case ch <- p:

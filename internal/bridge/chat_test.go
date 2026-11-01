@@ -52,11 +52,12 @@ func TestChatStreamAndStop(t *testing.T) {
 		}
 	}
 	// the page's endpoint gives the same
-	if res := c.ok("GET", "/api/chat/s1", nil); len(res["items"].([]any)) != 5 {
+	page := client{t: t, base: base}
+	if res := page.ok("GET", "/api/chat/s1", nil); len(res["items"].([]any)) != 5 {
 		t.Fatalf("/api/chat: %v", res)
 	}
 	// a session the hub doesn't know has an empty log, not null
-	if res := c.ok("GET", "/api/chat/nope", nil); res["items"] == nil {
+	if res := page.ok("GET", "/api/chat/nope", nil); res["items"] == nil {
 		t.Fatalf("/api/chat of an unknown session: %v", res)
 	}
 }

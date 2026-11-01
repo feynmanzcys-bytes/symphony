@@ -24,6 +24,7 @@ const MARKUP = `
       <div><label data-i18n="launch.effort"></label><select name="effort"></select></div>
       <div><label data-i18n="launch.permissionMode"></label><select name="permissionMode"></select></div>
       <div><label data-i18n="launch.resume"></label><select name="resume"></select></div>
+      <div class="warn" data-i18n="launch.bypassWarning" hidden></div>
     </div>
     <pre class="preview"></pre>
     <div class="status"></div>
@@ -74,8 +75,17 @@ export function createLaunchDialog(sym, { options = () => sym.launchOptions(true
     form.querySelector('.preview').textContent = `cd ${q(r.dir || '?')}\n${args.join(' ')}\n# ${note}`
   }
 
+  // bypassPermissions runs everything without asking: a red line under the select says what that means (picked, it
+  // scrolls into sight)
+  function warn(reveal) {
+    const el = form.querySelector('.warn')
+    el.hidden = field('permissionMode').value !== 'bypassPermissions'
+    if (reveal && !el.hidden) el.scrollIntoView({ block: 'nearest' })
+  }
+
   form.addEventListener('input', preview)
   form.addEventListener('change', preview)
+  field('permissionMode').addEventListener('change', () => warn(true))
   form.querySelector('.browse').onclick = () => browse(sym, form.querySelector('.browser'), field('dir').value.trim(), reason => setStatus(reason, true), opts?.home)
   form.querySelector('.pick').onclick = () => {
     field('dir').value = form.querySelector('.browser').dataset.path
@@ -116,10 +126,11 @@ export function createLaunchDialog(sym, { options = () => sym.launchOptions(true
       field('name').readOnly = !!acc
       const recent = opts.recentDirs || []
       field('dir').value = last.dir || acc?.dir || recent[0] || opts.home || ''
-      // a new employee starts with everything allowed, Opus and the most thinking; an old one as it last worked
-      fill(field('model'), opts.models, acc ? last.model : 'opus')
-      fill(field('effort'), opts.efforts, acc ? last.effort : 'max')
-      fill(field('permissionMode'), opts.permissionModes, acc ? last.permissionMode : 'bypassPermissions')
+      // a new employee follows Claude Code's own settings (the empty choices leave the flags out); an old one works as it last did
+      fill(field('model'), opts.models, acc ? last.model : '')
+      fill(field('effort'), opts.efforts, acc ? last.effort : '')
+      fill(field('permissionMode'), opts.permissionModes, acc ? last.permissionMode : '')
+      warn()
       fill(field('resume'), opts.resumes, '')
       form.querySelector('.recent').innerHTML = recent.map(d => `<span title="${esc(d)}">${esc(base(d))}</span>`).join('')
       form.querySelectorAll('.recent span').forEach((el, i) => el.onclick = () => { field('dir').value = recent[i]; showEnd(field('dir')); preview() })

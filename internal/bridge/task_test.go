@@ -34,6 +34,7 @@ func newTaskEnv(t *testing.T, dataDir string) *taskEnv {
 		}
 	}
 	e.srv = NewServer(hub, testWeb)
+	e.srv.Key = testKey
 	e.srv.WaitTimeout = 300 * time.Millisecond
 	e.starts = &fakeStarts{}
 	e.srv.SetLauncher(NewLauncher("claude", "/mods/sb", "http://127.0.0.1:7788", fakeTerminal(e.starts)))
@@ -78,7 +79,7 @@ func (e *taskEnv) modOf(t *testing.T, account string) client {
 	if acc == nil {
 		t.Fatalf("no account %s", account)
 	}
-	return client{t: t, base: e.base, header: map[string]string{"authorization": "Bearer " + acc.Token}}
+	return client{t: t, base: e.base, header: map[string]string{"authorization": "Bearer " + acc.Token}, modOnly: true}
 }
 
 func asTask(t *testing.T, v map[string]any) *Task {
@@ -596,12 +597,26 @@ func TestTaskErrors(t *testing.T) {
 	if exists(filepath.Join(plain, ".git")) || exists(filepath.Join(plain, ".symphony")) || len(e.srv.Hub.Snapshot().Accounts) != 4 || len(e.srv.Hub.Tasks()) != 0 {
 		t.Fatal("the failed task should leave nothing behind")
 	}
+	// files kept from an earlier task's worktrees (.symphony/kept) stay when a start in that folder fails
+	kept := filepath.Join(plain, ".symphony", "kept", "bob-T0", "out", "report.md")
+	writeFile(t, kept, "report")
+	e.starts.failStart = true
+	if st, code := e.page.failure("POST", "/api/tasks", TaskRequest{Title: "t", Members: append([]TaskMemberRequest{advisor("helper", plain)}, two...)}); st != http.StatusInternalServerError || code != "pty_start_failed" {
+		t.Fatalf("want 500 pty_start_failed, got %d %q", st, code)
+	}
+	e.starts.failStart = false
+	if !exists(kept) || exists(filepath.Join(plain, ".git")) || exists(filepath.Join(plain, ".symphony", "worktrees")) {
+		t.Fatal("the failed start should take back the repository and the worktrees it made, and leave the kept files")
+	}
+	if err := os.RemoveAll(filepath.Join(plain, ".symphony")); err != nil {
+		t.Fatal(err)
+	}
 
 	// the tries that failed keep their numbers (messages may have been logged under them); an employee is in one task
 	// at a time
 	task := asTask(t, e.page.ok("POST", "/api/tasks", TaskRequest{Room: hint(4), Title: "t", Members: two}))
-	if task.ID != "T3" {
-		t.Fatalf("the first task made should be T3 (T1 and T2 went to the tries that failed), got %s", task.ID)
+	if task.ID != "T4" {
+		t.Fatalf("the first task made should be T4 (T1 to T3 went to the tries that failed), got %s", task.ID)
 	}
 	st, body = e.page.do("POST", "/api/tasks", TaskRequest{Room: hint(5), Title: "t", Members: []TaskMemberRequest{advisor("x", plain), {Account: bob.ID}}})
 	if params, _ := body["params"].(map[string]any); st != http.StatusConflict || body["code"] != "task_member_busy" || params["name"] != "bob" {
@@ -698,6 +713,130 @@ func TestTaskDetachedWork(t *testing.T) {
 	}
 	if readFile(t, filepath.Join(plain, "alice.txt")) != "alice's\n" || exists(filepath.Join(plain, "bob.txt")) {
 		t.Fatal("alice's branch should be merged into the folder")
+	}
+}
+
+// TestTaskKeepsIgnoredFiles: what git ignores in a member's worktree (build output, a .env) isn't on its branch; when
+// the task ends it is moved to <folder>/.symphony/kept/<slug>-<task id> at the same paths, and the member's Kept names
+// that folder. When something there is in the way, the move stops, the worktree stays with the rest and the task fails.
+func TestTaskKeepsIgnoredFiles(t *testing.T) {
+	e := newTaskEnv(t, "")
+	repo := initRepo(t, e.folder(t, "repo"), map[string]string{"a.txt": "a\n", ".gitignore": "out/\n.env\n"})
+	_, bobAcc := as(t, e.srv, e.base, "bob")
+	_, aliceAcc := as(t, e.srv, e.base, "alice")
+	e.srv.Hub.setLast(bobAcc.ID, LaunchRequest{Dir: repo})
+	e.srv.Hub.setLast(aliceAcc.ID, LaunchRequest{Dir: repo})
+	start := func() *Task {
+		return asTask(t, e.page.ok("POST", "/api/tasks", TaskRequest{Room: hint(1), Title: "t",
+			Members: []TaskMemberRequest{{Account: bobAcc.ID}, {Account: aliceAcc.ID}}}))
+	}
+	ignored := map[string]string{"out/app.bin": "binary", "out/sub/x.o": "object", ".env": "TOKEN=secret", "src/.env": "nested"}
+
+	task := start()
+	b, a := task.Members[0], task.Members[1]
+	for name, body := range ignored {
+		writeFile(t, filepath.Join(b.Worktree, filepath.FromSlash(name)), body)
+	}
+	writeFile(t, filepath.Join(b.Worktree, "src", "main.go"), "package main\n")
+	writeFile(t, filepath.Join(a.Worktree, "alice.txt"), "alice's\n") // alice leaves nothing ignored
+	e.page.ok("POST", "/api/tasks/"+task.ID+"/end", nil)
+	e.srv.Hub.Flush()
+	kept := filepath.Join(repo, ".symphony", "kept", "bob-"+task.ID)
+	if got := taskState(e.srv.Hub, task.ID); got.Status != TaskEnded || got.Members[0].Kept != kept || got.Members[1].Kept != "" {
+		t.Fatalf("the task should have ended, bob's ignored files kept in %s: %+v %+v", kept, got, got.Members[0])
+	}
+	for name, body := range ignored {
+		if got := readFile(t, filepath.Join(kept, filepath.FromSlash(name))); got != body {
+			t.Fatalf("%s should be kept: %q", name, got)
+		}
+	}
+	if exists(b.Worktree) || exists(a.Worktree) || exists(filepath.Join(repo, ".symphony", "kept", "alice-"+task.ID)) {
+		t.Fatal("the worktrees should be gone, and alice had nothing to keep")
+	}
+	if mustGit(t, repo, "show", b.Branch+":src/main.go") != "package main" {
+		t.Fatal("bob's branch should hold his work")
+	}
+	if _, err := runGit(repo, "show", b.Branch+":.env"); err == nil {
+		t.Fatal("an ignored file must not be committed")
+	}
+	if st := mustGit(t, repo, "status", "--porcelain"); st != "" {
+		t.Fatalf("the user's checkout should be as it was (.symphony is excluded): %q", st)
+	}
+
+	// next time something is in the way: .env is moved, out/ stays in the worktree, which stays too
+	task = start()
+	b = task.Members[0]
+	for name, body := range ignored {
+		writeFile(t, filepath.Join(b.Worktree, filepath.FromSlash(name)), body)
+	}
+	kept = filepath.Join(repo, ".symphony", "kept", "bob-"+task.ID)
+	writeFile(t, filepath.Join(kept, "out"), "in the way")
+	e.page.ok("POST", "/api/tasks/"+task.ID+"/end", nil)
+	e.srv.Hub.Flush()
+	got := taskState(e.srv.Hub, task.ID)
+	if got.Status != TaskFailed || got.ErrorCode != "task_git_failed" || got.ErrorParams["dir"] != b.Worktree || got.Members[0].Kept != kept {
+		t.Fatalf("the task should fail on bob's worktree, naming where .env went: %+v %+v", got, got.Members[0])
+	}
+	if readFile(t, filepath.Join(kept, ".env")) != "TOKEN=secret" || readFile(t, filepath.Join(kept, "out")) != "in the way" ||
+		readFile(t, filepath.Join(b.Worktree, "out", "app.bin")) != "binary" {
+		t.Fatal("what was in the way stays, and what couldn't be moved stays in the worktree")
+	}
+}
+
+// TestTaskKeepsNestedCommits: a repository checked out in a member's worktree (one it made, or a submodule) whose commits
+// no remote of its own has keeps the worktree: the task fails on it instead of deleting them. A submodule that is only
+// checked out, with nothing new, doesn't stand in the way.
+func TestTaskKeepsNestedCommits(t *testing.T) {
+	e := newTaskEnv(t, "")
+	sub := initRepo(t, e.folder(t, "subsrc"), map[string]string{"s.txt": "s\n"})
+	repo := initRepo(t, e.folder(t, "repo"), map[string]string{"a.txt": "a\n"})
+	mustGit(t, repo, "-c", "protocol.file.allow=always", "submodule", "add", "-q", sub, "sub")
+	mustGit(t, repo, append(gitCommitter, "commit", "-q", "-m", "add sub")...)
+	_, bobAcc := as(t, e.srv, e.base, "bob")
+	_, aliceAcc := as(t, e.srv, e.base, "alice")
+	e.srv.Hub.setLast(bobAcc.ID, LaunchRequest{Dir: repo})
+	e.srv.Hub.setLast(aliceAcc.ID, LaunchRequest{Dir: repo})
+	start := func() *Task {
+		return asTask(t, e.page.ok("POST", "/api/tasks", TaskRequest{Room: hint(1), Title: "t",
+			Members: []TaskMemberRequest{{Account: bobAcc.ID}, {Account: aliceAcc.ID}}}))
+	}
+	end := func(task *Task) *Task {
+		e.page.ok("POST", "/api/tasks/"+task.ID+"/end", nil)
+		e.srv.Hub.Flush()
+		return taskState(e.srv.Hub, task.ID)
+	}
+	initSub := func(worktree string) {
+		mustGit(t, worktree, "-c", "protocol.file.allow=always", "submodule", "update", "--init", "-q")
+	}
+
+	// the submodule checked out, nothing new in it: the worktrees go
+	task := start()
+	initSub(task.Members[0].Worktree)
+	if got := end(task); got.Status != TaskEnded || exists(task.Members[0].Worktree) {
+		t.Fatalf("an untouched submodule shouldn't keep the worktree: %+v", got)
+	}
+
+	// commits in the submodule, and in a repository bob made: bob's worktree stays, with both
+	task = start()
+	b := task.Members[0]
+	initSub(b.Worktree)
+	writeFile(t, filepath.Join(b.Worktree, "sub", "new.txt"), "bob's\n")
+	mustGit(t, filepath.Join(b.Worktree, "sub"), "add", "-A")
+	mustGit(t, filepath.Join(b.Worktree, "sub"), append(gitCommitter, "commit", "-q", "-m", "sub work")...)
+	lib := filepath.Join(b.Worktree, "lib")
+	writeFile(t, filepath.Join(lib, "lib.go"), "package lib\n")
+	mustGit(t, lib, "init", "-q")
+	mustGit(t, lib, "add", "-A")
+	mustGit(t, lib, append(gitCommitter, "commit", "-q", "-m", "lib work")...)
+	got := end(task)
+	if got.Status != TaskFailed || got.ErrorCode != "task_git_failed" || !strings.Contains(got.Error, "commits no remote has in lib, sub") {
+		t.Fatalf("the task should fail, naming the repositories with new commits: %+v", got)
+	}
+	if readFile(t, filepath.Join(b.Worktree, "sub", "new.txt")) != "bob's\n" || mustGit(t, lib, "log", "--format=%s") != "lib work" {
+		t.Fatal("bob's commits should still be there")
+	}
+	if exists(task.Members[1].Worktree) {
+		t.Fatal("alice's worktree had nothing of the kind: it goes")
 	}
 }
 

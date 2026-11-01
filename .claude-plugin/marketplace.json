@@ -1,12 +1,12 @@
 {
   "name": "symphony",
   "owner": { "name": "feynmanzcys-bytes", "url": "https://github.com/feynmanzcys-bytes" },
-  "description": "Claude Code mods for symphony, a pixel-art office for a team of Claude Code sessions",
+  "description": "Unofficial Claude Code mods for symphony, a pixel-art office for a team of Claude Code sessions; not affiliated with Anthropic",
   "plugins": [
     {
       "name": "symphony-bridge",
       "source": "./mods/symphony-bridge",
-      "description": "Shows a Claude Code session as a chat in the symphony office web page, which takes prompts and handles permission requests and AskUserQuestion; only in sessions started with SYMPHONY_TOKEN"
+      "description": "Unofficial: shows a Claude Code session as a chat in the symphony office web page, which takes prompts and handles permission requests and AskUserQuestion; only in sessions started with SYMPHONY_TOKEN"
     }
   ]
 }

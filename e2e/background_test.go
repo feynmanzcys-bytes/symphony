@@ -53,12 +53,22 @@ func TestModStartsBridge(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// and the page key, which the bridge reads from there
+	key, err := bridge.LoadKey(data)
+	if err != nil {
+		t.Fatal(err)
+	}
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
 	addr := l.Addr().String()
 	l.Close()
+	state := func() (*http.Response, error) {
+		req, _ := http.NewRequest("GET", "http://"+addr+"/api/state", nil)
+		req.Header.Set("X-Symphony-Key", key)
+		return http.DefaultClient.Do(req)
+	}
 
 	model := os.Getenv("SYMPHONY_E2E_MODEL")
 	if model == "" {
@@ -72,7 +82,7 @@ func TestModStartsBridge(t *testing.T) {
 		"--model", model, "--permission-mode", "manual", "--plugin-dir", filepath.Join(repo, "mods", "symphony-bridge"))
 
 	online := func() bool {
-		res, err := http.Get("http://" + addr + "/api/state")
+		res, err := state()
 		if err != nil {
 			return false
 		}
@@ -97,7 +107,7 @@ func TestModStartsBridge(t *testing.T) {
 
 	pane.kill()
 	time.Sleep(2 * time.Second)
-	if res, err := http.Get("http://" + addr + "/api/state"); err != nil {
+	if res, err := state(); err != nil {
 		t.Fatalf("the bridge should keep running after the session that started it ends: %v", err)
 	} else {
 		res.Body.Close()

@@ -247,7 +247,7 @@ func TestIdle(t *testing.T) {
 }
 
 // clockTab opens url in a new tab whose clock runs window.__warp milliseconds ahead (warp at first), and which
-// records uncaught errors in window.__errors; cancel closes it.
+// records uncaught errors, and what the bridge's content security policy blocks, in window.__errors; cancel closes it.
 func clockTab(t *testing.T, browser context.Context, url string, warp int64) (context.Context, context.CancelFunc) {
 	t.Helper()
 	ctx, cancel := chromedp.NewContext(browser)
@@ -259,7 +259,8 @@ func clockTab(t *testing.T, browser context.Context, url string, warp int64) (co
 		window.__errors = []
 		addEventListener('error', e => window.__errors.push(String(e.message)))
 		addEventListener('unhandledrejection', e => window.__errors.push(String(e.reason)))
-		Date.now = (now => () => now() + window.__warp)(Date.now.bind(Date))`
+		addEventListener('securitypolicyviolation', e => window.__errors.push('csp: ' + e.violatedDirective + ' ' + e.blockedURI))
+		Date.now =(now => () => now() + window.__warp)(Date.now.bind(Date))`
 	do(t, ctx, 30*time.Second, chromedp.Func(func(ctx context.Context, tg *chromedp.Target) error {
 		_, err := cdp.Call(ctx, tg, page.AddScriptToEvaluateOnNewDocument, page.AddScriptToEvaluateOnNewDocumentParams{Source: script})
 		return err

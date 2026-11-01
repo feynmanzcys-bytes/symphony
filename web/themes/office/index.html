@@ -23,7 +23,7 @@
   #hud.up { transform:translate(-50%, -100%); box-shadow:none; }
   #hud .bar { display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:8px 18px; }
   #hud .group { display:flex; align-items:center; gap:6px; }
-  #hud .logo { width:30px; height:15px; flex:none; image-rendering:pixelated; }
+  #hud .logo { width:18px; height:16px; flex:none; image-rendering:pixelated; }
   #hud h1 { margin:0 0 0 2px; font-size:15px; font-weight:800; white-space:nowrap; }
   /* counts by state, as chips in the state colors; a click on one lights up those employees */
   #hud .stats { display:flex; gap:6px; flex-wrap:wrap; color:#6f6b64; }
@@ -143,7 +143,7 @@
 <div id="labels"></div>
 <div id="hud">
   <div class="bar">
-    <div class="group"><canvas class="logo" width="10" height="5"></canvas><h1 data-i18n="office.title"></h1></div>
+    <div class="group"><canvas class="logo" width="9" height="8"></canvas><h1 data-i18n="office.title"></h1></div>
     <div class="find"><input id="find" type="search" autocomplete="off" spellcheck="false" data-i18n-placeholder="search.placeholder" data-i18n-title="search.title"><kbd class="key">/</kbd><div id="find-list" hidden></div></div>
     <div class="stats" id="stats" data-i18n="office.nobody"></div>
     <div class="group btns">

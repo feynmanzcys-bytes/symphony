@@ -1,19 +1,29 @@
-import type { EngineInterface, Register } from 'claude-code'
+import type { EngineInterface, HttpResponse, Register } from 'claude-code'
 import { type Lang, matchLang, message } from './messages'
 
 // Environment variables:
 //   SYMPHONY_TOKEN    the office account's token: one account serves one session at a time and sets its identity and seat
-//   SYMPHONY_BRIDGE   the bridge's address, by default port 7788 on this machine
+//   SYMPHONY_BRIDGE   the bridge's address, by default http://127.0.0.1:7788; only http://127.0.0.1, http://localhost
+//                     or http://[::1] with a port, or any https:// address (anything else: the bridge is never contacted)
 //   SYMPHONY_LAUNCH   the launch id the bridge sets when the page starts a session
 //   SYMPHONY_TASK     the collaborative task's id, when the bridge starts the session as a task member (in a worktree of its own)
 //   SYMPHONY_LANG     the language of the mod's messages (the bridge passes the page's language); else LC_ALL / LC_MESSAGES / LANG
 // The mod is usually installed at user scope, so every Claude Code session loads it, but only sessions started
 // with SYMPHONY_TOKEN belong to the office. In any other session it does nothing: it doesn't contact the bridge,
 // read login details, show messages or touch approvals.
+// The token goes only to a bridge that has shown it knows the token: before the first request that carries it, the
+// mod sends POST /api/hello with the token's SHA-256 (hex) as its id and a fresh random nonce, without the token, and
+// the answer must be { proof: HMAC-SHA256 of "symphony-hello:" + nonce, keyed with the token (hex) }. A 401 means the
+// bridge doesn't know the token; a wrong proof or any other answer means what answers there isn't a symphony bridge
+// this session can trust (or one older than the mod), and nothing that carries the token is sent in this session.
+// After a request that gets no answer (a network failure, a timeout) the check is redone before the next request
+// that carries the token: the bridge may have stopped and something else taken its address.
+// The login (the Claude account's email) is what $.session.identity() answers; it answers only a mod the
+// organization's managed settings install, so elsewhere no login is reported.
 // When a bridge on this machine doesn't answer as the session starts, the mod starts it with the symphony program
 // (symphony -background, if it's on PATH; SYMPHONY_DATA, if set, tells it where the accounts are).
-// When the bridge is unreachable, rejects the token or the account is busy, everything falls back to Claude Code's
-// own terminal interaction; the session never hangs.
+// When the bridge is unreachable, rejects the token, fails the check or the account is busy, everything falls back
+// to Claude Code's own terminal interaction; the session never hangs.
 // Reports (events, the heartbeat) go out one after another in the background: a hook never waits for the bridge,
 // and a report that gets no answer in time is given up. Only asks wait, for the page's answer.
 // The employee window in the page shows the session as a chat: the mod streams the model's thinking and text
@@ -39,7 +49,8 @@ type Answer =
   | { decision: 'allow' | 'deny'; reason?: string }
   | { answers: Record<string, string> }
 
-type Identity = { bridge: string; headers: Record<string, string>; login?: string; lang: Lang }
+// insecure: SYMPHONY_BRIDGE is neither on this machine nor https, so the bridge is never contacted
+type Identity = { bridge: string; token: string; headers: Record<string, string>; login?: string; lang: Lang; insecure: boolean }
 
 // undefined: the environment hasn't been read yet; null: no SYMPHONY_TOKEN, not an office session
 let identity: Identity | null | undefined
@@ -50,8 +61,12 @@ let sticky: { cwd?: string; launch?: string; task?: string } = {}
 // the model and effort last reported to the bridge; reported again only when they change
 let reported = { model: '', effort: '' }
 let heartbeat: { cancel: () => void } | undefined
-// the bridge doesn't know the token (401): nothing more goes to it in this session
+// the bridge doesn't know the token (401), what answers isn't a bridge this session can trust, or the address is
+// insecure: nothing more goes to it in this session
 let refused = false
+// the bridge's check (POST /api/hello), shared by the requests that wait for it; dropped after a request that got no
+// answer, so the next one checks again
+let checked: Promise<boolean> | undefined
 // reports go out in this order, one at a time
 let queue: Promise<unknown> = Promise.resolve()
 // calls the web page denied. A denied tool reaches tool.call as an error result, not { deny }, so we remember them.
@@ -67,15 +82,11 @@ let usageTimer: { cancel: () => void } | undefined
 // the background work last reported (classic.Stop comes at every turn's end; only a change is worth a report)
 let background = { tasks: -1, crons: -1 }
 
-// The Claude login is in $CLAUDE_CONFIG_DIR/.claude.json, or in the home folder when that isn't set (Windows has no HOME; use USERPROFILE).
-// ($.session.identity() answers { deny } to a mod the organization's managed settings didn't install, so the file it is.)
+// the Claude login's email, when $.session.identity() tells it: { deny } (a mod the organization didn't install) or
+// a session without an email means no login
 async function loginEmail($: EngineInterface) {
-  const dir =
-    (await $.env.get('CLAUDE_CONFIG_DIR')) ?? (await $.env.get('HOME')) ?? (await $.env.get('USERPROFILE'))
-  if (!dir) return undefined
   try {
-    const config = JSON.parse(await $.fs.read(`${dir}/.claude.json`))
-    const email = config?.oauthAccount?.emailAddress
+    const email = (await $.session.identity()).email
     return typeof email === 'string' && email ? email : undefined
   } catch {
     return undefined
@@ -104,11 +115,15 @@ async function ident($: EngineInterface) {
   if (identity !== undefined) return identity
   const token = await $.env.get('SYMPHONY_TOKEN')
   if (!token) return (identity = null)
+  const bridge = ((await $.env.get('SYMPHONY_BRIDGE')) || DEFAULT_BRIDGE).replace(/\/+$/, '')
   identity = {
-    bridge: (await $.env.get('SYMPHONY_BRIDGE')) || DEFAULT_BRIDGE,
+    bridge,
+    token,
     headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
     login: await loginEmail($),
     lang: await sessionLang($),
+    // the token may cross the network only encrypted: plain http stays on this machine
+    insecure: !LOCAL_BRIDGE.test(bridge) && !/^https:\/\/./i.test(bridge),
   }
   return identity
 }
@@ -131,14 +146,80 @@ async function safe<T>(p: Promise<T>): Promise<T | undefined> {
   }
 }
 
-// only called for office sessions (emit and ask check ident first)
-async function call($: EngineInterface, path: string, body?: unknown) {
-  const { bridge, headers } = (await ident($))!
-  return $.http.fetch(`${bridge}${path}`, {
-    method: body === undefined ? 'GET' : 'POST',
-    headers,
-    body: body === undefined ? undefined : JSON.stringify(body),
-  })
+const utf8 = (s: string) => new TextEncoder().encode(s)
+const hex = (bytes: Uint8Array) => [...bytes].map(b => b.toString(16).padStart(2, '0')).join('')
+const sha256 = async (data: Uint8Array) => new Uint8Array(await crypto.subtle.digest('SHA-256', data))
+
+// HMAC-SHA256 (RFC 2104), built on SHA-256 as the engine's crypto offers no HMAC of its own
+export async function hmacSha256(key: Uint8Array, data: Uint8Array): Promise<Uint8Array> {
+  const block = new Uint8Array(64)
+  block.set(key.length > 64 ? await sha256(key) : key)
+  const inner = new Uint8Array(64 + data.length)
+  const outer = new Uint8Array(64 + 32)
+  for (let i = 0; i < 64; i++) {
+    inner[i] = block[i]! ^ 0x36
+    outer[i] = block[i]! ^ 0x5c
+  }
+  inner.set(data, 64)
+  outer.set(await sha256(inner), 64)
+  return sha256(outer)
+}
+
+// what answers at the bridge's address refused the token or isn't a bridge this session can trust: nothing more goes
+// to it in this session, and the person learns why once
+function shut($: EngineInterface, id: Identity, key: 'badToken' | 'notBridge') {
+  refused = true
+  heartbeat?.cancel()
+  $.ui.toast(message(id.lang, key, { bridge: id.bridge }))
+}
+
+// The bridge's check, before the token leaves the session: what answers at the bridge's address gets the token's
+// SHA-256 and a fresh nonce, never the token, and has to answer with the nonce's HMAC keyed with the token. True once it
+// did; false when nothing answered (checked again before the next request) or the check failed (shut).
+async function hello($: EngineInterface, id: Identity): Promise<boolean> {
+  const nonce = hex(crypto.getRandomValues(new Uint8Array(16)))
+  const body = JSON.stringify({ id: hex(await sha256(utf8(id.token))), nonce })
+  const res = await within(
+    $,
+    REPORT_TIMEOUT,
+    $.http.fetch(`${id.bridge}/api/hello`, { method: 'POST', headers: { 'content-type': 'application/json' }, body }),
+  )
+  if (!res) return false
+  if (res.status === 401) {
+    shut($, id, 'badToken')
+    return false
+  }
+  let proof: unknown
+  try {
+    proof = JSON.parse(res.text)?.proof
+  } catch {
+    // not JSON: not a bridge
+  }
+  const expected = hex(await hmacSha256(utf8(id.token), utf8(`symphony-hello:${nonce}`)))
+  if (res.status === 200 && typeof proof === 'string' && proof.toLowerCase() === expected) return true
+  shut($, id, 'notBridge') // a wrong proof, a bridge older than the mod (404) or something else entirely
+  return false
+}
+
+// A request to the bridge with the token, only once the bridge has passed its check, and only for office sessions.
+// Undefined when it isn't sent or gets no answer (within ms, when given); no answer drops the check, so the next
+// request checks again (the bridge may have stopped and something else taken its address).
+async function call($: EngineInterface, path: string, body?: unknown, ms?: number): Promise<HttpResponse | undefined> {
+  const id = await ident($)
+  if (!id || id.insecure || refused) return undefined
+  const check = (checked ??= hello($, id))
+  let res: HttpResponse | undefined
+  if (await check.catch(() => false)) {
+    if (refused) return undefined
+    const sent = $.http.fetch(`${id.bridge}${path}`, {
+      method: body === undefined ? 'GET' : 'POST',
+      headers: id.headers,
+      body: body === undefined ? undefined : JSON.stringify(body),
+    })
+    res = ms === undefined ? await sent.catch(() => undefined) : await within($, ms, sent)
+  }
+  if (!res && checked === check) checked = undefined
+  return res
 }
 
 // the value of p, or undefined once ms have passed or p fails (the request itself isn't stopped, just not waited for)
@@ -158,7 +239,7 @@ function within<T>($: EngineInterface, ms: number, p: Promise<T>): Promise<T | u
   })
 }
 
-// a bridge on this machine, which the mod may start itself: http://127.0.0.1:7788 and the like
+// a bridge on this machine, the only one plain http may reach and one the mod may start itself: http://127.0.0.1:7788 and the like
 const LOCAL_BRIDGE = /^http:\/\/(127\.0\.0\.1|localhost|\[::1\]):(\d+)\/?$/
 
 // Nothing answers at the bridge's address. When it's on this machine, start the bridge with the symphony program, if
@@ -180,12 +261,14 @@ async function startBridge($: EngineInterface, bridge: string) {
 // reports an event to the office page and waits for the answer (at most timeout); a failure is ignored and never
 // affects the session. Any report the bridge accepts means the session is online there (a session the bridge
 // first refused as busy, or that started before the bridge, joins through its heartbeat), so the inbox poll starts
-// here; a 401 ends everything (the token won't change while the session runs).
+// here; a 401 ends everything (the token won't change while the session runs). A report refused otherwise, with no
+// inbox poll running, drops the bridge's check: between two heartbeats the bridge may stop and something else take its
+// address, and only a failed request would tell.
 async function emit($: EngineInterface, kind: string, data: object = {}, timeout = REPORT_TIMEOUT) {
   if (refused || !(await ident($))) return undefined
   let res
   try {
-    res = await within($, timeout, call($, '/api/event', { session: await sid($), kind, ...sticky, ...data }))
+    res = await call($, '/api/event', { session: await sid($), kind, ...sticky, ...data }, timeout)
   } catch {
     return undefined
   }
@@ -193,6 +276,8 @@ async function emit($: EngineInterface, kind: string, data: object = {}, timeout
     refused = true
     heartbeat?.cancel()
   } else if (res?.ok && !ended) pollInbox($)
+  // refused (busy, say) and no inbox poll that would notice the bridge going away: check it again before the next one
+  else if (!polling) checked = undefined
   return res
 }
 
@@ -211,7 +296,7 @@ async function ask(
   if (refused || !(await ident($))) return undefined
   let id: string | undefined
   const create = async () => {
-    const created = await within($, ASK_TIMEOUT, call($, '/api/ask', { session: await sid($), ...payload }))
+    const created = await call($, '/api/ask', { session: await sid($), ...payload }, ASK_TIMEOUT)
     return created?.ok ? (JSON.parse(created.text).id as string) : undefined
   }
   try {
@@ -220,21 +305,21 @@ async function ask(
     while (!signal.aborted) {
       const waited = await call($, `/api/wait/${id}`)
       // the bridge restarted and lost the ask: put it back and keep waiting
-      if (waited.status === 404) {
+      if (waited?.status === 404) {
         id = await create()
         if (!id) return undefined
         continue
       }
-      if (!waited.ok) return undefined
+      if (!waited?.ok) return undefined
       const body = JSON.parse(waited.text)
-      if (body.status === 'done') return body.answer as Answer
+      if (body.status === 'done') return body.answer && typeof body.answer === 'object' ? (body.answer as Answer) : undefined
       if (body.status === 'cancelled') return undefined
     }
   } catch {
     return undefined
   }
   // the terminal interrupted (Esc and the like): tell the bridge to withdraw the card
-  if (id) await within($, ASK_TIMEOUT, call($, `/api/cancel/${id}`, {}))
+  if (id) await call($, `/api/cancel/${id}`, {}, ASK_TIMEOUT)
   return undefined
 }
 
@@ -370,12 +455,12 @@ function pollInbox($: EngineInterface) {
     let items: InboxItem[] = []
     try {
       const res = await call($, `/api/inbox?session=${encodeURIComponent(await sid($))}`)
-      if (res.status === 401) {
+      if (res?.status === 401) {
         refused = true
         polling = false
         return
       }
-      if (!res.ok) return again(INBOX_RETRY)
+      if (!res?.ok) return again(INBOX_RETRY)
       items = (JSON.parse(res.text).items ?? []) as InboxItem[]
     } catch {
       return again(INBOX_RETRY)
@@ -401,6 +486,11 @@ export const register: Register = on => {
     const started = await next(e)
     const id = await ident($)
     if (!id) return started
+    if (id.insecure) {
+      refused = true // never contacted
+      $.ui.toast(message(id.lang, 'insecure', { bridge: id.bridge }))
+      return started
+    }
     // sessions started from the page carry the bridge's launch id, which matches the session with its terminal in the bridge
     sticky = { cwd: e.cwd, launch: (await $.env.get('SYMPHONY_LAUNCH')) || undefined, task: (await $.env.get('SYMPHONY_TASK')) || undefined }
     const model = await $.session.model()
@@ -417,15 +507,18 @@ export const register: Register = on => {
       surface: e.surface ?? undefined,
       engine: engine ? { version: engine.version, base: engine.base } : undefined,
       mod,
-      repo: repo ? { root: repo.root, remote: repo.remote ?? undefined, name: repo.name ?? undefined, internal: repo.internal } : undefined,
+      // not the remote: its URL may carry credentials
+      repo: repo ? { root: repo.root, name: repo.name ?? undefined, internal: repo.internal } : undefined,
     }
+    // no answer and refused: the bridge's check failed, and said why
     let res = await emit($, 'session.start', online, ASK_TIMEOUT)
-    if (!res && (await startBridge($, id.bridge))) {
+    if (!res && !refused && (await startBridge($, id.bridge))) {
       res = await emit($, 'session.start', online, ASK_TIMEOUT)
       if (res?.ok) $.ui.toast(message(id.lang, 'started', { bridge: id.bridge }))
     }
-    if (!res) $.ui.toast(message(id.lang, 'unreachable', { bridge: id.bridge }))
-    else if (res.status === 401) {
+    if (!res) {
+      if (!refused) $.ui.toast(message(id.lang, 'unreachable', { bridge: id.bridge }))
+    } else if (res.status === 401) {
       refused = true // the token won't change while the session runs: don't knock again
       $.ui.toast(message(id.lang, 'badToken'))
     } else if (res.status === 409) $.ui.toast(message(id.lang, 'busy'))
@@ -684,14 +777,15 @@ export const register: Register = on => {
       reason: verdict.reason,
       agentId: e.agentId,
     })
-    if (!answer || !('decision' in answer)) return verdict
+    // no answer, or one that is neither allow nor deny: the engine's verdict stands
+    if (!answer || !('decision' in answer) || (answer.decision !== 'allow' && answer.decision !== 'deny')) return verdict
     if (answer.decision === 'allow' && e.ceiling !== undefined && e.ceiling !== 'allow') {
       return verdict
     }
     if (answer.decision === 'deny') deniedByWeb.add(e.tool_use_id)
     return {
       decision: answer.decision,
-      reason: answer.reason || message(identity?.lang ?? 'en', answer.decision === 'allow' ? 'allowed' : 'denied'),
+      reason: (typeof answer.reason === 'string' && answer.reason) || message(identity?.lang ?? 'en', answer.decision === 'allow' ? 'allowed' : 'denied'),
     }
   })
 
@@ -709,7 +803,7 @@ export const register: Register = on => {
         questions: e.questions,
         agentId: e.agentId,
       })
-      if (answer && 'answers' in answer) {
+      if (answer && 'answers' in answer && answer.answers && typeof answer.answers === 'object') {
         ran = { result: { questions: e.questions, answers: answer.answers } }
       }
     }

@@ -166,12 +166,12 @@ func (s *Server) termOpen(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if s.Window == nil || s.AttachCommand == nil {
-		writeErr(w, newError("window_unavailable", "this bridge can't open terminal windows; attach by hand: "+s.Launcher.Term.Attach(t.ID), "command", s.Launcher.Term.Attach(t.ID)))
+		writeErr(w, newError("window_unavailable", "this bridge can't open terminal windows; attach by hand: "+s.Launcher.AttachFor(t.ID), "command", s.Launcher.AttachFor(t.ID)))
 		return
 	}
 	if err := s.Window.Open(t.Name, s.AttachCommand(t.ID)); err != nil {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, 200, map[string]any{"ok": true, "command": s.Launcher.Term.Attach(t.ID)})
+	writeJSON(w, 200, map[string]any{"ok": true, "command": s.Launcher.AttachFor(t.ID)})
 }

@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/feynmanzcys-bytes/symphony/internal/autostart"
+	"github.com/feynmanzcys-bytes/symphony/internal/bridge"
 )
 
 // TestAutostart turns starting at login on and off for real, under a name of its own, so a real entry is never
@@ -50,6 +51,11 @@ func TestAutostart(t *testing.T) {
 	}
 	addr := l.Addr().String()
 	l.Close()
+	// the page key, made first in the data folder the bridge will use (as -autostart on does)
+	key, err := bridge.LoadKey(filepath.Join(dir, "data"))
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	sys := autostart.Default(fmt.Sprintf("symphony-e2e-%d", time.Now().UnixNano()))
 	where, err := sys.Enable(autostart.Entry{
@@ -62,7 +68,9 @@ func TestAutostart(t *testing.T) {
 	}
 	t.Cleanup(func() { sys.Disable() })
 	answers := func() bool {
-		res, err := http.Get("http://" + addr + "/api/state")
+		req, _ := http.NewRequest("GET", "http://"+addr+"/api/state", nil)
+		req.Header.Set("X-Symphony-Key", key)
+		res, err := http.DefaultClient.Do(req)
 		if err != nil {
 			return false
 		}
