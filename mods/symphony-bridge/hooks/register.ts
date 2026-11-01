@@ -141,14 +141,22 @@ async function startBridge($: EngineInterface, bridge: string) {
 }
 
 // reports an event to the office page and waits for the answer (at most timeout); a failure is ignored and never
-// affects the session.
+// affects the session. Any report the bridge accepts means the session is online there (a session the bridge
+// first refused as busy, or that started before the bridge, joins through its heartbeat), so the inbox poll starts
+// here; a 401 ends everything (the token won't change while the session runs).
 async function emit($: EngineInterface, kind: string, data: object = {}, timeout = REPORT_TIMEOUT) {
   if (refused || !(await ident($))) return undefined
+  let res
   try {
-    return await within($, timeout, call($, '/api/event', { session: await sid($), kind, ...sticky, ...data }))
+    res = await within($, timeout, call($, '/api/event', { session: await sid($), kind, ...sticky, ...data }))
   } catch {
     return undefined
   }
+  if (res?.status === 401) {
+    refused = true
+    heartbeat?.cancel()
+  } else if (res?.ok && !ended) pollInbox($)
+  return res
 }
 
 // report queues an event: the hook goes on at once, and the events reach the bridge in the order they happened.
@@ -316,7 +324,7 @@ export const register: Register = on => {
     const started = await next(e)
     const id = await ident($)
     if (!id) return started
-    // sessions started from the page carry the bridge's launch id, which matches the session with its tmux window
+    // sessions started from the page carry the bridge's launch id, which matches the session with its terminal in the bridge
     sticky = { cwd: e.cwd, launch: (await $.env.get('SYMPHONY_LAUNCH')) || undefined, task: (await $.env.get('SYMPHONY_TASK')) || undefined }
     const model = await $.session.model()
     reported = { model, effort: '' }
@@ -339,7 +347,6 @@ export const register: Register = on => {
       heartbeat = $.clock.every(15_000, () => {
         report($, 'heartbeat')
       })
-      if (res?.ok) pollInbox($)
     }
     return started
   })

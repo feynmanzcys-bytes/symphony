@@ -199,7 +199,7 @@ func TestTaskLifecycle(t *testing.T) {
 	}
 	kickoff := items[0].Text
 	for _, want := range []string{"You are the lead of task T1 (meeting room Sonata)", "build the thing",
-		"- alice-T1: repository " + plain + ", branch symphony/T1/alice, worktree " + a.Worktree, "- reviewer-T1: ",
+		"- alice-T1: folder " + plain + ", branch symphony/T1/alice, worktree " + a.Worktree, "- reviewer-T1: ",
 		"You are bob-T1: you work in your own git worktree " + b.Worktree + " on branch symphony/T1/bob of " + repo + " (base branch " + repoBase + ")"} {
 		if !strings.Contains(kickoff, want) {
 			t.Fatalf("the kickoff lacks %q:\n%s", want, kickoff)

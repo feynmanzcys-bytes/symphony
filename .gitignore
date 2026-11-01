@@ -34,6 +34,9 @@ go.work.sum
 
 # symphony
 e2e/artifacts/
+/bridge
+/demo
+/symphony
 mods/*/tsconfig.json
 dist/
 

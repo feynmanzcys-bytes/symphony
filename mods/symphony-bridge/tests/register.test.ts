@@ -85,6 +85,46 @@ test('a session with a token: reports itself online with the token, then a heart
   expect(w.toasts).toEqual([])
 })
 
+test('the account is busy at the start: once the bridge takes the heartbeat (the other session left), the inbox poll starts', async ($, on) => {
+  let busy = true
+  const w = world(on, { SYMPHONY_TOKEN: 'tok', SYMPHONY_BRIDGE: 'http://bridge.test' }, () =>
+    busy ? { status: 409, text: '{}' } : { status: 200, text: '{}' },
+  )
+
+  await $.session.start(start)
+  expect(w.toasts).toEqual(['symphony: this account already has a session online; approvals go to the terminal for now'])
+  await w.clock.advance(15_000)
+  await w.clock.settle()
+  expect(w.polls.length).toBe(0) // nothing to listen for while the bridge refuses the session
+
+  busy = false
+  await w.clock.advance(15_000)
+  await w.clock.settle()
+  expect(w.reqs.at(-1)?.body).toEqual(expect.objectContaining({ kind: 'heartbeat' }))
+  expect(w.polls.length).toBeGreaterThan(0) // the session is online now: what the page sends reaches it
+})
+
+test('the bridge rejects the token later (the account was deleted): nothing more is sent, not even heartbeats', async ($, on) => {
+  let gone = false
+  const w = world(on, { SYMPHONY_TOKEN: 'tok', SYMPHONY_BRIDGE: 'http://bridge.test' }, () =>
+    gone ? { status: 401, text: '{}' } : { status: 200, text: '{}' },
+  )
+
+  await $.session.start(start)
+  await w.clock.advance(15_000)
+  await w.clock.settle()
+  expect(w.reqs.at(-1)?.body).toEqual(expect.objectContaining({ kind: 'heartbeat' }))
+
+  gone = true
+  await w.clock.advance(15_000)
+  await w.clock.settle()
+  const sent = w.reqs.length // the heartbeat that got the 401
+  await w.clock.advance(60_000)
+  await w.clock.settle()
+  expect(w.reqs.length).toBe(sent)
+  expect(w.toasts).toEqual([])
+})
+
 test('a task member (SYMPHONY_TASK): every event carries the task id, so the bridge seats it in the meeting room', async ($, on) => {
   const w = world(on, { SYMPHONY_TOKEN: 'tok', SYMPHONY_BRIDGE: 'http://bridge.test', SYMPHONY_LAUNCH: 'L2', SYMPHONY_TASK: 'T7' })
 
@@ -202,14 +242,14 @@ test('without SYMPHONY_LANG the POSIX locale decides: the first of LC_ALL, LC_ME
   const w = world(on, { SYMPHONY_TOKEN: 'tok', LANG: 'de_DE.UTF-8', LC_MESSAGES: 'ja_JP.UTF-8' }, () => ({ status: 409, text: '{}' }))
 
   await $.session.start(start)
-  expect(w.toasts).toEqual(['symphony: このアカウントには既にオンラインのセッションがあります。承認はターミナルで行います'])
+  expect(w.toasts).toEqual(['symphony: このアカウントには既にオンラインのセッションがあります。承認はひとまずターミナルで行います'])
 })
 
 test('a locale the mod lacks means English', async ($, on) => {
   const w = world(on, { SYMPHONY_TOKEN: 'tok', LANG: 'it_IT.UTF-8' }, () => ({ status: 409, text: '{}' }))
 
   await $.session.start(start)
-  expect(w.toasts).toEqual(['symphony: this account already has a session online; approvals stay in the terminal'])
+  expect(w.toasts).toEqual(['symphony: this account already has a session online; approvals go to the terminal for now'])
 })
 
 test('the reason sent back to the model when the page decides is in the session language', async ($, on) => {

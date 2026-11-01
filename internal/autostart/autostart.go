@@ -19,7 +19,7 @@ import (
 type Entry struct {
 	Exe  string   // the symphony program, an absolute path
 	Args []string // its flags; -open=false is added, there's nobody to show a browser to at login
-	Path string   // PATH for the bridge on Linux and macOS, so it finds claude and tmux (Windows starts it with the user's own)
+	Path string   // PATH for the bridge on Linux and macOS, so it finds claude (Windows starts it with the user's own)
 }
 
 // System is where the entry goes. Run and Start are swapped for fakes in tests.

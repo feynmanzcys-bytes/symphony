@@ -77,10 +77,10 @@ func TestTLang(t *testing.T) {
 	t.Cleanup(func() { SetLang("en") })
 	SetLang("ja")
 	line := map[string]string{"name": "bob-T1", "dir": "/w/{dir}", "branch": "symphony/T1/bob", "worktree": "/w/.symphony/worktrees/bob-T1"}
-	if got := TLang("zh_CN.UTF-8", "task.kickoff.teammate", line); got != "- bob-T1：仓库 /w/{dir}，分支 symphony/T1/bob，工作树 /w/.symphony/worktrees/bob-T1" {
+	if got := TLang("zh_CN.UTF-8", "task.kickoff.teammate", line); got != "- bob-T1：目录 /w/{dir}，分支 symphony/T1/bob，工作树 /w/.symphony/worktrees/bob-T1" {
 		t.Fatalf("zh-CN message: %q", got)
 	}
-	if got := TLang("xx", "task.kickoff.teammate", line); got != "- bob-T1: repository /w/{dir}, branch symphony/T1/bob, worktree /w/.symphony/worktrees/bob-T1" {
+	if got := TLang("xx", "task.kickoff.teammate", line); got != "- bob-T1: folder /w/{dir}, branch symphony/T1/bob, worktree /w/.symphony/worktrees/bob-T1" {
 		t.Fatalf("an unsupported language should mean English: %q", got)
 	}
 	if Lang() != "ja" {
@@ -148,7 +148,7 @@ func TestWebKeysInUse(t *testing.T) {
 	if err := json.Unmarshal(data, &en); err != nil {
 		t.Fatal(err)
 	}
-	literal := regexp.MustCompile("['\"`]((?:common|office|hud|pixels|room|state|idle|search|stats|log|asks|msg|card|chat|launch|option|approve|error)\\.[A-Za-z0-9_.]*[A-Za-z0-9_])['\"`]")
+	literal := regexp.MustCompile("['\"`]((?:common|office|hud|pixels|room|state|idle|search|stats|log|asks|msg|card|chat|launch|option|approve|error|task)\\.[A-Za-z0-9_.]*[A-Za-z0-9_])['\"`]")
 	attr := regexp.MustCompile(`data-i18n(?:-placeholder|-title)?="([^"]+)"`)
 	used := 0
 	for _, name := range []string{"office.html", "approve.html", "asks.js", "i18n.js"} {
@@ -212,5 +212,39 @@ func checkCatalogs(t *testing.T, read func(lang string) ([]byte, error)) {
 				t.Errorf("%s has %q, which English lacks", lang, key)
 			}
 		}
+	}
+}
+
+// TestErrorCodesTranslated checks that every error code the bridge makes with newError("...") has an
+// error.<code> entry in the pages' English catalog, so the page never shows a raw code.
+func TestErrorCodesTranslated(t *testing.T) {
+	data, err := os.ReadFile("../../web/locales/en.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var en map[string]string
+	if err := json.Unmarshal(data, &en); err != nil {
+		t.Fatal(err)
+	}
+	code := regexp.MustCompile(`newError\("([a-z_]+)"`)
+	found := 0
+	_ = filepath.WalkDir("../../internal/bridge", func(path string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return err
+		}
+		src, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		for _, m := range code.FindAllStringSubmatch(string(src), -1) {
+			found++
+			if _, ok := en["error."+m[1]]; !ok {
+				t.Errorf("%s makes the error code %q, which web/locales/en.json lacks (error.%s)", path, m[1], m[1])
+			}
+		}
+		return nil
+	})
+	if found < 20 {
+		t.Fatalf("found only %d newError calls; is the scan looking in the right place?", found)
 	}
 }

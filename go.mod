@@ -1,6 +1,6 @@
 module github.com/feynmanzcys-bytes/symphony
 
-go 1.27.3
+go 1.27
 
 require github.com/chromedp/chromedp v0.21.0
 

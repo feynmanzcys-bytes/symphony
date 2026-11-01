@@ -1,9 +1,9 @@
 # Publishes a release when a version tag is pushed on main (git tag -a v0.3.0 -m v0.3.0 && git push origin v0.3.0):
 # a few checks and the unit tests, then the symphony program for every platform with checksums (.github/release.sh),
 # attached to a GitHub release. Its notes are what's new, the version's section of CHANGELOG.md (.github/changelog.sh),
-# then .github/release-notes.md ({tag} there becomes the tag, so its links point at this release's archives). A tag
-# with a suffix (v0.3.0-rc.1) makes a pre-release. Run by hand (workflow_dispatch) it's a dry run: the same build,
-# kept for 7 days as a workflow artifact, nothing published.
+# then .github/release-notes.md ({tag} there becomes the tag, so its links point at this release's archives), then
+# GitHub's generated notes. A tag with a suffix (v0.3.0-rc.1) makes a pre-release. Run by hand (workflow_dispatch, on
+# a branch or a tag) it's a dry run: the same build, kept for 7 days as a workflow artifact, nothing published.
 # Plain go build and the gh on the runner, no third-party actions; only this job may write (to create the release).
 name: Release
 
@@ -53,14 +53,14 @@ jobs:
             exit 1
           fi
       - name: Unit tests
-        run: go test ./...
+        run: go test -race ./...
       - name: Build and pack for every platform
         run: |
           version=$GITHUB_REF_NAME
           if [ "$GITHUB_REF_TYPE" != tag ]; then version=$GITHUB_REF_NAME-${GITHUB_SHA::7}; fi
           .github/release.sh "$version" dist
       - name: Publish the release
-        if: github.ref_type == 'tag'
+        if: github.event_name == 'push' && github.ref_type == 'tag'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -80,7 +80,7 @@ jobs:
           gh release create "$GITHUB_REF_NAME" dist/* --verify-tag "${pre[@]}" \
             --title "symphony $GITHUB_REF_NAME" --notes-file "$RUNNER_TEMP/notes.md" --generate-notes
       - name: Keep the dry run's archives
-        if: github.ref_type != 'tag'
+        if: github.event_name != 'push'
         uses: actions/upload-artifact@v7
         with:
           name: symphony-${{ github.sha }}

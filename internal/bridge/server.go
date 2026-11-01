@@ -39,7 +39,7 @@ type Server struct {
 
 var (
 	errTokenInvalid   = newError("token_invalid", "no valid account token")
-	errLaunchDisabled = newError("launch_disabled", "this bridge can't start sessions from the page (no claude or no usable terminal; see the bridge's startup log)")
+	errLaunchDisabled = newError("launch_disabled", "this bridge can't start sessions from the page (claude not found, or -mod isn't a mod folder; see the bridge's startup log)")
 )
 
 // NewServer builds a bridge; web must hold office.html, approve.html, asks.js, i18n.js and locales/*.json.

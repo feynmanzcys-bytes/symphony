@@ -1,12 +1,11 @@
-// symphony bridge: go run ./cmd/bridge [-addr 127.0.0.1:7788] [-data folder] [-web web] [-lang en] [-open=false]
-// [-autostart on|off] [-background] [-version]; symphony attach [-addr host:port] <launch id> shows a session's terminal.
+// symphony bridge: go run ./cmd/bridge [-addr 127.0.0.1:7788] [-data folder] [-claude claude] [-mod folder] [-web web]
+// [-lang en] [-open=false] [-autostart on|off] [-background] [-version]; symphony attach [-addr host:port] <launch id> shows a session's terminal.
 // Releases ship it as the symphony program (.github/release.sh).
 package main
 
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"flag"
 	"fmt"
 	"io/fs"
@@ -349,15 +348,6 @@ func defaultDataDir() string {
 		return filepath.Join(dir, "symphony")
 	}
 	return ".symphony"
-}
-
-// errorText is an error in the bridge's language when it carries a code the catalog knows, its own text otherwise.
-func errorText(err error) string {
-	var e *bridge.Error
-	if errors.As(err, &e) && i18n.Has("error."+e.Code) {
-		return i18n.TMap("error."+e.Code, e.Params)
-	}
-	return err.Error()
 }
 
 // launcher prepares what starting sessions from the page needs; without claude the feature stays off. A
