@@ -1,0 +1,22 @@
+{
+  "name": "hq",
+  "title": {
+    "en": "HQ console", "zh-CN": "HQ 管理台", "zh-TW": "HQ 管理台", "ja": "HQ コンソール", "ko": "HQ 콘솔",
+    "es": "Consola HQ", "fr": "Console HQ", "de": "HQ-Konsole", "pt-BR": "Console HQ", "ru": "Консоль HQ"
+  },
+  "description": {
+    "en": "A big company's management console: the sessions as a roster with their figures, an approvals queue, the tasks as a board, an activity timeline.",
+    "zh-CN": "大公司的管理后台：会话是一张带数字的人员表，审批队列，任务看板，活动时间线。",
+    "zh-TW": "大公司的管理後台：工作階段是一張帶數字的人員表，審批佇列，任務看板，活動時間軸。",
+    "ja": "大企業の管理コンソール：セッションは数字付きの名簿、承認キュー、タスクボード、アクティビティのタイムライン。",
+    "ko": "대기업 관리 콘솔: 세션은 수치가 붙은 명단, 승인 대기열, 작업 보드, 활동 타임라인.",
+    "es": "La consola de gestión de una gran empresa: las sesiones como plantilla con sus cifras, una cola de aprobaciones, las tareas en un tablero, una cronología de actividad.",
+    "fr": "La console de gestion d'une grande entreprise : les sessions en effectif chiffré, une file d'approbations, les tâches en tableau, une chronologie d'activité.",
+    "de": "Die Verwaltungskonsole eines Konzerns: die Sitzungen als Belegschaft mit Zahlen, eine Freigabewarteschlange, die Aufgaben als Board, eine Aktivitätszeitleiste.",
+    "pt-BR": "O console de gestão de uma grande empresa: as sessões como quadro de pessoal com números, uma fila de aprovações, as tarefas em um board, uma linha do tempo de atividade.",
+    "ru": "Консоль управления большой компании: сессии как штат с цифрами, очередь согласований, задачи на доске, лента активности."
+  },
+  "version": "0.10.0",
+  "since": 2,
+  "icon": "console"
+}

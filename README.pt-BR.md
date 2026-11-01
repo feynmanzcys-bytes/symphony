@@ -6,6 +6,10 @@ Coloque uma equipe de sessões do Claude Code num escritório em pixel art: veja
 
 ![O escritório](docs/office.png)
 
+A página vem em temas: o escritório em pixels acima e o **console HQ**, um console de gestão com uma faixa de indicadores, o quadro de pessoal, uma fila de aprovações, um board de projetos e uma linha do tempo de atividade. Escolha um na barra do topo; o bridge lembra.
+
+![O console HQ](docs/hq.png)
+
 ## Instalação
 
 O jeito mais rápido: abra o Claude Code e cole
@@ -29,7 +33,7 @@ O symphony tem duas partes e precisa das duas:
 uname -sm                 # Linux/macOS: define o arquivo abaixo (x86_64 → amd64; arm64/aarch64 → arm64)
 claude --version          # precisa do Claude Code 2.1.x (testado com 2.1.316)
 git --version             # só para as tarefas em equipe; se faltar, anote no relatório e não pare
-symphony -version         # já instalado? mostra "symphony v0.9.0 (darwin/arm64)"
+symphony -version         # já instalado? mostra "symphony v0.10.0 (darwin/arm64)"
 curl -s http://127.0.0.1:7788/api/state | head -c 40   # já há um bridge rodando? mostra {"type":"snapshot",...
 claude plugin list --json # o mod já está instalado? procure "id":"symphony-bridge@symphony"
 ```
@@ -73,7 +77,7 @@ Escolha uma pasta que já esteja no `PATH` do usuário e que dê para gravar sem
 tar xzf /tmp/symphony-dl/symphony_<os>_<arch>.tar.gz -C /tmp/symphony-dl
 install -m 755 /tmp/symphony-dl/symphony ~/.local/bin/symphony
 xattr -d com.apple.quarantine ~/.local/bin/symphony 2>/dev/null || true   # macOS: o binário não é assinado
-symphony -version          # mostra "symphony v0.9.0 (linux/amd64)": a versão e a plataforma
+symphony -version          # mostra "symphony v0.10.0 (linux/amd64)": a versão e a plataforma
 ```
 
 No Windows: `Expand-Archive symphony_windows_<arch>.zip -DestinationPath "$env:LOCALAPPDATA\Programs\symphony"`, depois adicione essa pasta ao `Path` do usuário (`[Environment]::SetEnvironmentVariable('Path', "$([Environment]::GetEnvironmentVariable('Path','User'));$env:LOCALAPPDATA\Programs\symphony", 'User')`) e abra um shell novo. O SmartScreen pode avisar na primeira execução: "Mais informações" e depois "Executar assim mesmo".
@@ -117,7 +121,7 @@ Verifique a cadeia inteira com uma única requisição:
 curl -s http://127.0.0.1:7788/api/launch/options
 ```
 
-A resposta traz `"enabled":true` e `"mod":{"ok":true,"id":"symphony-bridge@symphony","version":"0.9.0"}`: o bridge está rodando, encontrou o `claude`, e o mod está instalado onde as sessões vão carregá-lo. Com `"enabled":false`, `mod.code` diz o que está errado e `mod.fix`, o comando que resolve: `mod_not_installed` ou `mod_project_scope` (volte ao passo 4), `mod_disabled` (ative-o), `mod_check_failed` (`claude plugin list --json` falhou, então o Claude Code provavelmente é antigo demais). `"mod":null` significa que o bridge não encontrou o `claude` no `PATH` dele (o log dele diz isso): coloque-o lá, ou inicie o bridge com `-claude /path/to/claude`.
+A resposta traz `"enabled":true` e `"mod":{"ok":true,"id":"symphony-bridge@symphony","version":"0.10.0"}`: o bridge está rodando, encontrou o `claude`, e o mod está instalado onde as sessões vão carregá-lo. Com `"enabled":false`, `mod.code` diz o que está errado e `mod.fix`, o comando que resolve: `mod_not_installed` ou `mod_project_scope` (volte ao passo 4), `mod_disabled` (ative-o), `mod_check_failed` (`claude plugin list --json` falhou, então o Claude Code provavelmente é antigo demais). `"mod":null` significa que o bridge não encontrou o `claude` no `PATH` dele (o log dele diz isso): coloque-o lá, ou inicie o bridge com `-claude /path/to/claude`.
 
 O log do bridge é o `bridge.log` na pasta de dados (`~/.config/symphony` no Linux, `~/Library/Application Support/symphony` no macOS, `%AppData%\symphony` no Windows); quando ele é iniciado ao entrar no sistema, o log vai para `journalctl --user -u symphony` no Linux e para `~/Library/Logs/symphony.log` no macOS.
 

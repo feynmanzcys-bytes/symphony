@@ -2,6 +2,12 @@
 
 What changed in each release of symphony. The program (the bridge) and the mod share one version number. A release's notes start with its section here: the release workflow stops before building when the section is missing.
 
+## v0.10.0 (2026-11-01)
+
+- **The HQ console, a second theme**: a big company's management console (`/t/hq/`, or the theme picker): a KPI strip (headcount, online, working, waiting for you, today's cost, the average context fill, API errors), and five tabs: **Overview** (who waits for you, the activity of the last 30 minutes, today's cost by employee, tokens by model, the recent activity), **People** (the roster: state, model and effort, folder, project, context fill, tool calls, turns, today's cost, uptime; sortable, filtered by state chips and the search box; a row opens the employee window, Start work and Terminal at hand), **Approvals** (the pending asks as a queue of cards, answered there), **Projects** (the tasks as a board by status; a card opens the task window) and **Activity** (the bridge's activity log, filtered by person and kind). Light or dark follows the system, the switch at the top is remembered. In the ten languages; `TestHQ` walks through it with made-up activity.
+- The shared pieces take the console's colors through `ui/ui.css`'s variables, flat and rounded there. The console redraws once per frame however many pushes come; it isn't measured under load yet (the performance tests drive the pixel office).
+- The mod is unchanged (0.10.0 is the project's version; `claude plugin update` isn't needed).
+
 ## v0.9.0 (2026-11-01)
 
 - **The protocol, written down**: `docs/protocol.md` says what the bridge gives the pages (the stream's messages, every object and its fields, what a page derives, the calls it makes), what the mod reports, and what a theme of the office page has to offer. The snapshot's `protocol` is 2: a task no longer carries `roomName`, and its `room` is an optional hint.

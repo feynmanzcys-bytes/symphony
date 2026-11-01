@@ -148,7 +148,7 @@ func TestWebKeysInUse(t *testing.T) {
 	if err := json.Unmarshal(data, &en); err != nil {
 		t.Fatal(err)
 	}
-	literal := regexp.MustCompile("['\"`]((?:common|office|hud|pixels|room|state|idle|search|stats|log|asks|msg|card|chat|launch|option|approve|error|task)\\.[A-Za-z0-9_.]*[A-Za-z0-9_])['\"`]")
+	literal := regexp.MustCompile("['\"`]((?:common|office|hud|pixels|room|state|idle|search|stats|log|asks|msg|card|chat|launch|option|approve|error|task|hq)\\.[A-Za-z0-9_.]*[A-Za-z0-9_])['\"`]")
 	attr := regexp.MustCompile(`data-i18n(?:-placeholder|-title)?="([^"]+)"`)
 	used := 0
 	files := []string{"approve.html", "asks.js", "i18n.js"}
@@ -158,15 +158,35 @@ func TestWebKeysInUse(t *testing.T) {
 			files = append(files, strings.TrimPrefix(filepath.ToSlash(h), "../../web/"))
 		}
 	}
+	// a theme's own catalog adds to the shared one for the theme's files
+	themeKeys := map[string]map[string]string{}
 	for _, name := range files {
 		src, err := os.ReadFile("../../web/" + name)
 		if err != nil {
 			t.Fatal(err)
 		}
+		known := en
+		if strings.HasPrefix(name, "themes/") {
+			theme := strings.Split(name, "/")[1]
+			if _, ok := themeKeys[theme]; !ok {
+				own := map[string]string{}
+				if data, err := os.ReadFile("../../web/themes/" + theme + "/locales/en.json"); err == nil {
+					_ = json.Unmarshal(data, &own)
+				}
+				themeKeys[theme] = own
+			}
+			known = map[string]string{}
+			for k, v := range en {
+				known[k] = v
+			}
+			for k, v := range themeKeys[theme] {
+				known[k] = v
+			}
+		}
 		for _, re := range []*regexp.Regexp{literal, attr} {
 			for _, m := range re.FindAllStringSubmatch(string(src), -1) {
 				used++
-				if _, ok := en[m[1]]; !ok {
+				if _, ok := known[m[1]]; !ok {
 					t.Errorf("%s names %q, which web/locales/en.json lacks", name, m[1])
 				}
 			}

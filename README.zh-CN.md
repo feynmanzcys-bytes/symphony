@@ -6,6 +6,10 @@
 
 ![办公室](docs/office.png)
 
+页面有多套主题：上面的像素办公室，和 **HQ 管理台**——一个管理后台：指标条、人员表、审批队列、项目看板、活动时间线。在顶栏里选，bridge 会记住。
+
+![HQ 管理台](docs/hq.png)
+
 ## 安装
 
 最快的办法：打开 Claude Code，粘贴这句话
@@ -29,7 +33,7 @@ symphony 分两部分，两部分都要装：
 uname -sm                 # Linux/macOS：据此选下面的压缩包（x86_64 → amd64；arm64/aarch64 → arm64）
 claude --version          # 要 Claude Code 2.1.x（在 2.1.316 上验证过）
 git --version             # 只有协作任务要用；没有的话在汇报里写明，不用停下
-symphony -version         # 已经装了？会输出 "symphony v0.9.0 (darwin/arm64)"
+symphony -version         # 已经装了？会输出 "symphony v0.10.0 (darwin/arm64)"
 curl -s http://127.0.0.1:7788/api/state | head -c 40   # 已经有 bridge 在跑？会输出 {"type":"snapshot",...
 claude plugin list --json # mod 已经装了？找 "id":"symphony-bridge@symphony"
 ```
@@ -73,7 +77,7 @@ Windows 上用 PowerShell：`$env:PROCESSOR_ARCHITECTURE` 是 `AMD64` 或 `ARM64
 tar xzf /tmp/symphony-dl/symphony_<os>_<arch>.tar.gz -C /tmp/symphony-dl
 install -m 755 /tmp/symphony-dl/symphony ~/.local/bin/symphony
 xattr -d com.apple.quarantine ~/.local/bin/symphony 2>/dev/null || true   # macOS：程序没有签名
-symphony -version          # 输出 "symphony v0.9.0 (linux/amd64)"：版本号和平台
+symphony -version          # 输出 "symphony v0.10.0 (linux/amd64)"：版本号和平台
 ```
 
 Windows 上：`Expand-Archive symphony_windows_<arch>.zip -DestinationPath "$env:LOCALAPPDATA\Programs\symphony"`，然后把这个目录加进用户的 `Path`（`[Environment]::SetEnvironmentVariable('Path', "$([Environment]::GetEnvironmentVariable('Path','User'));$env:LOCALAPPDATA\Programs\symphony", 'User')`），再开一个新的 shell。第一次运行时 SmartScreen 可能会警告：点“更多信息”，再点“仍要运行”。
@@ -117,7 +121,7 @@ symphony now starts when you log in (<where>); it's running at http://127.0.0.1:
 curl -s http://127.0.0.1:7788/api/launch/options
 ```
 
-返回里有 `"enabled":true` 和 `"mod":{"ok":true,"id":"symphony-bridge@symphony","version":"0.9.0"}`：说明 bridge 在跑、找到了 `claude`，mod 也装在会话会加载的地方。如果是 `"enabled":false`，`mod.code` 说明哪里不对，`mod.fix` 给出修复的命令：`mod_not_installed` 或 `mod_project_scope`（回到第 4 步），`mod_disabled`（启用它），`mod_check_failed`（`claude plugin list --json` 失败了，多半是 Claude Code 太旧）。`"mod":null` 说明 bridge 在它的 `PATH` 里根本没找到 `claude`（日志里会写）：把它放进去，或者用 `-claude /path/to/claude` 启动 bridge。
+返回里有 `"enabled":true` 和 `"mod":{"ok":true,"id":"symphony-bridge@symphony","version":"0.10.0"}`：说明 bridge 在跑、找到了 `claude`，mod 也装在会话会加载的地方。如果是 `"enabled":false`，`mod.code` 说明哪里不对，`mod.fix` 给出修复的命令：`mod_not_installed` 或 `mod_project_scope`（回到第 4 步），`mod_disabled`（启用它），`mod_check_failed`（`claude plugin list --json` 失败了，多半是 Claude Code 太旧）。`"mod":null` 说明 bridge 在它的 `PATH` 里根本没找到 `claude`（日志里会写）：把它放进去，或者用 `-claude /path/to/claude` 启动 bridge。
 
 bridge 的日志是数据目录里的 `bridge.log`（Linux 上是 `~/.config/symphony`，macOS 上是 `~/Library/Application Support/symphony`，Windows 上是 `%AppData%\symphony`）；随登录启动的话，Linux 上日志用 `journalctl --user -u symphony` 看，macOS 上在 `~/Library/Logs/symphony.log`。
 

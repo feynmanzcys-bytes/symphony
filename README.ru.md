@@ -6,6 +6,10 @@
 
 ![Офис](docs/office.png)
 
+У страницы есть темы: пиксельный офис выше и **консоль HQ** — консоль управления с полосой показателей, штатом, очередью согласований, доской проектов и лентой активности. Выберите тему в верхней панели; bridge её запомнит.
+
+![Консоль HQ](docs/hq.png)
+
 ## Установка
 
 Быстрее всего так: откройте Claude Code и вставьте
@@ -29,7 +33,7 @@ Claude Code прочитает этот README и сделает всё, что 
 uname -sm                 # Linux/macOS: по нему выбирается архив ниже (x86_64 → amd64; arm64/aarch64 → arm64)
 claude --version          # нужен Claude Code 2.1.x (проверено на 2.1.316)
 git --version             # только для совместных задач; если его нет, отметьте это в отчёте, но не останавливайтесь
-symphony -version         # уже установлен? выводит "symphony v0.9.0 (darwin/arm64)"
+symphony -version         # уже установлен? выводит "symphony v0.10.0 (darwin/arm64)"
 curl -s http://127.0.0.1:7788/api/state | head -c 40   # bridge уже работает? выводит {"type":"snapshot",...
 claude plugin list --json # mod уже установлен? ищите "id":"symphony-bridge@symphony"
 ```
@@ -73,7 +77,7 @@ claude plugin list --json # mod уже установлен? ищите "id":"sy
 tar xzf /tmp/symphony-dl/symphony_<os>_<arch>.tar.gz -C /tmp/symphony-dl
 install -m 755 /tmp/symphony-dl/symphony ~/.local/bin/symphony
 xattr -d com.apple.quarantine ~/.local/bin/symphony 2>/dev/null || true   # macOS: исполняемый файл не подписан
-symphony -version          # выводит "symphony v0.9.0 (linux/amd64)": версию и платформу
+symphony -version          # выводит "symphony v0.10.0 (linux/amd64)": версию и платформу
 ```
 
 В Windows: `Expand-Archive symphony_windows_<arch>.zip -DestinationPath "$env:LOCALAPPDATA\Programs\symphony"`, затем добавьте эту папку в `Path` пользователя (`[Environment]::SetEnvironmentVariable('Path', "$([Environment]::GetEnvironmentVariable('Path','User'));$env:LOCALAPPDATA\Programs\symphony", 'User')`) и откройте новую оболочку. При первом запуске SmartScreen может предупредить: нажмите «Подробнее», затем «Выполнить в любом случае».
@@ -117,7 +121,7 @@ symphony now starts when you log in (<where>); it's running at http://127.0.0.1:
 curl -s http://127.0.0.1:7788/api/launch/options
 ```
 
-В ответе есть `"enabled":true` и `"mod":{"ok":true,"id":"symphony-bridge@symphony","version":"0.9.0"}`: bridge работает, нашёл `claude`, а mod установлен там, откуда его загрузят сеансы. При `"enabled":false` поле `mod.code` говорит, что не так, а `mod.fix` — команду, которая это исправит: `mod_not_installed` или `mod_project_scope` (вернитесь к шагу 4), `mod_disabled` (включите его), `mod_check_failed` (`claude plugin list --json` завершилась с ошибкой, так что Claude Code, скорее всего, слишком старый). `"mod":null` означает, что bridge вообще не нашёл `claude` в своём `PATH` (об этом написано в его журнале): добавьте его туда или запустите bridge с `-claude /path/to/claude`.
+В ответе есть `"enabled":true` и `"mod":{"ok":true,"id":"symphony-bridge@symphony","version":"0.10.0"}`: bridge работает, нашёл `claude`, а mod установлен там, откуда его загрузят сеансы. При `"enabled":false` поле `mod.code` говорит, что не так, а `mod.fix` — команду, которая это исправит: `mod_not_installed` или `mod_project_scope` (вернитесь к шагу 4), `mod_disabled` (включите его), `mod_check_failed` (`claude plugin list --json` завершилась с ошибкой, так что Claude Code, скорее всего, слишком старый). `"mod":null` означает, что bridge вообще не нашёл `claude` в своём `PATH` (об этом написано в его журнале): добавьте его туда или запустите bridge с `-claude /path/to/claude`.
 
 Журнал bridge — это `bridge.log` в папке данных (`~/.config/symphony` в Linux, `~/Library/Application Support/symphony` в macOS, `%AppData%\symphony` в Windows); если bridge запущен при входе в систему, журнал пишется в `journalctl --user -u symphony` в Linux и в `~/Library/Logs/symphony.log` в macOS.
 

@@ -79,8 +79,8 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      - name: TestI18n, TestIdle, TestLayout, TestAsksDock, TestTask, TestScreens and TestThemesLoad with Chrome (no tokens)
-        run: go test -tags e2e -count=1 -v -run 'TestI18n|TestIdle|TestLayout|TestAsksDock|TestTask$|TestScreens' ./e2e/
+      - name: TestI18n, TestIdle, TestLayout, TestAsksDock, TestTask, TestScreens, TestThemesLoad and TestHQ with Chrome (no tokens)
+        run: go test -tags e2e -count=1 -v -run 'TestI18n|TestIdle|TestLayout|TestAsksDock|TestTask$|TestScreens|TestThemesLoad|TestHQ' ./e2e/
       - name: Keep the screenshots of a failed run
         if: failure()
         uses: actions/upload-artifact@v7
