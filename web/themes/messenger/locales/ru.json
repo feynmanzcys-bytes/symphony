@@ -18,6 +18,7 @@
   "msgr.profile.computer": "Компьютер",
   "msgr.profile.idle": "Свободен",
   "msgr.profile.takeOver": "Перехватить (открыть терминал)",
+  "msgr.profile.screenTitle": "Терминал сеанса в реальном времени. Нажмите, чтобы работать в нём в беседе",
   "msgr.profile.backToGroup": "Назад в группу {id}",
   "msgr.profile.inGroup": "В группе {id}",
   "msgr.profile.members": "Участники",

@@ -7,12 +7,18 @@
 // keeps as many items as the bridge does.
 //
 //   const chat = createChat(sym, { askWho, onClose, onTaskChip })
-//   chat.show({ name, state, line, chips, taskChip, buttons, session, online, offText })   draw it for a session (again on every change)
+//   chat.show({ name, state, line, chips, taskChip, buttons, session, online, offText, terminal })   draw it for a session (again on every change)
 //   chat.setLine(text)      the status line alone (it follows what the employee does, every frame)
 //   chat.close()            hide it (onClose is told)
 //   chat.el                 the modal, for a theme that docks it beside another window
+//   chat.showTerminal(on)   show the session's terminal in the window instead of the chat (or the chat again)
+//
+// terminal is the launch id of a page-started session that is online: the window then offers its terminal in the page
+// (ui/terminal.js), interactive, with a button of its own beside the theme's "terminal" button (the one that opens a
+// window on this machine), or first; the button, or Ctrl+], brings the chat back, and so does another session.
 import { t, esc, errorText, richText, timeOf, STATE_COLOR, GRAY, button } from '/ui/common.js'
 import { syncCards } from '/asks.js'
+import { createTerminal } from '/ui/terminal.js'
 
 const KEEP_ITEMS = 400 // the bridge's keepChat
 const TEXT_MAX = 64 << 10 // a streamed block keeps its last 64 KiB (the bridge's chatTextMax)
@@ -27,6 +33,7 @@ const MARKUP = `
       <div class="meta"></div>
       <div class="btns"></div>
     </div>
+    <div class="termpane" hidden></div>
     <div class="flow"></div>
     <div class="dock">
       <div id="asks"></div>
@@ -154,6 +161,39 @@ export function createChat(sym, { askWho, onClose = () => {}, onTaskChip = () =>
     if (ev.target.open && it && body?.dataset.stale) { delete body.dataset.stale; body.innerHTML = richText(it.text) }
   }, true)
 
+  // ---------- the session's terminal, in the window ----------
+  // In its place of the flow and the input (the asks' cards still rise over it); every key goes to the session, Esc
+  // included, so the way back is the button (or Ctrl+], as symphony attach detaches). The window shows the chat again
+  // when it hides, shows another session, or the session's terminal goes (show's terminal).
+  const termPane = el.querySelector('.termpane')
+  let term = null // the terminal view, made the first time it shows
+  let termFor = null // the launch whose terminal the window offers (show's terminal)
+  let termOn = false // the window shows the terminal instead of the chat
+  let termBtn = null // the button that switches
+  function showTerminal(on, focus = true) {
+    on = !!on && !!termFor && !el.hidden
+    if (on === termOn) return
+    termOn = on
+    el.querySelector('.panel').classList.toggle('term-on', on)
+    termPane.hidden = !on
+    if (on) {
+      if (!term) { term = createTerminal(sym, { interactive: true, onLeave: () => showTerminal(false) }); termPane.appendChild(term.el) }
+      term.open(termFor)
+      if (focus) term.focus()
+    } else {
+      term?.close()
+      if (focus) chat.focus()
+    }
+    labelTermBtn()
+  }
+  function labelTermBtn() {
+    if (!termBtn) return
+    termBtn.textContent = t(termOn ? 'chat.termBack' : 'chat.termShow')
+    termBtn.title = t(termOn ? 'chat.termBackTitle' : 'chat.termShowTitle')
+    termBtn.classList.toggle('on', termOn)
+  }
+  new MutationObserver(() => { if (el.hidden && termOn) showTerminal(false, false) }).observe(el, { attributes: true, attributeFilter: ['hidden'] })
+
   function itemEl(it, old) {
     const node = document.createElement('div')
     node.dataset.id = it.id
@@ -235,13 +275,24 @@ export function createChat(sym, { askWho, onClose = () => {}, onTaskChip = () =>
         (p.chips || []).filter(c => c[1] !== undefined && c[1] !== '' && c[1] !== null)
           .map(([k, v]) => `<span title="${esc(v)}"><b>${esc(t('card.' + k))}</b>${esc(v)}</span>`).join('')
       if (meta !== shown.meta) { shown.meta = meta; head.querySelector('.meta').innerHTML = meta }
+      // the terminal: offered while the theme names the launch; another launch or session brings the chat back
+      if ((p.terminal || null) !== termFor || (p.session || null) !== session) {
+        termFor = p.terminal || null
+        showTerminal(false, false)
+      }
       // the buttons are rebuilt when their set changes, or whatever the theme says they depend on (buttonsKey)
-      const btnKey = (p.buttons || []).map(b => b.key ?? b.text).join('|') + '|' + p.session + '|' + (p.buttonsKey ?? '')
+      const btnKey = (p.buttons || []).map(b => b.key ?? b.text).join('|') + '|' + p.session + '|' + (p.buttonsKey ?? '') + '|' + (termFor ? 'terminal' : '')
       if (btnKey !== shown.btns) {
         shown.btns = btnKey
         const btns = head.querySelector('.btns')
         btns.innerHTML = ''
-        for (const b of p.buttons || []) btns.appendChild(button(b.text, b.cls, b.onclick, b.title))
+        termBtn = termFor ? button('', 'termview', () => showTerminal(!termOn)) : null
+        for (const b of p.buttons || []) {
+          btns.appendChild(button(b.text, b.cls, b.onclick, b.title))
+          if (b.key === 'terminal' && termBtn) btns.appendChild(termBtn) // beside the one that opens a window
+        }
+        if (termBtn && !termBtn.parentNode) btns.prepend(termBtn)
+        labelTermBtn()
       }
       // the chat follows the session the theme names (an employee off duty keeps the last one's log while the bridge has it)
       const sid = p.session || null
@@ -270,10 +321,11 @@ export function createChat(sym, { askWho, onClose = () => {}, onTaskChip = () =>
       const line = head.querySelector('.who .state')
       if (line.textContent !== text) line.textContent = text
     },
-    // the input, or the first card's control while asks wait
+    // the input, or the first card's control while asks wait (the terminal while it shows)
     focus() {
       if (el.hidden) return
-      if (dock.classList.contains('asking')) dock.querySelector('#asks input, #asks button')?.focus()
+      if (termOn) term.focus()
+      else if (dock.classList.contains('asking')) dock.querySelector('#asks input, #asks button')?.focus()
       else if (!sayBox.disabled) sayBox.focus()
     },
     close() {
@@ -282,6 +334,8 @@ export function createChat(sym, { askWho, onClose = () => {}, onTaskChip = () =>
       el.hidden = true
       onClose()
     },
+    showTerminal(on = true) { showTerminal(on) },
+    get terminalShown() { return termOn },
   }
   return chat
 }

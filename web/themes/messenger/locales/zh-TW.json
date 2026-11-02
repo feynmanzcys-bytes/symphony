@@ -18,6 +18,7 @@
   "msgr.profile.computer": "電腦",
   "msgr.profile.idle": "閒置",
   "msgr.profile.takeOver": "接管（開啟終端機）",
+  "msgr.profile.screenTitle": "工作階段的終端機，即時顯示。按一下即可在對話中操作",
   "msgr.profile.backToGroup": "回到群組 {id}",
   "msgr.profile.inGroup": "在群組 {id} 裡",
   "msgr.profile.members": "成員",

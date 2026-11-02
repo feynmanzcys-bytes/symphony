@@ -35,7 +35,6 @@
 
 - From the status block of [the plan](plan-protocol-themes.md):
   - approval cards inline in the chat;
-  - a terminal in the page (`terminal.js`);
   - `prompt.compose` with the office's context;
   - "remember this rule";
   - MCP elicitation;

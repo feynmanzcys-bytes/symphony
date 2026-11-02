@@ -101,7 +101,8 @@ Every call shows the page key (§1.1).
 | `GET /api/dirs?path=` | | `{path, parent, dirs: [{name, path}], roots}` |
 | `POST /api/launch` | LaunchRequest: `{account?, name?, dir, model, effort, permissionMode, resume, lang?}` | the Launch; the page follows its `status` in the snapshot; 409 `account_busy` while the account is online or a start for it is on its way, `launch_still_running` while the process of its last start still runs |
 | `POST /api/terminal/{launch}/open` | | `{ok}` or `window_*` with `params.command` |
-| `GET /api/terminal/{launch}/stream`, `POST .../input`, `POST .../resize` | | the terminal, for `symphony attach` and an in-page terminal |
+| `GET /api/terminal/{launch}/stream?cols=&rows=&sizes=` | | the terminal's raw output (not server-sent events): the history (its last 256 KiB) first, then what comes, until the process ends; `cols` and `rows` size the terminal first. With `sizes=1` (a view that draws the screen itself, `ui/terminal.js`) the output carries the terminal's size as xterm reports one, `ESC [ 8 ; rows ; cols t`: before the history (the size it was laid out at) and wherever it changed, whoever changed it; never in the history. For `symphony attach` and the in-page terminal; `terminal_unknown_session` (404) |
+| `POST /api/terminal/{launch}/input`, `POST .../resize` | the bytes to type (`application/octet-stream`, at most 1 MiB); `{cols, rows}` | 204; `terminal_ended` (409) for input once the process has ended, `terminal_unknown_session` (404) |
 | `GET /api/tasks` | | `{tasks: [Task]}` |
 | `POST /api/tasks` | `{room?, title, leader, permissionMode, lang?, members: [{account} \| {advisor: {name, dir}}, model, effort]}` (2 to 5 members) | the Task |
 | `POST /api/tasks/{id}/end`, `DELETE /api/tasks/{id}` (a failed one) | | `{ok}` |
@@ -130,7 +131,7 @@ With `Authorization: Bearer <account token>`:
 
 A theme is `web/themes/<name>/` with `theme.json` (§3 Theme, `name` the folder's) and `index.html` (`<html data-theme="<name>">`, which `i18n.js` reads to load the theme's own catalogs from `/t/<name>/locales/<lang>.json`, over the shared ones; a theme without catalogs gets two 404s and goes on). It uses `symphony.js` for the state and the calls, and the shared pieces for what every theme has to offer:
 
-1. Every account (off duty included) and every online session, with its state and model; one click reaches a session's chat (`ui/chat.js`, `createChat`) and from it the asks.
+1. Every account (off duty included) and every online session, with its state and model; one click reaches a session's chat (`ui/chat.js`, `createChat`) and from it the asks. With `terminal` (the launch id of an online page-started session) `chat.show` offers the session's terminal in the window (`ui/terminal.js`).
 2. The pending asks visible at a glance and reachable with one click from anywhere.
 3. A new employee (`ui/launch.js`) and "Start work" for an off-duty one.
 4. The running tasks and the task window (`ui/task.js`); a theme draws tasks its own way but opens the shared dialog and window. The bridge knows no rooms: `Task.room` is a hint for the theme that made it.

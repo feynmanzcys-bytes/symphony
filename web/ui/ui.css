@@ -242,3 +242,35 @@ button.px:disabled { opacity:.5; cursor:default; }
 #chat.docked:not([hidden]) { display:contents; }
 #chat.docked .panel.chat { flex:0 1 640px; width:auto; min-width:0; margin-left:-2px; }
 #chat.stacked { z-index:11; }
+/* the in-page terminal (ui/terminal.js): the session's screen in its colors. Dark whatever the page's look, as Claude
+   Code draws for a dark terminal unless told otherwise; a theme changes it through these variables. */
+:root {
+  --term-bg:#1d1c1a; --term-fg:#e6e1d6; --term-cursor:#f2b705;
+  --term-c0:#2e2d2a; --term-c1:#d64541; --term-c2:#3fa86b; --term-c3:#d9a92f; --term-c4:#4f8fd6; --term-c5:#b46ccf;
+  --term-c6:#3fb2b8; --term-c7:#d8d3c8; --term-c8:#77736b; --term-c9:#f06a5f; --term-c10:#5fd08a; --term-c11:#f5cd5b;
+  --term-c12:#78aef0; --term-c13:#d394ea; --term-c14:#66d6dc; --term-c15:#f6f2ea;
+}
+.term { position:relative; overflow:hidden; background:var(--term-bg); color:var(--term-fg); font-family:var(--mono); font-size:13px; line-height:1.25; }
+.term-scroll { position:relative; box-sizing:border-box; }
+.term.live .term-scroll { height:100%; overflow:auto; padding:4px 6px; scrollbar-gutter:stable; }
+.term.peek .term-scroll { overflow:hidden; }
+.term.peek .term-screen { transform-origin:0 0; }
+.term-back[hidden] { display:none; }
+.term-row { height:1.25em; white-space:pre; }
+/* a character fonts may draw wider or narrower than a cell gets a box of its cells */
+.term-row :is(.n, .w, .cur) { display:inline-block; width:1ch; }
+.term-row .w, .term-row .cur.w { width:2ch; }
+.term .cur { background:var(--term-cursor); color:var(--term-bg); }
+.term:not(:focus-within) .cur { background:none; color:inherit; box-shadow:inset 0 0 0 1px var(--term-cursor); }
+.term-probe { position:absolute; left:0; top:0; display:inline-block; visibility:hidden; pointer-events:none; user-select:none; }
+/* the keys' textarea: unseen, at the cursor (an input method's window opens there) */
+.term-keys { position:absolute; left:0; top:0; width:1ch; height:1.25em; margin:0; padding:0; border:0; outline:none; resize:none; overflow:hidden;
+  opacity:0; background:transparent; color:transparent; caret-color:transparent; font:inherit; }
+.term-note { position:absolute; right:10px; top:8px; max-width:70%; padding:2px 8px; font:12px/1.5 var(--mono); color:#fff;
+  background:rgba(0,0,0,.65); border:1px solid var(--term-c8); white-space:pre-wrap; overflow-wrap:anywhere; pointer-events:none; }
+.term-note[hidden] { display:none; }
+/* the employee window showing the session's terminal in place of the chat (the asks' cards still rise over it) */
+.chat .termpane { flex:1; min-height:0; display:flex; background:var(--term-bg); }
+.chat .termpane .term { flex:1; min-width:0; }
+.chat .termpane[hidden], .panel.chat.term-on .flow, .panel.chat.term-on .dock:not(.asking) { display:none; }
+.chat .btns button.termview.on { background:var(--ink); color:var(--paper); }

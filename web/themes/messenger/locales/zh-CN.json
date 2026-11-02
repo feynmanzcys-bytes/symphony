@@ -18,6 +18,7 @@
   "msgr.profile.computer": "电脑",
   "msgr.profile.idle": "空闲",
   "msgr.profile.takeOver": "接管（打开终端）",
+  "msgr.profile.screenTitle": "会话的终端，实时显示。点一下就在对话里操作它",
   "msgr.profile.backToGroup": "回到群 {id}",
   "msgr.profile.inGroup": "在群 {id} 里",
   "msgr.profile.members": "成员",

@@ -18,6 +18,7 @@
   "msgr.profile.computer": "Computer",
   "msgr.profile.idle": "Idle",
   "msgr.profile.takeOver": "Take over (open the terminal)",
+  "msgr.profile.screenTitle": "The session's terminal, live. Click to work in it in the conversation",
   "msgr.profile.backToGroup": "Back to group {id}",
   "msgr.profile.inGroup": "In group {id}",
   "msgr.profile.members": "Members",
