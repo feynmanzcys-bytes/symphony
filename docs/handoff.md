@@ -1,6 +1,6 @@
 # Handoff: what v1.1.1 leaves for later
 
-**Status (2026-11-02):** v1.1.1 is released. The batch after it (branch `handoff/all`, merged from `handoff/terminal`, `handoff/screen`, `handoff/tasks`, `handoff/lifecycle` and `handoff/mod`; mod 1.1.2, not yet released) settled items 1 to 10, 12 to 14, 16 to 18 and 20 to 22 of the list v1.1.1 left; what is below is what remains. Each item says what happens, where in the code, a way to fix it and how to test the fix. Take items up as the repository's rules say ([CLAUDE.md](../CLAUDE.md), [CONTRIBUTING.md](../CONTRIBUTING.md)): a branch and worktree per change, the full tests before any commit, a release once a batch is done. When an item is done, remove it here in the same change.
+**Status (2026-11-02):** v1.1.1 is released. The batch after it (branch `handoff/all`, merged from `handoff/terminal`, `handoff/screen`, `handoff/tasks`, `handoff/lifecycle` and `handoff/mod`; mod 1.1.2) settled items 1 to 10, 12 to 14, 16 to 18 and 20 to 22 of the list v1.1.1 left; what is below is what remains. Each item says what happens, where in the code, a way to fix it and how to test the fix. Take items up as the repository's rules say ([CLAUDE.md](../CLAUDE.md), [CONTRIBUTING.md](../CONTRIBUTING.md)): a branch and worktree per change, the full tests before any commit, a release once a batch is done. When an item is done, remove it here in the same change.
 
 ## Where things stand
 

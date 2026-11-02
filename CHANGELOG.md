@@ -2,7 +2,7 @@
 
 What changed in each release of symphony. The program (the bridge) and the mod share one version number. A release's notes start with its section here: the release workflow stops before building when the section is missing. Releases before v1.0.0 came out before the repository was public; their notes are kept below.
 
-## v1.1.2 (unreleased)
+## v1.1.2 (2026-11-02)
 
 Update both parts, as before: the program, and the mod with `claude plugin update symphony-bridge@symphony`. On Linux and macOS, run `symphony -autostart on` again if symphony starts at login, so the unit or agent gets its new limits.
 
