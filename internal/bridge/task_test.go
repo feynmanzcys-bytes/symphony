@@ -1034,6 +1034,49 @@ func TestTaskMemberNamedLate(t *testing.T) {
 	}
 }
 
+// TestTaskMemberNamedLateReplaces: a session that names its task late takes the member's place from the account's
+// session already in the task when that one runs in the same process (the same launch id: its end never came) or has
+// been silent for StaleAfter; while another of the account's sessions works in the task, it stays a desk session.
+func TestTaskMemberNamedLateReplaces(t *testing.T) {
+	e := newTaskEnv(t, "")
+	plain := e.folder(t, "plain")
+	bob, bobAcc := as(t, e.srv, e.base, "bob")
+	alice, aliceAcc := as(t, e.srv, e.base, "alice")
+	e.srv.Hub.setLast(bobAcc.ID, LaunchRequest{Dir: plain})
+	e.srv.Hub.setLast(aliceAcc.ID, LaunchRequest{Dir: plain})
+	task := asTask(t, e.page.ok("POST", "/api/tasks", TaskRequest{Room: hint(1), Title: "t", Leader: true,
+		Members: []TaskMemberRequest{{Account: bobAcc.ID}, {Account: aliceAcc.ID}}}))
+	b, a := task.Members[0], task.Members[1]
+	alice.ok("POST", "/api/event", Event{Session: "a1", Kind: "session.start", Launch: a.Launch, Task: task.ID, Cwd: a.Worktree})
+	bob.ok("POST", "/api/event", Event{Session: "b1", Kind: "session.start", Launch: b.Launch, Task: task.ID, Cwd: b.Worktree})
+	late := func(sid, launch string) *Session {
+		bob.ok("POST", "/api/event", Event{Session: sid, Kind: "session.title", Title: b.Name}) // named no task yet
+		bob.ok("POST", "/api/event", Event{Session: sid, Kind: "session.start", Launch: launch, Task: task.ID, Cwd: b.Worktree})
+		return session(t, e.srv, sid)
+	}
+	// another process's session while b1 works: it stays a desk session, b1 keeps the place
+	if s := late("b2", "elsewhere"); s.Task != "" || taskState(e.srv.Hub, task.ID).Members[0].Session != "b1" {
+		t.Fatalf("a session of another process shouldn't take a working member's place: task %q, member %q", s.Task, taskState(e.srv.Hub, task.ID).Members[0].Session)
+	}
+	bob.ok("POST", "/api/event", Event{Session: "b2", Kind: "session.end"}) // the desk it stayed at
+	// the same process (b1's end never came): it takes the place, b1 goes off duty
+	if s := late("b3", b.Launch); s.Task != task.ID || taskState(e.srv.Hub, task.ID).Members[0].Session != "b3" {
+		t.Fatalf("the same launch's session should take the member's place: task %q, member %q", s.Task, taskState(e.srv.Hub, task.ID).Members[0].Session)
+	}
+	for _, s := range e.srv.Hub.Snapshot().Sessions {
+		if s.ID == "b1" && s.State != StateEnded {
+			t.Fatalf("the session it replaced should be off duty or gone: %+v", s)
+		}
+	}
+	// silent for StaleAfter: lost, and a late-named session takes the place
+	bob.ok("POST", "/api/event", Event{Session: "b3", Kind: "heartbeat", Task: task.ID}) // stamped at the earlier time
+	later := time.Now().Add(StaleAfter + time.Minute)
+	e.srv.Hub.now = func() time.Time { return later }
+	if s := late("b4", "elsewhere-too"); s.Task != task.ID || taskState(e.srv.Hub, task.ID).Members[0].Session != "b4" {
+		t.Fatalf("a lost member's place should go to the late-named session: task %q, member %q", s.Task, taskState(e.srv.Hub, task.ID).Members[0].Session)
+	}
+}
+
 // TestTaskSessionStartsAgain: a member's session that starts afresh after its last one ended (/clear) gets the kickoff
 // again; a mod that doesn't report the task is known by its launch; a running task has no end time.
 func TestTaskSessionStartsAgain(t *testing.T) {

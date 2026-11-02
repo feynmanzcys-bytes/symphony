@@ -49,6 +49,7 @@
   "log.launch_off_claude": "Abrir sesiones desde la página está desactivado: no se encontró {claude}",
   "log.launch_on": "Las sesiones iniciadas desde la página corren dentro del bridge (no se abre nada); symphony attach <id> muestra el terminal de una",
   "log.mod_dev": "mod: modo de desarrollo, las sesiones reciben --plugin-dir {dir}",
+  "log.mod_twice": "mod: {id} también está instalado y activado: las sesiones iniciadas con -mod cargan ambos, así que cada hook se ejecuta dos veces (cada evento se informa dos veces, dos tarjetas para un permiso). Mientras desarrolla, desactívelo: claude plugin disable {id}",
   "log.mod_installed": "mod: {id} {version} está instalado",
   "log.mod_missing": "mod: {reason}. Para abrir sesiones desde la página, ejecuta: {fix} (no hace falta reiniciar el bridge)",
   "log.mod_error": "mod: {reason}",

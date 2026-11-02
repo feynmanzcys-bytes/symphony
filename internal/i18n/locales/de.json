@@ -49,6 +49,7 @@
   "log.launch_off_claude": "Sitzungsstart über die Seite ist deaktiviert: {claude} nicht gefunden",
   "log.launch_on": "Von der Seite gestartete Sitzungen laufen in der Bridge (es öffnet sich nichts); symphony attach <id> zeigt das Terminal einer Sitzung",
   "log.mod_dev": "mod: Entwicklungsmodus, Sitzungen bekommen --plugin-dir {dir}",
+  "log.mod_twice": "mod: {id} ist ebenfalls installiert und aktiviert: mit -mod gestartete Sitzungen laden beide, jeder Hook läuft also zweimal (jedes Ereignis doppelt gemeldet, zwei Karten für eine Berechtigung). Während der Entwicklung deaktivieren: claude plugin disable {id}",
   "log.mod_installed": "mod: {id} {version} ist installiert",
   "log.mod_missing": "mod: {reason}. Um Sitzungen über die Seite zu starten, führe aus: {fix} (kein Neustart der Bridge nötig)",
   "log.mod_error": "mod: {reason}",

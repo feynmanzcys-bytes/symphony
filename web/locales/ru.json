@@ -159,6 +159,7 @@
   "approve.showAll": "Показать все",
   "error.unknown": "что-то пошло не так",
   "error.page_key": "эта страница не вошла в bridge; откройте офис заново через программу symphony",
+  "error.page_key_changed": "Ключ bridge сменился (он создал новый), поэтому эта страница вышла из системы: откройте офис заново, запустив symphony",
   "error.protocol_mismatch": "Страница использует протокол {page}, bridge — {bridge}: перезагрузите страницу или обновите symphony",
   "error.unreachable": "не удаётся связаться с bridge",
   "error.account_unknown": "такой учётной записи нет",

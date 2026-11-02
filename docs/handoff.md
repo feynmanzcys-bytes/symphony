@@ -22,10 +22,6 @@
 
   It never touched the user's own office, plugins or start at login.
 
-## Tasks
-
-11. **A session that names its task late joins it only when the account has no other session in that task** (`joinableLocked` in hub.go). Only an older mod's early report, together with a stale, crashed member, can meet this; the session then stays a desk session. It is fine as it is; this note is for whoever changes how sessions join tasks.
-
 ## Bridge lifecycle and platforms
 
 15. **Starting at login passes only PATH.** `-autostart on` gives the bridge nothing but `PATH` (`autostart.Entry`). So `CLAUDE_CONFIG_DIR`, `HTTP(S)_PROXY`, `NO_PROXY` or `NODE_EXTRA_CA_CERTS` set in a shell never reach a bridge started at login, or its sessions: the mod looks uninstalled, or sessions sit at a login screen.
@@ -34,10 +30,6 @@
     - Have the README say what is captured.
 
 ## The mod
-
-29. **Development mode loads two mods.** `claude --plugin-dir <folder>` (what the bridge's `-mod` gives its sessions) loads that mod beside the installed `symphony-bridge@symphony` when there is one (`claude plugin list` shows both: `@symphony` and `@inline`). Each runs its own hooks: two inbox polls, every report twice, two asks for one permission. Seen on Windows as a prompt from the page entering a session twice (the installed 1.1.1 mod without acks took the item the 1.1.2 mod had been handed). The bridge now hands unacknowledged items to one poll per 3 s (`inboxRehand`), which hides that case, not the rest.
-    - Fix: when `-mod` is given and the installed plugin is enabled, have the bridge warn at start (`claude plugin list --json` already runs for the install check) and tell how to disable it (`claude plugin disable symphony-bridge@symphony`); or pass a flag that disables it for the session, if Claude Code grows one. Until then, disable the installed mod while developing with `-mod`.
-    - Test: a session with both; the bridge's log, or the session's `mod` field alternating between the two versions.
 
 19. **The token stays in the session's environment.**
     - What happens: the session's Bash commands, npm scripts and MCP servers inherit `SYMPHONY_TOKEN`. With it they could call the mod's endpoints: empty the inbox, report made-up events, make ask cards. They could not answer the cards; that needs the page key. Since v1.1.0 the bridge no longer passes the token on.
@@ -49,16 +41,9 @@
     - Fix ideas: snapshot the session's descendants (pid, start, pgid, sid) every second while it runs and, at the end, kill what still runs in those process groups or sessions (a tool's shell lives milliseconds, so this misses the quick `nohup x &` too); or have the mod's `tool.call` hook record `pgrep -P` of the tool's shell; or accept it.
     - Test: TestTermReapsWhatItLeftRunning on a Mac with `/bin/sleep` as the leftover.
 
-## Code structure (no visible effect)
-
-23. **The message log and the ledger are encoded under the hub's lock.** Each message's send and receive re-encode the whole message log: about 6 ms at 3,900 messages, which is 12 tasks with full logs. Each `chat.stop` re-encodes the ledger: about 1 ms at 2,700 rows. Fix: copy the values under the lock and encode them in the saver's goroutine (accounts.go, usage.go). Guard it with a benchmark.
-24. **A launch's life is spread over several files**: server.go, server_task.go, hub.go, task.go, terminal.go. v1.1.0 gathered the desk rules (`reserveDesk`, `bindLaunchLocked`, `launchExited`). What remains is one place for "online" and "failed" (`launchOnlineLocked`, `failLaunchLocked`) that the task code calls too. Do it when a new way of starting sessions comes.
-
 ## Pages
 
 25. **Not reviewed: accessibility, contrast, narrow windows.** That covers using the office (a canvas) by keyboard, screen readers, the contrast of the state colors and of HQ's dark mode, and windows narrower than about 1000 px. (The task window docks the member window beside it only from 1250 px.)
-26. **A page whose key went stale doesn't say so.** When the `key` file is deleted, the bridge makes a new key at its next start. From then on, every API call from an open page answers 401 `page_key`, and the page just keeps reconnecting. Fix: say that the key changed, and that the office must be opened again from the `symphony` program.
-
 ## Tests
 
 27. **The mod's tests sometimes fail under heavy parallel load** (six runs at once). The old code does the same. Run alone, and in CI, they pass.

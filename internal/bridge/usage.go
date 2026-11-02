@@ -276,18 +276,21 @@ func (h *Hub) ledgerRowLocked(account string) *LedgerRow {
 	return r
 }
 
-// saveLedgerLocked hands the ledger to the background writer.
+// saveLedgerLocked tells the background writer the ledger changed: the writer copies its rows under the hub's lock
+// (each report adds to one in place) and encodes them outside it, once per write however many reports came.
 func (h *Hub) saveLedgerLocked() {
 	if h.dataDir == "" {
 		return
 	}
-	path := filepath.Join(h.dataDir, "ledger.json")
-	data, err := json.Marshal(h.ledger)
-	if err != nil {
-		h.ledgerSave.done(path, nil, err)
-		return
-	}
-	h.ledgerSave.put(path, data)
+	h.ledgerSave.putFunc(filepath.Join(h.dataDir, "ledger.json"), func() ([]byte, error) {
+		h.mu.Lock()
+		rows := make([]LedgerRow, len(h.ledger))
+		for i, r := range h.ledger {
+			rows[i] = *r
+		}
+		h.mu.Unlock()
+		return json.Marshal(rows)
+	})
 }
 
 // ledgerTodayLocked is today's rows, for the snapshot.

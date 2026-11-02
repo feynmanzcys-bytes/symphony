@@ -49,6 +49,7 @@
   "log.launch_off_claude": "Starting sessions from the page is off: {claude} not found",
   "log.launch_on": "Sessions started from the page run inside the bridge (nothing opens); symphony attach <id> shows one's terminal",
   "log.mod_dev": "mod: development mode, sessions get --plugin-dir {dir}",
+  "log.mod_twice": "mod: {id} is installed and enabled too: sessions started with -mod load both, so every hook runs twice (each event reported twice, two cards for one permission). While developing, turn it off: claude plugin disable {id}",
   "log.mod_installed": "mod: {id} {version} is installed",
   "log.mod_missing": "mod: {reason}. To start sessions from the page, run: {fix} (no bridge restart needed)",
   "log.mod_error": "mod: {reason}",

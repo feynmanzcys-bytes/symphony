@@ -231,33 +231,45 @@ func (h *Hub) warnWrite(path string, err error) {
 type saver struct {
 	mu      sync.Mutex
 	path    string
-	pending []byte        // the latest contents to write, nil when written
-	idle    chan struct{} // closed when the writer is done; nil while none runs
-	failed  []byte        // the contents the last write didn't get on disk; nil once one did
-	err     error         // why the last write failed; nil once one succeeded
-	warned  time.Time     // when the log last heard of a failed write
+	pending func() ([]byte, error) // makes the latest contents to write (in the writer, outside the hub's lock); nil when written
+	idle    chan struct{}          // closed when the writer is done; nil while none runs
+	failed  []byte                 // the contents the last write didn't get on disk; nil once one did
+	err     error                  // why the last write failed; nil once one succeeded
+	warned  time.Time              // when the log last heard of a failed write
 	warn    func(path string, err error)
 }
 
-// saveMessagesLocked hands the message log to the background writer, so it survives a bridge restart.
+// saveMessagesLocked tells the background writer the message log changed, so it survives a bridge restart. The writer
+// copies the log under the hub's lock when it gets to it (a later report may still mark a message received, so it
+// copies the values) and encodes the copy outside it: a burst of messages costs one copy per write, and encoding a long
+// log doesn't hold up every report and page.
 func (h *Hub) saveMessagesLocked() {
 	if h.dataDir == "" {
 		return
 	}
-	path := filepath.Join(h.dataDir, "messages.json")
-	data, err := json.Marshal(h.messages)
-	if err != nil {
-		h.msgSave.done(path, nil, err)
-		return
-	}
-	h.msgSave.put(path, data)
+	h.msgSave.putFunc(filepath.Join(h.dataDir, "messages.json"), func() ([]byte, error) {
+		h.mu.Lock()
+		msgs := make([]Message, len(h.messages))
+		for i, m := range h.messages {
+			msgs[i] = *m
+		}
+		h.mu.Unlock()
+		return json.Marshal(msgs)
+	})
 }
 
 // put hands the latest contents to the writer.
 func (s *saver) put(path string, data []byte) {
+	s.putFunc(path, func() ([]byte, error) { return data, nil })
+}
+
+// putFunc hands the writer what makes the latest contents: it runs in the writer's goroutine, and only the latest one
+// handed over runs (a newer one replaces one that didn't run yet). The writer holds s.mu only to take it, never while
+// it runs, so contents may take the hub's lock.
+func (s *saver) putFunc(path string, contents func() ([]byte, error)) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.path, s.pending = path, data
+	s.path, s.pending = path, contents
 	if s.idle == nil {
 		s.idle = make(chan struct{})
 		go s.write()
@@ -267,15 +279,20 @@ func (s *saver) put(path string, data []byte) {
 func (s *saver) write() {
 	for {
 		s.mu.Lock()
-		data, path := s.pending, s.path
+		next, path := s.pending, s.path
 		s.pending = nil
-		if data == nil {
+		if next == nil {
 			close(s.idle)
 			s.idle = nil
 			s.mu.Unlock()
 			return
 		}
 		s.mu.Unlock()
+		data, err := next()
+		if err != nil {
+			s.done(path, nil, err)
+			continue
+		}
 		s.done(path, data, writeSynced(path, data))
 	}
 }
@@ -310,7 +327,8 @@ func (s *saver) wait() error {
 	}
 	s.mu.Lock()
 	if s.idle == nil && s.failed != nil {
-		s.pending, s.idle = s.failed, make(chan struct{})
+		failed := s.failed
+		s.pending, s.idle = func() ([]byte, error) { return failed, nil }, make(chan struct{})
 		go s.write()
 	}
 	idle = s.idle

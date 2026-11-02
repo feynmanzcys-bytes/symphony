@@ -159,6 +159,7 @@
   "approve.showAll": "Alle zeigen",
   "error.unknown": "etwas ist schiefgelaufen",
   "error.page_key": "diese Seite ist nicht bei der Bridge angemeldet; öffne das Büro erneut über das Programm symphony",
+  "error.page_key_changed": "Der Schlüssel der Bridge hat sich geändert (sie hat einen neuen erzeugt), diese Seite ist abgemeldet: Öffnen Sie das Büro erneut, indem Sie symphony ausführen",
   "error.protocol_mismatch": "Diese Seite spricht Protokoll {page}, die Bridge {bridge}: Seite neu laden oder symphony aktualisieren",
   "error.unreachable": "Bridge nicht erreichbar",
   "error.account_unknown": "dieses Konto gibt es nicht",

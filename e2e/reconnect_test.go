@@ -142,3 +142,41 @@ func TestReconnect(t *testing.T) {
 		t.Fatalf("the page threw: %v", errs)
 	}
 }
+
+// TestPageKeyChanged: a bridge that started again with a new page key (its key file deleted) refuses an open page's old
+// one: the page says so at once (not "can't reach the bridge") instead of reconnecting forever in silence, and once the
+// browser is signed in with the new key (the office opened again from the symphony program, in another tab), it comes
+// back by itself.
+func TestPageKeyChanged(t *testing.T) {
+	requireBrowser(t)
+	b := startBridge(t, "")
+	alice, err := b.Hub.CreateAccount("alice")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b.post(t, alice.Token, "/api/event", map[string]any{"session": "s-alice", "kind": "session.start", "cwd": "/work/alice"})
+	browser := newBrowser(t)
+	tab, _ := clockTab(t, browser, b.URL+"/t/hq/?lang=en#people", 0)
+	js := func(expr string) string {
+		t.Helper()
+		return get(t, tab, 10*time.Second, chromedp.Evaluate[string](expr, chromedp.EvalAwaitPromise))
+	}
+	is := func(expr string) bool { t.Helper(); return js(`String(!!(`+expr+`))`) == "true" }
+	waitUntil(t, 20*time.Second, "the roster lists alice", func() bool { return is(`document.querySelector('#people tbody tr')`) })
+	banner := `(e => e && !e.hidden && e.textContent)(document.getElementById('conn')) || ''`
+
+	key := b.rekey(t)
+	want := "The bridge's key changed (it made a new one), so this page is signed out: open the office again by running symphony"
+	waitUntil(t, 15*time.Second, "the page says its key is no longer taken", func() bool { return js(banner) == want },
+		func() string { return js(banner) })
+
+	// signed in again in another tab, as the symphony program does (open.html, then ?key=): the page comes back
+	other, cancel := chromedp.NewContext(browser)
+	defer cancel()
+	do(t, other, 30*time.Second, chromedp.Navigate(b.URL+"/api/themes?key="+key))
+	waitUntil(t, 30*time.Second, "the banner goes once the browser has the new key", func() bool { return js(banner) == "" },
+		func() string { return js(banner) })
+	if errs := js(`JSON.stringify(window.__errors || [])`); errs != "[]" {
+		t.Fatalf("page errors: %s", errs)
+	}
+}

@@ -350,7 +350,7 @@ func (h *Hub) publishTask(id string, launches []*Launch) *Task {
 		// a session quick enough to report in before this has its launch online already
 		for _, s := range h.sessions {
 			if s.Launch == l.ID && s.Account == l.Account && s.State != StateEnded {
-				l.Status, l.Session = LaunchOnline, s.ID
+				h.launchOnlineLocked(l, s)
 			}
 		}
 		if h.terms != nil {

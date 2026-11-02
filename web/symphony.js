@@ -18,6 +18,9 @@
 //   sym.on('connection', fn)   the stream came up (fn(true)) or was lost (fn(false)); it reconnects by itself
 //   sym.on('resync', fn)       a full snapshot came after the first (the stream reconnected): pushes may have been missed,
 //                              so what a page fetched on its own (a chat log, the activity) is worth fetching again
+//   sym.on('pagekey', fn)      the bridge no longer takes this page's key (fn(true): it was made anew, the page is signed
+//                              out and must be opened again from the symphony program), or takes it again (fn(false));
+//                              sym.keyLost says which
 //   sym.stayConnected(on)      keep the stream while the page is hidden (a page that must ring for a new ask)
 //
 // A page hidden for 10 seconds lets its stream go (a browser holds six connections per host, and every page would hold
@@ -33,6 +36,7 @@ const TIMEOUT = 15000 // a call without an answer in this long fails
 const HIDDEN_CLOSE = 10000 // a page hidden this long lets its stream go...
 const HIDDEN_POLL = 30000 // ...and asks for the state this often meanwhile (a tab's title counts the asks)
 const RETRY = 3000 // after an answer that wasn't the stream (the browser gives up then), try again this soon
+const KEY_RETRY = 10000 // a page whose key the bridge refuses tries again this rarely (another tab may sign in anew)
 
 // request is one call to the bridge: { ok, status, data }. timeout 0 waits as long as it takes (a task's git work).
 export async function request(method, path, body, { timeout = TIMEOUT } = {}) {
@@ -195,19 +199,30 @@ export function connect({ stream = true } = {}) {
   // full snapshot too, so whichever comes first wins and the other is just a newer state. The browser reconnects a
   // stream that broke off by itself (its first message: a full snapshot again); one that got an answer other than the
   // stream (the bridge restarting, a 401) it gives up, and this opens it again a little later.
-  let es = null, up = null, retry = 0, hideTimer = 0, poll = 0, keep = false
+  let es = null, up = null, retry = 0, hideTimer = 0, poll = 0, keep = false, gen = 0
   const setUp = v => { if (up !== v) { up = v; emit('connection', v) } }
+  sym.keyLost = false
+  const setKeyLost = v => { if (sym.keyLost !== v) { sym.keyLost = v; emit('pagekey', v) } }
+  // an answer of the bridge's that says whether it takes this page's key: a 401 page_key means it doesn't (the key file
+  // was deleted or damaged and the bridge made a new one), any answer of its own that isn't that means it does
+  const noteKey = r => { if (r.status === 401 && r.data?.code === 'page_key') setKeyLost(true); else if (r.status) setKeyLost(false) }
   function open() {
     if (es) return
     clearTimeout(retry); retry = 0
     clearInterval(poll); poll = 0
-    const src = es = sym.stream = new EventSource('/api/stream')
-    src.onopen = () => setUp(true)
+    const src = es = sym.stream = new EventSource('/api/stream'), mine = ++gen
+    src.onopen = () => { setUp(true); setKeyLost(false) }
     src.onmessage = m => take(JSON.parse(m.data))
     src.onerror = () => {
       if (src !== es) return
       setUp(false)
-      if (src.readyState === EventSource.CLOSED) { es = sym.stream = null; retry = setTimeout(open, RETRY) }
+      if (src.readyState !== EventSource.CLOSED) return
+      // the browser gives up on an answer that isn't the stream: the bridge restarting, or refusing the key; ask which
+      es = sym.stream = null
+      get('/api/state').then(r => {
+        noteKey(r)
+        if (mine === gen && !es && !poll && !retry) retry = setTimeout(open, sym.keyLost ? KEY_RETRY : RETRY)
+      })
     }
   }
   // hidden a while: the stream goes (not a lost connection: no 'connection' false), the state comes now and then
@@ -215,8 +230,10 @@ export function connect({ stream = true } = {}) {
     if (!es && !retry) return
     es?.close(); es = sym.stream = null
     clearTimeout(retry); retry = 0
+    gen++
     poll = setInterval(async () => {
       const r = await get('/api/state')
+      noteKey(r)
       if (poll && r.ok && r.data) applySnapshot(r.data, true)
     }, HIDDEN_POLL)
   }
@@ -228,7 +245,7 @@ export function connect({ stream = true } = {}) {
   }
   sym.stayConnected = on => { keep = !!on; if (stream) visibility() }
   if (stream) {
-    get('/api/state').then(r => { if (r.ok && r.data && sym.first) applySnapshot(r.data) })
+    get('/api/state').then(r => { noteKey(r); if (r.ok && r.data && sym.first) applySnapshot(r.data) })
     open()
     document.addEventListener('visibilitychange', visibility)
     visibility()

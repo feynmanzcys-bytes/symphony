@@ -159,6 +159,7 @@
   "approve.showAll": "看全部",
   "error.unknown": "出错了",
   "error.page_key": "这个页面没有登录到 bridge；请从 symphony 程序重新打开办公室",
+  "error.page_key_changed": "bridge 的密钥换了（它新生成了一把），这个页面已退出登录：请重新运行 symphony 打开办公室",
   "error.protocol_mismatch": "页面用的协议是 {page}，bridge 是 {bridge}：请刷新页面，或更新 symphony",
   "error.unreachable": "连不上 bridge",
   "error.account_unknown": "没有这个账号",

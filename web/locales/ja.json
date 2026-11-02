@@ -159,6 +159,7 @@
   "approve.showAll": "すべて表示",
   "error.unknown": "エラーが発生しました",
   "error.page_key": "このページは bridge にログインしていません。symphony プログラムからオフィスを開き直してください",
+  "error.page_key_changed": "bridge の鍵が変わりました（新しく作り直されました）。このページはサインアウトしています。symphony を実行してオフィスを開き直してください",
   "error.protocol_mismatch": "このページのプロトコルは {page}、bridge は {bridge} です。ページを再読み込みするか、symphony を更新してください",
   "error.unreachable": "bridge に接続できません",
   "error.account_unknown": "アカウントが見つかりません",

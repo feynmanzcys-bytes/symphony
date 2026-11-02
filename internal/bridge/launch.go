@@ -232,6 +232,21 @@ func (l *Launcher) checkMod(ctx context.Context) ModStatus {
 	return st
 }
 
+// AlsoInstalled is, in development mode (ModDir), the id of an installed copy of the mod that is enabled: sessions get
+// both, the --plugin-dir one and that one, and every hook runs twice (two reports of each event, two cards for one
+// permission). "" when there is none, outside development mode, or when it can't tell.
+func (l *Launcher) AlsoInstalled(ctx context.Context) string {
+	if l.ModDir == "" {
+		return ""
+	}
+	if st := l.checkMod(ctx); st.OK {
+		return st.ID
+	} else if st.Code == "mod_project_scope" {
+		return ModName // enabled in some project: sessions in that project load it too
+	}
+	return ""
+}
+
 // ModMarket says whether dir is a plugin marketplace that offers the mod (.claude-plugin/marketplace.json): this
 // repository, or a copy of it.
 func ModMarket(dir string) bool {

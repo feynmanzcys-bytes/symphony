@@ -159,6 +159,7 @@
   "approve.showAll": "Ver todo",
   "error.unknown": "algo salió mal",
   "error.page_key": "esta página no tiene la sesión iniciada en el bridge; vuelve a abrir la oficina desde el programa symphony",
+  "error.page_key_changed": "La clave del bridge cambió (creó una nueva), así que esta página quedó sin sesión: vuelva a abrir la oficina ejecutando symphony",
   "error.protocol_mismatch": "Esta página habla el protocolo {page}, el bridge el {bridge}: recarga la página o actualiza symphony",
   "error.unreachable": "no se puede conectar con el bridge",
   "error.account_unknown": "no existe esa cuenta",

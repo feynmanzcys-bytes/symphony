@@ -49,6 +49,7 @@
   "log.launch_off_claude": "페이지에서 세션 시작 기능이 꺼져 있습니다: {claude} 실행 파일을 찾을 수 없습니다",
   "log.launch_on": "페이지에서 시작한 세션은 bridge 안에서 실행됩니다 (아무것도 열리지 않음). symphony attach <id>로 터미널을 볼 수 있습니다",
   "log.mod_dev": "mod: 개발 모드입니다. 세션은 --plugin-dir {dir} 옵션으로 시작합니다",
+  "log.mod_twice": "mod: {id}도 설치되어 활성화되어 있습니다. -mod로 시작한 세션은 둘 다 불러오므로 모든 훅이 두 번 실행됩니다(이벤트가 두 번 보고되고, 권한 하나에 카드가 두 장). 개발하는 동안은 꺼 두세요: claude plugin disable {id}",
   "log.mod_installed": "mod: {id} {version} 버전이 설치되어 있습니다",
   "log.mod_missing": "mod: {reason}. 페이지에서 세션을 시작하려면 다음을 실행하세요: {fix} (bridge는 다시 시작하지 않아도 됩니다)",
   "log.mod_error": "mod: {reason}",

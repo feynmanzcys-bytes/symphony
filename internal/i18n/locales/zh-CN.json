@@ -49,6 +49,7 @@
   "log.launch_off_claude": "页面启动会话关闭：找不到 {claude}",
   "log.launch_on": "页面启动的会话在 bridge 内部运行（不弹出任何窗口）；symphony attach <id> 可查看某个会话的终端",
   "log.mod_dev": "mod：开发模式，会话用 --plugin-dir {dir}",
+  "log.mod_twice": "mod：{id} 也已安装并启用：用 -mod 启动的会话会同时加载两份，每个钩子都跑两遍（每个事件报两次，一个权限两张卡）。开发期间请先停用：claude plugin disable {id}",
   "log.mod_installed": "mod：已安装 {id} {version}",
   "log.mod_missing": "mod：{reason}。页面启动会话要先运行：{fix}（不用重启 bridge）",
   "log.mod_error": "mod：{reason}",

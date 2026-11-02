@@ -159,6 +159,7 @@
   "approve.showAll": "Tout afficher",
   "error.unknown": "une erreur est survenue",
   "error.page_key": "cette page n’est pas connectée au bridge ; rouvrez le bureau depuis le programme symphony",
+  "error.page_key_changed": "La clé du bridge a changé (il en a créé une nouvelle) : cette page est déconnectée. Rouvrez le bureau en lançant symphony",
   "error.protocol_mismatch": "Cette page parle le protocole {page}, le bridge le {bridge} : rechargez la page ou mettez symphony à jour",
   "error.unreachable": "impossible de joindre le bridge",
   "error.account_unknown": "compte introuvable",

@@ -159,6 +159,7 @@
   "approve.showAll": "Mostrar todas",
   "error.unknown": "algo deu errado",
   "error.page_key": "esta página não está conectada ao bridge; abra o escritório de novo pelo programa symphony",
+  "error.page_key_changed": "A chave do bridge mudou (ele criou uma nova), então esta página saiu da sessão: abra o escritório de novo executando symphony",
   "error.protocol_mismatch": "Esta página fala o protocolo {page}, o bridge o {bridge}: recarregue a página ou atualize o symphony",
   "error.unreachable": "não foi possível conectar ao bridge",
   "error.account_unknown": "essa conta não existe",

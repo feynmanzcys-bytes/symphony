@@ -475,22 +475,34 @@ func (h *Hub) snapshotLocked(full bool) Snapshot {
 
 // ---------- sessions ----------
 
+// joinableLocked says whether s, a session online that named no task, may become task's, and makes its place free: the
+// task runs, s's account is a member, and no other session of the account works in it, or the one that does gives way
+// as a new session of the task would make it: it runs in the same page-started process (its launch id is the one s or
+// this report names: a member's session after /clear whose old session's end never came), or it has been silent for
+// StaleAfter (lost).
+func (h *Hub) joinableLocked(s *Session, task, launch string) bool {
+	t := h.taskLocked(task)
+	if t == nil || t.Status != TaskRunning || t.member(s.Account) == nil {
+		return false
+	}
+	switch other := h.onlineTaskLocked(s.Account, task); {
+	case other == nil || other.ID == s.ID:
+		return true
+	case other.Launch != "" && (other.Launch == s.Launch || other.Launch == launch):
+		h.offDutyLocked(other, "") // the launch id proves it is the same process
+		return true
+	case h.now().Sub(other.Updated) >= StaleAfter:
+		h.offDutyLocked(other, "lost")
+		return true
+	}
+	return false
+}
+
 // sessionLocked returns the session, creating it if needed. An account serves one desk session at a time, and one
 // session per task it is in: while it has a session online that isn't lost on the same desk or task, a new one is
 // refused (ErrAccountBusy), unless it starts in the same process (restart, the launch id of a session.start, is the
 // online one's): a fresh session after /clear may report in before the one it replaces says goodbye, which then ends.
 // A task session only comes (back) online while its task runs (ErrTaskEnded).
-// joinableLocked says whether session id of account may become task's: the task runs, the account is a member, and no
-// other session of the account works in it.
-func (h *Hub) joinableLocked(id, account, task string) bool {
-	t := h.taskLocked(task)
-	if t == nil || t.Status != TaskRunning || t.member(account) == nil {
-		return false
-	}
-	other := h.onlineTaskLocked(account, task)
-	return other == nil || other.ID == id
-}
-
 func (h *Hub) sessionLocked(id string, acc *Account, task, restart, launch string) (s *Session, fresh bool, err error) {
 	s = h.sessions[id]
 	if s != nil && s.Account != acc.ID {
@@ -500,7 +512,7 @@ func (h *Hub) sessionLocked(id string, acc *Account, task, restart, launch strin
 		// a session that named no task and now names one is a task member whose first report went out before it said
 		// so (a mod before 1.1.1 reported the session's name as the engine started it): it joins its task now, as a
 		// session new to it would
-		if s.Task == "" && task != "" && h.joinableLocked(id, acc.ID, task) {
+		if s.Task == "" && task != "" && h.joinableLocked(s, task, launch) {
 			for sid, old := range h.sessions {
 				if old.Account == acc.ID && old.Task == task && sid != id {
 					h.dropSessionLocked(sid)
@@ -662,7 +674,7 @@ func (h *Hub) apply(ev Event, acc *Account, created *bool) error {
 			s.Attach = h.AttachHint(ev.Launch) // the launch record is gone after a restart; the terminal backend derives it from the id
 		}
 		if l := h.launches[ev.Launch]; l != nil && l.Account == acc.ID {
-			h.bindLaunchLocked(s, l)
+			h.launchOnlineLocked(l, s)
 		}
 	}
 	s.Updated = h.now()
@@ -1438,15 +1450,16 @@ func (h *Hub) addLaunch(l *Launch) {
 	// its session may have reported in already, while the start was being recorded
 	for _, s := range h.sessions {
 		if s.Launch == l.ID && s.Account == l.Account && s.State != StateEnded {
-			h.bindLaunchLocked(s, l)
+			h.launchOnlineLocked(l, s)
 		}
 	}
 	h.noteLocked(nil, "launch", strings.TrimSpace(l.Name+" "+l.Dir))
 	h.broadcastLocked(map[string]any{"type": "launch", "id": l.ID})
 }
 
-// bindLaunchLocked: the launch's session reported in; the launch is online, and the session takes what the launch knows.
-func (h *Hub) bindLaunchLocked(s *Session, l *Launch) {
+// launchOnlineLocked is the one place a launch comes online, a desk's or a task member's: its session reported in, and
+// the session takes what the launch knows (its terminal, the model and effort picked).
+func (h *Hub) launchOnlineLocked(l *Launch, s *Session) {
 	s.Attach = l.Attach
 	l.Status, l.Session, l.Error, l.ErrorCode, l.ErrorParams = LaunchOnline, s.ID, "", "", nil
 	// until the session reports its model and effort, use the ones picked at launch
@@ -1467,10 +1480,19 @@ func (h *Hub) launchStatus(id string) string {
 	return ""
 }
 
+// failLaunch fails a launch that is still starting (its process exited, or time ran out before it reported in).
 func (h *Hub) failLaunch(id string, why *Error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if l := h.launches[id]; l != nil && l.Status == LaunchStarting {
+	if l := h.launches[id]; l != nil {
+		h.failLaunchLocked(l, why)
+	}
+}
+
+// failLaunchLocked is the one place a launch fails, a desk's or a task member's; one no longer starting stays as it is.
+func (h *Hub) failLaunchLocked(l *Launch, why *Error) {
+	id := l.ID
+	if l.Status == LaunchStarting {
 		l.Status, l.Error, l.ErrorCode, l.ErrorParams = LaunchFailed, why.Text, why.Code, why.Params
 		h.noteLocked(nil, "launchFailed", strings.TrimSpace(l.Name+" "+why.Text))
 		h.broadcastLocked(map[string]any{"type": "launch", "id": id})

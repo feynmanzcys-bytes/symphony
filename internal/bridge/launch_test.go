@@ -588,6 +588,23 @@ func TestModStatus(t *testing.T) {
 		}
 	}
 
+	// development mode: an installed copy that is enabled loads beside the --plugin-dir one
+	for _, tc := range []struct{ name, out, want string }{
+		{"installed and enabled", `[{"id":"symphony-bridge@symphony","version":"1.1.1","scope":"user","enabled":true}]`, "symphony-bridge@symphony"},
+		{"installed but disabled", `[{"id":"symphony-bridge@symphony","scope":"user","enabled":false}]`, ""},
+		{"enabled in one project", `[{"id":"symphony-bridge@symphony","scope":"project","enabled":true}]`, ModName},
+		{"not installed", `[]`, ""},
+		{"claude can't tell", "oops", ""},
+	} {
+		dev := &Launcher{ModDir: "/src/mods/symphony-bridge", ListPlugins: (&fakePlugins{out: tc.out}).list}
+		if got := dev.AlsoInstalled(ctx); got != tc.want {
+			t.Errorf("%s: AlsoInstalled %q, want %q", tc.name, got, tc.want)
+		}
+	}
+	if got := (&Launcher{ListPlugins: (&fakePlugins{out: `[{"id":"symphony-bridge@symphony","scope":"user","enabled":true}]`}).list}).AlsoInstalled(ctx); got != "" {
+		t.Errorf("outside development mode there's no second copy: %q", got)
+	}
+
 	// a local repository path with spaces is quoted
 	l := &Launcher{Market: "/My Code/symphony", ListPlugins: (&fakePlugins{out: `[]`}).list}
 	if fix := l.Mod(ctx).Fix; fix != `claude plugin install symphony-bridge --marketplace "/My Code/symphony"` {

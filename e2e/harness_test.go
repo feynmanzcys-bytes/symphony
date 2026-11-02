@@ -38,6 +38,8 @@ type testBridge struct {
 	// cut: the pages can't reach the bridge (their connections are dropped unanswered); the mod still can (cutPages)
 	cut    atomic.Bool
 	server *httptest.Server
+	// srv answers every request: rekey replaces it with a bridge that has another page key
+	srv atomic.Pointer[bridge.Server]
 
 	mu     sync.Mutex
 	events []bridge.Event
@@ -55,6 +57,7 @@ func startBridge(t *testing.T, mod string) *testBridge {
 	}
 	srv := bridge.NewServer(hub, web.FS)
 	b := &testBridge{Hub: hub, Data: data, Key: srv.Key}
+	b.srv.Store(srv)
 	ts := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if isModAPI(r.URL.Path) && r.Header.Get("Authorization") == "" {
 			b.anon.Add(1)
@@ -65,7 +68,7 @@ func startBridge(t *testing.T, mod string) *testBridge {
 			}
 			return
 		}
-		srv.ServeHTTP(w, r)
+		b.srv.Load().ServeHTTP(w, r)
 	}))
 	b.URL = "http://" + ts.Listener.Addr().String()
 	b.server = ts
@@ -106,6 +109,19 @@ func startBridge(t *testing.T, mod string) *testBridge {
 		}
 	}()
 	return b
+}
+
+// rekey makes the bridge one with a new page key, as one that started again after its key file was deleted: the same
+// hub, the pages' connections dropped, the old key refused from now on. It answers the new key.
+func (b *testBridge) rekey(t *testing.T) string {
+	t.Helper()
+	srv := bridge.NewServer(b.Hub, web.FS)
+	srv.SetLauncher(b.Launcher)
+	b.srv.Store(srv)
+	b.Key = srv.Key
+	pageKeys.Store(b.URL, b.Key)
+	b.server.CloseClientConnections()
+	return srv.Key
 }
 
 // cutPages makes the bridge unreachable for the pages (on) or reachable again (off): their streams drop, and every

@@ -159,6 +159,7 @@
   "approve.showAll": "모두 보기",
   "error.unknown": "문제가 발생했습니다",
   "error.page_key": "이 페이지는 bridge에 로그인되어 있지 않습니다. symphony 프로그램에서 사무실을 다시 여세요",
+  "error.page_key_changed": "bridge의 키가 바뀌었습니다(새로 만들었습니다). 이 페이지는 로그아웃되었습니다: symphony를 실행해 사무실을 다시 여세요",
   "error.protocol_mismatch": "이 페이지의 프로토콜은 {page}, bridge는 {bridge}입니다. 페이지를 새로 고치거나 symphony를 업데이트하세요",
   "error.unreachable": "bridge에 연결할 수 없습니다",
   "error.account_unknown": "해당 계정이 없습니다",

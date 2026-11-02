@@ -49,6 +49,7 @@
   "log.launch_off_claude": "ページからのセッション起動はオフです：{claude} が見つかりません",
   "log.launch_on": "ページから始めたセッションは bridge の中で動きます（何も開きません）。symphony attach <id> でそのターミナルを表示できます",
   "log.mod_dev": "mod：開発モード。セッションには --plugin-dir {dir} を渡します",
+  "log.mod_twice": "mod：{id} もインストール済みで有効です。-mod で起動したセッションは両方を読み込み、すべてのフックが二度動きます（イベントは二度報告され、一つの許可にカードが二枚）。開発中は無効にしてください：claude plugin disable {id}",
   "log.mod_installed": "mod：{id} {version} がインストールされています",
   "log.mod_missing": "mod：{reason}。ページからセッションを起動するには、次を実行してください：{fix}（bridge の再起動は不要です）",
   "log.mod_error": "mod：{reason}",

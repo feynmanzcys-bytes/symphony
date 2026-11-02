@@ -159,6 +159,7 @@
   "approve.showAll": "Show all",
   "error.unknown": "something went wrong",
   "error.page_key": "this page isn't signed in to the bridge; open the office again from the symphony program",
+  "error.page_key_changed": "The bridge's key changed (it made a new one), so this page is signed out: open the office again by running symphony",
   "error.protocol_mismatch": "This page speaks protocol {page}, the bridge {bridge}: reload the page, or update symphony",
   "error.unreachable": "can't reach the bridge",
   "error.account_unknown": "no such account",

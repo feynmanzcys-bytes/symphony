@@ -721,6 +721,11 @@ func launcher(modDir, claude, bridgeURL string) *bridge.Launcher {
 	switch m := l.Mod(context.Background()); {
 	case m.Dev:
 		log.Print(i18n.T("log.mod_dev", "dir", abs))
+		go func() { // claude plugin list takes a moment: the bridge doesn't wait for it
+			if id := l.AlsoInstalled(context.Background()); id != "" {
+				log.Print(i18n.T("log.mod_twice", "id", id))
+			}
+		}()
 	case m.OK:
 		log.Print(i18n.T("log.mod_installed", "id", m.ID, "version", m.Version))
 	case m.Fix != "":

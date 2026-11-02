@@ -159,6 +159,7 @@
   "approve.showAll": "顯示全部",
   "error.unknown": "發生錯誤",
   "error.page_key": "這個頁面沒有登入 bridge；請從 symphony 程式重新開啟辦公室",
+  "error.page_key_changed": "bridge 的金鑰換了（它新產生了一把），這個頁面已登出：請重新執行 symphony 開啟辦公室",
   "error.protocol_mismatch": "頁面用的協定是 {page}，bridge 是 {bridge}：請重新整理頁面，或更新 symphony",
   "error.unreachable": "無法連線到 bridge",
   "error.account_unknown": "找不到這個帳號",

@@ -49,6 +49,7 @@
   "log.launch_off_claude": "Le démarrage de sessions depuis la page est désactivé : {claude} introuvable",
   "log.launch_on": "Les sessions lancées depuis la page tournent dans le bridge (rien ne s'ouvre) ; symphony attach <id> affiche le terminal de l'une d'elles",
   "log.mod_dev": "mod : mode développement, les sessions reçoivent --plugin-dir {dir}",
+  "log.mod_twice": "mod : {id} est aussi installé et activé : les sessions lancées avec -mod chargent les deux, donc chaque hook s’exécute deux fois (chaque événement signalé deux fois, deux cartes pour une autorisation). Pendant le développement, désactivez-le : claude plugin disable {id}",
   "log.mod_installed": "mod : {id} {version} est installé",
   "log.mod_missing": "mod : {reason}. Pour démarrer des sessions depuis la page, lancez : {fix} (inutile de redémarrer le bridge)",
   "log.mod_error": "mod : {reason}",
