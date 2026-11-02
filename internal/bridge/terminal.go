@@ -187,7 +187,7 @@ func (t *ptyTerminal) untilOnline(hub *Hub, l *Launch, term *Term, timeout time.
 		// "trust this folder" starts on "No, exit". The answer goes down to "Yes, I trust this folder" and takes it once
 		// the screen shows the cursor there, a round later: claude may miss a key that comes right after it drew the
 		// question, or draw it again with the cursor back on No, and Enter there would end it
-		if screen := term.Screen(12); !trusted && hasTrustPrompt(screen) {
+		if screen := term.Recent(12); !trusted && hasTrustPrompt(screen) {
 			if asked.IsZero() {
 				asked = time.Now()
 			}
