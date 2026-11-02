@@ -44,13 +44,7 @@
 
 ## Tasks
 
-10. **A `git worktree add` that fails leaves the member's worktree and branch behind.**
-    - What happens: a global `post-checkout` hook that exits non-zero makes the command exit 1, after git has already created both. The task start fails with `task_git_failed`. Its undo only knows the members whose worktree was added successfully (`undo.worktrees` in server_task.go), so this one stays.
-    - Fix: record the member in the undo before the call. Running `worktree add` without hooks would also work, but changes behavior in the user's own repositories (LFS, husky).
-    - Test: a repository whose global `core.hooksPath` holds a `post-checkout` that fails.
 11. **A session that names its task late joins it only when the account has no other session in that task** (`joinableLocked` in hub.go). Only an older mod's early report, together with a stale, crashed member, can meet this; the session then stays a desk session. It is fine as it is; this note is for whoever changes how sessions join tasks.
-12. **The kickoff in Chinese and Japanese lacks a space after the task id.** It reads "你是任务 T1的成员". Fix: in `task.kickoff.lead`, `task.kickoff.member` and `task.kickoff.flat` of internal/i18n/locales/zh-CN.json, zh-TW.json and ja.json, write `{task} 的` (and `{task} の`) for `{task}的` (and `{task}の`).
-13. **The task window closes without saying the task ended.** After "End task" it shows "ending…", then closes once the cleanup is done, because an ended task leaves the snapshot. Only tasks.json says `ended`. Fix: before the window goes, show that the task ended (a line in the window, or a toast).
 
 ## Bridge lifecycle and platforms
 

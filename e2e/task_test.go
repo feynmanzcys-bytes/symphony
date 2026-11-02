@@ -278,12 +278,20 @@ func TestTask(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(plain, "notes.txt")); err != nil {
 		t.Fatal("the plain folder's files should still be there")
 	}
-	// the page: the room is free, the figures are gone, the advisor is gone, the employees are back; no errors
+	// the page: the room is free, the figures are gone, the advisor is gone, the employees are back; the task window
+	// stays, saying the task ended (no End button, the chat input off), until it is closed; no errors
 	waitUntil(t, 30*time.Second, "the room is free and the members are back at their desks", func() bool {
-		return jsBool(`(p => p.dataset.light === 'free' && !p.dataset.task)(document.querySelectorAll('.room-plate')[0]) && document.querySelectorAll('.emp-label.member').length === 0 && document.querySelectorAll('.emp-label').length === 3 && document.getElementById('taskwin').hidden`)
+		return jsBool(`(p => p.dataset.light === 'free' && !p.dataset.task)(document.querySelectorAll('.room-plate')[0]) && document.querySelectorAll('.emp-label.member').length === 0 && document.querySelectorAll('.emp-label').length === 3`)
 	}, func() string {
 		return js(`[...document.querySelectorAll('.emp-label')].map(l => l.querySelector('.nm').textContent + ' ' + JSON.stringify(l.dataset)).join('\n')`)
 	})
+	waitUntil(t, 5*time.Second, "the task window says the task ended", func() bool {
+		return jsBool(`!document.getElementById('taskwin').hidden && document.querySelector('#taskwin .top .status').textContent.startsWith('Ended') && !document.querySelector('#taskwin .end') && document.querySelector('#taskwin textarea').disabled`)
+	}, func() string { return js(`document.querySelector('#taskwin .panel').innerHTML`) })
+	run(`document.querySelector('#taskwin .close').click()`)
+	if !jsBool(`document.getElementById('taskwin').hidden`) {
+		t.Fatal("the task window should close")
+	}
 	if b.account("rev") != nil {
 		t.Fatal("the advisor's account should be gone with the task")
 	}

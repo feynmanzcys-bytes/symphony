@@ -253,6 +253,7 @@
   "task.status.running": "En marcha",
   "task.status.ending": "Terminando: guardando el trabajo (y, en un repositorio creado para la tarea, fusionándolo)…",
   "task.status.failed": "Fallida",
+  "task.status.ended": "Terminada: el trabajo está guardado en las ramas de los miembros (y, en un repositorio creado para la tarea, fusionado en sus archivos)",
   "task.flat": "Sin líder: todos tienen la tarea entera y se la reparten entre ellos",
   "task.memberStarting": "Iniciando…",
   "task.end": "Terminar la tarea",

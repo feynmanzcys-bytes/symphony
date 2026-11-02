@@ -253,6 +253,7 @@
   "task.status.running": "進行中",
   "task.status.ending": "終了処理中：作業を保存しています（タスク用に作ったリポジトリではマージも）…",
   "task.status.failed": "失敗",
+  "task.status.ended": "終了：作業はメンバーのブランチに保存されました（タスク用に作ったリポジトリではファイルにマージ済み）",
   "task.flat": "リーダーなし：全員がタスク全体を受け持ち、分担はメンバー同士で決めます",
   "task.memberStarting": "起動中…",
   "task.end": "タスクを終了",

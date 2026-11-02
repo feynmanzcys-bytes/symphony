@@ -371,7 +371,7 @@ func TestTaskMergeConflict(t *testing.T) {
 	e.modOf(t, helper.Account).ok("POST", "/api/event", Event{Session: "h", Kind: "session.start", Launch: helper.Launch, Task: task.ID})
 	base := mustGit(t, plain, "rev-parse", "HEAD")
 	bob.ok("POST", "/api/event", Event{Session: "b", Kind: "session.start", Launch: task.Members[0].Launch, Task: task.ID})
-	if text := e.srv.Hub.Chat("b")[0].Text; !strings.HasPrefix(text, "你是任务 T1的成员。") || !strings.Contains(text, "plan it") {
+	if text := e.srv.Hub.Chat("b")[0].Text; !strings.HasPrefix(text, "你是任务 T1 的成员。") || !strings.Contains(text, "plan it") {
 		t.Fatalf("wrong flat kickoff:\n%s", text)
 	}
 	if st, code := e.page.failure("DELETE", "/api/tasks/T1", nil); st != http.StatusConflict || code != "task_running" {
