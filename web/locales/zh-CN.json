@@ -253,7 +253,7 @@
   "task.status.running": "进行中",
   "task.status.ending": "收尾中：正在保存成果（为任务新建的仓库还会合并）…",
   "task.status.failed": "失败",
-  "task.status.ended": "已结束：成果已保存到成员的分支（为任务新建的仓库已合并回文件）",
+  "task.status.ended": "已结束：成果在成员的分支上（为任务新建的仓库已合并）",
   "task.flat": "没有组长：每人都拿到整个任务，大家自己分工",
   "task.memberStarting": "启动中…",
   "task.end": "结束任务",

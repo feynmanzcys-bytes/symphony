@@ -253,7 +253,7 @@
   "task.status.running": "En cours",
   "task.status.ending": "Fin en cours : enregistrement du travail (et, dans un dépôt créé pour la tâche, sa fusion)…",
   "task.status.failed": "Échouée",
-  "task.status.ended": "Terminée : le travail est enregistré sur les branches des membres (et, dans un dépôt créé pour la tâche, fusionné dans ses fichiers)",
+  "task.status.ended": "Terminée : le travail est sur les branches des membres (fusionné dans un dépôt créé pour la tâche)",
   "task.flat": "Pas de chef : chacun a toute la tâche, et ils se la répartissent entre eux",
   "task.memberStarting": "Démarrage…",
   "task.end": "Terminer la tâche",
