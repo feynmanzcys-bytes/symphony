@@ -59,7 +59,9 @@ func TestPerf(t *testing.T) {
 		events += 4
 	}
 	posted := time.Since(start)
-	waitUntil(t, 30*time.Second, "all items shown", func() bool { return count(`#chat .flow .it`) == 48 })
+	// a burst's tail used to wait in the browser for the stream's next bytes, the keepalive up to 15 s later; the bridge
+	// writes a comment a moment after a burst now (streamNudge)
+	waitUntil(t, 8*time.Second, "all items shown, the burst's tail too", func() bool { return count(`#chat .flow .it`) == 48 })
 	shown := time.Since(start)
 	time.Sleep(2 * time.Second)
 	lt, wg := frames()

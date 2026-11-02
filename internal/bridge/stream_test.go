@@ -373,3 +373,71 @@ func TestHeartbeatRestoresSession(t *testing.T) {
 		t.Fatalf("session.start carries everything; not fresh: %v", res)
 	}
 }
+
+// TestStreamNudge: a moment after a message, with nothing else to send, the stream writes a comment, so a browser that
+// holds a burst's tail until more bytes come shows it at once rather than at the next keepalive.
+func TestStreamNudge(t *testing.T) {
+	srv := NewServer(NewHub(), testWeb)
+	acc, err := srv.Hub.CreateAccount("a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewServer(http.HandlerFunc(srv.stream))
+	defer ts.Close()
+	res, err := http.Get(ts.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	lines := make(chan string, 64)
+	go func() {
+		buf := make([]byte, 64<<10)
+		var pending string
+		for {
+			n, err := res.Body.Read(buf)
+			pending += string(buf[:n])
+			for {
+				i := strings.Index(pending, "\n\n")
+				if i < 0 {
+					break
+				}
+				lines <- pending[:i]
+				pending = pending[i+2:]
+			}
+			if err != nil {
+				close(lines)
+				return
+			}
+		}
+	}()
+	next := func(within time.Duration) (string, bool) {
+		select {
+		case l, ok := <-lines:
+			return l, ok
+		case <-time.After(within):
+			return "", false
+		}
+	}
+	for l, ok := next(5 * time.Second); ok && !strings.HasPrefix(l, "data:"); l, ok = next(5 * time.Second) {
+	} // retry: and the first snapshot
+	if err := srv.Hub.Apply(Event{Session: "s1", Kind: "session.start"}, acc); err != nil {
+		t.Fatal(err)
+	}
+	sawData, start := false, time.Now()
+	for {
+		l, ok := next(2 * time.Second)
+		if !ok {
+			t.Fatalf("no comment after the burst within 2 s (data seen: %v)", sawData)
+		}
+		if strings.HasPrefix(l, "data:") {
+			sawData = true
+			continue
+		}
+		if l == ":" && sawData {
+			if d := time.Since(start); d > time.Second {
+				t.Fatalf("the comment came %v after the burst, want about %v", d, streamNudge)
+			}
+			return
+		}
+	}
+}

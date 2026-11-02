@@ -38,7 +38,6 @@
   - `prompt.compose` with the office's context;
   - "remember this rule";
   - MCP elicitation;
-  - performance tests for the new themes;
   - Mission Control in light colors.
 - Build provenance for the release archives.
 - Homebrew and Scoop packages.

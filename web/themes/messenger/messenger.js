@@ -42,7 +42,10 @@ const online = s => sym.isOnline(s)
 const desks = () => snapshot.accounts.filter(a => !a.advisor)
 const fmtUsd = n => '$' + (n >= 100 ? n.toFixed(0) : n >= 10 ? n.toFixed(1) : n.toFixed(2))
 const fmtNum = new Intl.NumberFormat(lang, { notation: 'compact', maximumFractionDigits: 1 })
-const fmtTime = when => new Date(when).toLocaleTimeString(lang, { hour: '2-digit', minute: '2-digit' })
+// one formatter for every time shown: toLocaleTimeString with options makes a new one on each call, and the sidebar
+// shows a time on every row it draws
+const timeFmt = new Intl.DateTimeFormat(lang, { hour: '2-digit', minute: '2-digit' })
+const fmtTime = when => { const d = new Date(when); return isNaN(d) ? '' : timeFmt.format(d) }
 const costOf = acc => snapshot.ledger.filter(r => r.account === acc.id).reduce((n, r) => n + r.usd, 0)
 // an account's desk session: the one online, else the last one the bridge still has (off duty since when)
 const deskOf = acc => sym.deskOf(acc)
