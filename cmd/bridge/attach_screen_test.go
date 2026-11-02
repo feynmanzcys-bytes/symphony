@@ -26,7 +26,7 @@ func TestScreen(t *testing.T) {
 		t.Fatalf("a cut-off sequence should go out at the end: %q", got)
 	}
 	reset := string(s.reset())
-	for _, mode := range []string{"\x1b[?1000l", "\x1b[?1004l", "\x1b[?2004l", "\x1b[?9001l", "\x1b[?25h"} {
+	for _, mode := range []string{"\x1b[?1000l", "\x1b[?1004l", "\x1b[?2004l", "\x1b[?2031l", "\x1b[?9001l", "\x1b[?25h"} {
 		if !strings.Contains(reset, mode) {
 			t.Fatalf("the reset lacks %q: %q", mode, reset)
 		}
@@ -34,13 +34,18 @@ func TestScreen(t *testing.T) {
 	if strings.Contains(reset, "1049l") || strings.Contains(reset, "<") {
 		t.Fatalf("the output never went to the alternate screen or pushed keyboard modes: %q", reset)
 	}
+	// it ends by clearing below the cursor (so the detach line isn't drawn inside the session's last box) and emptying
+	// the title
+	if !strings.HasSuffix(reset, "\x1b[J\x1b]0;\x07") {
+		t.Fatalf("the reset should end by clearing below the cursor and the title: %q", reset)
+	}
 
 	// the alternate screen and pushed keyboard modes, the sequences cut by the writes
 	s = &screen{w: &out}
 	for _, chunk := range []string{"\x1b[<u\x1b[?10", "49h\x1b[>1u x \x1b[>", "3u\x1b[<u"} {
 		_, _ = s.Write([]byte(chunk))
 	}
-	if reset := string(s.reset()); !strings.HasSuffix(reset, "\x1b[<1u\x1b[?1049l") {
+	if reset := string(s.reset()); !strings.Contains(reset, "\x1b[<1u\x1b[?1049l\x1b[J") {
 		t.Fatalf("one keyboard mode is still pushed and the output is on the alternate screen: %q", reset)
 	}
 	_, _ = s.Write([]byte("\x1b[?1049l\x1b[<3u"))

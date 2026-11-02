@@ -33,14 +33,6 @@
    - Fix idea: every process the session starts inherits `SYMPHONY_LAUNCH=<launch id>`. At Kill, also kill the user's processes whose environment holds it (`/proc/<pid>/environ` on Linux, `ps -E` on macOS).
    - Test: TestTermKillEndsToolsOfTheirOwn, with a shell that runs `sleep 1000 &` and exits.
 3. **On Windows, a clean `/exit` also ends what the session left running.** The job closes with the terminal (`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`, pty_windows.go). Linux and macOS leave those processes alone unless the session is ended. Decide which behavior is right, then make the platforms agree, or say so in the README.
-4. **Windows shows a killed process's exit status as 4294967295.** That is TerminateProcess's -1 read as unsigned. Show `exit status -1` in `windowsProc.Wait`.
-5. **The command the page shows for opening a terminal by hand assumes `symphony` is on PATH** (`attachHint` in cmd/bridge/main.go). On the Windows machine it wasn't. Fix: when `exec.LookPath("symphony")` doesn't find the running program, use its full path (`os.Executable`). The window the bridge opens already runs the full path.
-6. **The e2e harness answers the trust prompt blind.** `startClaude` in e2e/harness_test.go presses Down and Enter as soon as it sees the question, the way the bridge did before v1.1.1. It passes because tmux answers Claude Code's terminal queries, but it can flake the same way. Fix: wait for the cursor to be on "Yes", as `trustCursor` does.
-7. **Screen lines keep bits of some escape sequences.** `ESC ( B` leaves "(B", `ESC 7` and `ESC 8` leave "78", and `ESC =` leaves "=". Seen on the Mac as `… (shift+tab to cycle) (B` at the end of an exit notice. The `ansi` pattern in term.go only covers ESC followed by a byte from `@` to `_`.
-   - Fix: replace `\x1b[@-Z\\-_]` in that pattern with `\x1b[ -/]*[0-~]`, which covers every escape sequence with intermediates and every two-byte one.
-   - Test: add these cases to TestPlainText.
-8. **`symphony attach` leaves color-scheme reports on.** Claude Code turns them on (`CSI ?2031h`), and `screen.reset` in cmd/bridge/attach_screen.go doesn't turn them off. In a terminal that supports them (kitty, Ghostty), switching between dark and light after detaching could put `^[[?997;1n` into the shell. Fix: add `\x1b[?2031l` to the reset.
-9. **The detach line is drawn over the session's last lines.** Attach writes a line break and its message wherever the cursor is, often inside Claude Code's box, so the box's bottom border shows after it: `symphony: detached from mac-c; the session goes on.─────`. The window keeps the session's title too. Fix: clear below the cursor first (`\x1b[J`), and maybe empty the title (`\x1b]0;\x07`).
 
 ## Tasks
 

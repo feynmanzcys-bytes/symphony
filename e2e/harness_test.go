@@ -268,15 +268,20 @@ func startClaude(t *testing.T, name, dir string, env map[string]string, args ...
 	p := &pane{t: t, name: name}
 	t.Cleanup(p.kill)
 
-	// a new folder first asks whether to trust it: pick "trust"
+	// a new folder first asks whether to trust it: pick "trust", the way the bridge does (terminal.go): Down until the
+	// cursor is on "Yes", then Enter; claude may miss a key right after it drew the question, or draw it again with the
+	// cursor back on "No"
 	deadline := time.Now().Add(60 * time.Second)
 	for time.Now().Before(deadline) {
 		screen := p.capture()
 		switch {
 		case strings.Contains(screen, "trust this folder"):
-			p.key("Down")
-			p.key("Enter")
-			time.Sleep(time.Second)
+			if cursorOn(screen, "Yes") {
+				p.key("Enter")
+			} else {
+				p.key("Down")
+			}
+			time.Sleep(500 * time.Millisecond)
 		case strings.Contains(screen, "for shortcuts"), strings.Contains(screen, "shift+tab to cycle"): // the prompt's footer, by permission mode
 			return p
 		}
@@ -284,6 +289,12 @@ func startClaude(t *testing.T, name, dir string, env map[string]string, args ...
 	}
 	t.Fatalf("%s never showed its prompt:\n%s", name, p.capture())
 	return nil
+}
+
+// cursorOn says whether the words after the last ❯ on the screen start with answer.
+func cursorOn(screen, answer string) bool {
+	i := strings.LastIndex(screen, "❯")
+	return i >= 0 && strings.HasPrefix(strings.TrimSpace(screen[i+len("❯"):]), answer)
 }
 
 func (p *pane) capture() string {

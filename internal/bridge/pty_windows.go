@@ -206,7 +206,8 @@ func (p *windowsProc) Wait() error {
 		if err := syscall.GetExitCodeProcess(process, &code); err != nil {
 			p.err = err
 		} else if code != 0 {
-			p.err = fmt.Errorf("exit status %d", code)
+			// TerminateProcess (Kill) ends it with -1, which GetExitCodeProcess gives unsigned: 4294967295
+			p.err = fmt.Errorf("exit status %d", int32(code))
 		}
 	}
 	p.jobMu.Lock()

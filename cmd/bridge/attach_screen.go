@@ -81,15 +81,19 @@ func (s *screen) Flush() {
 }
 
 // reset turns off what the session's output may have left on in this terminal: mouse and focus reports, bracketed
-// paste, win32-input-mode, xterm's modified keys, the keyboard modes it pushed; it shows the cursor and leaves the
-// alternate screen when the output went there.
+// paste, color-scheme reports (CSI ?2031h: a terminal that supports them would put ^[[?997;1n into the shell at every
+// switch between dark and light), win32-input-mode, xterm's modified keys, the keyboard modes it pushed; it shows the
+// cursor and leaves the alternate screen when the output went there. Then it clears what's below the cursor (the line
+// after it is drawn inside the session's last box otherwise, its bottom border showing after the message) and empties
+// the window's title the banner set.
 func (s *screen) reset() []byte {
-	r := "\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l\x1b[?1004l\x1b[?2004l\x1b[?9001l\x1b[>4m\x1b[?25h"
+	r := "\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l\x1b[?1004l\x1b[?2004l\x1b[?2031l\x1b[?9001l\x1b[>4m\x1b[?25h"
 	if s.kitty > 0 {
 		r += "\x1b[<" + strconv.Itoa(s.kitty) + "u"
 	}
 	if s.alt {
 		r += "\x1b[?1049l"
 	}
+	r += "\x1b[J\x1b]0;\x07"
 	return []byte(r)
 }

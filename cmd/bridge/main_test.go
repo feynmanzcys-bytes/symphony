@@ -594,8 +594,19 @@ func TestAutostartRefuses(t *testing.T) {
 }
 
 // The page's hint for reaching a session's terminal by hand names the address and the data folder when they aren't
-// the defaults, since attach needs both to find the bridge and its key.
+// the defaults, since attach needs both to find the bridge and its key; and the program by its full path when
+// "symphony" on PATH isn't this one (a release unpacked somewhere).
 func TestAttachHint(t *testing.T) {
+	self, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	bin := t.TempDir()
+	link := filepath.Join(bin, "symphony"+exeSuffix())
+	if err := os.Symlink(self, link); err != nil {
+		t.Skip("no symlinks:", err)
+	}
+	t.Setenv("PATH", bin)
 	if got := attachHint(defaultAddr, bridge.DefaultDataDir())("L1"); got != "symphony attach L1" {
 		t.Errorf("defaults: %q", got)
 	}
@@ -603,4 +614,24 @@ func TestAttachHint(t *testing.T) {
 	if got, want := attachHint("127.0.0.1:7799", dir)("L2"), "symphony attach -addr 127.0.0.1:7799 -data "+strconv.Quote(dir)+" L2"; got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}
+	// PATH leads nowhere, or to another symphony: the full path
+	t.Setenv("PATH", t.TempDir())
+	if got, want := attachHint(defaultAddr, bridge.DefaultDataDir())("L3"), self+" attach L3"; got != want {
+		t.Errorf("off PATH: got %q, want %q", got, want)
+	}
+	other := filepath.Join(t.TempDir(), "symphony"+exeSuffix())
+	if err := os.WriteFile(other, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", filepath.Dir(other))
+	if got, want := attachHint(defaultAddr, bridge.DefaultDataDir())("L4"), self+" attach L4"; got != want {
+		t.Errorf("another symphony on PATH: got %q, want %q", got, want)
+	}
+}
+
+func exeSuffix() string {
+	if runtime.GOOS == "windows" {
+		return ".exe"
+	}
+	return ""
 }

@@ -580,9 +580,10 @@ func openOffice(dataDir, office string) {
 }
 
 // attachHint is the command the page shows for reaching a session's terminal by hand: symphony attach <id>, with the
-// address and the data folder (where attach finds the key) when they aren't the defaults.
+// address and the data folder (where attach finds the key) when they aren't the defaults. When PATH doesn't lead to
+// this program (a release unpacked somewhere, a go run build), the command names it by its full path.
 func attachHint(addr, dataDir string) func(launchID string) string {
-	cmd := "symphony attach "
+	cmd := attachProgram() + " attach "
 	if addr != defaultAddr {
 		cmd += "-addr " + addr + " "
 	}
@@ -593,6 +594,32 @@ func attachHint(addr, dataDir string) func(launchID string) string {
 		cmd += "-data " + abs + " "
 	}
 	return func(launchID string) string { return cmd + launchID }
+}
+
+// attachProgram is how a shell reaches this program: symphony when PATH finds this very file, else its full path,
+// quoted when it holds a space or a quote.
+func attachProgram() string {
+	self, err := os.Executable()
+	if err != nil {
+		return "symphony"
+	}
+	if found, err := exec.LookPath("symphony"); err == nil && sameFile(found, self) {
+		return "symphony"
+	}
+	if strings.ContainsAny(self, " '\"") {
+		return strconv.Quote(self)
+	}
+	return self
+}
+
+// sameFile says whether two paths name the same file (through symlinks).
+func sameFile(a, b string) bool {
+	fa, err := os.Stat(a)
+	if err != nil {
+		return false
+	}
+	fb, err := os.Stat(b)
+	return err == nil && os.SameFile(fa, fb)
 }
 
 // htmlHandler is the desktop file of the program that opens .html files on Linux (xdg-mime), or "" when unknown.

@@ -131,6 +131,11 @@ func TestPlainText(t *testing.T) {
 	if got := plainText([]byte(trust)); got != " ❯ No, exit\n   Yes, I trust this folder\n" || !hasTrustPrompt(got) {
 		t.Fatalf("the trust prompt drawn with moves to a column: %q", got)
 	}
+	// two-byte escape sequences and ones with intermediates leave nothing behind: ESC ( B (a charset), ESC 7 and ESC 8
+	// (save and restore the cursor), ESC = (the keypad)
+	if got := plainText([]byte("a\x1b(Bb\x1b7c\x1b8d\x1b=e\x1b>f\x1b[?25lg")); got != "abcdefg" {
+		t.Fatalf("escape sequences left bits: %q", got)
+	}
 	// a move back to a column already passed keeps the words apart; a carriage return starts the line's columns again
 	if got := plainText([]byte("abc\x1b[2Gx\x1b[Gy\rz\x1b[3Gw")); got != "abc x yz w" {
 		t.Fatalf("moves back: %q", got)

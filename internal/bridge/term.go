@@ -271,7 +271,9 @@ func (t *Term) Clients() int {
 }
 
 var (
-	ansi   = regexp.MustCompile(`\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[@-Z\\-_]|[\x00-\x08\x0b-\x1f\x7f]`)
+	// a CSI sequence, an OSC string, any other escape sequence (intermediates, then a final byte: ESC ( B, ESC 7,
+	// ESC =), and the control characters but tab and line feed
+	ansi   = regexp.MustCompile(`\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[ -/]*[0-~]|[\x00-\x08\x0b-\x1f\x7f]`)
 	move   = regexp.MustCompile(`^\x1b\[(\d*)([CG])$`) // to the right (CUF) and to a column (CHA): Ink draws the gaps between words with both
 	spaces = regexp.MustCompile(`\s+`)
 )
