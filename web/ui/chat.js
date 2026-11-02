@@ -16,9 +16,10 @@
 // terminal is the launch id of a page-started session that is online: the window then offers its terminal in the page
 // (ui/terminal.js), interactive, with a button of its own beside the theme's "terminal" button (the one that opens a
 // window on this machine), or first; the button, or Ctrl+], brings the chat back, and so does another session.
-import { t, esc, errorText, richText, timeOf, STATE_COLOR, GRAY, button } from '/ui/common.js'
+import { t, esc, errorText, richText, timeOf, STATE_MARK, GRAY_MARK, button } from '/ui/common.js'
 import { syncCards } from '/asks.js'
 import { createTerminal } from '/ui/terminal.js'
+import { dialog } from '/ui/a11y.js'
 
 const KEEP_ITEMS = 400 // the bridge's keepChat
 const TEXT_MAX = 64 << 10 // a streamed block keeps its last 64 KiB (the bridge's chatTextMax)
@@ -28,8 +29,8 @@ const MARKUP = `
 <div class="modal" id="chat" hidden>
   <div class="panel chat">
     <div class="head">
-      <span class="close">✕</span>
-      <div class="who"><span class="dot"></span><h2></h2><span class="state"></span></div>
+      <button type="button" class="close">✕</button>
+      <div class="who"><span class="dot" aria-hidden="true"></span><h2></h2><span class="state"></span></div>
       <div class="meta"></div>
       <div class="btns"></div>
     </div>
@@ -54,6 +55,8 @@ export function createChat(sym, { askWho, onClose = () => {}, onTaskChip = () =>
   const head = el.querySelector('.head'), flow = el.querySelector('.flow'), dock = el.querySelector('.dock')
   const sayForm = el.querySelector('.say'), sayBox = sayForm.querySelector('textarea'), asksEl = el.querySelector('#asks')
   sayBox.placeholder = t('chat.placeholder')
+  sayBox.setAttribute('aria-label', t('chat.placeholder'))
+  dialog(el, head.querySelector('h2')) // a dialog over the page, a region where the theme lays it out (a11y.js)
   sayForm.querySelector('button').textContent = t('chat.send')
 
   let session = null // the session whose log the flow shows and pushes keep up (null while it is closed)
@@ -269,7 +272,7 @@ export function createChat(sym, { askWho, onClose = () => {}, onTaskChip = () =>
     show(p) {
       name = p.name
       head.querySelector('h2').textContent = p.name
-      head.querySelector('.dot').style.background = STATE_COLOR[p.state] ?? GRAY
+      head.querySelector('.dot').style.background = STATE_MARK[p.state] ?? GRAY_MARK
       chat.setLine(p.line)
       const meta = (p.taskChip ? `<span class="task" data-task="${esc(p.taskChip.id)}" title="${esc(p.taskChip.title)}">${esc(p.taskChip.label)}</span>` : '') +
         (p.chips || []).filter(c => c[1] !== undefined && c[1] !== '' && c[1] !== null)

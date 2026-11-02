@@ -13,7 +13,8 @@
 //   tasks.render()                  draw the window again (on every snapshot and message)
 //   tasks.windowFor                 the task whose window is open, or null
 //   tasks.dialog, tasks.win         the elements
-import { t, lang, esc, errorText, base, lower, dot, fill, browse, showEnd, statusText, richText, TASK_COLOR, GRAY, button, deferWhilePressed } from '/ui/common.js'
+import { t, lang, esc, errorText, base, lower, dot, fill, browse, showEnd, statusText, richText, TASK_MARK, GRAY_MARK, button, deferWhilePressed, setHTML } from '/ui/common.js'
+import { dialog as asDialog } from '/ui/a11y.js'
 
 const MAX_MEMBERS = 5 // the bridge's cap (taskMaxMembers)
 
@@ -21,15 +22,15 @@ const DIALOG = `
 <div class="modal" id="task" hidden>
   <form class="panel" autocomplete="off">
     <h2 class="title"></h2>
-    <label data-i18n="task.description"></label>
-    <textarea name="desc" rows="4" data-i18n-placeholder="task.descriptionPlaceholder"></textarea>
-    <label data-i18n="task.members"></label>
-    <div class="emps"></div>
-    <div class="advs"></div>
+    <label for="task-desc" data-i18n="task.description"></label>
+    <textarea id="task-desc" name="desc" rows="4" data-i18n-placeholder="task.descriptionPlaceholder"></textarea>
+    <label id="task-members" data-i18n="task.members"></label>
+    <div class="emps" role="group" aria-labelledby="task-members"></div>
+    <div class="advs" role="group" aria-labelledby="task-members"></div>
     <button type="button" class="px add-adv" data-i18n="task.addAdvisor" data-i18n-title="task.advisorTitle"></button>
     <label class="check"><input type="checkbox" name="leader" checked><span data-i18n="task.leader"></span></label>
-    <label data-i18n="launch.permissionMode"></label>
-    <select name="permissionMode"></select>
+    <label for="task-mode" data-i18n="launch.permissionMode"></label>
+    <select id="task-mode" name="permissionMode"></select>
     <div class="warn" data-i18n="launch.bypassWarning" hidden></div>
     <div class="foot">
       <div class="status"></div>
@@ -41,7 +42,7 @@ const DIALOG = `
 const WINDOW = `
 <div class="modal" id="taskwin" hidden>
   <div class="panel">
-    <span class="close">✕</span>
+    <button type="button" class="close">✕</button>
     <div class="top"><h2></h2><span class="status"></span><div class="actions"></div></div>
     <div class="desc"></div>
     <div class="mode" data-i18n="task.flat" hidden></div>
@@ -51,7 +52,7 @@ const WINDOW = `
       <h3 data-i18n="task.chat"></h3>
       <div class="tlist"></div>
       <form class="tsay" autocomplete="off">
-        <div class="tbox"><textarea rows="1"></textarea><div class="tpick" hidden></div></div>
+        <div class="tbox"><textarea rows="1" data-i18n-aria-label="task.chat"></textarea><div class="tpick" hidden></div></div>
         <button type="submit" class="px primary" data-i18n="chat.send"></button>
       </form>
       <div class="tstatus"></div>
@@ -67,6 +68,7 @@ function mount(markup) {
   for (const x of el.querySelectorAll('[data-i18n]')) x.textContent = t(x.dataset.i18n)
   for (const x of el.querySelectorAll('[data-i18n-placeholder]')) x.placeholder = t(x.dataset.i18nPlaceholder)
   for (const x of el.querySelectorAll('[data-i18n-title]')) x.title = t(x.dataset.i18nTitle)
+  for (const x of el.querySelectorAll('[data-i18n-aria-label]')) x.setAttribute('aria-label', t(x.dataset.i18nAriaLabel))
   return el
 }
 
@@ -88,6 +90,8 @@ export function createTaskUI(sym, {
 } = {}) {
   const dialog = mount(DIALOG), win = mount(WINDOW)
   const form = dialog.querySelector('form')
+  asDialog(dialog, form.querySelector('.title'))
+  asDialog(win, win.querySelector('.top h2')) // (a region where the theme lays it out: Coworkers)
   let opts = null
   let dialogFor = null // the room the dialog was opened from: { k, name }, or null
   let picks = [] // the members, in order: rows of the dialog (an employee ticked, or an advisor added)
@@ -124,11 +128,11 @@ export function createTaskUI(sym, {
     const row = document.createElement('div'), recent = opts?.recentDirs || []
     row.className = 'adv'
     row.innerHTML = `<div class="line"><b class="ord"></b><span class="kind">${esc(t('task.advisor'))}</span><span class="lead-tag">${esc(t('task.lead'))}</span>` +
-      `<input name="name" placeholder="${esc(t('task.advisorName'))}"><button type="button" class="px rm" title="${esc(t('task.remove'))}">✕</button></div>` +
-      `<div class="row"><input name="dir" placeholder="${esc(t('launch.dirPlaceholder'))}"><button type="button" class="px browse">${esc(t('launch.browse'))}</button>` +
-      `<select name="model" title="${esc(t('launch.model'))}"></select><select name="effort" title="${esc(t('launch.effort'))}"></select></div>` +
+      `<input name="name" placeholder="${esc(t('task.advisorName'))}" aria-label="${esc(t('task.advisorName'))}"><button type="button" class="px rm" title="${esc(t('task.remove'))}" aria-label="${esc(t('task.remove'))}">✕</button></div>` +
+      `<div class="row"><input name="dir" placeholder="${esc(t('launch.dirPlaceholder'))}" aria-label="${esc(t('launch.dir'))}"><button type="button" class="px browse">${esc(t('launch.browse'))}</button>` +
+      `<select name="model" title="${esc(t('launch.model'))}" aria-label="${esc(t('launch.model'))}"></select><select name="effort" title="${esc(t('launch.effort'))}" aria-label="${esc(t('launch.effort'))}"></select></div>` +
       `<div class="browser" hidden><div class="cur"></div><ul></ul><button type="button" class="px pick">${esc(t('launch.pick'))}</button></div>` +
-      `<div class="recent">${recent.map(d => `<span title="${esc(d)}">${esc(base(d))}</span>`).join('')}</div>`
+      `<div class="recent">${recent.map(d => `<span role="button" tabindex="0" title="${esc(d)}">${esc(base(d))}</span>`).join('')}</div>`
     const dir = row.querySelector('[name=dir]'), box = row.querySelector('.browser')
     dir.value = recent[0] || opts?.home || ''
     row.querySelector('.browse').onclick = () => browse(sym, box, dir.value.trim(), reason => setStatus(reason, true), opts?.home)
@@ -223,7 +227,7 @@ export function createTaskUI(sym, {
     win.querySelector('h2').textContent = `${task.id} · ${roomLabel(task)}`
     const st = win.querySelector('.top .status')
     st.textContent = t('task.status.' + task.status)
-    st.style.setProperty('--c', TASK_COLOR[task.status] ?? GRAY)
+    st.style.setProperty('--c', TASK_MARK[task.status] ?? GRAY_MARK)
     win.querySelector('.desc').textContent = task.title
     win.querySelector('.mode').hidden = !!task.leader
     const err = win.querySelector('.err')
@@ -234,14 +238,14 @@ export function createTaskUI(sym, {
       const s = sym.sessionById(m.session), online = sym.isOnline(s), state = !online ? 'ended' : sym.asking(m.session) ? 'waiting' : s.state
       const runs = [s?.model || m.model, s?.effort || m.effort].filter(Boolean).join(' · ')
       const open = m.session && isMemberOpen(task, m) // its window is beside this one
-      return `<div class="mrow${m.session ? '' : ' wait'}${open ? ' open' : ''}" data-i="${i}">${dot(state)}<b>${esc(m.name)}</b>` +
+      return `<div class="mrow${m.session ? '' : ' wait'}${open ? ' open' : ''}" data-i="${i}"${m.session ? ' role="button" tabindex="0"' : ''}${open ? ' aria-current="true"' : ''}>${dot(state)}<b>${esc(m.name)}</b>` +
         (task.leader && m.account === task.leader ? `<span class="badge lead">${esc(t('task.lead'))}</span>` : '') +
         (m.advisor ? `<span class="badge adv" title="${esc(t('task.advisorTitle'))}">${esc(t('task.advisor'))}</span>` : '') +
         `<span class="where" title="${esc([m.dir, m.worktree].filter(Boolean).join('\n'))}">${esc(base(m.dir))} · ${esc(m.branch || '')}</span>` +
         (runs ? `<span class="chip">${esc(runs)}</span>` : '') +
         `<span class="st">${esc(!m.session ? t('task.memberStarting') : online ? statusText(sym, s) : t('task.memberEnded'))}</span></div>`
     }).join('')
-    if (rows !== shown.members) { shown.members = rows; win.querySelector('.members').innerHTML = rows }
+    if (rows !== shown.members) { shown.members = rows; setHTML(win.querySelector('.members'), rows) } // (a row with the focus keeps it)
     const stick = renderChat(task)
     const btnKey = task.id + '|' + task.status
     if (btnKey !== shown.btns) {
@@ -439,9 +443,9 @@ export function createTaskUI(sym, {
         row.className = 'mem' + (off ? ' off' : '')
         row.dataset.account = acc.id
         row.innerHTML = `<label><input type="checkbox"${off ? ' disabled' : ''}><b class="ord"></b>` +
-          `${dot(s && s.state !== 'ended' ? s.state : 'ended')}<span class="nm">${esc(acc.name)}</span><span class="lead-tag">${esc(t('task.lead'))}</span>` +
+          `${dot(s && s.state !== 'ended' ? s.state : 'ended', statusText(sym, s && s.state !== 'ended' ? s : null))}<span class="nm">${esc(acc.name)}</span><span class="lead-tag">${esc(t('task.lead'))}</span>` +
           `<small title="${esc(dir)}">${esc(inTask ? t('task.inTask', { id: inTask }) : dir ? base(dir) : t('task.noDir'))}</small></label>` +
-          `<select name="model" title="${esc(t('launch.model'))}"></select><select name="effort" title="${esc(t('launch.effort'))}"></select>`
+          `<select name="model" title="${esc(t('launch.model'))}" aria-label="${esc(t('launch.model'))}"></select><select name="effort" title="${esc(t('launch.effort'))}" aria-label="${esc(t('launch.effort'))}"></select>`
         // as it last worked, or Claude Code's own settings
         fill(row.querySelector('[name=model]'), opts.models, acc.last ? acc.last.model : '')
         fill(row.querySelector('[name=effort]'), opts.efforts, acc.last ? acc.last.effort : '')

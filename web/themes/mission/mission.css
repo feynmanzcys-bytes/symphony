@@ -1,11 +1,27 @@
-/* Mission Control: a control room's wall, dark, big type, high contrast; a word beside every color. The shared
-   pieces (ui/ui.css) take the room's palette from the same variables. */
-:root {
-  --paper: #0f1620; --paper-2: #141d29; --ink: #e8eef5; --muted: #7d8a99; --muted-2: #a6b2c0; --line: #233041;
-  --pane: #0b1118; --pane-2: #1a2535; --accent: #3fb6ff; --ok: #35d07f; --danger: #ff4d5e; --danger-dark: #ff8a95;
-  --purple: #9b7cff; --purple-dark: #6f54d6; --purple-light: #4a3c8f; --tool-ink: #a6b2c0;
-  --warn: #ffb020; --bg: #070b10; --amber: #ffb020;
+/* Mission Control: a control room's wall, big type, high contrast; a word beside every color. Dark (the room at
+   night) or light (by day): the system's choice, or the switch's (mission.js). The shared pieces (ui/ui.css) take the
+   room's palette from the same variables. */
+:root { /* by day */
+  --paper: #ffffff; --paper-2: #f1f4f8; --ink: #0d1520; --muted: #556270; --muted-2: #3e4a57; --line: #c9d2dd;
+  --pane: #e9eef4; --pane-2: #dce3ec; --accent: #0067b8; --ok: #11804a; --danger: #d1242f; --danger-dark: #8c1018;
+  --purple: #6b4fd8; --purple-dark: #4b33a8; --purple-light: #d9d0fb; --purple-light-ink: #1d1133; --tool-ink: #3e4a57;
+  --warn: #9a6400; --bg: #dfe5ec; --amber: #8f5c00; --glow: 0px; --stripe-l: 48%; --stripe-c: .11; --spark: #11804a;
   --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+  /* the text on the accent; red as text, under white text, as a box; the marks of the states (ui.css) */
+  --on-accent: #fff; --danger-ink: #b8202b; --danger-strong: #b8202b; --danger-bg: #fde8ea;
+  --card: #ffffff; --field: #ffffff; --field-ro: #e9eef4; --hl: #dbe9f7;
+  --me-bg: #e2eefb; --me-ink: var(--ink); --me-accent: #0058a0;
+  --st-idle: #11804a; --st-busy: #9a6400; --st-wait: #d1242f; --st-off: #6b7785;
+}
+html[data-dark] { /* at night */
+  --paper: #0f1620; --paper-2: #141d29; --ink: #e8eef5; --muted: #8794a3; --muted-2: #a6b2c0; --line: #233041;
+  --pane: #0b1118; --pane-2: #1a2535; --accent: #3fb6ff; --ok: #35d07f; --danger: #ff4d5e; --danger-dark: #ff8a95;
+  --purple: #6b4fd8; --purple-dark: #8f75ff; --purple-light: #4a3c8f; --purple-light-ink: #ece8ff; --tool-ink: #a6b2c0;
+  --warn: #ffb020; --bg: #070b10; --amber: #ffb020; --glow: 8px; --stripe-l: 78%; --stripe-c: .12; --spark: #35d07f;
+  --on-accent: #041018; --danger-ink: #ff8a95; --danger-strong: #d42e3f; --danger-bg: #2a1218;
+  --card: #141d29; --field: #0b1118; --field-ro: #1a2535; --hl: #1a2a3d;
+  --me-bg: #10283a; --me-ink: var(--ink); --me-accent: var(--accent);
+  --st-idle: #35d07f; --st-busy: #f2b705; --st-wait: #ff4d5e; --st-off: #a9a49b;
 }
 html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font: 14px/1.4 var(--sans); overflow: hidden; }
 body:lang(zh-CN) { font-family: var(--sans), "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC"; }
@@ -18,18 +34,22 @@ body { display: grid; grid-template-rows: auto auto 1fr auto; grid-template-colu
 /* the shared pieces in the room's style */
 button.px { border-radius: 4px; box-shadow: none; border-color: var(--line); background: var(--paper-2); font-size: 13px; }
 button.px:hover { border-color: var(--accent); }
-button.px.primary { background: var(--accent); border-color: var(--accent); color: #041018; }
-button.px.alert { background: var(--danger); border-color: var(--danger); color: #fff; }
+button.px.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+button.px.alert { background: var(--danger-strong); border-color: var(--danger-strong); color: #fff; }
 button.px.icon { width: 32px; padding: 2px 0; text-align: center; }
 button.px.icon.blocked { opacity: .55; border-style: dashed; border-color: var(--amber); } /* the sound is on, but the browser won't play it before a click */
 .panel, #asks .card, #taskwin .tlist { border-radius: 6px; box-shadow: 0 0 0 1px var(--line), 0 24px 60px rgba(0,0,0,.6); }
+:root:not([data-dark]) :is(.panel, #asks .card, #taskwin .tlist) { box-shadow: 0 0 0 1px var(--line), 0 18px 48px rgba(13,21,32,.22); }
 .modal { background: rgba(0,0,0,.6); }
+:root:not([data-dark]) .modal { background: rgba(13,21,32,.45); }
 #asks input[type=text], #asks button, #launch input, #launch select, #task :is(input:not([type=checkbox]), select, textarea), .chat .say textarea, #taskwin .tsay textarea { border-radius: 4px; border-color: var(--line); background: var(--pane); color: var(--ink); }
-#asks button.allow, #asks button.submit { background: var(--accent); border-color: var(--accent); color: #041018; }
-.it.user { border-color: var(--accent); background: #10283a; color: var(--ink); }
+#asks button.allow, #asks button.submit { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+#task .lead-tag, #taskwin .badge.lead { background: var(--accent); color: var(--on-accent); }
+.it.user { border-color: var(--accent); }
 .it.text { border-color: var(--line); background: var(--paper-2); color: var(--ink); }
 .chat .meta span.task { background: color-mix(in srgb, var(--amber) 15%, var(--paper)); border-color: var(--amber); color: var(--ink); }
 #taskwin .top .status, #taskwin .members, #taskwin .tlist, #taskwin .mrow { border-color: var(--line); }
+#taskwin .top .status { border-left-color: var(--c, var(--st-off)); } /* (the band says the task's state) */
 
 /* the bar */
 .bar button.px { white-space: nowrap; }
@@ -44,8 +64,9 @@ button.px.icon.blocked { opacity: .55; border-style: dashed; border-color: var(-
 .stat b { font: 700 20px/1 var(--mono); }
 .stat.alarm { cursor: pointer; padding: 2px 10px; border: 1px solid var(--line); border-radius: 4px; }
 .stat.alarm.hot { border-color: var(--danger); background: color-mix(in srgb, var(--danger) 18%, var(--paper)); animation: flash 1s steps(1) infinite; }
-.stat.alarm.hot b { color: var(--danger); }
-@keyframes flash { 50% { background: color-mix(in srgb, var(--danger) 36%, var(--paper)); } }
+.stat.alarm.hot b { color: var(--danger-ink); }
+.stat.alarm.hot .lbl { color: var(--ink); }
+@keyframes flash { 50% { background: color-mix(in srgb, var(--danger) 30%, var(--paper)); } }
 .spacer { flex: 1; }
 .find { flex: 0 1 220px; min-width: 90px; }
 .bar { min-width: 0; }
@@ -64,15 +85,20 @@ button.px.icon.blocked { opacity: .55; border-style: dashed; border-color: var(-
 .tile:hover { border-color: var(--accent); }
 .tile.waiting { border-color: var(--danger); animation: alarm 1s steps(1) infinite; }
 @keyframes alarm { 50% { box-shadow: inset 0 0 0 2px var(--danger); } }
-.tile.off { opacity: .55; }
-.tile .stripe { position: absolute; left: 0; top: 0; bottom: 0; width: 6px; background: var(--c); cursor: pointer; }
+/* off duty: dimmed in colors that stay readable (not an opacity) */
+.tile.off { background: var(--pane); }
+.tile.off .nm { color: var(--muted-2); }
+.tile.off .model { color: var(--muted); }
+/* a task's stripe: its own hue, by its number (mission.js), at a lightness that reads as well in every hue (OKLCH) and
+   lets its id read on the tile in either scheme */
+.tile .stripe { position: absolute; left: 0; top: 0; bottom: 0; width: 6px; background: oklch(var(--stripe-l) var(--stripe-c) var(--h)); cursor: pointer; }
 .tile .stripe:hover { width: 10px; }
-.tile .stripe span { position: absolute; left: 100%; top: 6px; margin-left: 6px; font: 700 10px/1 var(--mono); color: var(--c); letter-spacing: .06em; }
+.tile .stripe span { position: absolute; left: 100%; top: 6px; margin-left: 6px; font: 700 10px/1 var(--mono); color: oklch(var(--stripe-l) var(--stripe-c) var(--h)); letter-spacing: .06em; }
 .tile.member { padding-left: 20px; }
 .tile .hd { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
 .tile .nm { font: 700 15px/1.2 var(--mono); letter-spacing: .04em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .tile .st { margin-left: auto; display: flex; align-items: center; gap: 6px; font: 700 11px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; white-space: nowrap; }
-.tile .st i { width: 9px; height: 9px; border-radius: 50%; background: var(--c); box-shadow: 0 0 8px var(--c); }
+.tile .st i { width: 9px; height: 9px; border-radius: 50%; background: var(--c); box-shadow: 0 0 var(--glow) var(--c); } /* (lit at night) */
 .tile.waiting .st i { animation: blink .5s steps(1) infinite; }
 @keyframes blink { 50% { opacity: .2; } }
 .tile .model { font: 12px var(--mono); color: var(--muted-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -85,8 +111,8 @@ button.px.icon.blocked { opacity: .55; border-style: dashed; border-color: var(-
 .tile .gauge.full i { background: var(--danger); }
 .tile .spark { flex: 1; min-height: 28px; position: relative; }
 .tile .spark svg { position: absolute; inset: 0; width: 100%; height: 100%; }
-.tile .spark .line { fill: none; stroke: var(--ok); stroke-width: 1.5; }
-.tile .spark .area { fill: color-mix(in srgb, var(--ok) 18%, transparent); }
+.tile .spark .line { fill: none; stroke: var(--spark); stroke-width: 1.5; }
+.tile .spark .area { fill: color-mix(in srgb, var(--spark) 18%, transparent); }
 .tile .spark .lbl { position: absolute; right: 0; top: 0; font: 10px var(--mono); color: var(--muted); letter-spacing: .08em; }
 .tile .now { font: 12px var(--mono); color: var(--amber); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-height: 1.4em; }
 .tile.waiting .now { color: var(--danger); font-weight: 700; }

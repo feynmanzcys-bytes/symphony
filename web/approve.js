@@ -4,6 +4,7 @@ import { t, applyI18n, langPicker } from '/i18n.js'
 import { esc, syncCards } from '/asks.js'
 import { connect } from '/symphony.js'
 import { connectionBanner } from '/ui/banner.js'
+import { announceAsks } from '/ui/a11y.js'
 
 applyI18n()
 document.querySelector('header nav').before(langPicker())
@@ -33,5 +34,6 @@ function render(snap) {
 
 const sym = connect()
 connectionBanner(sym)
+announceAsks(sym)
 sym.on('snapshot', render)
 sym.on('connection', up => { statusEl.textContent = t(up ? 'approve.connected' : 'approve.reconnecting') })

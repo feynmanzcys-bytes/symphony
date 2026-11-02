@@ -583,7 +583,7 @@ func TestScreens(t *testing.T) {
 		}
 	}
 	do(t, en, 10*time.Second, chromedp.Click(chromedp.CSS(`#hud .steps button[data-level="0"]`)))
-	for _, size := range [][2]int64{{1000, 700}, {1920, 1080}} {
+	for _, size := range [][2]int64{{800, 600}, {1000, 700}, {1920, 1080}} {
 		do(t, en, 10*time.Second, chromedp.EmulateViewport(size[0], size[1]))
 		time.Sleep(3 * time.Second) // the figures find their new places
 		p.shot(fmt.Sprintf("office-%dx%d", size[0], size[1]))

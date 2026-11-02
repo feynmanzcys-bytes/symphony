@@ -9,6 +9,8 @@
   "mc.soundOn": "Sonido activado: un tono cuando llega una alarma",
   "mc.soundOff": "Sonido desactivado",
   "mc.soundBlocked": "Sonido activado, pero el navegador no lo reproducirá hasta que hagas clic en la página",
+  "mc.dark": "Oscuro: la sala de noche",
+  "mc.light": "Claro: la sala de día",
   "mc.noSessions": "Sin sesiones",
   "mc.noActivity": "Aún no ha pasado nada",
   "mc.alarm": "Alarma: {what}",

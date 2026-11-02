@@ -9,6 +9,8 @@
   "mc.soundOn": "响铃已开：来告警时响一声",
   "mc.soundOff": "响铃已关",
   "mc.soundBlocked": "响铃已开，但浏览器要等你点一下页面才会出声",
+  "mc.dark": "深色：夜间的控制室",
+  "mc.light": "浅色：白天的控制室",
   "mc.noSessions": "没有会话",
   "mc.noActivity": "还没有动态",
   "mc.alarm": "告警：{what}",

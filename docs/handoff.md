@@ -15,21 +15,13 @@
   - Everything also runs on Linux, where CI runs.
   - Real Claude Code sessions (2.1.316) ran collaborative tasks on all three.
 - **Not yet checked on a real machine:** Linux and Windows on ARM64, and macOS on Intel. The release builds them; nobody has run them. On macOS, mouse reports after `symphony attach` weren't exercised: Claude Code never turned them on there.
+- **Accessibility, checked by test, not by people:** contrast (WCAG 2.1 AA, every theme and scheme), the keyboard and Chrome's accessibility tree, windows down to 800 px (`/approve` 400). Not covered: a real screen reader (NVDA, JAWS, VoiceOver), hover states and animation frames, the 3:1 rule for control borders (about 1.2–1.5:1 in HQ, Coworkers and Mission), reflow at 320 px, the task chat's mention picker's semantics (the keyboard works).
 - **How the real-machine checks were done.** A Claude Code session on that machine worked through a checklist and sent back each item's result, with the commands it ran and their output. Each check used:
   - a throwaway data folder and port 7811 (`-data`, `-addr`);
   - the repository's mod through `-mod`;
   - a cheap model.
 
   It never touched the user's own office, plugins or start at login.
-
-
-## The mod
-
-
-## Pages
-
-25. **Not reviewed: accessibility, contrast, narrow windows.** That covers using the office (a canvas) by keyboard, screen readers, the contrast of the state colors and of HQ's dark mode, and windows narrower than about 1000 px. (The task window docks the member window beside it only from 1250 px.)
-## Tests
 
 ## Later features
 
@@ -38,4 +30,3 @@
   - `prompt.compose` with the office's context;
   - "remember this rule";
   - MCP elicitation;
-  - Mission Control in light colors.

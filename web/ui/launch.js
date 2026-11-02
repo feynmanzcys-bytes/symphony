@@ -8,22 +8,23 @@
 //   launch.watch()                   on every snapshot: closes once the launch is online, shows why it failed
 //   launch.el
 import { t, lang, esc, errorText, base, fill, browse, showEnd } from '/ui/common.js'
+import { dialog } from '/ui/a11y.js'
 
 const MARKUP = `
 <div class="modal" id="launch" hidden>
   <form class="panel" autocomplete="off">
     <h2 class="title"></h2>
-    <label data-i18n="launch.name"></label>
-    <input name="name" data-i18n-placeholder="launch.namePlaceholder" required>
-    <label data-i18n="launch.dir"></label>
-    <div class="row"><input name="dir" data-i18n-placeholder="launch.dirPlaceholder" required><button type="button" class="px browse" data-i18n="launch.browse"></button></div>
+    <label for="launch-name" data-i18n="launch.name"></label>
+    <input id="launch-name" name="name" data-i18n-placeholder="launch.namePlaceholder" required>
+    <label for="launch-dir" data-i18n="launch.dir"></label>
+    <div class="row"><input id="launch-dir" name="dir" data-i18n-placeholder="launch.dirPlaceholder" required><button type="button" class="px browse" data-i18n="launch.browse"></button></div>
     <div class="browser" hidden><div class="cur"></div><ul></ul><button type="button" class="px pick" data-i18n="launch.pick"></button></div>
     <div class="recent"></div>
     <div class="grid">
-      <div><label data-i18n="launch.model"></label><select name="model"></select></div>
-      <div><label data-i18n="launch.effort"></label><select name="effort"></select></div>
-      <div><label data-i18n="launch.permissionMode"></label><select name="permissionMode"></select></div>
-      <div><label data-i18n="launch.resume"></label><select name="resume"></select></div>
+      <div><label for="launch-model" data-i18n="launch.model"></label><select id="launch-model" name="model"></select></div>
+      <div><label for="launch-effort" data-i18n="launch.effort"></label><select id="launch-effort" name="effort"></select></div>
+      <div><label for="launch-mode" data-i18n="launch.permissionMode"></label><select id="launch-mode" name="permissionMode"></select></div>
+      <div><label for="launch-resume" data-i18n="launch.resume"></label><select id="launch-resume" name="resume"></select></div>
       <div class="warn" data-i18n="launch.bypassWarning" hidden></div>
     </div>
     <pre class="preview"></pre>
@@ -42,6 +43,7 @@ export function createLaunchDialog(sym, { options = () => sym.launchOptions(true
   for (const el of dlg.querySelectorAll('[data-i18n]')) el.textContent = t(el.dataset.i18n)
   for (const el of dlg.querySelectorAll('[data-i18n-placeholder]')) el.placeholder = t(el.dataset.i18nPlaceholder)
   const form = dlg.querySelector('form')
+  dialog(dlg, form.querySelector('.title'))
   const field = name => form.elements[name]
   let opts = null
   let pending = null // the launch we're waiting to see online
@@ -132,7 +134,7 @@ export function createLaunchDialog(sym, { options = () => sym.launchOptions(true
       fill(field('permissionMode'), opts.permissionModes, acc ? last.permissionMode : '')
       warn()
       fill(field('resume'), opts.resumes, '')
-      form.querySelector('.recent').innerHTML = recent.map(d => `<span title="${esc(d)}">${esc(base(d))}</span>`).join('')
+      form.querySelector('.recent').innerHTML = recent.map(d => `<span role="button" tabindex="0" title="${esc(d)}">${esc(base(d))}</span>`).join('')
       form.querySelectorAll('.recent span').forEach((el, i) => el.onclick = () => { field('dir').value = recent[i]; showEnd(field('dir')); preview() })
       form.querySelector('.browser').hidden = true
       setStatus('')

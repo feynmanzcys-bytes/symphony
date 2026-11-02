@@ -7,13 +7,23 @@ import { esc } from '/asks.js'
 export { esc, t, lang, errorText }
 
 export const GREEN = '#2e9e5b', YELLOW = '#f2b705', RED = '#d64541', GRAY = '#a9a49b'
-// three state colors: idle green, working yellow, waiting for an approval or an answer red; off duty gray
+// three state colors: idle green, working yellow, waiting for an approval or an answer red; off duty gray (the drawing's
+// colors, for a canvas)
 export const STATE_COLOR = { idle: GREEN, thinking: YELLOW, tool: YELLOW, waiting: RED, ended: GRAY, done: GRAY }
 export const TASK_COLOR = { running: YELLOW, ending: YELLOW, failed: RED, ended: GRAY }
+// The same states for the marks on the page (dots, bands, lights): CSS variables each theme sets for its color scheme
+// (ui.css: --st-idle, --st-busy, --st-wait, --st-off), dark enough on light paper to stand out (3:1), the drawing's
+// colors where a page sets none. Not for a canvas, which takes no var().
+const mark = (name, color) => `var(--st-${name}, ${color})`
+export const GRAY_MARK = mark('off', GRAY)
+export const STATE_MARK = { idle: mark('idle', GREEN), thinking: mark('busy', YELLOW), tool: mark('busy', YELLOW), waiting: mark('wait', RED), ended: GRAY_MARK, done: GRAY_MARK }
+export const TASK_MARK = { running: mark('busy', YELLOW), ending: mark('busy', YELLOW), failed: mark('wait', RED), ended: GRAY_MARK }
 
 export const base = p => (p || '').split(/[\\/]/).filter(Boolean).pop() || p || '?' // Windows paths use backslashes
 export const lower = s => String(s ?? '').toLowerCase()
-export const dot = state => `<span class="dot" style="background:${STATE_COLOR[state] ?? GRAY}"></span>`
+// a state's dot: beside words that say the state, hidden from screen readers; alone, it says it (label) as a picture and
+// in its tooltip, so the state is never told by its color only
+export const dot = (state, label) => `<span class="dot" ${label ? `role="img" aria-label="${esc(label)}" title="${esc(label)}"` : 'aria-hidden="true"'} style="background:${STATE_MARK[state] ?? GRAY_MARK}"></span>`
 export const element = html => { const tpl = document.createElement('template'); tpl.innerHTML = html; return tpl.content.firstElementChild }
 export const hash = s => [...String(s)].reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 7) >>> 0
 
@@ -100,19 +110,35 @@ export async function browse(sym, box, path, fail, home) {
   const up = data.parent ? [['⬆ ' + t('launch.up'), data.parent]] : (data.roots || []).filter(x => x !== data.path).map(x => ['💽 ' + x, x])
   const items = up.concat((data.dirs || []).map(d => [d.name + '/', d.path]))
   const ul = box.querySelector('ul')
-  ul.innerHTML = items.map(([label]) => `<li>${esc(label)}</li>`).join('') || `<li style="color:#8a867e;cursor:default">${esc(t('launch.noSubfolders'))}</li>`
+  ul.innerHTML = items.map(([label]) => `<li><button type="button">${esc(label)}</button></li>`).join('') || `<li style="color:var(--muted);cursor:default">${esc(t('launch.noSubfolders'))}</li>`
   ul.querySelectorAll('li').forEach((li, i) => { if (items[i]) li.onclick = () => browse(sym, box, items[i][1], fail, home) })
 }
 
 // ---------- drawing what one clicks ----------
 // setHTML puts html into el only when it differs from what it put there last (says whether it did): a row or a tile
-// drawn again the same stays the element it was.
+// drawn again the same stays the element it was. What had the keyboard's focus in it has it again in the new html: the
+// element with the same data-* attributes, in a parent with the same ones (keyFor).
 const drawnHTML = new WeakMap()
 export function setHTML(el, html) {
   if (drawnHTML.get(el) === html) return false
   drawnHTML.set(el, html)
+  const focused = keyFor(el, document.activeElement)
   el.innerHTML = html
+  if (focused) el.querySelector(focused)?.focus({ preventScroll: true })
   return true
+}
+// a selector for at inside el that finds it again once el is drawn anew: its tag and data-* attributes, and its
+// parents' up to el or up to one with an id (data-sig, which says how it was drawn, left out); null when at isn't in el
+// or says nothing of itself
+export function keyFor(el, at) {
+  if (!at || at === el || !el.contains(at)) return null
+  const parts = []
+  for (let n = at; n && n !== el; n = n.parentElement) {
+    const data = [...n.attributes].filter(a => a.name.startsWith('data-') && a.name !== 'data-sig').map(a => `[${a.name}="${CSS.escape(a.value)}"]`).join('')
+    if (n.id) { parts.unshift('#' + CSS.escape(n.id) + data); break }
+    if (data || n === at) parts.unshift(n.tagName.toLowerCase() + data)
+  }
+  return /[[#]/.test(parts[parts.length - 1]) ? parts.join(' ') : null
 }
 // A click is a press and a release on the same element: one a redraw replaces in between never gets it, so a busy
 // session's row could hardly be clicked. deferWhilePressed(draw) gives a draw that, while a pointer is down, only notes

@@ -4,8 +4,9 @@
 import { t, lang, errorText, fmtTime, applyI18n, langPicker } from '/i18n.js'
 import { esc } from '/asks.js'
 import { connect } from '/symphony.js'
-import { GREEN, YELLOW, RED, GRAY, STATE_COLOR, base, lower, dot, element, hash, build, buildText, statusText as statusOf, richText, setHTML, deferWhilePressed } from '/ui/common.js'
+import { GREEN, YELLOW, RED, GRAY, STATE_COLOR, STATE_MARK, GRAY_MARK, base, lower, dot, element, hash, build, buildText, statusText as statusOf, richText, setHTML, deferWhilePressed } from '/ui/common.js'
 import { connectionBanner } from '/ui/banner.js'
+import { announceAsks } from '/ui/a11y.js'
 import { createChat } from '/ui/chat.js'
 import { createLaunchDialog } from '/ui/launch.js'
 import { createTaskUI } from '/ui/task.js'
@@ -18,6 +19,7 @@ sym.on('snapshot', s => { snapshot = s })
 
 applyI18n()
 connectionBanner(sym)
+announceAsks(sym)
 const prefs = document.querySelector('#hud .prefs'), langSel = langPicker()
 prefs.appendChild(langSel)
 themePicker(sym).then(sel => prefs.insertBefore(sel, langSel))
@@ -951,6 +953,7 @@ const WALK = 48, HURRY = 90, TAG_RUN = 70, TAG_CHASE = 84 // pixels per second
 function makeEmployee(acc) {
   const label = document.createElement('div')
   label.className = 'emp-label'
+  label.setAttribute('aria-hidden', 'true') // (the roster says it for screen readers)
   label.dataset.account = acc.id
   label.addEventListener('click', () => onEmployeeClick(acc.id))
   document.getElementById('labels').appendChild(label)
@@ -974,7 +977,7 @@ function updateEmployee(e, acc, walkIn, task) {
     e.inside = true
   } // off duty: the planner walks it out
   const state = online ? e.s.state : 'ended'
-  e.label.style.borderLeftColor = STATE_COLOR[state] ?? GRAY
+  e.label.style.borderLeftColor = STATE_MARK[state] ?? GRAY_MARK
   e.label.classList.toggle('off', !online)
   e.label.dataset.state = state
   const status = task && !online ? t('task.inRoom', { room:taskRoom(task), id:task.id }) : statusText(online ? e.s : null)
@@ -989,7 +992,7 @@ function setLabel(x, name, state, status) {
   x.labelSig = sig
   if (!x.label.firstChild) x.label.innerHTML = '<div class="nm"></div><div class="st"><span class="dot"></span><span class="tx"></span></div>'
   x.label.querySelector('.nm').textContent = name
-  x.label.querySelector('.st .dot').style.background = STATE_COLOR[state] ?? GRAY
+  x.label.querySelector('.st .dot').style.background = STATE_MARK[state] ?? GRAY_MARK
   x.label.querySelector('.st .tx').textContent = status
   x.sized = false
 }
@@ -1007,6 +1010,7 @@ const taskSeats = new Map() // a small room's k -> where a task's members sit: i
 function makeFigure(key) {
   const label = document.createElement('div')
   label.className = 'emp-label member'
+  label.setAttribute('aria-hidden', 'true')
   label.addEventListener('click', () => onFigureClick(figs.get(key)))
   document.getElementById('labels').appendChild(label)
   return { key, label, x:0, y:0, path:[], node:-1, goal:null, want:null, inside:true, fresh:false, facing:1,
@@ -1053,7 +1057,7 @@ function syncFigures(walkIn) {
 // a member's tag: the member's name (bob-T7) and its task session's state; a pending ask in its desk session turns it red too
 function labelFigure(f) {
   const online = isOnline(f), state = !online ? 'ended' : asking(f.acc.session) ? 'waiting' : f.s.state
-  f.label.style.borderLeftColor = STATE_COLOR[state] ?? GRAY
+  f.label.style.borderLeftColor = STATE_MARK[state] ?? GRAY_MARK
   f.label.classList.toggle('off', !online)
   setData(f.label, 'state', state); setData(f.label, 'account', f.acc.id); setData(f.label, 'task', f.task.id); setData(f.label, 'session', f.s.id)
   const status = statusText(online ? f.s : null)
@@ -1684,10 +1688,14 @@ function renderFind() {
   const hits = findHits()
   findSel = Math.max(0, Math.min(findSel, hits.length - 1))
   findList.hidden = !findQ || document.activeElement !== findEl
-  findList.innerHTML = hits.map((h, i) => `<div class="hit${i === findSel ? ' on' : ''}" data-key="${esc(h.key)}">` +
+  findList.innerHTML = hits.map((h, i) => `<div class="hit${i === findSel ? ' on' : ''}" data-key="${esc(h.key)}" role="option" id="find-hit-${i}" aria-selected="${i === findSel}">` +
     (h.task ? `${dot(TASK_DOT[h.task.status])}<b>${esc(h.name)}</b><small>${esc(h.task.title)}</small></div>`
       : `${dot(isOnline(h.e) ? h.e.s.state : 'ended')}<b>${esc(h.name)}</b><small>${esc(stateLine(h.e))}</small></div>`)).join('') ||
-    `<div class="none">${esc(t('search.none'))}</div>`
+    `<div class="none" role="option" aria-disabled="true">${esc(t('search.none'))}</div>`
+  // for screen readers: the list open or not, and the hit the arrows are on
+  findEl.setAttribute('aria-expanded', String(!findList.hidden))
+  if (!findList.hidden && hits.length) findEl.setAttribute('aria-activedescendant', 'find-hit-' + findSel)
+  else findEl.removeAttribute('aria-activedescendant')
 }
 function pickFound(h) {
   findEl.value = ''; findSel = 0; findEl.blur(); renderFind()
@@ -1698,7 +1706,7 @@ function pickFound(h) {
 }
 findEl.addEventListener('input', () => { findSel = 0; renderFind() })
 findEl.addEventListener('focus', renderFind)
-findEl.addEventListener('blur', () => { findList.hidden = true })
+findEl.addEventListener('blur', () => { findList.hidden = true; findEl.setAttribute('aria-expanded', 'false'); findEl.removeAttribute('aria-activedescendant') })
 findEl.addEventListener('keydown', ev => {
   if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') { findSel += ev.key === 'ArrowDown' ? 1 : -1; renderFind() }
   else if (ev.key === 'Enter') pickFound(findHits()[findSel])
@@ -1717,6 +1725,7 @@ addEventListener('keydown', ev => { // "/" jumps to the search box; Esc lets go 
   if (ev.key === 'Escape' && !chat.hidden) { if (!chat.asking) closeChat() } // the member's first, then its task
   else if (ev.key === 'Escape' && !tasks.win.hidden) closeTaskWin()
   if (ev.key === 'Escape' && !tasks.dialogHidden) tasks.closeDialog()
+  if (ev.key === 'Escape' && !launch.hidden) launch.close()
   if (ev.key !== '/' || ev.ctrlKey || ev.metaKey || ev.altKey || !chat.hidden || !launch.hidden || !tasks.dialogHidden || !tasks.win.hidden) return
   if (/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName)) return
   ev.preventDefault()
@@ -1734,13 +1743,14 @@ const renderStats = deferWhilePressed(() => {
   const el = document.getElementById('stats'), badge = hudTab.querySelector('.badge')
   badge.hidden = !snapshot.asks.length
   badge.textContent = snapshot.asks.length
+  labelTab()
   if (!snapshot.accounts.length) { chipOn = null; setHTML(el, esc(t('office.nobody'))); return }
   const n = { idle:0, busy:0, waiting:0, off:0 }
   for (const e of emps.values()) n[groupOf(e)]++
   for (const f of figs.values()) if (isOnline(f)) n[groupOf(f)]++ // task sessions count like desk sessions
   setHTML(el, CHIPS.map(([group, state, key]) => { // (the same chips stay the elements they were: a click pressed on one lands)
     const hot = group === 'waiting' && snapshot.asks.length > 0
-    return `<button class="chip${hot ? ' hot' : ''}${chipOn === group ? ' on' : ''}" data-group="${group}" style="--c:${STATE_COLOR[state]}" ` +
+    return `<button class="chip${hot ? ' hot' : ''}${chipOn === group ? ' on' : ''}" data-group="${group}" style="--c:${STATE_MARK[state]}"${hot ? '' : ` aria-pressed="${chipOn === group}"`} ` +
       `title="${esc(hot ? t('asks.title', { n:snapshot.asks.length }) : t('stats.focusTitle'))}">${numbered(key, n[group])}</button>`
   }).join(''))
 })
@@ -1759,8 +1769,14 @@ function setHud(up, remember = true) {
   hud.classList.toggle('up', up)
   hudTab.title = t(up ? 'hud.show' : 'hud.hide')
   hudTab.setAttribute('aria-expanded', String(!up))
+  labelTab()
   if (remember) try { localStorage.setItem(HUD_STORE, up ? 'up' : 'down') } catch {}
   hudRoom()
+}
+// the tab's name for screen readers: what it does, and, while the HUD is away, how many asks wait (its badge)
+function labelTab() {
+  const up = hud.classList.contains('up'), n = snapshot.asks.length
+  hudTab.setAttribute('aria-label', t(up ? 'hud.show' : 'hud.hide') + (up && n ? ' · ' + t('asks.title', { n }) : ''))
 }
 let hudBottom = 0 // where the HUD ends, in CSS pixels from the top; tags at a task's table keep below it
 const hudRoom = () => { hudBottom = hud.classList.contains('up') ? 0 : hud.offsetHeight; document.documentElement.style.setProperty('--hud-h', hudBottom + 'px') }
@@ -1777,8 +1793,8 @@ let detail = (() => {
 const pixelsEl = document.createElement('div')
 pixelsEl.className = 'group pixels'
 pixelsEl.title = t('pixels.title')
-pixelsEl.innerHTML = `<span class="lbl">${esc(t('pixels.label'))}</span><div class="steps">` +
-  Array.from({ length:DETAIL_STEPS }, (_, i) => `<button data-level="${i}" title="${esc(t('pixels.' + (i + 1)))}"></button>`).join('') + '</div>'
+pixelsEl.innerHTML = `<span class="lbl" id="pixels-label">${esc(t('pixels.label'))}</span><div class="steps" role="group" aria-labelledby="pixels-label">` +
+  Array.from({ length:DETAIL_STEPS }, (_, i) => `<button data-level="${i}" title="${esc(t('pixels.' + (i + 1)))}" aria-label="${esc(t('pixels.' + (i + 1)))}"></button>`).join('') + '</div>'
 function setDetail(level) {
   detail = level
   try { localStorage.setItem(DETAIL_STORE, String(level)) } catch {}
@@ -1806,6 +1822,7 @@ function syncPlates() {
   while (plates.length < smalls.length) {
     const el = document.createElement('div')
     el.className = 'room-plate'
+    el.setAttribute('aria-hidden', 'true') // (the roster says it)
     el.addEventListener('click', () => { const r = smalls[plates.indexOf(el)]; if (r) onRoomClick(r) })
     document.getElementById('labels').appendChild(el)
     plates.push(el)
@@ -1825,6 +1842,7 @@ function syncPlates() {
     el.title = title
     if (el.style.maxWidth) fitPlate(el)
   })
+  renderRoster()
 }
 // a plate too narrow for its text goes a step smaller; one with a task still too narrow for the id and the name shows the
 // id alone. Its size is kept for the bubbles, which keep off the plates
@@ -1841,10 +1859,37 @@ function onRoomClick(r) {
   else if (launchOpts?.enabled) tasks.openDialog({ room:{ k:r.k, name:roomName(r.k) } })
 }
 
+// ================= the roster =================
+// The office for the keyboard and screen readers, to whom the canvas says nothing: a button for every employee, in seat
+// order, saying what it's doing (a click opens its window, as on the employee), and one for every small meeting room,
+// saying what's in it (a click opens its task, or the task dialog). Out of sight until a key brings the focus into it;
+// the employee whose button has the focus lights up in the office.
+const roster = document.getElementById('roster')
+function renderRoster() {
+  const desks = [...emps.values()].sort((a, b) => a.acc.seat - b.acc.seat)
+    .map(e => `<li><button type="button" data-account="${esc(e.acc.id)}">${esc(e.status ?? e.acc.name)}</button></li>`).join('')
+  const rooms = smalls.map(r => {
+    const task = roomTask(r.k), name = roomName(r.k)
+    const text = task ? `${name} · ${task.id}${t('common.colon')}${task.title.split('\n')[0]} · ${t(task.status === 'running' ? 'room.busy' : 'task.status.' + task.status)} · ${task.members.map(m => m.name).join(', ')}`
+      : `${name} · ${t('room.seats', { n:r.seats })} · ${t('room.free')}`
+    return `<li><button type="button" data-room="${r.k}"${task || launchOpts?.enabled ? '' : ' aria-disabled="true"'}>${esc(text)}</button></li>`
+  }).join('')
+  setHTML(roster.querySelector('.desks'), desks)
+  setHTML(roster.querySelector('.rooms'), rooms)
+}
+roster.addEventListener('click', ev => {
+  const b = ev.target.closest('button')
+  if (!b || b.getAttribute('aria-disabled') === 'true') return
+  if (b.dataset.account) onEmployeeClick(b.dataset.account)
+  else { const r = smalls.find(x => String(x.k) === b.dataset.room); if (r) onRoomClick(r) }
+})
+roster.addEventListener('focusin', ev => { const e = emps.get(ev.target.dataset?.account); if (e) e.foundAt = performance.now() })
+
 // ================= data =================
 // the activity log: hidden until its HUD button opens it (the page remembers), the last 200 lines
 const logEl = document.getElementById('log'), logLines = logEl.querySelector('.lines'), LOG_STORE = 'symphony.log'
 logLines.dataset.empty = t('log.empty')
+for (const b of document.querySelectorAll('#log .close, #msgs-panel .close')) b.setAttribute('aria-label', t('common.close'))
 // While the panel is hidden the lines only go into a list (no elements, no measuring: under load this runs 100 times a
 // second); opening the panel puts them in
 const logKept = [] // the last 200 lines
@@ -1887,6 +1932,7 @@ function showMessage(m) {
   from.bubble?.remove()
   const el = document.createElement('div')
   el.className = 'bubble'
+  el.setAttribute('aria-hidden', 'true') // (the message log has it)
   el.style.visibility = 'hidden' // until placed
   el.innerHTML = `<b>→ ${esc(m.toName || '?')}</b>${esc(t('common.colon'))}${esc(m.text.length > 60 ? m.text.slice(0, 60) + '…' : m.text)}`
   document.getElementById('labels').appendChild(el)
@@ -1926,7 +1972,7 @@ sym.on('snapshot', snap => {
   for (const acc of desks) updateEmployee(emps.get(acc.id), acc, !first, away.get(acc.id))
   syncFigures(!first)
 
-  syncPlates()
+  syncPlates() // (and the roster)
   renderStats()
   if (chatFor) showChat(chatFor)
   if (!msgsPanel.hidden) renderMessages()
@@ -2196,6 +2242,7 @@ const roomEls = {}
 for (const [key, text] of [['work', t('room.work')], ['meeting', t('room.meeting')], ['lounge', t('room.lounge')], ['sign', 'SYMPHONY']]) {
   const el = document.createElement('div')
   el.className = key === 'sign' ? 'sign-text' : 'room-label'
+  el.setAttribute('aria-hidden', 'true')
   el.textContent = text
   document.getElementById('labels').appendChild(el)
   roomEls[key] = el
@@ -2230,6 +2277,7 @@ const addBtn = document.createElement('button')
 addBtn.className = 'seat-add'
 addBtn.textContent = '+'
 addBtn.title = t('office.addSeatTitle')
+addBtn.setAttribute('aria-label', t('office.addSeatTitle'))
 addBtn.hidden = true
 addBtn.addEventListener('click', () => openLaunch(null))
 document.getElementById('labels').appendChild(addBtn)

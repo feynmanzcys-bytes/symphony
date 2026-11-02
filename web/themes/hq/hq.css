@@ -1,17 +1,24 @@
 /* HQ: a big company's management console. Dense, tabular, numbers first; light by default, dark when the system is
    (or the switch says so). The shared pieces (ui/ui.css) take their colors from the same variables. */
 :root {
-  --paper: #ffffff; --paper-2: #f3f4f6; --ink: #1f2328; --muted: #6e7781; --muted-2: #57606a; --line: #d0d7de;
+  --paper: #ffffff; --paper-2: #f3f4f6; --ink: #1f2328; --muted: #59636e; --muted-2: #57606a; --line: #d0d7de;
   --pane: #f6f8fa; --pane-2: #eaeef2; --accent: #0969da; --ok: #1a7f37; --danger: #cf222e; --danger-dark: #82071e;
   --purple: #6639ba; --purple-dark: #3e1f87; --purple-light: #c3b1e8;
   --warn: #bf8700; --bg: #f6f8fa; --shadow: 0 1px 2px rgba(31,35,40,.08), 0 1px 0 rgba(31,35,40,.04);
   --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+  /* filled with the accent or red under white text; red as text; the marks of the states (ui.css) */
+  --accent-strong: #0969da; --danger-strong: #cf222e; --danger-ink: #c21f2b; --danger-bg: #ffebe9;
+  --card: #ffffff; --field: #ffffff; --field-ro: #f6f8fa; --hl: #ddf4ff; --me-accent: #79c0ff;
+  --st-idle: #1a7f37; --st-busy: #9a6700; --st-wait: #cf222e; --st-off: #6e7781;
 }
 html[data-dark] {
   --paper: #161b22; --paper-2: #1c2129; --ink: #e6edf3; --muted: #8b949e; --muted-2: #a3acb6; --line: #30363d;
   --pane: #0d1117; --pane-2: #21262d; --accent: #4493f8; --ok: #3fb950; --danger: #f85149; --danger-dark: #ff7b72;
-  --purple: #a371f7; --purple-dark: #8957e5; --purple-light: #6e40c9;
+  --purple: #7a4cd4; --purple-dark: #a371f7; --purple-light: #3c2a6b; --purple-light-ink: #e8dcfd;
   --warn: #d29922; --bg: #0d1117; --shadow: 0 1px 2px rgba(0,0,0,.4); --tool-ink: #a3acb6;
+  --accent-strong: #1f6feb; --danger-strong: #da3633; --danger-ink: #ff7b72; --danger-bg: #2d1619;
+  --card: #1c2129; --field: #0d1117; --field-ro: #21262d; --hl: #1f2d3f; --me-accent: #0550ae;
+  --st-idle: #3fb950; --st-busy: #d29922; --st-wait: #f85149; --st-off: #8b949e;
 }
 html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--ink); font: 13px/1.5 var(--sans); }
 body:lang(zh-CN) { font-family: var(--sans), "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC"; }
@@ -23,34 +30,36 @@ a { color: var(--accent); }
 /* the shared pieces, flat here: no pixel shadows, rounded corners, the console's palette */
 button.px { border-radius: 6px; box-shadow: none; border-color: var(--line); background: var(--paper); }
 button.px:hover { background: var(--pane-2); }
-button.px.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.px.primary { background: var(--accent-strong); border-color: var(--accent-strong); color: #fff; }
 button.px.primary:hover { filter: brightness(1.08); }
-button.px.alert { background: var(--danger); border-color: var(--danger); }
+button.px.alert { background: var(--danger-strong); border-color: var(--danger-strong); }
 .panel, .panel.chat, #asks .card, #taskwin .tlist, .it.user, .it.text, .it.message, #find-list { border-radius: 8px; box-shadow: var(--shadow); }
 .panel { border-color: var(--line); }
 .modal { background: rgba(31,35,40,.45); }
 #asks input[type=text], #asks button, #launch input, #launch select, #task :is(input:not([type=checkbox]), select, textarea), .chat .say textarea, #taskwin .tsay textarea { border-radius: 6px; border-color: var(--line); }
-#asks button.allow, #asks button.submit { background: var(--accent); border-color: var(--accent); }
+#asks button.allow, #asks button.submit { background: var(--accent-strong); border-color: var(--accent-strong); color: #fff; }
+#task .lead-tag, #taskwin .badge.lead { background: var(--accent-strong); color: #fff; }
 .chat .head, .chat .dock { border-color: var(--line); }
 .it.user { border-color: var(--ink); }
 .chat .meta span.task { background: color-mix(in srgb, var(--accent) 12%, var(--paper)); border-color: var(--accent); color: var(--ink); }
 .it.text { border-color: var(--line); box-shadow: none; }
 #taskwin .top .status, #taskwin .members, #taskwin .tlist { border-color: var(--line); }
+#taskwin .top .status { border-left-color: var(--c, var(--st-off)); } /* (the band says the task's state) */
 
 /* the top bar */
-.top { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 18px; padding: 8px 20px; background: var(--paper); border-bottom: 1px solid var(--line); box-shadow: var(--shadow); }
+.top { position: sticky; top: 0; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; padding: 8px 20px; background: var(--paper); border-bottom: 1px solid var(--line); box-shadow: var(--shadow); }
 .brand { display: flex; align-items: center; gap: 8px; }
 .brand .mark { width: 18px; height: 18px; border-radius: 4px; background: linear-gradient(135deg, var(--accent), var(--purple)); }
 .brand h1 { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: .02em; white-space: nowrap; }
-.tabs { display: flex; gap: 2px; }
+.tabs { display: flex; flex-wrap: wrap; gap: 2px; }
 .tabs button { position: relative; font: inherit; color: var(--muted-2); background: none; border: 0; padding: 6px 10px; cursor: pointer; border-radius: 6px; }
 .tabs button:hover { background: var(--pane-2); color: var(--ink); }
 .tabs button.on { color: var(--ink); font-weight: 600; }
 .tabs button.on::after { content: ''; position: absolute; left: 10px; right: 10px; bottom: -9px; height: 2px; background: var(--accent); }
 .tabs .count { margin-left: 6px; font-size: 11px; line-height: 16px; padding: 0 6px; border-radius: 8px; background: var(--pane-2); color: var(--muted-2); }
-.tabs .count.hot { background: var(--danger); color: #fff; }
+.tabs .count.hot { background: var(--danger-strong); color: #fff; }
 .tabs .count[hidden] { display: none; }
-.find { position: relative; margin-left: auto; width: 260px; }
+.find { position: relative; margin-left: auto; flex: 0 1 260px; min-width: 160px; }
 #find { width: 100%; box-sizing: border-box; font: inherit; color: var(--ink); background: var(--pane); border: 1px solid var(--line); border-radius: 6px; padding: 5px 10px; }
 #find:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent); }
 #find-list { position: absolute; z-index: 6; left: 0; right: 0; top: calc(100% + 4px); background: var(--paper); border: 1px solid var(--line); padding: 4px 0; }
@@ -59,7 +68,8 @@ button.px.alert { background: var(--danger); border-color: var(--danger); }
 #find-list .hit.on, #find-list .hit:hover { background: var(--pane-2); }
 #find-list .hit small { color: var(--muted); margin-left: auto; }
 #find-list .none { padding: 4px 10px; color: var(--muted); }
-.top .actions { display: flex; align-items: center; gap: 8px; }
+.top .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.top .actions button.px { white-space: nowrap; }
 .top .prefs { display: flex; gap: 6px; }
 .top select { font: inherit; font-size: 12px; color: var(--ink); background: var(--paper); border: 1px solid var(--line); border-radius: 6px; padding: 3px 4px; }
 button.px.icon { width: 30px; padding: 2px 0; text-align: center; }
@@ -94,10 +104,10 @@ section[hidden] { display: none; }
 .list .row time, .list .row .dim { color: var(--muted); font-size: 12px; white-space: nowrap; }
 .list .empty, .empty { color: var(--muted); padding: 12px 0; text-align: center; }
 .badge { display: inline-block; font-size: 11px; line-height: 18px; padding: 0 7px; border-radius: 9px; background: var(--pane-2); color: var(--muted-2); white-space: nowrap; }
-.badge.ask, .badge.error, .badge.launchFailed { background: color-mix(in srgb, var(--danger) 15%, var(--paper)); color: var(--danger); }
-.badge.tool { background: color-mix(in srgb, var(--accent) 12%, var(--paper)); color: var(--accent); }
-.badge.message { background: color-mix(in srgb, var(--purple) 15%, var(--paper)); color: var(--purple); }
-.badge.start, .badge.settled, .badge.launch { background: color-mix(in srgb, var(--ok) 15%, var(--paper)); color: var(--ok); }
+.badge.ask, .badge.error, .badge.launchFailed { background: color-mix(in srgb, var(--danger) 15%, var(--paper)); color: color-mix(in srgb, var(--danger) 72%, var(--ink)); }
+.badge.tool { background: color-mix(in srgb, var(--accent) 12%, var(--paper)); color: color-mix(in srgb, var(--accent) 72%, var(--ink)); }
+.badge.message { background: color-mix(in srgb, var(--purple) 15%, var(--paper)); color: color-mix(in srgb, var(--purple-dark) 72%, var(--ink)); }
+.badge.start, .badge.settled, .badge.launch { background: color-mix(in srgb, var(--ok) 15%, var(--paper)); color: color-mix(in srgb, var(--ok) 72%, var(--ink)); }
 .dot { width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; }
 
 /* charts: thin marks, one hue, text in text tokens, a tooltip on hover */
@@ -123,10 +133,14 @@ section[hidden] { display: none; }
 .chip i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; background: var(--c); vertical-align: 0; }
 .chip b { font-weight: 600; margin-left: 4px; }
 .chip.on { background: var(--ink); color: var(--paper); border-color: var(--ink); }
-.chip.hot { border-color: var(--danger); color: var(--danger); }
+.chip.hot { border-color: var(--danger); color: var(--danger-ink); }
+/* (a window too narrow for every column scrolls the table, not the page) */
+.people .scroll { overflow-x: auto; border-radius: 8px; }
 table#people { width: 100%; border-collapse: collapse; background: var(--paper); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; box-shadow: var(--shadow); font-variant-numeric: tabular-nums; }
 #people th, #people td { padding: 7px 10px; text-align: left; border-bottom: 1px solid var(--line); white-space: nowrap; }
 #people th { font-size: 12px; font-weight: 600; color: var(--muted-2); background: var(--pane); cursor: pointer; user-select: none; }
+#people th button.sort { all: unset; cursor: pointer; }
+#people th button.sort:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
 #people th.on::after { content: ' ▾'; }
 #people th.on.asc::after { content: ' ▴'; }
 #people tbody tr { cursor: pointer; }
@@ -165,7 +179,7 @@ table#people { width: 100%; border-collapse: collapse; background: var(--paper);
 .board .task .mem { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted-2); padding: 1px 0; }
 .board .task .mem b { color: var(--ink); font-weight: 500; }
 .board .task .mem .st { margin-left: auto; color: var(--muted); white-space: nowrap; }
-.board .task .err { margin-top: 6px; color: var(--danger); font-size: 12px; white-space: pre-wrap; }
+.board .task .err { margin-top: 6px; color: var(--danger-ink); font-size: 12px; white-space: pre-wrap; }
 .board .empty { padding: 20px 0; }
 
 /* activity: the timeline */

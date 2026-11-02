@@ -19,9 +19,10 @@ import (
 )
 
 // TestMission walks through the Mission Control theme with made-up activity (no tokens): a tile per session with the
-// state word, the gauges and the sparkline, a task's members with its stripe, the off-duty tiles dimmed; the alarm in
-// the bar opening the waiting session's window, where the ask is answered; a tile opening a window, a stripe the task
-// window; the search box; the ticker; the grid fitting the window as the team grows; and the wall in zh-CN.
+// state word, the gauges and the sparkline, a task's members with its stripe, the off-duty tiles dimmed; the room by
+// day (the system's light scheme) and at night (the switch, remembered across a reload); the alarm in the bar opening
+// the waiting session's window, where the ask is answered; a tile opening a window, a stripe the task window; the search
+// box; the ticker; the grid fitting the window as the team grows; and the wall in zh-CN, by day and at night.
 // Screenshots into e2e/artifacts/screens/mission-*. It fails on a page error, a key a catalog lacks, or a raw key on screen.
 func TestMission(t *testing.T) {
 	if runtime.GOOS == "windows" {
@@ -105,8 +106,29 @@ func TestMission(t *testing.T) {
 		t.Fatalf("the bar: %s", p.js(`document.querySelector('.bar').innerText`))
 	}
 	waitUntil(t, 10*time.Second, "the ticker has lines", func() bool { return p.is(`document.querySelectorAll('#ticker .item').length >= 4`) })
+	// by day: the browser's scheme is light (newBrowser), and nothing was picked yet
+	if !p.is(`!document.documentElement.hasAttribute('data-dark') && document.getElementById('dark').getAttribute('aria-pressed') === 'false' && getComputedStyle(document.body).backgroundColor === 'rgb(223, 229, 236)'`) {
+		t.Fatalf("a light system should get the room by day: %s", p.js(`getComputedStyle(document.body).backgroundColor`))
+	}
 	p.shot("wall")
 	p.check()
+	// at night: the switch, remembered across a reload
+	p.run(`document.getElementById('dark').click()`)
+	if !p.is(`document.documentElement.hasAttribute('data-dark') && localStorage.getItem('symphony.mission.dark') === '1' && document.getElementById('dark').getAttribute('aria-pressed') === 'true'`) {
+		t.Fatal("the switch should turn the room dark, say so and remember it")
+	}
+	do(t, en, 30*time.Second, chromedp.Reload())
+	waitUntil(t, 20*time.Second, "after a reload the room is still dark", func() bool {
+		return p.is(`document.querySelectorAll('#wall .tile').length === 4 && document.documentElement.hasAttribute('data-dark') && getComputedStyle(document.body).backgroundColor === 'rgb(7, 11, 16)'`)
+	})
+	waitUntil(t, 10*time.Second, "the ticker has lines", func() bool { return p.is(`document.querySelectorAll('#ticker .item').length >= 4`) })
+	p.shot("wall-dark")
+	p.check()
+	p.run(`document.getElementById('stat-alarms').click()`)
+	waitUntil(t, 10*time.Second, "carol's window opens, dark", func() bool { return p.is(`!!document.querySelector('#chat #asks .card')`) })
+	p.shot("alarm-dark")
+	p.check()
+	p.run(`document.querySelector('#chat .close').click(); document.getElementById('dark').click()`) // back to day
 
 	// the alarm opens carol's window; the ask is answered there
 	p.run(`document.getElementById('stat-alarms').click()`)
@@ -185,6 +207,10 @@ func TestMission(t *testing.T) {
 	})
 	q.shot("wall")
 	q.check()
+	q.run(`document.getElementById('dark').click()`)
+	q.shot("wall-dark")
+	q.check()
+	q.run(`document.getElementById('dark').click()`)
 	q.done()
 	closeZh()
 }
