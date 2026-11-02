@@ -1909,12 +1909,33 @@ function log(text) {
 function setLog(open) {
   logEl.hidden = !open
   try { localStorage.setItem(LOG_STORE, open ? 'open' : 'closed') } catch {}
-  if (open && logStale) {
-    logStale = false
-    logLines.replaceChildren(...logKept.map(line => { const d = document.createElement('div'); d.textContent = line; return d }))
-  }
+  if (open && logStale) drawLog()
   if (open) logLines.scrollTop = logLines.scrollHeight
 }
+function drawLog() {
+  logStale = false
+  logLines.replaceChildren(...logKept.map(line => { const d = document.createElement('div'); d.textContent = line; return d }))
+}
+// The bridge keeps the last lines of what happened (/api/activity): the panel starts with those of the kinds it shows
+// (on and off duty, tool calls, messages), worded as it words them, so a reload doesn't empty it
+const pageOpened = Date.now()
+sym.fetchActivity().then(items => {
+  const before = (items ?? []).filter(a => Date.parse(a.time) < pageOpened).map(a => {
+    const at = `${new Date(a.time).toLocaleTimeString(lang)}  `, who = a.name || '?'
+    switch (a.kind) {
+      case 'start': return `${at}${who}  ${t('log.onDuty')}`
+      case 'end': return `${at}${who}  ${t('log.offDuty')}`
+      case 'tool': return `${at}${who}  ${String(a.text || '').split(' ')[0]}` // the tool, as a live line names it
+      case 'message': return `${at}${a.text || ''}`
+    }
+    return null
+  }).filter(Boolean)
+  if (!before.length) return
+  logKept.unshift(...before.slice(-200))
+  while (logKept.length > 200) logKept.shift()
+  if (logEl.hidden) logStale = true
+  else { drawLog(); logLines.scrollTop = logLines.scrollHeight }
+})
 document.getElementById('open-log').onclick = () => setLog(logEl.hidden)
 logEl.querySelector('.close').onclick = () => setLog(false)
 setLog((() => { try { return localStorage.getItem(LOG_STORE) === 'open' } catch { return false } })())

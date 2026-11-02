@@ -238,6 +238,20 @@ func TestAskKinds(t *testing.T) {
 	})
 	q.done()
 
+	// ---------- a page opened later: the activity panel starts with what happened before (the bridge's lines) ----------
+	later, _ := clockTab(t, browser, b.URL+"/t/office/?lang=en", 0) // (the browser remembers Coworkers for /)
+	r := &screens{t: t, ctx: later, lang: "asks-later"}
+	waitUntil(t, 20*time.Second, "the later page is up", func() bool { return r.is(`!!document.getElementById('open-log')`) },
+		func() string {
+			return r.js(`location.href + ' | ' + document.title + ' | ' + document.body.innerText.slice(0, 300) + ' | ' + JSON.stringify(window.__errors)`)
+		})
+	r.run(`document.getElementById('open-log').click()`)
+	waitUntil(t, 10*time.Second, "its activity panel has ann's start from before it opened", func() bool {
+		return r.is(`!document.getElementById('log').hidden && [...document.querySelectorAll('#log .lines div')].some(d => d.textContent.endsWith('ann  on duty'))`)
+	}, func() string { return r.js(`document.querySelector('#log .lines').innerText`) })
+	r.run(`document.querySelector('#log .close').click()`)
+	r.done()
+
 	// ---------- her next start has the box ticked ----------
 	b.post(t, acc.Token, "/api/event", map[string]any{"session": "s-ann", "kind": "session.end", "reason": "prompt_input_exit"})
 	waitUntil(t, 10*time.Second, "off duty, her window offers Start work", func() bool {
