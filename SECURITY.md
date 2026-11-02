@@ -33,7 +33,7 @@ What it does not protect against:
 
 - **Programs running as your own user.** They can read the page key and the tokens in the data folder, like any of your files.
 - **Other users of this machine who run a server on 127.0.0.1.** Browsers send a site's cookies to every port of it, so such a server gets the page key's cookie when your browser opens it (a link, or a website that sends your browser there), or when it takes the bridge's port while the bridge is stopped and the office is still open in a tab. On a machine you share, close the office before you stop the bridge, and if the key may have leaked, delete the `key` file in the data folder: the next start makes a new one, and every browser signs in again.
-- **Tampered downloads.** The programs aren't signed. Check the archive against the release's `checksums.txt` (the README's install steps show how).
+- **Tampered downloads.** The programs aren't signed. Check the archive against the release's `checksums.txt` and its build attestation (`gh attestation verify <archive> --repo feynmanzcys-bytes/symphony`; the README's install steps show how). The archives are reproducible: building a release's commit on Linux with `.github/release.sh` gives the same checksums.
 
 ## Out of scope
 

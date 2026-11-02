@@ -650,3 +650,36 @@ func exeSuffix() string {
 	}
 	return ""
 }
+
+// TestStableExe: the login entry names the symphony PATH finds when it leads to this very program through a link (a
+// package manager's bin/ link into a folder per version, which an upgrade replaces), else the program's own path.
+func TestStableExe(t *testing.T) {
+	cellar := filepath.Join(t.TempDir(), "Cellar", "symphony", "1.2.0", "bin")
+	if err := os.MkdirAll(cellar, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	real := filepath.Join(cellar, "symphony")
+	if err := os.WriteFile(real, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	real, _ = filepath.EvalSymlinks(real)
+	bin := t.TempDir()
+	link := filepath.Join(bin, "symphony")
+	if err := os.Symlink(real, link); err != nil {
+		t.Skip("no symlinks:", err)
+	}
+	look := func(name string) (string, error) { return link, nil }
+	if got := stableExe(real, look); got != link {
+		t.Errorf("PATH's link to this program: got %s, want %s", got, link)
+	}
+	other := filepath.Join(t.TempDir(), "symphony")
+	if err := os.WriteFile(other, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if got := stableExe(real, func(string) (string, error) { return other, nil }); got != real {
+		t.Errorf("another symphony on PATH: got %s, want this program %s", got, real)
+	}
+	if got := stableExe(real, func(string) (string, error) { return "", os.ErrNotExist }); got != real {
+		t.Errorf("none on PATH: got %s, want %s", got, real)
+	}
+}

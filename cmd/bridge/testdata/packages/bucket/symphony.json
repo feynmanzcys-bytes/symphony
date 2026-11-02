@@ -1,0 +1,40 @@
+{
+    "##": "Scoop manifest for symphony v1.2.3, written by .github/packages.sh; every release writes it again, so change the script, not this file. This repository is the bucket: scoop bucket add symphony https://github.com/feynmanzcys-bytes/symphony",
+    "version": "1.2.3",
+    "description": "Unofficial pixel-art office for a team of Claude Code sessions",
+    "homepage": "https://github.com/feynmanzcys-bytes/symphony",
+    "license": "MIT",
+    "notes": [
+        "symphony needs its Claude Code mod as well:",
+        "  claude plugin install symphony-bridge --marketplace feynmanzcys-bytes/symphony",
+        "Stop the bridge before an update (symphony -stop) and start it again afterwards",
+        "(symphony -background -open=false, or log in again if it starts at login)."
+    ],
+    "architecture": {
+        "64bit": {
+            "url": "https://github.com/feynmanzcys-bytes/symphony/releases/download/v1.2.3/symphony_windows_amd64.zip",
+            "hash": "3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a"
+        },
+        "arm64": {
+            "url": "https://github.com/feynmanzcys-bytes/symphony/releases/download/v1.2.3/symphony_windows_arm64.zip",
+            "hash": "3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b"
+        }
+    },
+    "bin": "symphony.exe",
+    "checkver": {
+        "github": "https://github.com/feynmanzcys-bytes/symphony"
+    },
+    "autoupdate": {
+        "architecture": {
+            "64bit": {
+                "url": "https://github.com/feynmanzcys-bytes/symphony/releases/download/v$version/symphony_windows_amd64.zip"
+            },
+            "arm64": {
+                "url": "https://github.com/feynmanzcys-bytes/symphony/releases/download/v$version/symphony_windows_arm64.zip"
+            }
+        },
+        "hash": {
+            "url": "$baseurl/checksums.txt"
+        }
+    }
+}

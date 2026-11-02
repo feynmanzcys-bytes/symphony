@@ -42,15 +42,30 @@ git --version             # 只有協作任務需要；沒有的話在回報裡�
 symphony -version         # 已經裝了？會印出 "symphony v1.1.1 (darwin/arm64)"
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:7788/api/state   # 有 bridge 在執行嗎？401：symphony 1.x；200：比較舊的版本；000：沒有
 claude plugin list --json # mod 已經裝了？找有 "id": "symphony-bridge@symphony" 的那一筆
+brew --version            # 有 Homebrew 嗎（macOS、Linux）？有的話第 2 步可以用它安裝
 ```
 
-在 Windows 上用 PowerShell：`$env:PROCESSOR_ARCHITECTURE` 的值是 `AMD64` 或 `ARM64`。
+在 Windows 上用 PowerShell：`$env:PROCESSOR_ARCHITECTURE` 的值是 `AMD64` 或 `ARM64`；`scoop --version` 有回應的話，就表示裝了 Scoop。
 
 如果沒有 `claude`，就停下來，請使用者先安裝 Claude Code。如果程式和 mod 都已經就位，改看下面的「更新」。如果只有其中一個就位，就做另一個的步驟：程式是第 2 和第 3 步（`symphony -version` 印出的已經是最新版本的話就不用做），mod 是第 4 步，然後做第 5 步。已經在執行的 bridge 會一直用它啟動時的那個程式：如果有 bridge 在執行，你要在第 5 步之前把它停掉。
 
 #### 第 2 步：取得程式
 
-把這台電腦用的壓縮檔和 Release 裡的 `checksums.txt` 下載到一個專用的新資料夾，安裝任何東西之前先檢查壓縮檔。壓縮檔是 `symphony_<os>_<arch>.tar.gz`（`<os>` 是 `linux` 或 `darwin`（macOS），`<arch>` 是 `amd64` 或 `arm64`），以及 `symphony_windows_<arch>.zip`。
+**用 Homebrew 或 Scoop 安裝。** 這個儲存庫同時也是 Homebrew 的 tap 和 Scoop 的 bucket。如果第 1 步發現有 Homebrew（macOS、Linux）或 Scoop（Windows），可以改用它安裝，省掉這一步其餘的部分和第 3 步：它會下載最新 Release 的壓縮檔，用 formula 或 manifest 裡的 SHA-256 檢查（這個值是 Release 發布時依它的 `checksums.txt` 寫進去的），再把 `symphony` 放進 `PATH`。接著做第 4 步，並在回報裡註明是用哪一個安裝的。
+
+```bash
+brew tap feynmanzcys-bytes/symphony https://github.com/feynmanzcys-bytes/symphony
+brew install symphony
+symphony -version          # 印出版本和平台
+```
+
+```powershell
+scoop bucket add symphony https://github.com/feynmanzcys-bytes/symphony
+scoop install symphony
+symphony -version
+```
+
+否則，把這台電腦用的壓縮檔和 Release 裡的 `checksums.txt` 下載到一個專用的新資料夾，安裝任何東西之前先檢查壓縮檔。壓縮檔是 `symphony_<os>_<arch>.tar.gz`（`<os>` 是 `linux` 或 `darwin`（macOS），`<arch>` 是 `amd64` 或 `arm64`），以及 `symphony_windows_<arch>.zip`。
 
 在 Linux 和 macOS 上：
 
@@ -84,6 +99,19 @@ $want = ((Select-String -SimpleMatch -Path (Join-Path $d 'checksums.txt') -Patte
 $got = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $d $zip)).Hash
 if ($got -ne $want) { throw "checksum mismatch: $zip" } else { 'checksum OK' }
 ```
+
+接著，如果裝了 `gh` 而且已經登入（`gh auth status` 成功），再檢查壓縮檔是在哪裡建置的：每個 Release 的每個壓縮檔都附有 GitHub 的證明（attestation），證明它是這個儲存庫的發布 workflow 建置的。不在終端機裡執行時，檢查通過的話 `gh` 什麼都不會印出，所以要看它的結束代碼：
+
+```bash
+gh attestation verify "$d/symphony_<os>_<arch>.tar.gz" --repo feynmanzcys-bytes/symphony && echo 'attestation OK'
+```
+
+```powershell
+gh attestation verify (Join-Path $d $zip) --repo feynmanzcys-bytes/symphony
+if ($LASTEXITCODE -eq 0) { 'attestation OK' }
+```
+
+v1.2.0 之前的 Release 沒有證明（會顯示 `no attestations found`），這些版本以 SHA-256 檢查為準。其他任何失敗都要停下來，和檢查沒通過時一樣。沒有 `gh` 或沒有登入的話，就跳過這項檢查，並在回報裡註明。
 
 **從原始碼編譯**：在 Linux 或 macOS 上，使用者偏好這樣做時使用（需要 Go 1.27 以上）。要編譯出執行檔；`go run` 不行，因為 `-autostart` 不接受 `go run` 編出來的程式：
 
@@ -215,6 +243,8 @@ bridge 的紀錄是資料目錄裡的 `bridge.log`；隨登入啟動時，Linux 
 
 照第 2 步下載新版。正在執行的 bridge 在重新啟動前跑的還是舊程式（而且在 Windows 上，執行中的程式沒辦法替換），所以要先用 `symphony -stop` 停掉它，照第 3 步替換程式，再照它原本的方式重新啟動：隨登入啟動的，就執行 `symphony -autostart on -open=false`（這也會立刻啟動它），不然就執行 `symphony -background -open=false`。如果 bridge 執行時用的 `-addr` 或 `-data` 不是預設值，這幾個指令都要加上同樣的參數：`-stop` 只會停掉那個資料目錄的 bridge（在 `-addr` 上，或在那個資料目錄的 bridge 實際執行的地方），沒有 bridge 回應時會說 `nothing to stop`。停掉 bridge 會結束它啟動的工作階段，所以要先告訴使用者。（`-stop` 是 v1.1.0 才有的；要停掉 v1.0.0 的 bridge，就結束它的程序：在 Linux 和 macOS 上用 `pkill -x symphony`，在 Windows 上用 `Stop-Process -Name symphony`。）
 
+用 Homebrew 或 Scoop 安裝的話，以 `brew update && brew upgrade symphony`（或 `scoop update; scoop update symphony`）取代下載和第 3 步，前後一樣是 `-stop` 和重新啟動。如果 symphony 隨登入啟動，登入啟動項記的是 Homebrew 指向程式的連結（`bin/symphony`），升級後會指向新版本，所以這裡的 `-autostart on` 只是讓它現在重新啟動。
+
 mod 用 `claude plugin update symphony-bridge@symphony` 跟著更新（用 clone 當市集的話，改成在那裡 `git pull`）。
 
 程式和 mod 使用同一個版本號；每個版本改了什麼，請見 [CHANGELOG.md](CHANGELOG.md)。
@@ -241,6 +271,8 @@ Remove-Item -Recurse -Force $dest                            # 程式
 $p = ([Environment]::GetEnvironmentVariable('Path', 'User') -split ';' | Where-Object { $_ -and $_ -ne $dest }) -join ';'
 [Environment]::SetEnvironmentVariable('Path', $p, 'User')    # 第 3 步加進去的 Path 項目
 ```
+
+用 Homebrew 安裝的話，把 `rm` 那一行換成 `brew uninstall symphony` 和 `brew untap feynmanzcys-bytes/symphony`；用 Scoop 安裝的話，把 PowerShell 的最後四行換成 `scoop uninstall symphony` 和 `scoop bucket rm symphony`。
 
 資料目錄（帳號和它們的 token、頁面金鑰、訊息紀錄、用量帳本、任務，以及 `lock`、`bridge.addr` 或被移到一旁的 `*.corrupt-<time>` 這類檔案）會留下來；要全部移除的話，就把它刪掉。刪掉它也會刪掉頁面金鑰：下次啟動時會產生新的，每個瀏覽器都得重新登入。在 Linux 上，如果瀏覽器是 snap 或 flatpak，`open.html` 會在那個瀏覽器自己的資料夾裡（`~/snap/<snap>/common` 或 `~/.var/app/<app id>`），也要一起刪掉。
 

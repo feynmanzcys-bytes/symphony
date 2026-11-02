@@ -42,15 +42,30 @@ git --version             # 협업 작업에만 필요. 없으면 보고에 적�
 symphony -version         # 이미 설치돼 있나? "symphony v1.1.1 (darwin/arm64)" 출력
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:7788/api/state   # bridge가 실행 중인가? 401: symphony 1.x, 200: 그보다 오래된 버전, 000: 없음
 claude plugin list --json # mod가 이미 설치돼 있나? "id": "symphony-bridge@symphony"가 있는 항목을 찾으세요
+brew --version            # Homebrew가 있나요(macOS, Linux)? 있으면 2단계에서 그걸로 설치할 수 있음
 ```
 
-Windows에서는 PowerShell을 쓰세요. `$env:PROCESSOR_ARCHITECTURE`는 `AMD64` 또는 `ARM64`입니다.
+Windows에서는 PowerShell을 쓰세요. `$env:PROCESSOR_ARCHITECTURE`는 `AMD64` 또는 `ARM64`입니다. `scoop --version`이 응답하면 Scoop이 설치되어 있습니다.
 
 `claude`가 없으면 멈추고, 먼저 Claude Code를 설치하라고 사용자에게 알리세요. 프로그램과 mod가 둘 다 이미 있으면 대신 아래 "업데이트"로 가세요. 둘 중 하나만 있으면 없는 쪽의 단계를 진행하세요. 프로그램은 2단계와 3단계(`symphony -version`이 이미 최신 릴리스를 출력하면 건너뜁니다), mod는 4단계이고, 그다음 5단계로 가세요. 이미 실행 중인 bridge는 시작할 때의 프로그램으로 계속 돌아가므로, 실행 중인 bridge가 있으면 5단계 전에 그것을 멈추게 됩니다.
 
 #### 2단계: 프로그램 받기
 
-이 컴퓨터에 맞는 압축 파일과 릴리스의 `checksums.txt`를 새로 만든 전용 폴더에 내려받고, 무엇이든 설치하기 전에 압축 파일을 검사하세요. 압축 파일은 `symphony_<os>_<arch>.tar.gz`(`<os>`는 `linux` 또는 `darwin`(macOS), `<arch>`는 `amd64` 또는 `arm64`)와 `symphony_windows_<arch>.zip`입니다.
+**Homebrew나 Scoop으로.** 이 저장소는 Homebrew tap이자 Scoop bucket이기도 합니다. 1단계에서 Homebrew(macOS, Linux)나 Scoop(Windows)을 찾았다면, 이 단계의 나머지와 3단계 대신 그걸로 설치할 수 있습니다. 최신 릴리스의 압축 파일을 내려받아 formula나 manifest에 있는 SHA-256(릴리스가 나올 때 그 릴리스의 `checksums.txt`에서 적어 넣은 값)으로 검사하고, `symphony`를 `PATH`에 넣어 줍니다. 그다음 4단계로 넘어가고, 어느 쪽으로 설치했는지 보고에 적으세요.
+
+```bash
+brew tap feynmanzcys-bytes/symphony https://github.com/feynmanzcys-bytes/symphony
+brew install symphony
+symphony -version          # 버전과 플랫폼 출력
+```
+
+```powershell
+scoop bucket add symphony https://github.com/feynmanzcys-bytes/symphony
+scoop install symphony
+symphony -version
+```
+
+그렇지 않으면 이 컴퓨터에 맞는 압축 파일과 릴리스의 `checksums.txt`를 새로 만든 전용 폴더에 내려받고, 무엇이든 설치하기 전에 압축 파일을 검사하세요. 압축 파일은 `symphony_<os>_<arch>.tar.gz`(`<os>`는 `linux` 또는 `darwin`(macOS), `<arch>`는 `amd64` 또는 `arm64`)와 `symphony_windows_<arch>.zip`입니다.
 
 Linux와 macOS에서는:
 
@@ -84,6 +99,19 @@ $want = ((Select-String -SimpleMatch -Path (Join-Path $d 'checksums.txt') -Patte
 $got = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $d $zip)).Hash
 if ($got -ne $want) { throw "checksum mismatch: $zip" } else { 'checksum OK' }
 ```
+
+그다음, `gh`가 설치되어 있고 로그인되어 있다면(`gh auth status`가 성공하면) 압축 파일이 어디서 빌드됐는지 확인하세요. 릴리스의 모든 압축 파일에는 이 저장소의 릴리스 workflow가 빌드했다는 GitHub의 증명(attestation)이 붙어 있습니다. 터미널 밖에서는 확인이 통과해도 `gh`가 아무것도 출력하지 않으니, 종료 상태로 판단하세요.
+
+```bash
+gh attestation verify "$d/symphony_<os>_<arch>.tar.gz" --repo feynmanzcys-bytes/symphony && echo 'attestation OK'
+```
+
+```powershell
+gh attestation verify (Join-Path $d $zip) --repo feynmanzcys-bytes/symphony
+if ($LASTEXITCODE -eq 0) { 'attestation OK' }
+```
+
+v1.2.0 이전 릴리스에는 증명이 없습니다(`no attestations found`). 그런 릴리스는 SHA-256 검사로만 확인합니다. 그 밖의 실패라면 SHA-256 검사가 실패했을 때처럼 멈추세요. `gh`가 없거나 로그인되어 있지 않으면 이 확인은 건너뛰고, 보고에 그렇게 적으세요.
 
 사용자가 원하면 Linux나 macOS에서 **소스로 빌드**할 수도 있습니다(Go 1.27 이상). 바이너리를 빌드하세요. `-autostart`가 `go run` 빌드를 거부하므로 `go run`으로는 안 됩니다.
 
@@ -215,6 +243,8 @@ bridge의 로그는 데이터 폴더의 `bridge.log`입니다. 로그인할 때 
 
 2단계처럼 새 릴리스를 내려받으세요. 실행 중인 bridge는 다시 시작할 때까지 예전 프로그램으로 돌아가므로(Windows에서는 실행 중인 프로그램을 바꿔 넣을 수도 없습니다), `symphony -stop`으로 bridge를 멈추고 3단계처럼 프로그램을 바꿔 넣은 다음, 전에 돌던 방식 그대로 다시 시작하세요. 로그인할 때 시작되는 경우에는 `symphony -autostart on -open=false`(이 명령으로 지금 바로 시작도 됩니다), 아니면 `symphony -background -open=false`입니다. bridge가 기본값이 아닌 `-addr`나 `-data`로 실행 중이라면 이 명령마다 같은 값을 붙이세요. `-stop`은 그 데이터 폴더의 bridge만 멈추고(`-addr`에서, 또는 그 폴더의 bridge가 실제로 실행 중인 곳에서), 응답하는 bridge가 없으면 `nothing to stop`이라고 알립니다. bridge를 멈추면 bridge가 시작한 세션도 끝나므로 먼저 사용자에게 알리세요. (`-stop`은 v1.1.0에서 생겼습니다. v1.0.0 bridge를 멈추려면 그 프로세스를 끝내세요. Linux와 macOS에서는 `pkill -x symphony`, Windows에서는 `Stop-Process -Name symphony`입니다.)
 
+Homebrew나 Scoop으로 설치했다면 내려받기와 3단계 대신 `brew update && brew upgrade symphony`(또는 `scoop update; scoop update symphony`)를 쓰고, 그 앞의 `-stop`과 뒤의 다시 시작은 똑같이 합니다. symphony가 로그인할 때 시작되더라도 시작 항목에는 Homebrew의 링크(`bin/symphony`)가 적히고, 업그레이드하면 이 링크가 새 버전을 가리킵니다. 그래서 여기서 `-autostart on`은 지금 다시 시작하는 역할만 합니다.
+
 mod는 `claude plugin update symphony-bridge@symphony`로 따라옵니다(클론을 마켓플레이스로 쓴다면 대신 거기서 `git pull`).
 
 프로그램과 mod는 같은 버전 번호를 씁니다. 릴리스마다 바뀐 점은 [CHANGELOG.md](CHANGELOG.md)에 있습니다.
@@ -241,6 +271,8 @@ Remove-Item -Recurse -Force $dest                            # 프로그램
 $p = ([Environment]::GetEnvironmentVariable('Path', 'User') -split ';' | Where-Object { $_ -and $_ -ne $dest }) -join ';'
 [Environment]::SetEnvironmentVariable('Path', $p, 'User')    # 3단계에서 추가한 Path 항목
 ```
+
+Homebrew로 설치했다면 `rm` 줄 대신 `brew uninstall symphony`와 `brew untap feynmanzcys-bytes/symphony`를, Scoop이라면 PowerShell의 마지막 네 줄 대신 `scoop uninstall symphony`와 `scoop bucket rm symphony`를 실행하세요.
 
 데이터 폴더(token이 든 계정, 페이지 키, 메시지 기록, 사용량 장부, 작업, 그리고 `lock`, `bridge.addr`, 따로 치워 둔 `*.corrupt-<time>` 같은 파일)는 남습니다. 전부 지우려면 이 폴더도 지우세요. 이 폴더를 지우면 페이지 키도 지워지므로, 다음에 시작할 때 새 키가 만들어지고 모든 브라우저가 다시 로그인해야 합니다. Linux에서 snap이나 flatpak 브라우저를 쓴다면 `open.html`은 그 브라우저 전용 폴더(`~/snap/<snap>/common` 또는 `~/.var/app/<app id>`)에 있으니 그것도 지우세요.
 
