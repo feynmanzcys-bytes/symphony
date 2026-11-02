@@ -560,7 +560,11 @@ func (s *Server) launch(w http.ResponseWriter, r *http.Request) {
 		if created {
 			_ = s.Hub.DeleteAccount(acc.ID)
 		}
-		writeJSON(w, http.StatusInternalServerError, errorBody(err))
+		if e := (*Error)(nil); errors.As(err, &e) {
+			writeErr(w, err) // a coded error keeps its status: 400 cmd_unsafe_arg, 500 pty_start_failed
+		} else {
+			writeJSON(w, http.StatusInternalServerError, errorBody(err))
+		}
 		return
 	}
 	s.Hub.setLast(acc.ID, req)

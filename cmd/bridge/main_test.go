@@ -601,9 +601,14 @@ func TestAttachHint(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// PATH leads nowhere, or to another symphony: the full path
+	// PATH leads nowhere, or to another symphony: the full path (quoted when it holds a space, on Windows with "& "
+	// before it for PowerShell: a test binary under a user name with a space)
+	full := shellWord(self)
+	if full != self && runtime.GOOS == "windows" {
+		full = "& " + full
+	}
 	t.Setenv("PATH", t.TempDir())
-	if got, want := attachHint(defaultAddr, bridge.DefaultDataDir())("L3"), shellWord(self)+" attach L3"; got != want {
+	if got, want := attachHint(defaultAddr, bridge.DefaultDataDir())("L3"), full+" attach L3"; got != want {
 		t.Errorf("off PATH: got %q, want %q", got, want)
 	}
 	other := filepath.Join(t.TempDir(), "symphony"+exeSuffix())
@@ -611,11 +616,11 @@ func TestAttachHint(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", filepath.Dir(other))
-	if got, want := attachHint(defaultAddr, bridge.DefaultDataDir())("L4"), shellWord(self)+" attach L4"; got != want {
+	if got, want := attachHint(defaultAddr, bridge.DefaultDataDir())("L4"), full+" attach L4"; got != want {
 		t.Errorf("another symphony on PATH: got %q, want %q", got, want)
 	}
 	dir := filepath.Join(t.TempDir(), "my data")
-	if got, want := attachHint("127.0.0.1:7799", dir)("L2"), shellWord(self)+" attach -addr 127.0.0.1:7799 -data "+shellWord(dir)+" L2"; got != want {
+	if got, want := attachHint("127.0.0.1:7799", dir)("L2"), full+" attach -addr 127.0.0.1:7799 -data "+shellWord(dir)+" L2"; got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}
 	if runtime.GOOS == "windows" {
@@ -627,14 +632,16 @@ func TestAttachHint(t *testing.T) {
 		t.Errorf("a path with a space: %q", got)
 	}
 	// PATH leads to this very program (through a link): plain "symphony"
-	bin := t.TempDir()
-	if err := os.Symlink(self, filepath.Join(bin, "symphony"+exeSuffix())); err != nil {
-		t.Skip("no symlinks:", err) // Windows without developer mode
-	}
-	t.Setenv("PATH", bin)
-	if got := attachHint(defaultAddr, bridge.DefaultDataDir())("L1"); got != "symphony attach L1" {
-		t.Errorf("on PATH: %q", got)
-	}
+	t.Run("on PATH", func(t *testing.T) {
+		bin := t.TempDir()
+		if err := os.Symlink(self, filepath.Join(bin, "symphony"+exeSuffix())); err != nil {
+			t.Skip("no symlinks:", err) // Windows without developer mode
+		}
+		t.Setenv("PATH", bin)
+		if got := attachHint(defaultAddr, bridge.DefaultDataDir())("L1"); got != "symphony attach L1" {
+			t.Errorf("on PATH: %q", got)
+		}
+	})
 }
 
 func exeSuffix() string {

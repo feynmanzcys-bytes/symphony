@@ -166,7 +166,7 @@ func (t *ptyTerminal) Watch(hub *Hub, l *Launch, timeout time.Duration) {
 	// after the launch failed (while the kill's hangup is in its grace, or someone uses its terminal)
 	if l.Task == "" {
 		<-term.Exited()
-		hub.launchExited(l.ID, term.ExitErr(), term.Screen(4))
+		hub.launchExited(l.ID, term.ExitErr(), term.Screen(12))
 	}
 }
 

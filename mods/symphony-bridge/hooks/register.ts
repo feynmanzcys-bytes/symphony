@@ -653,20 +653,26 @@ function pollInbox($: EngineInterface) {
     } catch {
       return again(INBOX_RETRY)
     }
+    // prompt.submit resolves once the engine took the prompt (after the running turn): the says go in together, so
+    // several sent while the session is busy queue up at once, as typed in the terminal, instead of one after the
+    // previous one was taken
+    const entering: Promise<void>[] = []
     for (const it of items) {
       if (it.id) inboxAck = it.id // the last one done; a bridge that restarted hands out larger ids, so it stays right
       if (it.kind === 'say' && it.text) {
-        // a prompt that didn't enter (a hook refused it, the engine's own limit, a failure) is dropped, with why
-        let dropped: string | undefined
-        try {
-          const entered = await $.prompt.submit({ text: it.text, asUser: true })
-          if (entered.drop !== undefined) dropped = entered.drop
-        } catch (err) {
-          dropped = err instanceof Error ? err.message : String(err)
-        }
-        const text = it.text.slice(0, 4000)
-        if (dropped === undefined) report($, 'chat.sent', { text })
-        else report($, 'chat.dropped', { text, reason: dropped.slice(0, 500) })
+        const text = it.text
+        entering.push((async () => {
+          // a prompt that didn't enter (a hook refused it, the engine's own limit, a failure) is dropped, with why
+          let dropped: string | undefined
+          try {
+            const entered = await $.prompt.submit({ text, asUser: true })
+            if (entered.drop !== undefined) dropped = entered.drop
+          } catch (err) {
+            dropped = err instanceof Error ? err.message : String(err)
+          }
+          if (dropped === undefined) report($, 'chat.sent', { text: text.slice(0, 4000) })
+          else report($, 'chat.dropped', { text: text.slice(0, 4000), reason: dropped.slice(0, 500) })
+        })())
       } else if (it.kind === 'abort' && mainTurn) {
         try {
           await $.turn.abort({ turnId: mainTurn })
@@ -675,6 +681,7 @@ function pollInbox($: EngineInterface) {
         }
       }
     }
+    await Promise.all(entering)
     again(items.length ? 0 : 50)
   })()
 }

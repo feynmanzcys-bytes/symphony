@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/feynmanzcys-bytes/symphony/internal/i18n"
@@ -929,13 +930,40 @@ func (h *Hub) exitedLocked(s *Session, exitErr error, screen string) {
 	}
 	if !cleanExit(exitErr) {
 		detail := exitErr.Error()
-		if screen != "" {
-			detail += "\n" + cutFront(screen, 240) // the notice keeps 300 runes: the last lines matter most
+		if lines := tellingLines(screen, 4, 400); lines != "" {
+			detail += "\n" + lines
 		}
 		h.chatNoticeDetailLocked(s.ID, "exited", detail)
 		h.noteLocked(s, "error", exitErr.Error())
 	}
 	h.offDutyLocked(s, "exited")
+}
+
+// tellingLines is the last n lines of screen that say something (a letter or a digit in them: not the input box's
+// borders, which are a screen's last lines), whole lines from the end within max bytes, so a notice shows what the
+// session was doing rather than half a border.
+func tellingLines(screen string, n, max int) string {
+	var keep []string
+	for _, l := range strings.Split(screen, "\n") {
+		if strings.IndexFunc(l, func(r rune) bool { return unicode.IsLetter(r) || unicode.IsDigit(r) }) >= 0 {
+			keep = append(keep, strings.TrimSpace(l))
+		}
+	}
+	if len(keep) > n {
+		keep = keep[len(keep)-n:]
+	}
+	size := 0
+	for i := len(keep) - 1; i >= 0; i-- {
+		size += len(keep[i]) + 1
+		if size > max && i < len(keep)-1 {
+			keep = keep[i+1:]
+			break
+		}
+	}
+	if len(keep) == 1 && len(keep[0]) > max {
+		return cutFront(keep[0], max)
+	}
+	return strings.Join(keep, "\n")
 }
 
 // cleanExit is true for a process that exited by itself with status 0 (a Term reports that as "exit 0").

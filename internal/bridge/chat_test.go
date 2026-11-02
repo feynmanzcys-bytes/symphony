@@ -186,3 +186,21 @@ func TestChatFollowsAsksAndMessages(t *testing.T) {
 		t.Fatalf("the old session's log should be dropped with it: %+v", items)
 	}
 }
+
+// TestTellingLines: the exit notice shows the screen's last lines that say something, not the input box's borders,
+// whole lines from the end within the limit.
+func TestTellingLines(t *testing.T) {
+	screen := "✻ Brewed for 27s · done 17:26\n──────────── win-d ─\n❯ 把当前文件夹初始化成 git 仓库并提交\n──────────────\n ⏵⏵ auto mode on (shift+tab to cycle)"
+	if got := tellingLines(screen, 4, 400); got != "✻ Brewed for 27s · done 17:26\n──────────── win-d ─\n❯ 把当前文件夹初始化成 git 仓库并提交\n⏵⏵ auto mode on (shift+tab to cycle)" {
+		t.Fatalf("got %q", got)
+	}
+	if got := tellingLines(screen, 2, 400); got != "❯ 把当前文件夹初始化成 git 仓库并提交\n⏵⏵ auto mode on (shift+tab to cycle)" {
+		t.Fatalf("the last 2: %q", got)
+	}
+	if got := tellingLines(screen, 4, 60); got != "⏵⏵ auto mode on (shift+tab to cycle)" {
+		t.Fatalf("within 60 bytes, whole lines: %q", got)
+	}
+	if got := tellingLines("────\n\n", 4, 400); got != "" {
+		t.Fatalf("borders only: %q", got)
+	}
+}

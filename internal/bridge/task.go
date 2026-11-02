@@ -357,7 +357,7 @@ func (h *Hub) publishTask(id string, launches []*Launch) *Task {
 			if term := h.terms.Get(l.ID); term != nil {
 				go func(launch string) {
 					<-term.Exited()
-					h.memberExited(id, launch, term.ExitErr(), term.Screen(4))
+					h.memberExited(id, launch, term.ExitErr(), term.Screen(12))
 				}(l.ID)
 			}
 		}

@@ -797,6 +797,29 @@ test('the mod names the last inbox item it did in its next poll, so a poll cut o
   expect(w.reqs.filter(r => r.body?.kind === 'chat.sent').map(r => r.body?.text)).toEqual(['one', 'two'])
 })
 
+test('several prompts in one poll enter together, not one after the previous one was taken', async ($, on) => {
+  let polls = 0
+  const w = world(on, { SYMPHONY_TOKEN: 'tok' }, r => {
+    if (r.url.includes('/api/inbox?session=sess-1')) {
+      polls++
+      return { status: 200, text: polls === 1 ? '{"items":[{"id":1,"kind":"say","text":"one"},{"id":2,"kind":"say","text":"two"}]}' : '{"items":[]}' }
+    }
+    return { status: 200, text: '{}' }
+  })
+  // the engine takes a prompt only once the running turn is over: the submits hang until released
+  const held: ((v: { text: string }) => void)[] = []
+  on('prompt.submit', (_$, e) => new Promise<{ text: string }>(resolve => held.push(v => resolve({ ...v, text: e.text }))))
+
+  await $.session.start(start)
+  await w.clock.advance(100)
+  await w.clock.settle()
+  expect(held.length).toBe(2) // both submitted while neither was taken
+  expect(w.reqs.filter(r => r.body?.kind === 'chat.sent').length).toBe(0)
+  for (const release of held) release({ text: '' })
+  await w.clock.settle()
+  expect(w.reqs.filter(r => r.body?.kind === 'chat.sent').map(r => r.body?.text)).toEqual(['one', 'two'])
+})
+
 test('the page stops the running turn: the mod aborts the main turn', async ($, on) => {
   let polls = 0
   const w = world(on, { SYMPHONY_TOKEN: 'tok' }, r => {
