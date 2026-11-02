@@ -624,6 +624,9 @@ type InboxItem = ({ kind: 'say'; text: string } | { kind: 'abort' }) & { id?: nu
 // the id of the last inbox item done, named in the next poll (ack): the bridge drops an item only then, so a poll cut
 // off on its way back loses nothing (a bridge before 1.1.2 sends no ids and hands each item out once)
 let inboxAck = 0
+// the ids already submitted (the last 200): an item handed out twice (two polls of one session out at the same time,
+// whatever brought that about) goes in once
+const inboxDone = new Set<number>()
 
 function pollInbox($: EngineInterface) {
   if (polling) return
@@ -653,15 +656,24 @@ function pollInbox($: EngineInterface) {
     } catch {
       return again(INBOX_RETRY)
     }
-    // prompt.submit resolves once the engine took the prompt (after the running turn): the says go in together, so
-    // several sent while the session is busy queue up at once, as typed in the terminal, instead of one after the
-    // previous one was taken
-    const entering: Promise<void>[] = []
+    // a poll of an earlier round (a report before session.start had the loop going when begin started the session's
+    // own): what it brought is the new loop's to do, which gets the same items (the bridge keeps them until acked);
+    // submitting here too would put the prompt in twice
+    if (round !== pollRound) return
+    // prompt.submit resolves once the engine took the prompt (after the running turn): the says are submitted as they
+    // come and the poll goes on without waiting for that, so several sent while the session is busy queue up in the
+    // engine at once, as typed in the terminal, instead of one per poll (the submits are started in order, so they
+    // enter in order)
     for (const it of items) {
-      if (it.id) inboxAck = it.id // the last one done; a bridge that restarted hands out larger ids, so it stays right
+      if (it.id) {
+        inboxAck = it.id // the last one done; a bridge that restarted hands out larger ids, so it stays right
+        if (inboxDone.has(it.id)) continue
+        inboxDone.add(it.id)
+        if (inboxDone.size > 200) inboxDone.delete(inboxDone.values().next().value as number)
+      }
       if (it.kind === 'say' && it.text) {
         const text = it.text
-        entering.push((async () => {
+        void (async () => {
           // a prompt that didn't enter (a hook refused it, the engine's own limit, a failure) is dropped, with why
           let dropped: string | undefined
           try {
@@ -672,7 +684,7 @@ function pollInbox($: EngineInterface) {
           }
           if (dropped === undefined) report($, 'chat.sent', { text: text.slice(0, 4000) })
           else report($, 'chat.dropped', { text: text.slice(0, 4000), reason: dropped.slice(0, 500) })
-        })())
+        })()
       } else if (it.kind === 'abort' && mainTurn) {
         try {
           await $.turn.abort({ turnId: mainTurn })
@@ -681,7 +693,6 @@ function pollInbox($: EngineInterface) {
         }
       }
     }
-    await Promise.all(entering)
     again(items.length ? 0 : 50)
   })()
 }

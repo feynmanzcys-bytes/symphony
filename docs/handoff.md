@@ -35,6 +35,10 @@
 
 ## The mod
 
+18. **Development mode loads two mods.** `claude --plugin-dir <folder>` (what the bridge's `-mod` gives its sessions) loads that mod beside the installed `symphony-bridge@symphony` when there is one (`claude plugin list` shows both: `@symphony` and `@inline`). Each runs its own hooks: two inbox polls, every report twice, two asks for one permission. Seen on Windows as a prompt from the page entering a session twice (the installed 1.1.1 mod without acks took the item the 1.1.2 mod had been handed). The bridge now hands unacknowledged items to one poll per 3 s (`inboxRehand`), which hides that case, not the rest.
+    - Fix: when `-mod` is given and the installed plugin is enabled, have the bridge warn at start (`claude plugin list --json` already runs for the install check) and tell how to disable it (`claude plugin disable symphony-bridge@symphony`); or pass a flag that disables it for the session, if Claude Code grows one. Until then, disable the installed mod while developing with `-mod`.
+    - Test: a session with both; the bridge's log, or the session's `mod` field alternating between the two versions.
+
 19. **The token stays in the session's environment.**
     - What happens: the session's Bash commands, npm scripts and MCP servers inherit `SYMPHONY_TOKEN`. With it they could call the mod's endpoints: empty the inbox, report made-up events, make ask cards. They could not answer the cards; that needs the page key. Since v1.1.0 the bridge no longer passes the token on.
     - Fix: `$.env.set('SYMPHONY_TOKEN', undefined)` once the mod has read it. First check that a module reloaded by `/reload-plugins` can still read it.

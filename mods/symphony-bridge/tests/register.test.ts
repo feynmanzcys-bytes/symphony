@@ -797,12 +797,15 @@ test('the mod names the last inbox item it did in its next poll, so a poll cut o
   expect(w.reqs.filter(r => r.body?.kind === 'chat.sent').map(r => r.body?.text)).toEqual(['one', 'two'])
 })
 
-test('several prompts in one poll enter together, not one after the previous one was taken', async ($, on) => {
+test('prompts sent one after another while the session is busy all enter, not one per turn', async ($, on) => {
   let polls = 0
   const w = world(on, { SYMPHONY_TOKEN: 'tok' }, r => {
     if (r.url.includes('/api/inbox?session=sess-1')) {
       polls++
-      return { status: 200, text: polls === 1 ? '{"items":[{"id":1,"kind":"say","text":"one"},{"id":2,"kind":"say","text":"two"}]}' : '{"items":[]}' }
+      // the first poll brings one prompt, the next one another: the second mustn't wait for the first to be taken
+      if (polls === 1) return { status: 200, text: '{"items":[{"id":1,"kind":"say","text":"one"}]}' }
+      if (polls === 2) return { status: 200, text: '{"items":[{"id":2,"kind":"say","text":"two"}]}' }
+      return { status: 200, text: '{"items":[]}' }
     }
     return { status: 200, text: '{}' }
   })
@@ -814,10 +817,61 @@ test('several prompts in one poll enter together, not one after the previous one
   await w.clock.advance(100)
   await w.clock.settle()
   expect(held.length).toBe(2) // both submitted while neither was taken
+  expect(w.polls.at(-1)?.url).toContain('ack=2')
   expect(w.reqs.filter(r => r.body?.kind === 'chat.sent').length).toBe(0)
   for (const release of held) release({ text: '' })
   await w.clock.settle()
   expect(w.reqs.filter(r => r.body?.kind === 'chat.sent').map(r => r.body?.text)).toEqual(['one', 'two'])
+})
+
+test('an item handed out twice goes in once', async ($, on) => {
+  let polls = 0
+  const w = world(on, { SYMPHONY_TOKEN: 'tok' }, r => {
+    if (r.url.includes('/api/inbox?session=sess-1')) {
+      polls++
+      // a bridge that hands the same item to two polls (older than the 3 s window, or a second poll of the session)
+      return { status: 200, text: polls <= 2 ? '{"items":[{"id":5,"kind":"say","text":"once"}]}' : '{"items":[]}' }
+    }
+    return { status: 200, text: '{}' }
+  })
+  const submitted: string[] = []
+  on('prompt.submit', (_$, e) => {
+    submitted.push(e.text)
+    return { text: e.text }
+  })
+  await $.session.start(start)
+  await w.clock.advance(300)
+  await w.clock.settle()
+  expect(submitted).toEqual(['once'])
+})
+
+test('a poll of an earlier round brings nothing in: the session\'s own loop gets the same items', async ($, on) => {
+  // a report before session.start (the session's name) starts the inbox loop; session.start then starts the session's
+  // own; the first loop's poll is still out and comes back with the item too (the bridge keeps it until acked)
+  let polls = 0
+  const w = world(on, { SYMPHONY_TOKEN: 'tok' }, r => {
+    if (r.url.includes('/api/inbox?session=sess-1')) {
+      polls++
+      // the bridge: the item stays until a poll acknowledges it, and every poll out at that moment gets it
+      const acked = Number(/[&?]ack=(\d+)/.exec(r.url)?.[1] ?? 0) >= 1
+      return { status: 200, text: acked ? '{"items":[]}' : '{"items":[{"id":1,"kind":"say","text":"once"}]}' }
+    }
+    return { status: 200, text: '{}' }
+  })
+  const submitted: string[] = []
+  on('prompt.submit', (_$, e) => {
+    submitted.push(e.text)
+    return { text: e.text }
+  })
+  on('classic.SessionStart', () => ({}))
+  w.engine.start = async () => {
+    // the engine's own start hook reports the name while the session starts: a report before session.start's own
+    await $.classic.SessionStart({ source: 'startup', session_id: 'sess-1', session_title: 'early', cwd: '/work' })
+  }
+  await $.session.start(start)
+  await w.clock.advance(300)
+  await w.clock.settle()
+  expect(submitted).toEqual(['once'])
 })
 
 test('the page stops the running turn: the mod aborts the main turn', async ($, on) => {

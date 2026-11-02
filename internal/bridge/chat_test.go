@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"slices"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 )
@@ -119,10 +120,18 @@ func TestSayInboxAbort(t *testing.T) {
 	if len(first) != 2 || first[1] != first[0]+1 {
 		t.Fatalf("the first acknowledging poll should get both, with consecutive ids: %v", first)
 	}
+	// handed out a moment ago: a second poll out at the same time (two mods in one session) gets nothing; one that
+	// comes once inboxRehand passed (the poll was cut off) gets them again
+	start = time.Now()
+	if res := mod.ok("GET", "/api/inbox?session=s1&ack=0", nil); len(res["items"].([]any)) != 0 || time.Since(start) < 250*time.Millisecond {
+		t.Fatalf("a second poll right after should wait and get nothing: %v after %v", res, time.Since(start))
+	}
+	srv.Hub.now = func() time.Time { return time.Now().Add(inboxRehand + time.Second) }
 	if got := ids(mod.ok("GET", "/api/inbox?session=s1&ack=0", nil)); !slices.Equal(got, first) {
 		t.Fatalf("the poll was cut off: the next one should get them again: %v", got)
 	}
 	ack := func(id float64) string { return "/api/inbox?session=s1&ack=" + strconv.FormatInt(int64(id), 10) }
+	srv.Hub.now = func() time.Time { return time.Now().Add(2 * (inboxRehand + time.Second)) }
 	if got := ids(mod.ok("GET", ack(first[0]), nil)); !slices.Equal(got, first[1:]) {
 		t.Fatalf("acknowledging the first should leave the second: %v", got)
 	}
@@ -187,20 +196,24 @@ func TestChatFollowsAsksAndMessages(t *testing.T) {
 	}
 }
 
-// TestTellingLines: the exit notice shows the screen's last lines that say something, not the input box's borders,
-// whole lines from the end within the limit.
+// TestTellingLines: the exit notice shows the screen's last lines that tell what the session did: not the input box's
+// borders (the employee's name in one or not), not the input or status line, whole lines from the end within the limit.
 func TestTellingLines(t *testing.T) {
-	screen := "✻ Brewed for 27s · done 17:26\n──────────── win-d ─\n❯ 把当前文件夹初始化成 git 仓库并提交\n──────────────\n ⏵⏵ auto mode on (shift+tab to cycle)"
-	if got := tellingLines(screen, 4, 400); got != "✻ Brewed for 27s · done 17:26\n──────────── win-d ─\n❯ 把当前文件夹初始化成 git 仓库并提交\n⏵⏵ auto mode on (shift+tab to cycle)" {
+	screen := "命令行本身还是没有单独的测试。\n✻ Churned for 2m 50s · done 18:16\n" + strings.Repeat("─", 112) + " win-e ─\n❯ 给命令行也加个测试\n" +
+		strings.Repeat("─", 120) + "\n ⏵⏵ auto mode on (shift+tab to cycle)"
+	if got := tellingLines(screen, 4, 400); got != "命令行本身还是没有单独的测试。\n✻ Churned for 2m 50s · done 18:16" {
 		t.Fatalf("got %q", got)
 	}
-	if got := tellingLines(screen, 2, 400); got != "❯ 把当前文件夹初始化成 git 仓库并提交\n⏵⏵ auto mode on (shift+tab to cycle)" {
-		t.Fatalf("the last 2: %q", got)
+	if got := tellingLines(screen, 1, 400); got != "✻ Churned for 2m 50s · done 18:16" {
+		t.Fatalf("the last one: %q", got)
 	}
-	if got := tellingLines(screen, 4, 60); got != "⏵⏵ auto mode on (shift+tab to cycle)" {
-		t.Fatalf("within 60 bytes, whole lines: %q", got)
+	if got := tellingLines(screen, 4, 40); got != "✻ Churned for 2m 50s · done 18:16" {
+		t.Fatalf("within 40 runes, whole lines: %q", got)
 	}
-	if got := tellingLines("────\n\n", 4, 400); got != "" {
-		t.Fatalf("borders only: %q", got)
+	if got := tellingLines("────\n\n❯ x\n⏵⏵ y", 4, 400); got != "" {
+		t.Fatalf("borders, input and status only: %q", got)
+	}
+	if got := tellingLines("error: unknown option --foo\nexit", 4, 400); got != "error: unknown option --foo\nexit" {
+		t.Fatalf("plain lines: %q", got)
 	}
 }

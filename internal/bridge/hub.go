@@ -939,31 +939,53 @@ func (h *Hub) exitedLocked(s *Session, exitErr error, screen string) {
 	h.offDutyLocked(s, "exited")
 }
 
-// tellingLines is the last n lines of screen that say something (a letter or a digit in them: not the input box's
-// borders, which are a screen's last lines), whole lines from the end within max bytes, so a notice shows what the
-// session was doing rather than half a border.
+// tellingLines is the last n lines of screen that tell what the session was doing: not the input box's borders (lines
+// mostly of box-drawing characters, the employee's name in one or not), not Claude Code's input line (❯) or status
+// line (⏵⏵), and only lines with a letter or a digit; whole lines from the end within max runes, so a notice shows
+// "✻ Churned for 2m" rather than half a border.
 func tellingLines(screen string, n, max int) string {
 	var keep []string
 	for _, l := range strings.Split(screen, "\n") {
-		if strings.IndexFunc(l, func(r rune) bool { return unicode.IsLetter(r) || unicode.IsDigit(r) }) >= 0 {
-			keep = append(keep, strings.TrimSpace(l))
+		l = strings.TrimSpace(l)
+		if strings.HasPrefix(l, "❯") || strings.HasPrefix(l, "⏵⏵") || !tells(l) {
+			continue
 		}
+		keep = append(keep, l)
 	}
 	if len(keep) > n {
 		keep = keep[len(keep)-n:]
 	}
 	size := 0
 	for i := len(keep) - 1; i >= 0; i-- {
-		size += len(keep[i]) + 1
+		size += utf8.RuneCountInString(keep[i]) + 1
 		if size > max && i < len(keep)-1 {
 			keep = keep[i+1:]
 			break
 		}
 	}
-	if len(keep) == 1 && len(keep[0]) > max {
-		return cutFront(keep[0], max)
+	if len(keep) == 1 && utf8.RuneCountInString(keep[0]) > max {
+		return cutRunes(keep[0], max)
 	}
 	return strings.Join(keep, "\n")
+}
+
+// tells says whether a line says something: a letter or a digit in it, and box-drawing characters (U+2500 to U+257F)
+// not making up most of it.
+func tells(l string) bool {
+	letters, boxes, all := 0, 0, 0
+	for _, r := range l {
+		if r == ' ' {
+			continue
+		}
+		all++
+		switch {
+		case r >= 0x2500 && r <= 0x257f:
+			boxes++
+		case unicode.IsLetter(r) || unicode.IsDigit(r):
+			letters++
+		}
+	}
+	return letters > 0 && boxes*2 < all
 }
 
 // cleanExit is true for a process that exited by itself with status 0 (a Term reports that as "exit 0").

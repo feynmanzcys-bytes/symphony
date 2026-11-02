@@ -416,10 +416,16 @@ type InboxItem struct {
 }
 
 type inbox struct {
-	items []InboxItem // not yet acknowledged, oldest first; handed out again until they are
-	next  int64       // the last item's id (the next is one more)
-	wake  chan struct{}
+	items  []InboxItem // not yet acknowledged, oldest first; handed out again until they are
+	next   int64       // the last item's id (the next is one more)
+	handed time.Time   // when the unacknowledged items were last handed out
+	wake   chan struct{}
 }
+
+// inboxRehand is how long the bridge waits before it hands unacknowledged items out again: a second poll out at the
+// same time (two mods in one session: an installed one beside a --plugin-dir one) would submit the prompt too; a poll
+// that was cut off gets them at its next try, this much later.
+const inboxRehand = 3 * time.Second
 
 func (h *Hub) inboxLocked(session string) *inbox {
 	b := h.inboxes[session]
@@ -438,6 +444,7 @@ func (h *Hub) postInboxLocked(session string, it InboxItem) {
 	b.next++
 	it.ID = b.next
 	b.items = append(b.items, it)
+	b.handed = time.Time{} // new: the next poll gets it at once
 	close(b.wake)
 	b.wake = make(chan struct{})
 }
@@ -500,6 +507,10 @@ func (h *Hub) Inbox(session, account string, ack int64, timeout time.Duration, c
 			return items
 		}
 		b.items = slices.DeleteFunc(b.items, func(it InboxItem) bool { return it.ID <= ack })
+		if len(b.items) == 0 || h.now().Sub(b.handed) < inboxRehand {
+			return nil // nothing, or handed out a moment ago: another poll of the same session has them
+		}
+		b.handed = h.now()
 		return slices.Clone(b.items)
 	}
 	if items := take(); len(items) > 0 {
