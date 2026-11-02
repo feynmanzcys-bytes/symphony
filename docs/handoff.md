@@ -72,7 +72,6 @@
   - `prompt.compose` with the office's context;
   - "remember this rule";
   - MCP elicitation;
-  - performance tests for the new themes;
   - Mission Control in light colors.
 - The mod downloads the `symphony` program when it is missing.
 - Build provenance for the release archives.

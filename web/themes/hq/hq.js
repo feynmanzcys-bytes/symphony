@@ -53,7 +53,10 @@ addEventListener('hashchange', () => { if (TABS.includes(location.hash.slice(1))
 // ---------- figures ----------
 const fmtNum = new Intl.NumberFormat(lang, { notation: 'compact', maximumFractionDigits: 1 })
 const fmtUsd = n => '$' + (n >= 100 ? n.toFixed(0) : n >= 10 ? n.toFixed(1) : n.toFixed(2))
-const fmtTime = when => new Date(when).toLocaleTimeString(lang, { hour: '2-digit', minute: '2-digit' })
+// one formatter for every time shown: toLocaleTimeString with options makes a new one on each call, which made the
+// timeline's 300 rows cost a frame's time on every draw
+const timeFmt = new Intl.DateTimeFormat(lang, { hour: '2-digit', minute: '2-digit' })
+const fmtTime = when => { const d = new Date(when); return isNaN(d) ? '' : timeFmt.format(d) }
 const uptime = s => { const m = Math.max(0, Math.round((Date.now() - Date.parse(s.started)) / 60000)); return t('hq.uptime', { h: Math.floor(m / 60), m: m % 60 }) }
 const online = s => sym.isOnline(s)
 const desks = () => snapshot.accounts.filter(a => !a.advisor)

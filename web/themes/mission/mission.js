@@ -7,7 +7,7 @@
 import { t, lang, errorText, applyI18n, langPicker } from '/i18n.js'
 import { esc } from '/asks.js'
 import { connect } from '/symphony.js'
-import { STATE_COLOR, GRAY, base, lower, buildText, statusText as statusOf, deferWhilePressed } from '/ui/common.js'
+import { STATE_COLOR, GRAY, base, lower, buildText, statusText as statusOf, setHTML, deferWhilePressed } from '/ui/common.js'
 import { connectionBanner } from '/ui/banner.js'
 import { createChat } from '/ui/chat.js'
 import { createLaunchDialog } from '/ui/launch.js'
@@ -199,9 +199,9 @@ const renderWall = deferWhilePressed(() => {
         `<div class="now" title="${esc(now)}">${esc(now)}</div>`
       if (el) el.replaceWith(fresh); else wall.appendChild(fresh)
       el = fresh
-    } else if (on) { // only the minute's line moves
+    } else if (on) { // only the minute's line moves (written when it did: every tile on every frame was most of a draw)
       const sp = el.querySelector('.spark')
-      if (sp) sp.innerHTML = spark(bins(s.id))
+      if (sp) setHTML(sp, spark(bins(s.id)))
     }
     if ((prev ? prev.nextSibling : wall.firstChild) !== el) { if (prev) prev.after(el); else wall.prepend(el) }
     prev = el

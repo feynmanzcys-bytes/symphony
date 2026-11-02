@@ -276,23 +276,32 @@ export function createTaskUI(sym, {
       `<div class="body">${to}${richText(m.text)}</div><time>${esc(new Date(m.time).toLocaleTimeString(lang))}</time></div></div>`
   }
   // redrawn when the message log or the members' figures change; says whether the list should be scrolled to its end
+  // what of a message the chat shows, so a message elsewhere in the office (another task's, between desks) changes
+  // nothing here, and a new one of this task's is added below the others rather than all of them drawn again
+  const msgSig = m => `${m.id}|${m.from}|${m.fromName}|${m.toName}|${(m.toNames || []).join(',')}|${(m.missed || []).join(',')}|${m.text?.length}`
   function renderChat(task) {
     let stick = false
     const figures = task.members.map(m => { const s = sym.sessionById(m.session); return `${m.name}|${m.session}|${s?.model}|${s?.effort}` }).join(',')
-    const key = `${task.id}|${sym.messagesVersion}|${figures}`
-    if (key !== shown.chat) {
-      shown.chat = key
-      const list = sym.state.messages.filter(m => m.task === task.id)
-      const html = list.length ? list.map(m => msgHTML(task, m)).join('') : `<div class="empty">${esc(t('task.chatEmpty'))}</div>`
-      if (html !== shown.chatHTML) {
+    const list = sym.state.messages.filter(m => m.task === task.id)
+    const sigs = list.map(msgSig)
+    const head = `${task.id}|${figures}|${lang}`
+    const old = shown.chatSigs || []
+    // the same task and figures, and what was shown is still the start of the list: only the new ones are drawn
+    const appendOnly = shown.chatHead === head && old.length > 0 && old.length <= sigs.length && old.every((x, i) => x === sigs[i])
+    if (shown.chatHead !== head || sigs.length !== old.length || !appendOnly) {
+      const follow = !shown.chatSigs || chatStick || tList.scrollTop + tList.clientHeight >= tList.scrollHeight - 40
+      if (appendOnly) {
+        tList.insertAdjacentHTML('beforeend', list.slice(old.length).map(m => msgHTML(task, m)).join(''))
+      } else {
         // it follows new messages down unless you scrolled up to read; it opens at the end
-        stick = !shown.chatHTML || chatStick || tList.scrollTop + tList.clientHeight >= tList.scrollHeight - 40
         const top = tList.scrollTop
-        shown.chatHTML = html
-        tList.innerHTML = html
+        tList.innerHTML = list.length ? list.map(m => msgHTML(task, m)).join('') : `<div class="empty">${esc(t('task.chatEmpty'))}</div>`
         tList.scrollTop = top
-        if (stick) chatStick = false
       }
+      shown.chatHead = head
+      shown.chatSigs = sigs
+      stick = follow
+      if (stick) chatStick = false
     }
     const running = task.status === 'running'
     if (!running) closePick()

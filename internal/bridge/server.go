@@ -382,6 +382,14 @@ func (s *Server) stream(w http.ResponseWriter, r *http.Request) {
 
 	keepalive := time.NewTicker(15 * time.Second)
 	defer keepalive.Stop()
+	// A burst's last messages can wait in the browser (Chrome's, at least) until more bytes come down the stream after
+	// the page has worked through the rest, which in a quiet office is the keepalive, up to 15 s later: the page saw a
+	// long burst's tail only then. So after a message the stream writes a comment soon (streamNudge), then every second
+	// while the page may still be working (streamNudgeFor).
+	nudge := time.NewTimer(time.Hour)
+	nudge.Stop()
+	defer nudge.Stop()
+	var last time.Time // the last message's
 	for {
 		select {
 		case <-r.Context().Done():
@@ -393,6 +401,15 @@ func (s *Server) stream(w http.ResponseWriter, r *http.Request) {
 			if _, err := fmt.Fprintf(w, "data: %s\n\n", msg.JSON()); err != nil {
 				return
 			}
+			last = time.Now()
+			nudge.Reset(streamNudge)
+		case <-nudge.C:
+			if _, err := fmt.Fprint(w, ":\n\n"); err != nil {
+				return
+			}
+			if time.Since(last) < streamNudgeFor {
+				nudge.Reset(time.Second)
+			}
 		case <-keepalive.C:
 			if _, err := fmt.Fprint(w, ": keepalive\n\n"); err != nil {
 				return
@@ -401,6 +418,13 @@ func (s *Server) stream(w http.ResponseWriter, r *http.Request) {
 		flusher.Flush()
 	}
 }
+
+// After a message the stream writes a comment streamNudge later when nothing else came, then every second until
+// streamNudgeFor has passed since the message (stream).
+const (
+	streamNudge    = 250 * time.Millisecond
+	streamNudgeFor = 10 * time.Second
+)
 
 func (s *Server) file(name string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) { s.serveFile(w, r, name) }

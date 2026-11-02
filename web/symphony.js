@@ -114,11 +114,12 @@ export function connect({ stream = true } = {}) {
   // A full snapshot (the first one, /api/state) carries it; the ones pushed on every change don't, and each new or
   // updated message comes as a "message" push instead. The snapshot names the latest message, so a page that missed
   // one (it fell behind) fetches the whole log again.
-  const seen = new Set()
+  const seen = new Set() // the ids of the messages in the log: one not among them is new (forgotten as the log lets it go)
   function takeMessages(list) {
     sym.state.messages = list
     sym.messagesVersion++
     for (const m of list) noteMessage(m)
+    if (seen.size > list.length) { const ids = new Set(list.map(m => m.id)); for (const id of seen) if (!ids.has(id)) seen.delete(id) }
   }
   function noteMessage(m) {
     const isNew = !seen.has(m.id)
@@ -142,7 +143,11 @@ export function connect({ stream = true } = {}) {
       const group = shown.has(list[i].task) ? list[i].task : '', n = count.get(group) || 0
       if (n < KEEP_MESSAGES) { count.set(group, n + 1); kept.push(list[i]) }
     }
-    if (kept.length < list.length) list.splice(0, list.length, ...kept.reverse())
+    if (kept.length < list.length) {
+      const keep = new Set(kept.map(m => m.id))
+      for (const m of list) if (!keep.has(m.id)) seen.delete(m.id)
+      list.splice(0, list.length, ...kept.reverse())
+    }
   }
   let catchingUp = false, warned = false
   async function catchUpMessages() {
