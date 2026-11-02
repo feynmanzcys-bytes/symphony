@@ -334,7 +334,9 @@ async function startBridge($: EngineInterface, bridge: string): Promise<{ ok: bo
   if (!local) return { ok: false }
   let ran
   try {
+    // in the mod's own folder, never the session's: a symphony.exe lying there could win over the one on PATH
     ran = await $.process.run(['symphony', '-background', '-open=false', '-addr', `${local[1]}:${local[2]}`], {
+      cwd: $.plugin.root,
       timeoutMs: 30_000,
     })
   } catch {
@@ -402,10 +404,16 @@ function tellAgain($: EngineInterface) {
 // report queues an event: the hook goes on at once, and the events reach the bridge in the order they happened, each
 // for the session it happened in. Once the session ended nothing more is reported for it. The queue is bounded: past
 // OUTBOX_CAP the oldest heartbeat, usage figures or streamed piece goes, else the oldest report but a start or an end.
+// The end goes to the front of the queue.
 function report($: EngineInterface, kind: string, data: object = {}) {
   if (ended && kind !== 'session.end') return
   const session = sessionId
-  outbox.push({ kind, send: () => emit($, kind, data, REPORT_TIMEOUT, session) })
+  const r = { kind, send: () => emit($, kind, data, REPORT_TIMEOUT, session) }
+  // the goodbye goes before whatever is still queued: the engine gives the session.end hook 1.5 s, and a backlog of
+  // reports would cut it off; then the bridge keeps the session for a minute, and a session started by hand (no launch
+  // id to prove the same process) gets 409 under its new id until then
+  if (kind === 'session.end') outbox.unshift(r)
+  else outbox.push(r)
   if (outbox.length > OUTBOX_CAP) {
     let i = outbox.findIndex(r => OUTBOX_LOSSY.has(r.kind))
     if (i < 0) i = outbox.findIndex(r => r.kind !== 'session.start' && r.kind !== 'session.end')
@@ -612,7 +620,10 @@ function reportTitle($: EngineInterface, name: string | undefined) {
 
 // the inbox: what the page sent to this session. One long poll at a time, for as long as the session runs (a session
 // after /clear starts its own at once).
-type InboxItem = { kind: 'say'; text: string } | { kind: 'abort' }
+type InboxItem = ({ kind: 'say'; text: string } | { kind: 'abort' }) & { id?: number }
+// the id of the last inbox item done, named in the next poll (ack): the bridge drops an item only then, so a poll cut
+// off on its way back loses nothing (a bridge before 1.1.2 sends no ids and hands each item out once)
+let inboxAck = 0
 
 function pollInbox($: EngineInterface) {
   if (polling) return
@@ -632,7 +643,7 @@ function pollInbox($: EngineInterface) {
     if (ended || refused || !(await ident($))) return stop()
     let items: InboxItem[] = []
     try {
-      const res = await call($, `/api/inbox?session=${encodeURIComponent(await sid($))}`)
+      const res = await call($, `/api/inbox?session=${encodeURIComponent(await sid($))}&ack=${inboxAck}`)
       if (res?.status === 401) {
         refused = true
         return stop()
@@ -643,6 +654,7 @@ function pollInbox($: EngineInterface) {
       return again(INBOX_RETRY)
     }
     for (const it of items) {
+      if (it.id) inboxAck = it.id // the last one done; a bridge that restarted hands out larger ids, so it stays right
       if (it.kind === 'say' && it.text) {
         // a prompt that didn't enter (a hook refused it, the engine's own limit, a failure) is dropped, with why
         let dropped: string | undefined
@@ -673,6 +685,7 @@ function begin(id: string | undefined, model: string) {
   ended = false
   pollRound++
   polling = false
+  inboxAck = 0
   mainTurn = undefined
   reported = { model, effort: '' }
   background = { tasks: -1, crons: -1 }

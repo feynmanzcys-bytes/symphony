@@ -219,6 +219,7 @@
   "chat.notice.notify": "Benachrichtigung",
   "launch.startingBg": "Startet im Hintergrund; der Mitarbeiter kommt an seinen Platz, sobald die Sitzung online ist…",
   "error.pty_start_failed": "{program} lässt sich nicht starten: {detail}",
+  "error.cmd_unsafe_arg": "{arg} lässt sich nicht an claude übergeben: unter Windows läuft claude.cmd über cmd.exe, das {chars} als eigene Zeichen liest; nehmen Sie einen Namen oder Ordner ohne sie",
   "error.launch_timeout_pty": "nach {timeout} nicht online; letzte Zeilen des Terminals:\n{screen}",
   "error.terminal_none": "kein grafisches Terminal gefunden (x-terminal-emulator / gnome-terminal / konsole / xterm)",
   "error.terminal_unknown_session": "kein Terminal für diese Sitzung",

@@ -219,6 +219,7 @@
   "chat.notice.notify": "通知",
   "launch.startingBg": "正在背景啟動，工作階段上線後員工就會到座位…",
   "error.pty_start_failed": "無法啟動 {program}：{detail}",
+  "error.cmd_unsafe_arg": "沒法把 {arg} 傳給 claude：Windows 上 claude.cmd 經 cmd.exe 執行，{chars} 這些字元會被它當成自己的；換一個不含它們的名字或資料夾",
   "error.launch_timeout_pty": "{timeout} 後仍未上線；終端機最後幾行：\n{screen}",
   "error.terminal_none": "找不到圖形終端機（x-terminal-emulator / gnome-terminal / konsole / xterm）",
   "error.terminal_unknown_session": "這個工作階段沒有終端機",

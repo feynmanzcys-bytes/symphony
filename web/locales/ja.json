@@ -219,6 +219,7 @@
   "chat.notice.notify": "通知",
   "launch.startingBg": "バックグラウンドで起動中。セッションがオンラインになると社員が席に着きます…",
   "error.pty_start_failed": "{program} を起動できません：{detail}",
+  "error.cmd_unsafe_arg": "{arg} を claude に渡せません：Windows では claude.cmd が cmd.exe 経由で動き、{chars} は cmd.exe 自身の文字として読まれます。これらを含まない名前やフォルダーにしてください",
   "error.launch_timeout_pty": "{timeout} 経ってもオンラインになりません。ターミナルの最後の行:\n{screen}",
   "error.terminal_none": "グラフィカルターミナルが見つかりません（x-terminal-emulator / gnome-terminal / konsole / xterm）",
   "error.terminal_unknown_session": "このセッションにはターミナルがありません",

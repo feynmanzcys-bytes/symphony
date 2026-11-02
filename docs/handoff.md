@@ -1,6 +1,6 @@
 # Handoff: what v1.1.1 leaves for later
 
-**Status (2026-11-02):** v1.1.1 is released, and `dev` and `main` are at its last commit. Nothing below has been started. Each item says what happens, where in the code, a way to fix it and how to test the fix. Take items up as the repository's rules say ([CLAUDE.md](../CLAUDE.md), [CONTRIBUTING.md](../CONTRIBUTING.md)): a branch and worktree per change, the full tests before any commit, a release once a batch is done. When an item is done, remove it here in the same change.
+**Status (2026-11-02):** v1.1.1 is released. The batch after it (branch `handoff/all`, merged from `handoff/terminal`, `handoff/screen`, `handoff/tasks`, `handoff/lifecycle` and `handoff/mod`; mod 1.1.2, not yet released) settled items 1 to 10, 12 to 14, 16 to 18 and 20 to 22 of the list v1.1.1 left; what is below is what remains. Each item says what happens, where in the code, a way to fix it and how to test the fix. Take items up as the repository's rules say ([CLAUDE.md](../CLAUDE.md), [CONTRIBUTING.md](../CONTRIBUTING.md)): a branch and worktree per change, the full tests before any commit, a release once a batch is done. When an item is done, remove it here in the same change.
 
 ## Where things stand
 
@@ -32,20 +32,12 @@
     - Fix: at `-autostart on`, capture those variables from a short allowlist and write them into the unit or plist.
     - Never capture `ANTHROPIC_*`: the unit file is 0644.
     - Have the README say what is captured.
-17. **The goodbye can be lost on `/clear`.**
-    - What happens: the mod queues `session.end` at the back of its outbox (register.ts), and the engine gives the session.end hook 1.5 s. With reports backed up, the goodbye is cut off. A session started by hand has no launch id to prove it is the same process, so its new id then gets 409 until the old one counts as lost, about 60 s.
-    - Fix: put `session.end` at the front of the outbox, or send it at once.
 
 ## The mod
 
 19. **The token stays in the session's environment.**
     - What happens: the session's Bash commands, npm scripts and MCP servers inherit `SYMPHONY_TOKEN`. With it they could call the mod's endpoints: empty the inbox, report made-up events, make ask cards. They could not answer the cards; that needs the page key. Since v1.1.0 the bridge no longer passes the token on.
     - Fix: `$.env.set('SYMPHONY_TOKEN', undefined)` once the mod has read it. First check that a module reloaded by `/reload-plugins` can still read it.
-20. **The mod starts the bridge as a bare `symphony`, in the session's folder** (`$.process.run(['symphony', …])` without `cwd`, register.ts). On Windows, a `symphony.exe` in that folder might win over the one on PATH, depending on how the engine looks programs up. Fix: pass `cwd: $.plugin.root`.
-21. **Windows with npm's `claude.cmd`: employee names go through cmd.exe.**
-    - What happens: `CreateProcess` runs a `.cmd` file through `cmd.exe /c`, and `syscall.EscapeArg` doesn't escape for cmd.exe (pty_windows.go). `validName` in accounts.go only refuses control characters. So an employee named `R&D` or `50%x%` gives a broken command line: `--name R`, then a second command.
-    - Fix: when the program is a `.cmd` or `.bat` file, either refuse arguments containing `% ^ & | < > ! "` with a coded error, or escape them for cmd.exe.
-22. **A prompt from the page can be lost when the mod's connection drops.** `/api/inbox` takes the items before it writes the answer (chat.go, server_chat.go). A poll cut off in between loses them, and the page's bubble stays "queued". Fix: hand items out with an id, and drop them only when the next poll acknowledges that id.
 
 ## Code structure (no visible effect)
 
