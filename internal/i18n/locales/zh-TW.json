@@ -26,6 +26,7 @@
   "log.stop_none": "{addr} 上沒有這個存放資料的資料夾所屬的 symphony bridge 在回應：沒有要停的",
   "log.stop_failed": "停不掉 {addr} 上的 bridge：{reason}",
   "log.stop_slow": "已經讓 {addr} 上的 bridge 停下，但過了一分鐘它還在回應（可能還在結束某個任務）；稍後再試，或者結束它的行程",
+  "log.stop_forced": "停止尚未完成就收到第二個訊號：工作階段已被強行結束，還在寫入或合併的東西可能停在半路",
   "log.push_failed": "無法把更新推送給辦公室頁面：{reason}",
   "log.page_behind": "有個辦公室頁面跟不上更新（分頁凍結或卡住了）；已關閉它的串流，它會重新連線並取得完整狀態",
   "log.task_end_failed": "結束任務 {task} 時出錯：{reason}",

@@ -26,6 +26,7 @@
   "log.stop_none": "aucun bridge symphony avec ce dossier de données ne répond sur {addr} : rien à arrêter",
   "log.stop_failed": "impossible d’arrêter le bridge sur {addr} : {reason}",
   "log.stop_slow": "le bridge sur {addr} a reçu l’ordre de s’arrêter, mais il répond encore au bout d’une minute (il termine peut-être une tâche) ; réessayez plus tard, ou mettez fin à son processus",
+  "log.stop_forced": "arrêté par un second signal avant la fin de l’arrêt : les sessions ont été tuées, et ce qui s’écrivait ou se fusionnait encore peut être resté en l’état",
   "log.push_failed": "impossible d’envoyer une mise à jour à la page du bureau : {reason}",
   "log.page_behind": "une page du bureau a pris du retard sur ses mises à jour (un onglet figé ou bloqué) ; son flux a été fermé, et elle se reconnecte pour récupérer l’état complet",
   "log.task_end_failed": "fin de la tâche {task} : {reason}",

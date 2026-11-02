@@ -3,6 +3,7 @@
 package bridge
 
 import (
+	"bytes"
 	"os"
 	"strconv"
 	"strings"
@@ -68,4 +69,32 @@ func parseStat(stat string) (procInfo, bool) {
 		return procInfo{}, false
 	}
 	return procInfo{pid: pid, ppid: ppid, pgid: pgid, start: f[19]}, true
+}
+
+// procsWithEnv is every process whose environment holds key=value: /proc/<pid>/environ, readable for this user's
+// processes (a session's are), NUL-separated as it was at exec.
+func procsWithEnv(key, value string) []int {
+	entries, err := os.ReadDir("/proc")
+	if err != nil {
+		return nil
+	}
+	want := []byte(key + "=" + value)
+	var pids []int
+	for _, e := range entries {
+		pid, err := strconv.Atoi(e.Name())
+		if err != nil {
+			continue
+		}
+		data, err := os.ReadFile("/proc/" + e.Name() + "/environ")
+		if err != nil {
+			continue
+		}
+		for _, kv := range bytes.Split(data, []byte{0}) {
+			if bytes.Equal(kv, want) {
+				pids = append(pids, pid)
+				break
+			}
+		}
+	}
+	return pids
 }

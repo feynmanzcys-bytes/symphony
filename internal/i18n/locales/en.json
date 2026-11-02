@@ -26,6 +26,7 @@
   "log.stop_none": "no symphony bridge with this data folder answers at {addr}: nothing to stop",
   "log.stop_failed": "can't stop the bridge at {addr}: {reason}",
   "log.stop_slow": "asked the bridge at {addr} to stop, but it still answers after a minute (it may still be ending a task); try again later, or end its process",
+  "log.stop_forced": "stopped by a second signal before the stop finished: the sessions were killed, and what was still being written or merged may be left as it was",
   "log.push_failed": "can't send the office page an update: {reason}",
   "log.page_behind": "an office page fell behind with its updates (a frozen or stalled tab); its stream was closed, and it reconnects for the whole state",
   "log.task_end_failed": "ending task {task}: {reason}",

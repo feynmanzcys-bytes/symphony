@@ -26,6 +26,7 @@
   "log.stop_none": "nenhum bridge do symphony com esta pasta de dados responde em {addr}: nada para parar",
   "log.stop_failed": "não foi possível parar o bridge em {addr}: {reason}",
   "log.stop_slow": "o bridge em {addr} recebeu o pedido para parar, mas ainda responde depois de um minuto (talvez ainda esteja encerrando uma tarefa); tente de novo mais tarde ou encerre o processo dele",
+  "log.stop_forced": "parado por um segundo sinal antes de a parada terminar: as sessões foram mortas, e o que ainda estava sendo gravado ou mesclado pode ter ficado pela metade",
   "log.push_failed": "não foi possível enviar uma atualização para a página do escritório: {reason}",
   "log.page_behind": "uma página do escritório ficou para trás nas atualizações (uma aba congelada ou travada); o fluxo dela foi fechado, e ela se reconecta para receber o estado completo",
   "log.task_end_failed": "ao encerrar a tarefa {task}: {reason}",

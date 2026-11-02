@@ -61,6 +61,8 @@ func TestLinux(t *testing.T) {
 		`Environment="PATH=/usr/bin:/home/u/100%%/bin"`,
 		"KillMode=mixed",
 		"Restart=on-failure",
+		"StartLimitIntervalSec=60",
+		"StartLimitBurst=5",
 		"WantedBy=default.target",
 	} {
 		if !strings.Contains(unit, "\n"+line+"\n") {
@@ -121,6 +123,7 @@ func TestMacOS(t *testing.T) {
 		"<string>/Applications/sym &amp; phony/symphony</string>\n\t\t<string>-addr=127.0.0.1:7788</string>\n\t\t<string>-open=false</string>",
 		"<key>PATH</key>\n\t\t<string>/opt/homebrew/bin:/usr/bin</string>",
 		"<key>RunAtLoad</key>\n\t<true/>",
+		"<key>ThrottleInterval</key>\n\t<integer>60</integer>",
 		"<string>" + filepath.Join(s.Home, "Library", "Logs", "symphony.log") + "</string>",
 	} {
 		if !strings.Contains(plist, part) {
