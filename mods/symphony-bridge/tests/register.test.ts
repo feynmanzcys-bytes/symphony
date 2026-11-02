@@ -2,8 +2,9 @@
 // The test's on() sits beneath the mod and answers for the engine and the bridge; every request the mod sends
 // and every message it shows is recorded.
 import type { On } from 'claude-code'
-import { expect, mock, test } from 'claude-code/testing'
+import { type TestBody, type TestOptions, expect, mock, test as kitTest } from 'claude-code/testing'
 import { LANGS, message } from '../hooks/messages'
+import { archiveOf, hashIn, sumFor, targetOf } from '../hooks/download'
 import { hmacSha256 } from '../hooks/register'
 
 // answered: the request got an answer (not 'down' or 'hang'); proved: a hello the bridge answered with the right proof
@@ -20,6 +21,23 @@ const sha256hex = async (s: string) => hex(new Uint8Array(await crypto.subtle.di
 // the token the test bridge knows; it answers /api/hello for any other with a 401
 const KNOWN = 'tok'
 
+// Under load (other test runs beside this one) one settle of the kit's clock may come back before a dispatch that
+// crosses into the plugin's environment and back has finished: the world's clock settles until what the mod sends and
+// shows stops changing, and every test ends once the mod went quiet, so a report it still had to send never goes out
+// after the test (its module unloaded, the engine would refuse the fetch and fail the file).
+let quietNow: (() => Promise<void>) | undefined
+
+function test(name: string, ...rest: [TestBody] | [TestOptions, TestBody]) {
+  const body = rest.length === 1 ? rest[0] : rest[1]
+  const wrapped: TestBody = async ($, on) => {
+    quietNow = undefined
+    await body($, on)
+    await quietNow?.()
+  }
+  if (rest.length === 1) kitTest(name, wrapped)
+  else kitTest(name, rest[0], wrapped)
+}
+
 // The test bridge answers POST /api/hello as symphony's bridge does (unless it's down or hangs): the HMAC-SHA256 of
 // "symphony-hello:" + nonce keyed with the token whose SHA-256 is the id. hello, when given, answers the hellos
 // instead; undefined from it means as the bridge would.
@@ -29,9 +47,10 @@ function world(
   reply: (r: Req) => Reply | Promise<Reply> = () => ({ status: 200, text: '{}' }),
   run: (argv: readonly string[]) => Ran = () => 'missing',
   hello?: (r: Req) => Reply | undefined,
+  files: Record<string, string> = {}, // what $.fs.read finds, by path (nothing else is there)
 ) {
   mock.env(on, env)
-  const clock = mock.clock(on)
+  const kit = mock.clock(on)
   const all: Req[] = [] // every request, in order
   const reqs: Req[] = []
   const polls: Req[] = [] // the inbox long polls, apart from the reports
@@ -72,12 +91,36 @@ function world(
     toasts.push(e.text)
     return { value: undefined }
   })
+  // settled: settles until `rounds` settles in a row saw no new request, run or message
+  const steadyFor = async (rounds: number) => {
+    let seen = -1
+    for (let i = 0, still = 0; i < 4000 && still < rounds; i++) {
+      await kit.settle()
+      const now = all.length + runs.length + toasts.length
+      if (now === seen) still++
+      else (seen = now), (still = 0)
+    }
+  }
+  const steady = () => steadyFor(8)
+  // settles until cond holds (or a few thousand settles went by): for a check whose outcome is a request or a message
+  // still on its way through the plugin's environment
+  const until = async (cond: () => boolean) => {
+    for (let i = 0; i < 4000 && !cond(); i++) await kit.settle()
+  }
+  const clock = {
+    ...kit,
+    settle: async () => (await kit.settle(), await steady()),
+    advance: async (ms: number) => (await kit.advance(ms), await steady()),
+    set: async (ms: number) => (await kit.set(ms), await steady()),
+  }
+  quietNow = () => steadyFor(60)
   const session = { id: 'sess-1' } // what $.session.id() answers
   on('session.id', () => ({ value: session.id }))
   on('session.model', () => ({ value: 'claude-sonnet-5-5' }))
   on('fs.read', (_$, e) => {
     reads.push(e.path)
-    return { deny: 'tests read no files' }
+    const found = Object.entries(files).find(([path]) => e.path.endsWith(path))
+    return found ? { value: found[1] } : { deny: 'tests read no files' }
   })
   // the engine's side of session.start; a test may have it run the engine's own start hooks first, as the engine does
   const engine: { start?: () => Promise<void> } = {}
@@ -85,7 +128,7 @@ function world(
     await engine.start?.()
     return { cwd: e.cwd }
   })
-  return { all, reqs, polls, hellos, toasts, runs, cwds, reads, clock, session, engine }
+  return { all, reqs, polls, hellos, toasts, runs, cwds, reads, clock, session, engine, until }
 }
 
 // The token leaves the session only for a bridge that has just proved it knows it: every request that carries it
@@ -118,6 +161,63 @@ test('a session without SYMPHONY_TOKEN: no bridge, no messages, approvals as usu
 
   expect(w.reqs).toEqual([])
   expect(w.toasts).toEqual([])
+})
+
+// the engine's session state and env.set, in memory: what the mod keeps for a reloaded module, and what it unsets
+function sessionState(on: Parameters<Parameters<typeof test>[1]>[1], opts: { refuse?: boolean } = {}) {
+  const values = new Map<string, unknown>()
+  const unset: string[] = []
+  on('state.get', (_$, e) => ({ value: { value: values.get(`${e.plugin}.${e.key}`), version: values.has(`${e.plugin}.${e.key}`) ? 1 : 0 } }))
+  on('state.set', (_$, e) => {
+    if (opts.refuse) return { deny: 'no session state here' }
+    values.set(`${e.plugin}.${e.key}`, e.value)
+    return { value: { isSet: true, version: 1 } }
+  })
+  on('env.set', (_$, e) => {
+    if (e.value === undefined) unset.push(e.name)
+    return { value: {} }
+  })
+  return { values, unset }
+}
+
+test('the token leaves the environment once the session started, kept in the session state for a reloaded module', async ($, on) => {
+  const w = world(on, { SYMPHONY_TOKEN: 'tok', SYMPHONY_BRIDGE: 'https://bridge.test', SYMPHONY_LAUNCH: 'L1' })
+  const st = sessionState(on)
+
+  await $.session.start(start)
+  expect(st.unset).toEqual(['SYMPHONY_TOKEN']) // not SYMPHONY_LAUNCH: what a session starts carries its launch id on purpose
+  expect(st.values.get('symphony-bridge.office')).toEqual({ token: 'tok', bridge: 'https://bridge.test' })
+  expect(w.reqs[0]).toEqual(expect.objectContaining({ auth: 'Bearer tok' }))
+})
+
+test('a module reloaded by /reload-plugins finds the token in the session state', async ($, on) => {
+  // the environment no longer has it (the first module took it out); no session.start comes after a reload
+  const w = world(on, { SYMPHONY_BRIDGE: 'https://bridge.test' })
+  const st = sessionState(on)
+  st.values.set('symphony-bridge.office', { token: 'tok', bridge: 'https://bridge.test' })
+  on('tool.call', () => ({ result: {} }))
+
+  await $.tool.call({ tool: 'Bash', command: 'ls' })
+  await w.until(() => w.reqs.some(r => r.body?.kind === 'tool.start'))
+  const started = w.reqs.find(r => r.body?.kind === 'tool.start')
+  expect(started).toEqual(expect.objectContaining({ url: 'https://bridge.test/api/event', auth: 'Bearer tok' }))
+})
+
+test('an engine that keeps no session state: the token stays in the environment (a reload would lose the session)', async ($, on) => {
+  world(on, { SYMPHONY_TOKEN: 'tok', SYMPHONY_BRIDGE: 'https://bridge.test' })
+  const st = sessionState(on, { refuse: true })
+
+  await $.session.start(start)
+  expect(st.unset).toEqual([])
+})
+
+test('a session without a token touches neither the environment nor the session state', async ($, on) => {
+  world(on, { SYMPHONY_BRIDGE: 'https://bridge.test' })
+  const st = sessionState(on)
+
+  await $.session.start(start)
+  expect(st.unset).toEqual([])
+  expect(st.values.size).toBe(0)
 })
 
 test('a session with a token: reports itself online with the token, then a heartbeat every 15 seconds', async ($, on) => {
@@ -153,8 +253,8 @@ test('the account is busy at the start: once the bridge takes the heartbeat (the
 
   busy = false
   await w.clock.advance(15_000)
-  await w.clock.settle()
-  expect(w.reqs.at(-1)?.body).toEqual(expect.objectContaining({ kind: 'heartbeat' }))
+  await w.until(() => w.polls.length > 0)
+  expect(w.reqs.filter(r => r.body?.kind === 'heartbeat').length).toBe(2)
   expect(w.polls.length).toBeGreaterThan(0) // the session is online now: what the page sends reaches it
 })
 
@@ -256,6 +356,106 @@ test('a bridge on this machine that is down: the mod starts it with symphony -ba
   expect(starts[0]).toEqual(expect.objectContaining({ url: 'http://localhost:7790/api/event', auth: 'Bearer tok' }))
   expect(w.toasts).toEqual(['symphony: started the bridge (http://localhost:7790) in the background; run symphony to open the office'])
   expectCheckedBeforeToken(w.all)
+})
+
+test('the release names: system and processor from uname or Windows, the archive, its line in checksums.txt, a hash in any tool\'s words', () => {
+  expect(targetOf('Linux x86_64\n', undefined)).toEqual({ os: 'linux', arch: 'amd64' })
+  expect(targetOf('Linux aarch64', undefined)).toEqual({ os: 'linux', arch: 'arm64' })
+  expect(targetOf('Darwin arm64', undefined)).toEqual({ os: 'darwin', arch: 'arm64' })
+  expect(targetOf('FreeBSD amd64', undefined)).toBe(undefined)
+  expect(targetOf('Linux riscv64', undefined)).toBe(undefined)
+  expect(targetOf(undefined, 'AMD64')).toEqual({ os: 'windows', arch: 'amd64' })
+  expect(targetOf(undefined, 'ARM64')).toEqual({ os: 'windows', arch: 'arm64' })
+  expect(targetOf(undefined, 'x86')).toBe(undefined)
+  expect(targetOf(undefined, undefined)).toBe(undefined)
+  expect(archiveOf({ os: 'darwin', arch: 'arm64' })).toBe('symphony_darwin_arm64.tar.gz')
+  expect(archiveOf({ os: 'windows', arch: 'amd64' })).toBe('symphony_windows_amd64.zip')
+  const a = 'a'.repeat(64), b = 'B'.repeat(64)
+  const sums = `${a}  symphony_linux_amd64.tar.gz\n${b} *symphony_windows_amd64.zip\n`
+  expect(sumFor(sums, 'symphony_linux_amd64.tar.gz')).toBe(a)
+  expect(sumFor(sums, 'symphony_windows_amd64.zip')).toBe('b'.repeat(64))
+  expect(sumFor(sums, 'symphony_linux_amd64.tar.gz.sig')).toBe(undefined)
+  expect(hashIn(`${a}  /x/symphony_linux_amd64.tar.gz.part\n`)).toBe(a) // sha256sum and shasum
+  expect(hashIn(`SHA256 hash of x.zip:\r\n${b}\r\nCertUtil: -hashfile command completed successfully.\r\n`)).toBe('b'.repeat(64)) // certutil
+  expect(hashIn(`SHA256 hash of x.zip:\n${'ab '.repeat(32).trim()}\n`)).toBe('ab'.repeat(32)) // an older certutil
+  expect(hashIn('no such file')).toBe(undefined)
+})
+
+// a world where symphony isn't installed and the release downloads: run answers each program, the bridge comes up
+// when the downloaded symphony runs
+function downloadWorld(on: On, env: Record<string, string>, hash: { real: string; listed: string }) {
+  let up = false
+  const archive = 'symphony_linux_amd64.tar.gz'
+  const w = world(
+    on,
+    { SYMPHONY_TOKEN: 'tok', ...env },
+    () => (up ? { status: 200, text: '{}' } : 'down'),
+    argv => {
+      const [prog] = argv
+      if (prog === 'symphony') return 'missing'
+      if (prog === 'uname') return { exitCode: 0, stdout: 'Linux x86_64\n' }
+      if (prog === 'curl' && argv.at(-1)?.endsWith('/checksums.txt')) return { exitCode: 0, stdout: `${hash.listed}  ${archive}\n` }
+      if (prog === 'sha256sum') return { exitCode: 0, stdout: `${hash.real}  ${argv[1]}\n` }
+      if (prog.endsWith('/bin/symphony')) {
+        up = true
+        return { exitCode: 0 }
+      }
+      return { exitCode: 0 } // mkdir, curl -o, tar, chmod, mv, rm
+    },
+    undefined,
+    { '/.claude-plugin/plugin.json': '{"name":"symphony-bridge","version":"9.8.7"}' },
+  )
+  return w
+}
+
+test('symphony not installed: the mod downloads its own version\'s release, checks it, starts the bridge with it and takes its seat', async ($, on) => {
+  const h = 'c'.repeat(64)
+  const w = downloadWorld(on, {}, { real: h, listed: h })
+
+  await $.session.start(start)
+  expect(w.toasts).toEqual([
+    "symphony: the symphony program isn't installed: downloading the bridge 9.8.7 from GitHub into the plugin's folder; approvals stay in the terminal until it runs",
+  ])
+  await w.until(() => w.toasts.length === 2)
+  expect(w.toasts[1]).toBe('symphony: started the bridge (http://127.0.0.1:7788) in the background; run symphony to open the office')
+  const progs = w.runs.map(r => r[0].split('/').at(-1))
+  expect(progs.slice(0, 2)).toEqual(['symphony', 'uname'])
+  const get = w.runs.find(r => r[0] === 'curl' && r.includes('-o'))
+  // https only, also after GitHub's redirect, and the release of the mod's own version
+  expect(get).toEqual(expect.arrayContaining(['--proto', '=https', '--proto-redir', '=https', 'https://github.com/feynmanzcys-bytes/symphony/releases/download/v9.8.7/symphony_linux_amd64.tar.gz']))
+  const at = (prog: string) => progs.indexOf(prog)
+  expect(at('sha256sum')).toBeGreaterThan(-1)
+  expect(at('tar')).toBeGreaterThan(at('sha256sum')) // unpacked only once checked
+  expect(at('mv')).toBeGreaterThan(at('tar'))
+  const started = w.runs.find(r => r[0].endsWith('/bin/symphony'))
+  expect(started).toEqual([expect.stringMatching(/\/bin\/symphony$/), '-background', '-open=false', '-addr', '127.0.0.1:7788'])
+  const starts = w.reqs.filter(r => r.body?.kind === 'session.start')
+  expect(starts.length).toBe(1)
+  expect(starts[0]).toEqual(expect.objectContaining({ auth: 'Bearer tok' }))
+  expectCheckedBeforeToken(w.all)
+})
+
+test('a downloaded archive that doesn\'t match its checksum is thrown away and never run', async ($, on) => {
+  const w = downloadWorld(on, {}, { real: 'd'.repeat(64), listed: 'e'.repeat(64) })
+
+  await $.session.start(start)
+  await w.until(() => w.toasts.length === 2)
+  expect(w.toasts[1]).toBe(
+    "symphony: couldn't download the bridge 9.8.7: symphony_linux_amd64.tar.gz doesn't match its checksum; install symphony as the README says; approvals stay in the terminal",
+  )
+  const progs = w.runs.map(r => r[0].split('/').at(-1))
+  expect(progs.includes('tar')).toBe(false)
+  expect(w.runs.some(r => r[0].endsWith('/bin/symphony'))).toBe(false)
+  expect(w.runs.some(r => r[0] === 'rm' && r.at(-1)?.endsWith('.part'))).toBe(true) // the download goes
+})
+
+test('SYMPHONY_DOWNLOAD=0: nothing is downloaded, the message says the bridge is unreachable', async ($, on) => {
+  const h = 'c'.repeat(64)
+  const w = downloadWorld(on, { SYMPHONY_DOWNLOAD: '0' }, { real: h, listed: h })
+
+  await $.session.start(start)
+  expect(w.runs).toEqual([['symphony', '-background', '-open=false', '-addr', '127.0.0.1:7788']])
+  expect(w.toasts).toEqual(["symphony: can't reach the bridge (http://127.0.0.1:7788); approvals stay in the terminal for now"])
 })
 
 test('symphony fails to start the bridge without a word: the message names its exit status, and no second try', async ($, on) => {
@@ -480,12 +680,13 @@ test('a session refused as busy checks the bridge again before each report: what
 
   await $.session.start(start)
   await w.clock.advance(15_000)
+  await w.until(() => w.reqs.some(r => r.body?.kind === 'heartbeat' && r.answered))
   await w.clock.settle()
   expect(w.hellos.length).toBe(2) // one before each report: no inbox poll keeps an eye on the bridge
   now = 'other' // the bridge stops and something else takes its address, with no failed request in between
   const from = w.all.length
   await w.clock.advance(15_000)
-  await w.clock.settle()
+  await w.until(() => w.toasts.length === 2)
   expect(w.all.slice(from).filter(r => r.auth !== undefined)).toEqual([])
   expect(w.toasts).toEqual([
     'symphony: this account already has a session online; approvals go to the terminal for now',
@@ -1436,7 +1637,7 @@ test('an ask the bridge takes only after the timeout is withdrawn when its answe
   expect(await verdict).toEqual(expect.objectContaining({ decision: 'ask', reason: 'ask a person' }))
   expect(w.reqs.filter(r => r.url.includes('/api/cancel/')).length).toBe(0)
   await w.clock.advance(2_000)
-  await w.clock.settle()
+  await w.until(() => w.reqs.some(r => r.url.endsWith('/api/cancel/a1')))
   expect(w.reqs.filter(r => r.url.endsWith('/api/cancel/a1')).length).toBe(1)
 })
 

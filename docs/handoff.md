@@ -39,10 +39,6 @@
     - Fix: when `-mod` is given and the installed plugin is enabled, have the bridge warn at start (`claude plugin list --json` already runs for the install check) and tell how to disable it (`claude plugin disable symphony-bridge@symphony`); or pass a flag that disables it for the session, if Claude Code grows one. Until then, disable the installed mod while developing with `-mod`.
     - Test: a session with both; the bridge's log, or the session's `mod` field alternating between the two versions.
 
-19. **The token stays in the session's environment.**
-    - What happens: the session's Bash commands, npm scripts and MCP servers inherit `SYMPHONY_TOKEN`. With it they could call the mod's endpoints: empty the inbox, report made-up events, make ask cards. They could not answer the cards; that needs the page key. Since v1.1.0 the bridge no longer passes the token on.
-    - Fix: `$.env.set('SYMPHONY_TOKEN', undefined)` once the mod has read it. First check that a module reloaded by `/reload-plugins` can still read it.
-
 ## Bridge lifecycle and platforms, continued
 
 30. **On macOS, a session's leftover Apple programs aren't ended.** The launch-id kill (`procsWithEnv`, `ps -E`) can't read the environment of Apple's platform binaries (`/bin/sleep`, `bash`, `zsh`, `perl`: `KERN_PROCARGS2` hides it from a plain user on macOS 26.7), so a `nohup sleep &` left by a tool survives the session; `node`, Homebrew programs and anything Go-built are found. Seen on the Mac check of handoff/all. The README says so.
@@ -61,7 +57,6 @@
 
 ## Tests
 
-27. **The mod's tests sometimes fail under heavy parallel load** (six runs at once). The old code does the same. Run alone, and in CI, they pass.
 28. **TestBackgroundLeavesTheSession runs on Linux only**, because it reads `/proc`. On macOS, `ps -E -p <pid>` and `lsof -a -p <pid> -d cwd` give the same information. For v1.1.0 it was checked by hand on a Mac.
 
 ## Later features
@@ -74,6 +69,5 @@
   - MCP elicitation;
   - performance tests for the new themes;
   - Mission Control in light colors.
-- The mod downloads the `symphony` program when it is missing.
 - Build provenance for the release archives.
 - Homebrew and Scoop packages.

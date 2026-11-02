@@ -6,8 +6,8 @@ The Claude Code mod of [symphony](https://github.com/feynmanzcys-bytes/symphony)
 
 ## What it needs
 
-- The symphony bridge, the program that serves the office page. Get it from the [releases](https://github.com/feynmanzcys-bytes/symphony/releases/latest); the repository's README says how to install and start it. When the bridge on this machine isn't running as a session starts, the mod starts it with `symphony -background`, if `symphony` is on PATH.
-- A session started with `SYMPHONY_TOKEN`, an office account's token (sessions started from the office page get one). In every other session the mod does nothing: it contacts no bridge, shows no message and leaves approvals alone.
+- The symphony bridge, the program that serves the office page. Get it from the [releases](https://github.com/feynmanzcys-bytes/symphony/releases/latest); the repository's README says how to install and start it. When the bridge on this machine isn't running as a session starts, the mod starts it with `symphony -background`, if `symphony` is on PATH; when it isn't, the mod downloads the release of its own version from GitHub (over https, checked against the release's checksums.txt) into its own folder and starts that (`SYMPHONY_DOWNLOAD=0` turns this off).
+- A session started with `SYMPHONY_TOKEN`, an office account's token (sessions started from the office page get one). In every other session the mod does nothing: it contacts no bridge, shows no message and leaves approvals alone. Once the session started, the mod takes the token out of its environment, so the commands and servers the session starts don't get it.
 
 ## Install
 
