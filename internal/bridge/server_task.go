@@ -309,10 +309,17 @@ func (s *Server) prepareGit(t *Task, undo *taskUndo) (map[string]string, error) 
 		t.Repos = append(t.Repos, r)
 	}
 	for _, m := range t.Members {
+		// recorded before the call: a post-checkout hook that fails makes worktree add exit 1 after it made both the
+		// worktree and the branch (the undo skips what isn't there). A branch of that name that is already there is
+		// the user's (the task counter passed every symphony/T<n>/ branch, raiseTaskNext): the add fails on it, and
+		// the undo must not delete it (the counter makes this near impossible, so no test forces it)
+		if _, err := runGit(m.Dir, "rev-parse", "--verify", "--quiet", "refs/heads/"+m.Branch); err == nil {
+			return nil, gitFailed(m.Dir, errors.New("branch "+m.Branch+" already exists"))
+		}
+		undo.worktrees = append(undo.worktrees, m)
 		if err := gitAddWorktree(m.Dir, m.Branch, m.Worktree, t.repo(m.Dir).Base); err != nil {
 			return nil, gitFailed(m.Dir, err)
 		}
-		undo.worktrees = append(undo.worktrees, m)
 	}
 	return prefixes, nil
 }
@@ -388,9 +395,14 @@ func (u *taskUndo) run(hub *Hub, terms *Terms, task string) {
 	}
 	var dirs []string
 	for _, m := range u.worktrees {
-		_, err := runGit(m.Dir, "worktree", "remove", "--force", m.Worktree)
-		gitLeft(m.Dir, err)
-		gitLeft(m.Dir, gitDeleteBranch(m.Dir, m.Branch))
+		// a member whose worktree add failed may have neither, or the branch alone
+		if _, err := os.Lstat(m.Worktree); err == nil {
+			_, err := runGit(m.Dir, "worktree", "remove", "--force", m.Worktree)
+			gitLeft(m.Dir, err)
+		}
+		if _, err := runGit(m.Dir, "rev-parse", "--verify", "--quiet", "refs/heads/"+m.Branch); err == nil {
+			gitLeft(m.Dir, gitDeleteBranch(m.Dir, m.Branch))
+		}
 		if !slices.Contains(dirs, m.Dir) {
 			dirs = append(dirs, m.Dir)
 		}

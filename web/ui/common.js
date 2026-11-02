@@ -9,7 +9,7 @@ export { esc, t, lang, errorText }
 export const GREEN = '#2e9e5b', YELLOW = '#f2b705', RED = '#d64541', GRAY = '#a9a49b'
 // three state colors: idle green, working yellow, waiting for an approval or an answer red; off duty gray
 export const STATE_COLOR = { idle: GREEN, thinking: YELLOW, tool: YELLOW, waiting: RED, ended: GRAY, done: GRAY }
-export const TASK_COLOR = { running: YELLOW, ending: YELLOW, failed: RED }
+export const TASK_COLOR = { running: YELLOW, ending: YELLOW, failed: RED, ended: GRAY }
 
 export const base = p => (p || '').split(/[\\/]/).filter(Boolean).pop() || p || '?' // Windows paths use backslashes
 export const lower = s => String(s ?? '').toLowerCase()

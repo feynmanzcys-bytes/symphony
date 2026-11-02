@@ -253,6 +253,7 @@
   "task.status.running": "Running",
   "task.status.ending": "Ending: saving the work (and, in a repository made for the task, merging it)…",
   "task.status.failed": "Failed",
+  "task.status.ended": "Ended: the work is on the members' branches (merged into a repository made for the task)",
   "task.flat": "No lead: everyone has the whole task and they share it out among themselves",
   "task.memberStarting": "Starting…",
   "task.end": "End the task",

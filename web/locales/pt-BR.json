@@ -253,6 +253,7 @@
   "task.status.running": "Em andamento",
   "task.status.ending": "Encerrando: salvando o trabalho (e, num repositório criado para a tarefa, mesclando-o)…",
   "task.status.failed": "Falhou",
+  "task.status.ended": "Encerrada: o trabalho está nos branches dos membros (mesclado num repositório criado para a tarefa)",
   "task.flat": "Sem líder: todos recebem a tarefa inteira e a dividem entre si",
   "task.memberStarting": "Iniciando…",
   "task.end": "Encerrar a tarefa",

@@ -253,6 +253,7 @@
   "task.status.running": "進行中",
   "task.status.ending": "收尾中：正在儲存成果（為任務新建的儲存庫還會合併）…",
   "task.status.failed": "失敗",
+  "task.status.ended": "已結束：成果在成員的分支上（為任務新建的儲存庫已合併）",
   "task.flat": "沒有組長：每個人都拿到整個任務，大家自己分工",
   "task.memberStarting": "啟動中…",
   "task.end": "結束任務",

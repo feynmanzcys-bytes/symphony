@@ -1,6 +1,7 @@
 package bridge
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -293,9 +294,14 @@ func TestTaskUndoLogs(t *testing.T) {
 	if err := gitAddWorktree(repo, ok.Branch, ok.Worktree, base); err != nil {
 		t.Fatal(err)
 	}
-	plain := t.TempDir() // no repository: its worktree and branch can't be removed
+	plain := t.TempDir() // no repository: its worktree can't be removed
 	gone := &Member{Dir: plain, Branch: "symphony/T9/alice", Worktree: filepath.Join(plain, symphonyDir, "worktrees", "alice-T9")}
-	u := &taskUndo{worktrees: []*Member{ok, gone}, advisors: []string{"nobody"}}
+	if err := os.MkdirAll(gone.Worktree, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// a member whose worktree add failed before it made anything: nothing to take back, nothing to log
+	never := &Member{Dir: repo, Branch: "symphony/T9/carol", Worktree: filepath.Join(repo, symphonyDir, "worktrees", "carol-T9")}
+	u := &taskUndo{worktrees: []*Member{ok, gone, never}, advisors: []string{"nobody"}}
 	u.run(hub, nil, "T9")
 	if exists(ok.Worktree) || mustGit(t, repo, "branch", "--list", ok.Branch) != "" {
 		t.Fatal("bob's worktree and branch should be taken back")
@@ -308,5 +314,39 @@ func TestTaskUndoLogs(t *testing.T) {
 	}
 	if slices.ContainsFunc(lines, func(l string) bool { return strings.Contains(l, repo+":") }) {
 		t.Errorf("what was taken back isn't in the log: %q", lines)
+	}
+}
+
+// TestTaskUndoAfterFailedWorktreeAdd: a global post-checkout hook that fails makes git worktree add exit 1 after it
+// made the worktree and the branch; the task doesn't start, and neither stays behind.
+func TestTaskUndoAfterFailedWorktreeAdd(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the hooks are shell scripts")
+	}
+	hooks := t.TempDir()
+	writeFile(t, filepath.Join(hooks, "post-checkout"), "#!/bin/sh\necho \"post-checkout: rejected\" >&2\nexit 1\n")
+	if err := os.Chmod(filepath.Join(hooks, "post-checkout"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	globalGitConfig(t, "[core]", "\thooksPath = "+filepath.ToSlash(hooks))
+	e := newTaskEnv(t, "")
+	repo := userRepo(t, map[string]string{"a.txt": "a\n"})
+	_, bobAcc := as(t, e.srv, e.base, "bob")
+	_, aliceAcc := as(t, e.srv, e.base, "alice")
+	e.srv.Hub.setLast(bobAcc.ID, LaunchRequest{Dir: repo})
+	e.srv.Hub.setLast(aliceAcc.ID, LaunchRequest{Dir: repo})
+	st, body := e.page.do("POST", "/api/tasks", TaskRequest{Room: hint(1), Title: "t",
+		Members: []TaskMemberRequest{{Account: bobAcc.ID}, {Account: aliceAcc.ID}}})
+	if st != 500 || body["code"] != "task_git_failed" || !strings.Contains(fmt.Sprint(body["params"]), "post-checkout") {
+		t.Fatalf("want 500 task_git_failed from the hook, got %d %v", st, body)
+	}
+	if got := mustGit(t, repo, "branch", "--list", "symphony/T1/*"); got != "" {
+		t.Fatalf("the members' branches should be gone: %q", got)
+	}
+	if got := mustGit(t, repo, "worktree", "list", "--porcelain"); strings.Contains(got, symphonyDir) {
+		t.Fatalf("the members' worktrees should be gone: %q", got)
+	}
+	if exists(filepath.Join(repo, symphonyDir)) {
+		t.Fatal("the .symphony folder should be gone")
 	}
 }

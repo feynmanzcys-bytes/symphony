@@ -7,7 +7,8 @@
 //   const tasks = createTaskUI(sym, { options, roomLabel, memberAvatar, youAvatar, isMemberOpen, onOpenMember, onWindowOpen, onWindowClose, onDialogOpen, log })
 //   tasks.openDialog({ room })      room: { k, name } the dialog was opened from (the theme seats the task there when it can), or null
 //   tasks.closeDialog()
-//   tasks.openWindow(id, data)      data: what the bridge answered, until the snapshot has the task
+//   tasks.openWindow(id, data)      data: what the bridge answered, until the snapshot has the task; once the task ended
+//                                   and left the snapshot, the window says so until it is closed
 //   tasks.closeWindow()
 //   tasks.render()                  draw the window again (on every snapshot and message)
 //   tasks.windowFor                 the task whose window is open, or null
@@ -213,8 +214,12 @@ export function createTaskUI(sym, {
     if (!windowFor) return
     const known = sym.taskById(windowFor)
     if (known) windowData = null
-    const task = known ?? (windowData?.id === windowFor ? windowData : null)
-    if (!task) return tasks.closeWindow() // it ended, and left the snapshot
+    let task = known ?? (windowData?.id === windowFor ? windowData : null)
+    // it ended and left the snapshot (only tasks.json says so): the window shows it ended, as it last was, until it is
+    // closed; a failed task dismissed just goes
+    if (!task && shown.task?.status && shown.task.status !== 'failed') task = windowData = { ...shown.task, status: 'ended' }
+    if (!task) return tasks.closeWindow()
+    shown.task = task
     win.querySelector('h2').textContent = `${task.id} · ${roomLabel(task)}`
     const st = win.querySelector('.top .status')
     st.textContent = t('task.status.' + task.status)

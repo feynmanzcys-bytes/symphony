@@ -253,6 +253,7 @@
   "task.status.running": "Läuft",
   "task.status.ending": "Wird beendet: Arbeit wird gesichert (und in einem für die Aufgabe angelegten Repository zusammengeführt)…",
   "task.status.failed": "Fehlgeschlagen",
+  "task.status.ended": "Beendet: die Arbeit liegt auf den Branches der Mitglieder (in einem für die Aufgabe angelegten Repository zusammengeführt)",
   "task.flat": "Keine Leitung: alle haben die ganze Aufgabe und teilen sie unter sich auf",
   "task.memberStarting": "Wird gestartet…",
   "task.end": "Aufgabe beenden",
