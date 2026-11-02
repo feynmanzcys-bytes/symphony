@@ -365,6 +365,32 @@ func TestLaunchTrustUnsure(t *testing.T) {
 	}
 }
 
+// TestLaunchTrustConPTY: the trust prompt as the Windows pseudo console drew it (Claude Code 2.1.316, Windows 11
+// 26200): placed with cursor positions, the gaps as moves to the right, and after a Down both lines drawn again.
+func TestLaunchTrustConPTY(t *testing.T) {
+	prompt := "\x1b[?9001h\x1b[?1004h\x1b[?25l\x1b[2J\x1b[m\x1b[H\x1b]0;claude\x07\x1b[?25h\x1b[?2004h\x1b[?2031h\x1b[?1004h\x1b[?25l\x1b[>0q\x1b[?u\x1b]7501;?\x07\x1b[93m\r\n" +
+		strings.Repeat("─", 120) + "\x1b[1m\x1b[3;2HAccessing\x1b[1Cworkspace:\x1b[m\x1b[1m\x1b[5;2HC:\\Users\\gb\\AppData\\Local\\Temp\\work-\x1b[6;2Hraw-83933699\x1b[22m" +
+		"\x1b[8;2HQuick\x1b[1Csafety\x1b[1Ccheck:\x1b[1CIs\x1b[1Cthis\x1b[1Ca\x1b[1Cproject\x1b[1Cyou\x1b[1Ccreated\x1b[1Cor\x1b[1Cone\x1b[1Cyou\x1b[1Ctrust?" +
+		"\x1b[11;2HClaude\x1b[1CCode'll\x1b[1Cbe\x1b[1Cable\x1b[1Cto\x1b[1Cread,\x1b[1Cedit,\x1b[1Cand\x1b[1Cexecute\x1b[1Cfiles\x1b[1Chere.\x1b[37m\x1b[2m\x1b[13;2HSecurity\x1b[1Cguide" +
+		"\x1b[94m\x1b[22m\x1b[15;2H❯\x1b[1CNo,\x1b[1Cexit\x1b[m\x1b[16;4HYes,\x1b[1CI\x1b[1Ctrust\x1b[1Cthis\x1b[1Cfolder\x1b[37m\x1b[2m\x1b[18;2HEnter\x1b[1Cto\x1b[1Cconfirm\x1b[1C·\x1b[1CEsc\x1b[1Cto\x1b[1Ccancel\x1b[m"
+	afterDown := "\x1b[15;2H \x1b[1CNo, exit\x1b[94m\x1b[16;2H❯\x1b[1CYes, I trust this folder\x1b[m"
+	if got := trustCursor(plainText([]byte(prompt))); got != "no" {
+		t.Fatalf("the question as drawn first: the cursor on %q, want no", got)
+	}
+	if got := trustCursor(plainText([]byte(prompt + afterDown))); got != "yes" {
+		t.Fatalf("after a Down: the cursor on %q, want yes", got)
+	}
+	_, base, starts := newLaunchBridge(t)
+	starts.screen = prompt
+	id := client{t: t, base: base}.ok("POST", "/api/launch", LaunchRequest{Name: "a", Dir: t.TempDir()})["id"].(string)
+	redrawOnDown(t, starts.proc(id), func(int) string { return afterDown })
+	waitFor(t, "the trust prompt to be answered", func() bool { return strings.HasSuffix(starts.proc(id).typed(), "\r") })
+	time.Sleep(700 * time.Millisecond)
+	if typed := starts.proc(id).typed(); typed != "\x1b[B\r" {
+		t.Fatalf("want Down, then Enter on Yes, got %q", typed)
+	}
+}
+
 // TestLaunchTrustGivesUp: a prompt whose cursor never reaches "Yes" gets a few Downs and never Enter, which would take
 // "No, exit"; the launch times out with its screen.
 func TestLaunchTrustGivesUp(t *testing.T) {
