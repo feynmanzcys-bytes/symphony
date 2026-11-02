@@ -26,13 +26,6 @@
 
 11. **A session that names its task late joins it only when the account has no other session in that task** (`joinableLocked` in hub.go). Only an older mod's early report, together with a stale, crashed member, can meet this; the session then stays a desk session. It is fine as it is; this note is for whoever changes how sessions join tasks.
 
-## Bridge lifecycle and platforms
-
-15. **Starting at login passes only PATH.** `-autostart on` gives the bridge nothing but `PATH` (`autostart.Entry`). So `CLAUDE_CONFIG_DIR`, `HTTP(S)_PROXY`, `NO_PROXY` or `NODE_EXTRA_CA_CERTS` set in a shell never reach a bridge started at login, or its sessions: the mod looks uninstalled, or sessions sit at a login screen.
-    - Fix: at `-autostart on`, capture those variables from a short allowlist and write them into the unit or plist.
-    - Never capture `ANTHROPIC_*`: the unit file is 0644.
-    - Have the README say what is captured.
-
 ## The mod
 
 29. **Development mode loads two mods.** `claude --plugin-dir <folder>` (what the bridge's `-mod` gives its sessions) loads that mod beside the installed `symphony-bridge@symphony` when there is one (`claude plugin list` shows both: `@symphony` and `@inline`). Each runs its own hooks: two inbox polls, every report twice, two asks for one permission. Seen on Windows as a prompt from the page entering a session twice (the installed 1.1.1 mod without acks took the item the 1.1.2 mod had been handed). The bridge now hands unacknowledged items to one poll per 3 s (`inboxRehand`), which hides that case, not the rest.

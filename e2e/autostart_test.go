@@ -57,10 +57,17 @@ func TestAutostart(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// the variables -autostart on keeps from its shell: systemd and launchd give the bridge nothing but PATH
+	envFile := filepath.Join(dir, "data", "autostart-env.json")
+	proxy := "http://proxy.invalid:3128"
+	if err := os.WriteFile(envFile, []byte(`{"env":{"HTTPS_PROXY":"`+proxy+`","NODE_OPTIONS":"--require /nowhere.js"}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
 	sys := autostart.Default(fmt.Sprintf("symphony-e2e-%d", time.Now().UnixNano()))
 	where, err := sys.Enable(autostart.Entry{
 		Exe:  exe,
-		Args: []string{"-addr=" + addr, "-data=" + filepath.Join(dir, "data"), "-claude=" + filepath.Join(dir, "no-claude")},
+		Args: []string{"-addr=" + addr, "-data=" + filepath.Join(dir, "data"), "-claude=" + filepath.Join(dir, "no-claude"), "-env-file=" + envFile},
 		Path: os.Getenv("PATH"),
 	})
 	if err != nil {
@@ -90,6 +97,18 @@ func TestAutostart(t *testing.T) {
 			t.Errorf("the service should run %s with -open=false: %s", exe, out)
 		}
 		known = func() bool { return exec.Command("systemctl", "--user", "is-enabled", unit).Run() == nil }
+		// the bridge set the proxy from the file (what it starts gets it), and nothing the list doesn't carry; its log is
+		// in the journal (/proc's environ shows only what it was started with)
+		journal := func() string {
+			out, _ := exec.Command("journalctl", "--user", "-u", unit, "-o", "cat", "--no-pager").Output()
+			return string(out)
+		}
+		waitUntil(t, 10*time.Second, "the journal says the bridge set HTTPS_PROXY", func() bool {
+			return strings.Contains(journal(), "set HTTPS_PROXY from "+envFile)
+		}, journal)
+		if strings.Contains(journal(), "NODE_OPTIONS") {
+			t.Errorf("the bridge should never set NODE_OPTIONS:\n%s", journal())
+		}
 	case "darwin":
 		job := gui + "/" + strings.TrimSuffix(filepath.Base(where), ".plist")
 		logFile := filepath.Join(sys.Home, "Library", "Logs", sys.Name+".log")
@@ -101,9 +120,11 @@ func TestAutostart(t *testing.T) {
 		if !strings.Contains(string(out), "program = "+exe) || !strings.Contains(string(out), "-open=false") {
 			t.Errorf("the agent should run %s with -open=false:\n%s", exe, out)
 		}
-		// the bridge's log goes to ~/Library/Logs, from its first line on, which names the address
-		if b, _ := os.ReadFile(logFile); !strings.Contains(string(b), addr) {
-			t.Errorf("%s should hold the bridge's log:\n%s", logFile, b)
+		// the bridge's log goes to ~/Library/Logs, from its first line on, which names the address, and it set the proxy
+		// from the file (and nothing the list doesn't carry)
+		waitUntil(t, 10*time.Second, "the log names the address", func() bool { b, _ := os.ReadFile(logFile); return strings.Contains(string(b), addr) })
+		if b, _ := os.ReadFile(logFile); !strings.Contains(string(b), "set HTTPS_PROXY from "+envFile) || strings.Contains(string(b), "NODE_OPTIONS") {
+			t.Errorf("%s should say the bridge set HTTPS_PROXY from %s, and nothing of NODE_OPTIONS:\n%s", logFile, envFile, b)
 		}
 		known = func() bool { return exec.Command("launchctl", "print", job).Run() == nil }
 	}
