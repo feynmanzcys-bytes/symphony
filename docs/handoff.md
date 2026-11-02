@@ -22,12 +22,6 @@
 
   It never touched the user's own office, plugins or start at login.
 
-## Bridge lifecycle and platforms
-
-15. **Starting at login passes only PATH.** `-autostart on` gives the bridge nothing but `PATH` (`autostart.Entry`). So `CLAUDE_CONFIG_DIR`, `HTTP(S)_PROXY`, `NO_PROXY` or `NODE_EXTRA_CA_CERTS` set in a shell never reach a bridge started at login, or its sessions: the mod looks uninstalled, or sessions sit at a login screen.
-    - Fix: at `-autostart on`, capture those variables from a short allowlist and write them into the unit or plist.
-    - Never capture `ANTHROPIC_*`: the unit file is 0644.
-    - Have the README say what is captured.
 
 ## The mod
 

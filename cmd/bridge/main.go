@@ -72,6 +72,7 @@ func main() {
 	background := flag.Bool("background", false, i18n.T("flag.background"))
 	showVersion := flag.Bool("version", false, i18n.T("flag.version"))
 	stopFlag := flag.Bool("stop", false, i18n.T("flag.stop"))
+	envFile := flag.String("env-file", "", i18n.T("flag.env_file"))
 	flag.Parse()
 	if *showVersion {
 		fmt.Printf("symphony %s (%s/%s)\n", buildVersion(), runtime.GOOS, runtime.GOARCH)
@@ -96,6 +97,14 @@ func main() {
 	if *background {
 		startBackground(base, *dataDir)
 		return
+	}
+	// started at login: the variables -autostart on kept from its shell (the bridge got only PATH), before anything runs
+	if *envFile != "" {
+		if names, err := applyLoginEnv(*envFile, os.Getenv, os.Setenv); err != nil {
+			log.Print(i18n.T("log.env_file_failed", "file", *envFile, "reason", err.Error()))
+		} else if len(names) > 0 {
+			log.Print(i18n.T("log.env_file", "names", strings.Join(names, ", "), "file", *envFile))
+		}
 	}
 	key := loadKey(*dataDir)
 	office := officeURL(base, key)
@@ -542,9 +551,22 @@ func setAutostart(mode string, args []string, base, dataDir string, open bool) {
 		if at := runningAt(dataDir, key); at != "" && "http://"+at != base {
 			log.Fatal(i18n.T("log.data_in_use", "dir", dataDir, "url", officeURL("http://"+at, key)))
 		}
+		// what of this shell's environment the bridge started at login needs (it gets only PATH), in a file only this
+		// user may read
+		envPath := loginEnvPath(dataDir)
+		kept, err := saveLoginEnv(envPath, captureLoginEnv(os.Getenv))
+		if err != nil {
+			log.Fatal(i18n.T("log.autostart_failed", "reason", err.Error()))
+		}
+		if len(kept) > 0 {
+			args = append(args, "-env-file="+envPath)
+		}
 		where, err := sys.Enable(autostart.Entry{Exe: exe, Args: args, Path: os.Getenv("PATH")})
 		if err != nil {
 			log.Fatal(i18n.T("log.autostart_failed", "reason", err.Error()))
+		}
+		if len(kept) > 0 {
+			log.Print(i18n.T("log.autostart_env", "names", strings.Join(kept, ", "), "file", envPath))
 		}
 		switch waitBridge(base, key, 15*time.Second) {
 		case nobody:
@@ -560,6 +582,9 @@ func setAutostart(mode string, args []string, base, dataDir string, open bool) {
 		}
 	case "off":
 		where, err := sys.Disable()
+		if err == nil {
+			_, _ = saveLoginEnv(loginEnvPath(dataDir), nil) // its variables go with it
+		}
 		switch {
 		case err != nil:
 			log.Fatal(i18n.T("log.autostart_failed", "reason", err.Error()))
