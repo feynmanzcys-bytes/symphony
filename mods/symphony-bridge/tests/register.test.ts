@@ -120,7 +120,8 @@ function world(
   on('session.model', () => ({ value: 'claude-sonnet-5-5' }))
   on('fs.read', (_$, e) => {
     reads.push(e.path)
-    const found = Object.entries(files).find(([path]) => e.path.endsWith(path))
+    // (Windows hands the hook a path with backslashes)
+    const found = Object.entries(files).find(([path]) => e.path.replace(/\\/g, '/').endsWith(path))
     return found ? { value: found[1] } : { deny: 'tests read no files' }
   })
   // the engine's side of session.start; a test may have it run the engine's own start hooks first, as the engine does
@@ -497,6 +498,44 @@ test('a downloaded archive that doesn\'t match its checksum is thrown away and n
   expect(progs.includes('tar')).toBe(false)
   expect(w.runs.some(r => r[0].endsWith('/bin/symphony'))).toBe(false)
   expect(w.runs.some(r => r[0] === 'rm' && r.at(-1)?.endsWith('.part'))).toBe(true) // the download goes
+})
+
+test('on Windows every path the download hands a program has backslashes: curl.exe, certutil, tar, del and the program', async ($, on) => {
+  const h = 'f'.repeat(64)
+  const archive = 'symphony_windows_amd64.zip'
+  let up = false
+  const w = world(
+    on,
+    { SYMPHONY_TOKEN: 'tok', PROCESSOR_ARCHITECTURE: 'AMD64' },
+    () => (up ? { status: 200, text: '{}' } : 'down'),
+    argv => {
+      const [prog] = argv
+      if (prog === 'symphony' || prog === 'uname') return 'missing' // no uname on Windows
+      if (prog === 'curl.exe' && argv.at(-1)?.endsWith('/checksums.txt')) return { exitCode: 0, stdout: `${h} *${archive}\n` }
+      if (prog === 'certutil') return { exitCode: 0, stdout: `SHA256 hash of ${argv[2]}:\n${h}\nCertUtil: -hashfile command completed successfully.\n` }
+      if (prog.endsWith('\\bin\\symphony.exe')) {
+        up = true
+        return { exitCode: 0 }
+      }
+      return { exitCode: 0 } // curl.exe -o, tar, cmd /c del
+    },
+    undefined,
+    { '/.claude-plugin/plugin.json': '{"name":"symphony-bridge","version":"9.8.7"}' },
+  )
+
+  await $.session.start(start)
+  await w.until(() => w.toasts.length === 2)
+  expect(w.toasts[1]).toBe('symphony: started the bridge (http://127.0.0.1:7788) in the background; run symphony to open the office')
+  const run = (prog: string) => w.runs.find(r => r[0] === prog)
+  const part = run('curl.exe')?.[(run('curl.exe')?.indexOf('-o') ?? -2) + 1] ?? ''
+  expect(part).toMatch(/\\bin\\symphony_windows_amd64\.zip\.[0-9a-z]+\.part$/)
+  expect(run('certutil')).toEqual(['certutil', '-hashfile', part, 'SHA256'])
+  expect(run('tar')).toEqual(['tar', '-xf', part, '-C', expect.stringMatching(/\\bin$/), 'symphony.exe'])
+  expect(run('cmd')).toEqual(['cmd', '/d', '/c', 'del', '/f', '/q', part]) // the download goes once unpacked
+  for (const r of w.runs.filter(r => ['curl.exe', 'certutil', 'tar', 'cmd'].includes(r[0]))) {
+    for (const a of r) if (!a.startsWith('http') && !a.startsWith('/') && !a.startsWith('=')) expect(a).not.toContain('/')
+  }
+  expect(w.runs.some(r => r[0].endsWith('\\bin\\symphony.exe') && r[1] === '-background')).toBe(true)
 })
 
 test('SYMPHONY_DOWNLOAD=0: nothing is downloaded, the message says the bridge is unreachable', async ($, on) => {

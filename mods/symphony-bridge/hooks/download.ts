@@ -69,12 +69,15 @@ export type Plan = { version: string; target: Target }
 export async function download($: EngineInterface, plan: Plan, dir: string): Promise<{ exe?: string; reason?: string }> {
   const { target, version } = plan
   const windows = target.os === 'windows'
-  const exe = `${dir}/symphony${windows ? '.exe' : ''}`
+  // Windows's own separator in every path a program gets: cmd's del reads a "/" as the start of a switch
+  const sep = windows ? '\\' : '/'
+  if (windows) dir = dir.replace(/\//g, '\\')
+  const exe = `${dir}${sep}symphony${windows ? '.exe' : ''}`
   if (await $.fs.stat(exe).then(() => true, () => false)) return { exe }
   const archive = archiveOf(target)
   const base = `${RELEASES}/v${version}`
   const stamp = `${Date.now().toString(36)}${Math.floor(Math.random() * 1e9).toString(36)}`
-  const part = `${dir}/${archive}.${stamp}.part`
+  const part = `${dir}${sep}${archive}.${stamp}.part`
   const run = async (argv: string[], timeoutMs = 120_000) => {
     try {
       return await $.process.run(argv, { cwd: $.plugin.root, timeoutMs })
