@@ -654,7 +654,7 @@ function pollInbox($: EngineInterface) {
       return again(INBOX_RETRY)
     }
     for (const it of items) {
-      if (it.id) inboxAck = Math.max(inboxAck, it.id)
+      if (it.id) inboxAck = it.id // the last one done; a bridge that restarted hands out larger ids, so it stays right
       if (it.kind === 'say' && it.text) {
         // a prompt that didn't enter (a hook refused it, the engine's own limit, a failure) is dropped, with why
         let dropped: string | undefined

@@ -410,21 +410,24 @@ func itoa(n int) string {
 // a poll cut off between the bridge handing items out and the mod reading them loses nothing, the next poll gets
 // them again.
 type InboxItem struct {
-	ID   int    `json:"id,omitempty"`
+	ID   int64  `json:"id,omitempty"`
 	Kind string `json:"kind"` // say | abort
 	Text string `json:"text,omitempty"`
 }
 
 type inbox struct {
 	items []InboxItem // not yet acknowledged, oldest first; handed out again until they are
-	next  int         // the next item's id
+	next  int64       // the last item's id (the next is one more)
 	wake  chan struct{}
 }
 
 func (h *Hub) inboxLocked(session string) *inbox {
 	b := h.inboxes[session]
 	if b == nil {
-		b = &inbox{wake: make(chan struct{})}
+		// the ids start at the time in microseconds: a bridge that restarted hands out ids larger than any the mod
+		// acknowledged in its earlier life, so a stale ack drops nothing (the mod names the last id it got, and keeps
+		// it across the restart)
+		b = &inbox{wake: make(chan struct{}), next: time.Now().UnixMicro()}
 		h.inboxes[session] = b
 	}
 	return b
@@ -479,7 +482,7 @@ func (h *Hub) Abort(session string) error {
 // id of the last item the mod did (its last poll's): that one and the ones before it are dropped, the rest handed out
 // again. ack < 0 is a mod that acknowledges nothing (before 1.1.2): what is handed out is dropped at once, as before. A
 // waiting mod means the session is alive, so it counts as a heartbeat.
-func (h *Hub) Inbox(session, account string, ack int, timeout time.Duration, cancel <-chan struct{}) ([]InboxItem, error) {
+func (h *Hub) Inbox(session, account string, ack int64, timeout time.Duration, cancel <-chan struct{}) ([]InboxItem, error) {
 	h.mu.Lock()
 	s := h.sessions[session]
 	if s == nil || s.Account != account {

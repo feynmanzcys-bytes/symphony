@@ -3,6 +3,7 @@ package bridge
 import (
 	"net/http"
 	"slices"
+	"strconv"
 	"testing"
 	"time"
 )
@@ -114,18 +115,29 @@ func TestSayInboxAbort(t *testing.T) {
 		}
 		return out
 	}
-	if got := ids(mod.ok("GET", "/api/inbox?session=s1&ack=0", nil)); !slices.Equal(got, []float64{3, 4}) {
-		t.Fatalf("the first acknowledging poll should get both, ids 3 and 4: %v", got)
+	first := ids(mod.ok("GET", "/api/inbox?session=s1&ack=0", nil))
+	if len(first) != 2 || first[1] != first[0]+1 {
+		t.Fatalf("the first acknowledging poll should get both, with consecutive ids: %v", first)
 	}
-	if got := ids(mod.ok("GET", "/api/inbox?session=s1&ack=0", nil)); !slices.Equal(got, []float64{3, 4}) {
+	if got := ids(mod.ok("GET", "/api/inbox?session=s1&ack=0", nil)); !slices.Equal(got, first) {
 		t.Fatalf("the poll was cut off: the next one should get them again: %v", got)
 	}
-	if got := ids(mod.ok("GET", "/api/inbox?session=s1&ack=3", nil)); !slices.Equal(got, []float64{4}) {
-		t.Fatalf("acknowledging 3 should leave 4: %v", got)
+	ack := func(id float64) string { return "/api/inbox?session=s1&ack=" + strconv.FormatInt(int64(id), 10) }
+	if got := ids(mod.ok("GET", ack(first[0]), nil)); !slices.Equal(got, first[1:]) {
+		t.Fatalf("acknowledging the first should leave the second: %v", got)
 	}
 	start = time.Now()
-	if res := mod.ok("GET", "/api/inbox?session=s1&ack=4", nil); len(res["items"].([]any)) != 0 || time.Since(start) < 250*time.Millisecond {
-		t.Fatalf("acknowledging 4 should leave nothing, and wait: %v after %v", res, time.Since(start))
+	if res := mod.ok("GET", ack(first[1]), nil); len(res["items"].([]any)) != 0 || time.Since(start) < 250*time.Millisecond {
+		t.Fatalf("acknowledging the second should leave nothing, and wait: %v after %v", res, time.Since(start))
+	}
+	// a bridge that restarted hands out larger ids than the one before it did (they start at the time), so the ack the
+	// mod kept from the earlier bridge drops nothing
+	srv2, base2 := newBridge(t)
+	mod2, _ := as(t, srv2, base2, "a")
+	mod2.ok("POST", "/api/event", Event{Session: "s1", Kind: "session.start", Cwd: "/w"})
+	(client{t: t, base: base2}).ok("POST", "/api/say/s1", map[string]any{"text": "after the restart"})
+	if got := ids(mod2.ok("GET", ack(first[1]), nil)); len(got) != 1 || got[0] <= first[1] {
+		t.Fatalf("a stale ack should drop nothing on a restarted bridge: %v (old ack %v)", got, first[1])
 	}
 	// a session that ended takes nothing more
 	mod.ok("POST", "/api/event", Event{Session: "s1", Kind: "session.end"})
