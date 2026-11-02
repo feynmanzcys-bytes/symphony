@@ -2,6 +2,20 @@
 
 What changed in each release of symphony. The program (the bridge) and the mod share one version number. A release's notes start with its section here: the release workflow stops before building when the section is missing. Releases before v1.0.0 came out before the repository was public; their notes are kept below.
 
+## v1.1.2 (unreleased)
+
+Update both parts, as before: the program, and the mod with `claude plugin update symphony-bridge@symphony`. On Linux and macOS, run `symphony -autostart on` again if symphony starts at login, so the unit or agent gets its new limits.
+
+- **A session's end ends everything it started**, on every platform. On Linux and macOS, what a tool put in the background with `&` outlived the session once its shell exited (init adopted it, so nothing led to it); the bridge now also ends every process whose environment carries the session's launch id, and does the same when the session exits by itself, as Windows already did through the session's job object.
+- **The exit notice and a failed start show the screen as it was**, from a small model of the terminal's screen: text that was typed and erased, or redrawn over, is no longer in it, and no bits of escape sequences (`(B`, `78`, `=`) are either.
+- **`symphony attach`** draws its detach line below the session's last box instead of into it, empties the window's title, and turns off the color-scheme reports Claude Code turns on (a terminal that supports them could have put `^[[?997;1n` into the shell afterwards). The command the page shows for opening a terminal by hand names the program by its full path when `symphony` isn't on `PATH`. On Windows a killed session shows `exit status -1`, not 4294967295.
+- **Collaborative tasks**: a `git worktree add` that fails after it made the worktree and the branch (a global `post-checkout` hook that fails) no longer leaves them behind. The task window says the task ended, until it is closed, instead of just closing. The Chinese and Japanese kickoffs read "任务 T1 的" rather than "任务 T1的".
+- **Starting at login**: a bridge that fails for good (its data folder used by another bridge, a damaged `accounts.json`, something else on its address) is no longer restarted forever: 5 tries in a minute on Linux, one a minute on macOS; the README says how to look.
+- A second Ctrl-C while the bridge stops (a task's git work, a disk that hangs) kills the sessions and exits at once. Two sessions starting the bridge at once over a damaged key file no longer leave one of them taking the bridge for another program.
+- **The mod (1.1.2)**: the goodbye (`session.end`) goes before the reports still queued, so a backlog doesn't cut it off and a session started by hand doesn't get 409 under its new id after /clear. A prompt from the page can't be lost when the mod's connection drops as the bridge hands it over: items are acknowledged in the next poll. The bridge is started from the mod's own folder, never the session's (where a `symphony.exe` could win over the one on `PATH`).
+- **Windows with npm's `claude.cmd`**: an employee name or folder holding one of `% ^ & | < > ! "` would have broken claude's command line through cmd.exe (`--name R`, then a second command); it is refused with a clear error instead.
+- The end-to-end harness answers the trust prompt as the bridge does (Down until the cursor is on Yes).
+
 ## v1.1.1 (2026-11-02)
 
 Update both parts, as for v1.1.0: the program, and the mod with `claude plugin update symphony-bridge@symphony`. The program alone already fixes the tasks for an older mod.
