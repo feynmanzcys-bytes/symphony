@@ -26,6 +26,66 @@ func BrowserCommand(goos, url string, getenv func(string) string, look LookPath)
 	return []string{"xdg-open", url}, true
 }
 
+// HandlerCommand fills in a program's command line from Windows's registry (template, as AssocQueryString gives the
+// http protocol's: "C:\...\msedge.exe" --single-argument %1) with addr: %1 and %L become addr, %* and the other
+// numbered ones nothing, %NAME% the variable's value (getenv); without a %1 or %L, addr goes at the end. It answers
+// the program's path and the whole command line. addr is one word (FileURL escapes spaces), so it needs no quotes.
+func HandlerCommand(template, addr string, getenv func(string) string) (exe, line string, ok bool) {
+	template = strings.TrimSpace(template)
+	if template == "" {
+		return "", "", false
+	}
+	var b strings.Builder
+	placed := false
+	for i := 0; i < len(template); i++ {
+		c := template[i]
+		if c != '%' || i+1 >= len(template) {
+			b.WriteByte(c)
+			continue
+		}
+		// %NAME%, a variable (two letters or more: %LOCALAPPDATA% is no %L)
+		if end := strings.IndexByte(template[i+1:], '%'); end >= 2 && varName(template[i+1:i+1+end]) {
+			b.WriteString(getenv(template[i+1 : i+1+end]))
+			i += end + 1
+			continue
+		}
+		switch next := template[i+1]; {
+		case next == '1' || next == 'L' || next == 'l':
+			b.WriteString(addr)
+			placed = true
+			i++
+		case next == '*' || (next >= '0' && next <= '9'):
+			i++
+		default: // a lone %
+			b.WriteByte(c)
+		}
+	}
+	line = strings.TrimSpace(b.String())
+	if !placed {
+		line += " " + addr
+	}
+	if rest, quoted := strings.CutPrefix(line, `"`); quoted {
+		exe, _, _ = strings.Cut(rest, `"`)
+	} else {
+		exe, _, _ = strings.Cut(line, " ")
+	}
+	if exe == "" {
+		return "", "", false
+	}
+	return exe, line, true
+}
+
+// varName says whether s is a Windows variable's name as a command line from the registry spells one: letters,
+// digits, _ and the parentheses of ProgramFiles(x86)
+func varName(s string) bool {
+	for _, r := range s {
+		if !(r == '_' || r == '(' || r == ')' || r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9') {
+			return false
+		}
+	}
+	return s != "" && !(s[0] >= '0' && s[0] <= '9')
+}
+
 // FileURL is the file:// address of a local file on goos, for BrowserCommand: forward slashes, a Windows drive after a
 // third slash (file:///C:/...) and a network share's server as the host (file://server/share/...), with spaces and the
 // like escaped, so the address is one word that no command line splits or quotes.

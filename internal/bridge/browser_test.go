@@ -92,3 +92,38 @@ func TestConfinedDir(t *testing.T) {
 		t.Errorf("no home: %q", got)
 	}
 }
+
+// TestHandlerCommand: Windows's command for an http address (the default browser's) filled in with the office file's
+// address: Edge's and Chrome's --single-argument %1, Firefox's quoted "%1", %L, a program without quotes, variables in
+// the path (not taken for %L), a command with no placeholder, and none at all.
+func TestHandlerCommand(t *testing.T) {
+	const addr = "file:///C:/Users/Ann%20Lee/AppData/Roaming/symphony/open.html"
+	env := map[string]string{"ProgramFiles": `C:\Program Files`, "LOCALAPPDATA": `C:\Users\Ann Lee\AppData\Local`}
+	getenv := func(name string) string { return env[name] }
+	for _, c := range []struct{ template, exe, line string }{
+		{`"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" --single-argument %1`,
+			`C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe`,
+			`"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" --single-argument ` + addr},
+		{`"C:\Program Files\Mozilla Firefox\firefox.exe" -osint -url "%1"`,
+			`C:\Program Files\Mozilla Firefox\firefox.exe`,
+			`"C:\Program Files\Mozilla Firefox\firefox.exe" -osint -url "` + addr + `"`},
+		{`C:\Browsers\b.exe %L %*`, `C:\Browsers\b.exe`, `C:\Browsers\b.exe ` + addr},
+		{`"%ProgramFiles%\Google\Chrome\Application\chrome.exe" --single-argument %1`,
+			`C:\Program Files\Google\Chrome\Application\chrome.exe`,
+			`"C:\Program Files\Google\Chrome\Application\chrome.exe" --single-argument ` + addr},
+		{`"%LOCALAPPDATA%\Programs\Opera\opera.exe" -- "%1"`,
+			`C:\Users\Ann Lee\AppData\Local\Programs\Opera\opera.exe`,
+			`"C:\Users\Ann Lee\AppData\Local\Programs\Opera\opera.exe" -- "` + addr + `"`},
+		{`"C:\x\browser.exe"`, `C:\x\browser.exe`, `"C:\x\browser.exe" ` + addr},
+	} {
+		exe, line, ok := HandlerCommand(c.template, addr, getenv)
+		if !ok || exe != c.exe || line != c.line {
+			t.Errorf("%s:\n got %v %q %q\nwant %q %q", c.template, ok, exe, line, c.exe, c.line)
+		}
+	}
+	for _, empty := range []string{"", "   "} {
+		if _, _, ok := HandlerCommand(empty, addr, getenv); ok {
+			t.Errorf("%q: no command, nothing to run", empty)
+		}
+	}
+}

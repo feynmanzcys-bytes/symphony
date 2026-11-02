@@ -634,7 +634,15 @@ func openOffice(dataDir, office string) {
 		log.Print(i18n.T("log.open_failed", "url", office, "reason", err.Error()))
 		return
 	}
-	argv, ok := bridge.BrowserCommand(runtime.GOOS, bridge.FileURL(runtime.GOOS, path), os.Getenv, exec.LookPath)
+	file := bridge.FileURL(runtime.GOOS, path)
+	// Windows: the default browser itself (the http protocol's command), whatever opens .html files there
+	if cmd := bridge.BrowserForFile(file); cmd != nil {
+		if err := cmd.Start(); err == nil {
+			go cmd.Wait()
+			return
+		}
+	}
+	argv, ok := bridge.BrowserCommand(runtime.GOOS, file, os.Getenv, exec.LookPath)
 	if !ok {
 		return
 	}
