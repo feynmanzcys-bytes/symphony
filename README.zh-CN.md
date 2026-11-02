@@ -279,11 +279,11 @@ $p = ([Environment]::GetEnvironmentVariable('Path', 'User') -split ';' | Where-O
 ## 能做什么
 
 - **每个会话就是一个对话窗**：点一下员工，页面中间打开它的窗口：上面是员工信息，下面是整个会话的聊天流：输入过的提示词、模型的思考（默认折叠，进行中显示橘黄色“思考中…”）、逐字流出的回答、工具调用，以及其它会话发来的消息（紫色）。在底部输入就是给这个会话发提示词，“停止”按钮能打断它。
-- **网页审批**：会话要执行命令、改文件时的权限审批，还有 AskUserQuestion 的提问，会以卡片形式从该员工窗口底部弹出、盖住输入框，顶栏的红色计数能直接跳过去。bridge 没开、不认账号或者信不过，就退回终端原样处理，不会卡住会话。
+- **网页审批**：会话要执行命令、改文件时的权限审批，还有 AskUserQuestion 的提问，会以卡片形式从该员工窗口底部弹出、盖住输入框（在“同事”主题里，卡片就留在对话中它出现的地方，你照样能打字），顶栏的红色计数能直接跳过去。权限审批卡片上的“本会话的……都允许”会让同类调用在会话结束前不再询问、直接放行：所有改动、开头相同的命令（`npm test`），或者某个工具。MCP 服务器的表单也会显示成卡片；它要到会话的终端里填写，卡片会在窗口里打开这个终端。bridge 没开、不认账号或者信不过，就退回终端原样处理，不会卡住会话。
 - **像素办公室**：每个会话是一个坐固定工位的员工。绿色空闲、黄色工作中、红色等你审批或回答、灰色下班。闲着的先在工位上玩手机、打游戏，过一会儿就满办公室溜达：窝在休息区沙发上看电视、玩桌上足球、追逐打闹、凑到圆桌聊天、接咖啡、看窗外；闲久了去打盹，多半躲进会议室睡。块头看模型，肌肉看思考强度。画面是大公司的某一层楼，铺满窗口：开放办公区在正中，左边是挂着铭牌的 3–5 人小会议室，右边是大会议室和休息区，大家坐电梯上下班。顶部横栏里还能调像素大小，分四档：楼不变，越往细调画得越细、细节越多。
 - **一搜就找到，一点就回来**：点一下闲着的员工，它就回到自己的工位，一直待到下次干活；顶部横栏里的搜索框按名字、会话名或目录找人（按 `/` 直接跳过去），点它旁边的状态牌（空闲、工作中、待处理、下班），这一类的人就都标出来了。横栏下面的小把手能把它收上去、再拉下来。
 - **会话间消息**：会话之间互发消息（SendMessage）时有信封飞过去，还有消息记录。
-- **在页面上开会话，不弹任何窗口**：点空座位上的“+”招新员工，选目录。模型、思考强度和权限模式跟随你的 Claude Code 设置（“跟随设置”），除非你另选；选了 `bypassPermissions` 会显示一行红色警告，说明它放行了什么。下班的员工点“上班”，回到原来的座位，用的还是上次干活时的选择。会话跑在 bridge 内部自己的终端里，不会弹窗、不会抢走你的注意力；想看终端时点员工窗口里的“打开终端”，关掉那个窗口也不影响会话。
+- **在页面上开会话，不弹任何窗口**：点空座位上的“+”招新员工，选目录。模型、思考强度和权限模式跟随你的 Claude Code 设置（“跟随设置”），除非你另选；选了 `bypassPermissions` 会显示一行红色警告，说明它放行了什么。勾选“告诉它办公室里还有谁”，会话的系统提示词里就会列出在线的其他人（每段对话一次），方便它用 SendMessage 找他们。下班的员工点“上班”，回到原来的座位，用的还是上次干活时的选择。会话跑在 bridge 内部自己的终端里，不会弹窗、不会抢走你的注意力；想看终端时点员工窗口里的“打开终端”，关掉那个窗口也不影响会话。
 - **会议室里组队干活**：点一个空着的小会议室，写下任务，挑 2–5 个成员：员工（每人另开一个只做这个任务的会话），或者临时请来的顾问。默认第一个成员当组长，用 SendMessage 分派各部分；每个成员都在自己的 git worktree、自己的分支上干活，谁也不会踩到谁的文件。任务结束之前，成员们都坐在会议室里。
 - **10 种语言**：English、简体中文、繁體中文、日本語、한국어、Español、Français、Deutsch、Português (Brasil)、Русский。页面跟着浏览器的语言走，顶部横栏里可以切换；bridge 的提示先看 `-lang`，没有就跟系统语言（`LANG` 之类），再没有就用英文；mod 的提示先看 `SYMPHONY_LANG`（页面开的会话就是页面的语言），没有就跟系统语言，再没有就用英文。
 - **全在本机**：bridge 是一个 Go 程序（只用标准库；端到端测试另外用了 chromedp），只在本机监听，网页是原生 JS，不依赖任何第三方服务。
@@ -317,13 +317,13 @@ $p = ([Environment]::GetEnvironmentVariable('Path', 'User') -split ';' | Where-O
 
 `-addr` 上应答的是别的东西（别的程序、用另一个数据目录的 bridge，或者旧版的 symphony bridge）时，symphony 会说明情况，然后停下；它只向能证明自己有页面密钥的 bridge 出示这个密钥。一个数据目录同一时间只归一个 bridge 用：如果用的数据目录已经有 bridge 在别的地址上跑着，symphony 会说出它在哪儿跑、打开它的办公室，然后停下（要再起一个 bridge，就给它单独的 `-data`）。
 
-**随登录启动**：`symphony -autostart on` 让 bridge 以后每次登录都自动启动（一起给的参数也会带上，比如 `-addr`），并且马上启动；`symphony -autostart off` 取消。Linux 上是 systemd 用户服务（日志用 `journalctl --user -u symphony` 看），macOS 上是 launchd 代理（日志在 `~/Library/Logs/symphony.log`），Windows 上是注册表 Run 键里的一项（bridge 跑在一个控制台窗口里，关掉窗口它就停到下次登录）。`symphony -stop` 能停掉 bridge，不管它是怎么启动的，一直停到它再被启动（随登录启动的，就是到下次登录）。这要用 symphony 程序本身，`go run` 不行。
+**随登录启动**：`symphony -autostart on` 让 bridge 以后每次登录都自动启动（一起给的参数也会带上，比如 `-addr`），并且马上启动；`symphony -autostart off` 取消。Linux 上是 systemd 用户服务（日志用 `journalctl --user -u symphony` 看），macOS 上是 launchd 代理（日志在 `~/Library/Logs/symphony.log`），Windows 上是注册表 Run 键里的一项（bridge 跑在一个控制台窗口里，关掉窗口它就停到下次登录）。`symphony -stop` 能停掉 bridge，不管它是怎么启动的，一直停到它再被启动（随登录启动的，就是到下次登录）。这要用 symphony 程序本身，`go run` 不行。随登录启动的 bridge 从你的 shell 那里只拿到 `PATH`，所以 `-autostart on` 还会把会话可能要用的变量照你运行它时 shell 里的值存下来：`CLAUDE_CONFIG_DIR`、代理设置（`HTTP_PROXY`、`HTTPS_PROXY`、`NO_PROXY`、`ALL_PROXY`，大小写都认）、`NODE_EXTRA_CA_CERTS`、`SSL_CERT_FILE` 和 `SSL_CERT_DIR`，别的一概不存（API 密钥也不存），存在数据目录里的 `autostart-env.json`，这个文件只有你能读；这些变量改了之后，要再运行一次。一启动就失败的 bridge（数据目录正被别的 bridge 用着、`accounts.json` 坏了、地址被别的东西占了）会被重启几次，之后就不再管它：Linux 上是一分钟内试 5 次（原因用 `systemctl --user status symphony` 看），macOS 上是每分钟试一次（原因看日志）；把问题解决掉，再运行一次 `symphony -autostart on`，或者直接重新登录一次。
 
 **从源码跑**，要 Go 1.27 以上：`git clone https://github.com/feynmanzcys-bytes/symphony.git && cd symphony && go run ./cmd/bridge`。
 
 ## 开会话
 
-**在页面上开**：点空座位上的“+”，填名字，选目录和参数。bridge 在自己内部的终端里跑 `claude`，不会弹出窗口。员工窗口以聊天形式展示会话；“打开终端”按钮会开一个连到该会话的终端窗口（在任何终端里执行 `symphony attach <id>` 也一样，bridge 不用默认值时要加上 `-addr` 和 `-data`；开不了终端窗口时，页面上会显示完整的命令。按 `Ctrl-]` 或关窗即断开，会话照常运行）。这些会话是 bridge 的子进程：停掉 bridge，会话也会结束。
+**在页面上开**：点空座位上的“+”，填名字，选目录和参数。bridge 在自己内部的终端里跑 `claude`，不会弹出窗口。员工窗口以聊天形式展示会话；“打开终端”按钮会开一个连到该会话的终端窗口（在任何终端里执行 `symphony attach <id>` 也一样，bridge 不用默认值时要加上 `-addr` 和 `-data`；开不了终端窗口时，页面上会显示完整的命令。按 `Ctrl-]` 或关窗即断开，会话照常运行）。这些会话是 bridge 的子进程：停掉 bridge，会话也会结束。会话结束时（不管是在页面上停掉的、跟着 bridge 一起停的，还是自己退出的），它留在后台还在跑的东西（比如工具用 `&` 放到后台的命令）也会跟着结束：Windows 上由会话的作业对象（job object）把它们全部结束；Linux 和 macOS 上，bridge 按这些进程环境变量里的启动 ID 找到它们，但在 macOS 上，苹果自带程序（`/bin/sleep`、`bash`、`zsh`、`perl`：系统不让 `ps -E` 看到它们的环境变量）的环境变量它读不到，所以留下的 `node` 或 Homebrew 装的服务器会被结束，单纯的 `sleep` 或 shell 脚本则不会。
 
 **在命令行开**：先建一个账号拿 token（请求里要出示页面密钥），再带着 token 起 `claude`：
 
@@ -384,6 +384,7 @@ SYMPHONY_TOKEN=<token> claude --name frontend-alice --permission-mode manual
 - symphony 开的每个会话都是一个 Claude Code 会话，跟别的会话一样花你的 Claude 套餐额度或 API 额度。Opus 加最高思考强度用得很快，而一个任务会同时跑 2 到 5 个会话。
 - `bypassPermissions` 执行所有命令和改动都不问。这时会话读到的内容（文件、网页、工具的输出）就可能让它以你的身份执行命令。开会话和开任务的对话框里选了它，会显示一行红色警告；这两个对话框默认跟随你的 Claude Code 设置。
 - 页面开的会话，Claude Code 问“信任此目录”时由 bridge 替你回答，所以只在你信任的目录里开会话。
+- “本会话的……都允许”只管到会话结束，而且只放行 Claude Code 本来会问你的操作，不越过你的权限设置：跟别的命令连在一起的命令（`;`、`&&`、`|`、重定向）一律不放行，也绝不越过拒绝规则或者你所在组织的设置。一条命令规则覆盖所有开头相同的命令（`npm test` 覆盖 `npm test -- --watch`）。
 
 ## 安全
 
@@ -393,7 +394,7 @@ SYMPHONY_TOKEN=<token> claude --name frontend-alice --permission-mode manual
 - **只限本机**：bridge 只在本机监听，也只接受本机的连接。发给别的主机名的请求（DNS rebinding），还有别的网站借你的浏览器发来的写请求，它都会拒掉；浏览器标明来自别的网站或别的端口的请求，它的 API 一概不回答，哪怕只是点开一个链接。别的网站也没法把它的页面嵌进框架里。页面只加载 bridge 自己的文件（Content Security Policy）。
 - **mod 先验证 bridge**，再发出 token；`symphony` 程序也是先验证 bridge，再出示页面密钥。所以在 bridge 地址上监听的别的东西，token 和密钥哪个都拿不到。
 - **防不住的**：以你自己的用户身份跑的程序，能读到数据目录里的页面密钥和 token，跟你的其它文件一样。另外，浏览器会把一个站点的 cookie 发给这个站点的每一个端口：这台机器的其他用户在 `127.0.0.1` 上跑的服务器，在你的浏览器打开它时，或者在 bridge 停着、办公室还开在某个标签页里时占了 bridge 的端口，就能拿到页面密钥的 cookie。在跟别人共用的机器上，先关掉办公室再停 bridge；密钥可能已经泄露的话，删掉数据目录里的 `key` 文件（下次启动会生成一个新的）。
-- 程序没有签名。用浏览器下载的话，macOS 可能因为“无法验证开发者”而拒绝打开：到“系统设置 → 隐私与安全性”里点“仍要打开”，或者运行一次 `xattr -d com.apple.quarantine symphony`。Windows 的 SmartScreen 也可能警告：点“更多信息”，再点“仍要运行”。Release 里的 `checksums.txt` 有每个压缩包的 SHA-256；安装的第 2 步会校验它。
+- 程序没有签名。用浏览器下载的话，macOS 可能因为“无法验证开发者”而拒绝打开：到“系统设置 → 隐私与安全性”里点“仍要打开”，或者运行一次 `xattr -d com.apple.quarantine symphony`。Windows 的 SmartScreen 也可能警告：点“更多信息”，再点“仍要运行”。Release 里的 `checksums.txt` 有每个压缩包的 SHA-256，每个压缩包还带着 GitHub 的证明（attestation），说明它是在哪儿编出来的；安装的第 2 步两样都会检查。
 
 要报告漏洞，见 [SECURITY.md](SECURITY.md)。
 
@@ -424,7 +425,7 @@ SYMPHONY_E2E=1 go test -tags e2e -v -count=1 -timeout 20m ./e2e/   # 端到端�
 - 这份 README 里的截图：`SYMPHONY_E2E=1 SYMPHONY_E2E_DOCS=1 go test -tags e2e -run TestDocsScreens ./e2e/` 会用假数据重新截一遍（不花 token）。
 - 翻译：每种语言一个文件，页面的在 `web/locales/<lang>.json`，bridge 的在 `internal/i18n/locales/<lang>.json`，键和 `en.json` 一样；mod 那几句提示在 `mods/symphony-bridge/hooks/messages.ts`。单测会检查每种语言的键是不是齐全、`{placeholders}` 对不对得上；端到端测试 `TestI18n` 会用每种语言打开页面。
 - 端到端测试需要 claude、tmux（测试自己驱动的会话用）和 Chromium 或 Chrome，所以在 Linux 和 macOS 上跑。`TestOffice` 和 `TestModStartsBridge` 会起真会话、花 token，其它的不花。默认用仓库里的 mod；设了 `SYMPHONY_E2E_MOD=installed` 就改用装好的 mod。截图在 `e2e/artifacts/`。
-- 发版：把 `mods/symphony-bridge/.claude-plugin/plugin.json` 里的版本号改上去，在 `CHANGELOG.md` 里加一节 `## vX.Y.Z (date)`，把 dev 合到 main，然后在 main 的这个提交上打标签并推送（`git tag -a v1.0.0 -m v1.0.0 && git push origin v1.0.0`）；GitHub Actions 会检查标签是不是 `plugin.json` 里的版本号、那一节有没有写，给所有平台编好程序，再发布一个 Release，发布说明以那一节开头（`.github/workflows/release.yml`；带 `-rc.1` 这样的后缀就是预发布）。`.github/release.sh v1.0.0 dist` 能在本地打出同样的包。
+- 发版：把 `mods/symphony-bridge/.claude-plugin/plugin.json` 里的版本号改上去，在 `CHANGELOG.md` 里加一节 `## vX.Y.Z (date)`，把 dev 合到 main，然后在 main 的这个提交上打标签并推送（`git tag -a v1.0.0 -m v1.0.0 && git push origin v1.0.0`）；GitHub Actions 会检查标签是不是 `plugin.json` 里的版本号、那一节有没有写，给所有平台编好程序，给这些压缩包附上它们是在哪儿编出来的证明，再发布一个 Release，发布说明以那一节开头（`.github/workflows/release.yml`；带 `-rc.1` 这样的后缀就是预发布）；不是预发布的话，接着还会把 Homebrew 的 formula 和 Scoop 的 manifest 提交到 main（dev 能快进的话，也提交到 dev），所以发完之后两个分支都要 pull 一下。`.github/release.sh v1.0.0 dist` 能在本地打出同样的包，在 Linux 上连每个字节都一样。
 
 | 目录 | 是什么 |
 | --- | --- |

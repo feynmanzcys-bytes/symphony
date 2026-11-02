@@ -279,11 +279,11 @@ $p = ([Environment]::GetEnvironmentVariable('Path', 'User') -split ';' | Where-O
 ## 能做什麼
 
 - **每個工作階段都是一個對話視窗**：按一下員工，頁面中央會打開它的視窗：上面是員工資訊，下面是整個工作階段的聊天流：輸入過的提示詞、模型的思考（預設摺疊，進行中顯示橘色「思考中…」）、逐字串流的回答、工具呼叫，以及其他工作階段傳來的訊息（紫色）。在底部輸入就是給這個工作階段送提示詞，「停止」按鈕能中斷它。
-- **在瀏覽器裡核准**：權限請求（執行指令、編輯檔案）和 AskUserQuestion 的提問會以卡片形式從該員工視窗底部升起、蓋住輸入框，頂欄的紅色計數能直接帶你過去。bridge 沒在執行、不認得這個帳號或無法信任時，工作階段會照常退回終端機處理，不會卡住。
+- **在瀏覽器裡核准**：權限請求（執行指令、編輯檔案）和 AskUserQuestion 的提問會以卡片形式從該員工視窗底部升起、蓋住輸入框（在「同事」主題裡，卡片會留在對話中它出現的地方，你照樣可以打字），頂欄的紅色計數能直接帶你過去。權限請求卡片上的「本工作階段的……都允許」會讓同類的呼叫在工作階段結束前不再詢問、直接放行：所有修改、開頭相同的指令（`npm test`），或某個工具。MCP 伺服器的表單也會以卡片顯示；要到工作階段的終端機裡填寫，卡片會在視窗裡打開這個終端機。bridge 沒在執行、不認得這個帳號或無法信任時，工作階段會照常退回終端機處理，不會卡住。
 - **像素風辦公室**：每個工作階段都是一位坐在固定座位上的員工。綠色是空閒，黃色是工作中，紅色是在等你核准或回答，灰色是下班。閒著的員工會先在座位上滑手機、打電動，過一陣子就滿辦公室閒晃：窩在休息區沙發看電視、玩手足球、追逐嬉鬧、在圓桌聊天、倒咖啡、看窗外，閒久了就去打盹，常常躲進會議室睡。角色的體型看模型，肌肉看思考強度。畫面是大公司的某一層樓，會填滿視窗：開放辦公區在正中央，左邊是掛著名牌的 3–5 人小會議室，右邊是會議室和休息區，大家搭電梯上下班。頂部橫條裡還能調整像素大小，共四段：辦公室不變，越往細調畫得越細、細節越多。
 - **一搜就找到，一點就回來**：點一下閒著的員工，他就會回到自己的座位（一直待到下次工作）；頂部橫條裡的搜尋框可以用名字、工作階段名稱或資料夾找人（按 `/` 直接跳過去），點它旁邊的狀態計數（空閒、工作中、待處理、下班），就會把這個狀態的員工都標出來。橫條下方的小把手能把它收上去、再拉下來。
 - **工作階段之間的訊息**：工作階段互傳訊息（SendMessage）時，會有一封信飛過辦公室，訊息紀錄也會把它們留下來。
-- **從頁面啟動工作階段，不彈任何視窗**：按空座位上的「+」招募新員工，選好資料夾。模型、思考強度和權限模式沿用你的 Claude Code 設定（「預設」），除非你另外選；選了 `bypassPermissions` 會顯示紅色警告，說明它允許做什麼。在下班員工的視窗裡按「上班」，他就會回到原本的座位，沿用上次工作時的選擇。工作階段跑在 bridge 內部自己的終端機裡，不會彈出視窗、不會搶走你的注意力；想看終端機時按員工視窗裡的「開啟終端機」，關掉那個視窗也不影響工作階段。
+- **從頁面啟動工作階段，不彈任何視窗**：按空座位上的「+」招募新員工，選好資料夾。模型、思考強度和權限模式沿用你的 Claude Code 設定（「預設」），除非你另外選；選了 `bypassPermissions` 會顯示紅色警告，說明它允許做什麼。勾選「告訴它辦公室裡還有誰」，工作階段的系統提示詞就會列出在線上的其他人（每段對話一次），方便它用 SendMessage 找他們。在下班員工的視窗裡按「上班」，他就會回到原本的座位，沿用上次工作時的選擇。工作階段跑在 bridge 內部自己的終端機裡，不會彈出視窗、不會搶走你的注意力；想看終端機時按員工視窗裡的「開啟終端機」，關掉那個視窗也不影響工作階段。
 - **在會議室裡組隊工作**：按一下空著的小會議室，寫下任務，挑 2–5 位成員：員工（每人另開一個只做這項任務的工作階段），或臨時找來的顧問。預設由第一位成員擔任組長，用 SendMessage 分派各部分；每位成員都在自己的 git worktree、自己的分支上工作，誰也不會動到別人的檔案。任務結束之前，成員們都坐在會議室裡。
 - **10 種語言**：English、简体中文、繁體中文、日本語、한국어、Español、Français、Deutsch、Português (Brasil) 和 Русский。頁面會跟著瀏覽器的語言，頂部橫條裡也可以切換；bridge 的訊息跟著 `-lang`，沒設定就跟著系統語言（`LANG` 之類），再沒有就用英文；mod 的訊息跟著 `SYMPHONY_LANG`（從頁面啟動的工作階段就是頁面的語言），沒設定就跟著系統語言，再沒有就用英文。
 - **只在本機執行**：bridge 是單一個 Go 程式（只用標準函式庫；端對端測試另外用了 chromedp），只在本機監聽；頁面是原生 JavaScript，不依賴任何第三方服務。
@@ -317,13 +317,13 @@ $p = ([Environment]::GetEnvironmentVariable('Path', 'User') -split ';' | Where-O
 
 如果 `-addr` 上回應的是別的東西（其他程式、用另一個資料目錄的 bridge，或是舊版的 symphony bridge），symphony 會說明這一點，然後停止；它只會向能證明自己持有頁面金鑰的 bridge 出示這把金鑰。一個資料目錄同一時間只屬於一個 bridge：如果指定的資料目錄已經有 bridge 在別的位址上執行，symphony 會說出它在哪裡執行、開啟它的辦公室，然後停止（要再啟動一個 bridge，就給它自己的 `-data`）。
 
-**隨登入啟動**：`symphony -autostart on` 讓 bridge 之後每次登入都自動啟動（一起給的參數也會帶上，例如 `-addr`），並且立刻啟動；`symphony -autostart off` 取消。Linux 上是 systemd 使用者服務（用 `journalctl --user -u symphony` 查看紀錄），macOS 上是 launchd 代理程式（紀錄在 `~/Library/Logs/symphony.log`），Windows 上是登錄檔 Run 機碼裡的一個值（bridge 在主控台視窗裡執行，關掉視窗它就會停止，直到下次登入）。`symphony -stop` 不管 bridge 是怎麼啟動的都能停掉它，直到它再次被啟動（隨登入啟動的，就是到下次登入）。這需要 symphony 程式本身，`go run` 不行。
+**隨登入啟動**：`symphony -autostart on` 讓 bridge 之後每次登入都自動啟動（一起給的參數也會帶上，例如 `-addr`），並且立刻啟動；`symphony -autostart off` 取消。Linux 上是 systemd 使用者服務（用 `journalctl --user -u symphony` 查看紀錄），macOS 上是 launchd 代理程式（紀錄在 `~/Library/Logs/symphony.log`），Windows 上是登錄檔 Run 機碼裡的一個值（bridge 在主控台視窗裡執行，關掉視窗它就會停止，直到下次登入）。`symphony -stop` 不管 bridge 是怎麼啟動的都能停掉它，直到它再次被啟動（隨登入啟動的，就是到下次登入）。這需要 symphony 程式本身，`go run` 不行。隨登入啟動的 bridge 從你的 shell 只拿得到 `PATH`，所以 `-autostart on` 也會照你執行它時 shell 裡的值，把工作階段可能需要的變數存下來：`CLAUDE_CONFIG_DIR`、代理設定（`HTTP_PROXY`、`HTTPS_PROXY`、`NO_PROXY`、`ALL_PROXY`，大小寫皆可）、`NODE_EXTRA_CA_CERTS`、`SSL_CERT_FILE` 和 `SSL_CERT_DIR`，其他一概不存（API 金鑰也不存），存在資料目錄裡只有你能讀取的 `autostart-env.json`；這些變數改了之後，要再執行一次。一啟動就失敗的 bridge（資料目錄正被另一個 bridge 使用、`accounts.json` 損壞、它的位址被別的東西占用）會被重新啟動幾次，之後就不再理會：Linux 上是一分鐘內試 5 次（原因可以用 `systemctl --user status symphony` 查看），macOS 上是每分鐘試一次（原因看紀錄）；排除問題後再執行一次 `symphony -autostart on`，或是重新登入就好。
 
 **從原始碼執行**，需要 Go 1.27 以上：`git clone https://github.com/feynmanzcys-bytes/symphony.git && cd symphony && go run ./cmd/bridge`。
 
 ## 啟動工作階段
 
-**從頁面啟動**：按空座位上的「+」，輸入名字，再選好資料夾和選項。bridge 在自己內部的終端機裡執行 `claude`，不會彈出視窗。員工視窗以聊天的形式呈現工作階段；「開啟終端機」按鈕會開一個連到該工作階段的終端機視窗（在任何終端機裡執行 `symphony attach <id>` 也一樣，bridge 沒用預設值時要加上 `-addr` 和 `-data`；開不了終端機視窗時，頁面會顯示確切的指令。按 `Ctrl-]` 或關掉視窗即中斷連線，工作階段照常執行）。這些工作階段是 bridge 的子程序：停掉 bridge，工作階段也會結束。
+**從頁面啟動**：按空座位上的「+」，輸入名字，再選好資料夾和選項。bridge 在自己內部的終端機裡執行 `claude`，不會彈出視窗。員工視窗以聊天的形式呈現工作階段；「開啟終端機」按鈕會開一個連到該工作階段的終端機視窗（在任何終端機裡執行 `symphony attach <id>` 也一樣，bridge 沒用預設值時要加上 `-addr` 和 `-data`；開不了終端機視窗時，頁面會顯示確切的指令。按 `Ctrl-]` 或關掉視窗即中斷連線，工作階段照常執行）。這些工作階段是 bridge 的子程序：停掉 bridge，工作階段也會結束。工作階段結束時（不論是從頁面停掉的、跟著 bridge 一起停止的，還是自己結束的），它留在背景執行的東西（例如工具用 `&` 放到背景的指令）也會跟著結束：在 Windows 上，由工作階段的工作物件（job object）把它們全部結束；在 Linux 和 macOS 上，bridge 依這些程序環境變數裡的啟動 ID 找出它們，但在 macOS 上，Apple 內建程式（`/bin/sleep`、`bash`、`zsh`、`perl`：系統不讓 `ps -E` 看到它們的環境變數）的環境變數它讀不到，所以留下來的 `node` 或 Homebrew 安裝的伺服器會結束，單純的 `sleep` 或 shell 指令碼則不會。
 
 **從終端機啟動**：出示頁面金鑰建立一個帳號，拿到 token，再帶著 token 啟動 `claude`：
 
@@ -384,6 +384,7 @@ SYMPHONY_TOKEN=<token> claude --name frontend-alice --permission-mode manual
 - symphony 啟動的每個工作階段都是 Claude Code 工作階段，和其他工作階段一樣消耗你的 Claude 方案或 API 額度。Opus 加上最高思考強度用得很快，而一項任務會同時執行 2–5 個工作階段。
 - `bypassPermissions` 會不經詢問直接執行所有指令和修改。這時工作階段讀到的內容（檔案、網頁、工具的輸出）就可能讓它以你的身分執行指令。在啟動和任務對話框裡選它時，會顯示紅色警告；這兩個對話框預設沿用你的 Claude Code 設定。
 - 從頁面啟動的工作階段，bridge 會替你回答 Claude Code 的「信任此資料夾」問題，所以只在你信任的資料夾裡啟動工作階段。
+- 「本工作階段的……都允許」只到工作階段結束為止，而且只放行 Claude Code 本來就會詢問的操作，不越過你的權限設定：和其他指令串在一起的指令（`;`、`&&`、`|`、重新導向）一律不放行，也絕不越過拒絕規則或你所屬組織的設定。一條指令規則涵蓋所有開頭相同的指令（`npm test` 也涵蓋 `npm test -- --watch`）。
 
 ## 安全性
 
@@ -393,7 +394,7 @@ SYMPHONY_TOKEN=<token> claude --name frontend-alice --permission-mode manual
 - **只限這台電腦**：bridge 只在本機監聽，也只接受來自本機的連線。它會拒絕發給其他主機的請求（DNS rebinding），也會拒絕其他網站透過你的瀏覽器送來的寫入請求；只要你的瀏覽器表明請求來自其他網站或其他連接埠，它的 API 一律不回應，就算只是點開一個連結也一樣。其他網站也不能用框架嵌入它的頁面。頁面只載入 bridge 自己的檔案（Content Security Policy）。
 - **mod 會先確認 bridge**，確認過才送出 token；`symphony` 程式也會先確認過才出示頁面金鑰，所以在 bridge 的位址上監聽的其他東西兩樣都拿不到。
 - **防不了的事**：以你自己的使用者身分執行的程式，可以讀取資料目錄裡的頁面金鑰和 token，就像它們能讀你的任何檔案一樣。另外，瀏覽器會把一個網站的 cookie 送給它的每一個連接埠：這台電腦上另一位使用者在 `127.0.0.1` 上執行的伺服器，只要你的瀏覽器開啟了它，或是在 bridge 停止、辦公室卻還開在某個分頁裡時占用了 bridge 的連接埠，就會拿到頁面金鑰的 cookie。在和別人共用的電腦上，請先關掉辦公室再停止 bridge；如果金鑰可能已經外洩，就刪掉資料目錄裡的 `key` 檔（下次啟動時會產生新的）。
-- 這些程式沒有簽章。用瀏覽器下載的話，macOS 可能因為無法驗證開發者而拒絕執行：請到「系統設定 → 隱私權與安全性」按「強制打開」，或執行一次 `xattr -d com.apple.quarantine symphony`。Windows 的 SmartScreen 也可能跳出警告：按「其他資訊」，再按「仍要執行」。Release 裡的 `checksums.txt` 列出了每個壓縮檔的 SHA-256；安裝的第 2 步會檢查它。
+- 這些程式沒有簽章。用瀏覽器下載的話，macOS 可能因為無法驗證開發者而拒絕執行：請到「系統設定 → 隱私權與安全性」按「強制打開」，或執行一次 `xattr -d com.apple.quarantine symphony`。Windows 的 SmartScreen 也可能跳出警告：按「其他資訊」，再按「仍要執行」。Release 裡的 `checksums.txt` 列出了每個壓縮檔的 SHA-256，每個壓縮檔也都附有 GitHub 的證明（attestation），說明它是在哪裡建置的；安裝的第 2 步兩者都會檢查。
 
 要回報安全漏洞，請見 [SECURITY.md](SECURITY.md)。
 
@@ -424,7 +425,7 @@ SYMPHONY_E2E=1 go test -tags e2e -v -count=1 -timeout 20m ./e2e/   # 端對端�
 - 這份 README 裡的截圖：`SYMPHONY_E2E=1 SYMPHONY_E2E_DOCS=1 go test -tags e2e -run TestDocsScreens ./e2e/` 會用模擬的活動重新拍一次（不消耗 token）。
 - 翻譯：每種語言一個檔案，頁面的是 `web/locales/<lang>.json`，bridge 的是 `internal/i18n/locales/<lang>.json`，鍵和 `en.json` 相同；mod 的那幾則訊息在 `mods/symphony-bridge/hooks/messages.ts`。單元測試會檢查每種語言的鍵是否齊全、`{placeholders}` 是否和英文一致；端對端測試 `TestI18n` 會用每種語言開啟頁面。
 - 端對端測試需要 claude、tmux（測試自己驅動的工作階段用）和 Chromium 或 Chrome，所以在 Linux 和 macOS 上執行。`TestOffice` 和 `TestModStartsBridge` 會啟動真的工作階段並消耗 token，其他測試不會。預設使用這個儲存庫裡的 mod；設定 `SYMPHONY_E2E_MOD=installed` 就會改用已安裝的 mod。截圖會存到 `e2e/artifacts/`。
-- 發布版本：調高 `mods/symphony-bridge/.claude-plugin/plugin.json` 裡的版本號，在 `CHANGELOG.md` 加一節 `## vX.Y.Z (date)`，把 dev 合併進 main，然後在 main 的那個提交上建立標籤並推送（`git tag -a v1.0.0 -m v1.0.0 && git push origin v1.0.0`）；GitHub Actions 會檢查標籤和 `plugin.json` 的版本是否相同、那一節是否存在，接著為所有平台編譯程式，並發布一個 Release，發布說明以那一節開頭（`.github/workflows/release.yml`；加上 `-rc.1` 這類後綴就會變成預先發行版）。`.github/release.sh v1.0.0 dist` 可以在本機打包出同樣的壓縮檔。
+- 發布版本：調高 `mods/symphony-bridge/.claude-plugin/plugin.json` 裡的版本號，在 `CHANGELOG.md` 加一節 `## vX.Y.Z (date)`，把 dev 合併進 main，然後在 main 的那個提交上建立標籤並推送（`git tag -a v1.0.0 -m v1.0.0 && git push origin v1.0.0`）；GitHub Actions 會檢查標籤和 `plugin.json` 的版本是否相同、那一節是否存在，接著為所有平台編譯程式，為這些壓縮檔附上它們是在哪裡建置的證明，並發布一個 Release，發布說明以那一節開頭（`.github/workflows/release.yml`；加上 `-rc.1` 這類後綴就會變成預先發行版）；不是預先發行版的話，之後還會把 Homebrew 的 formula 和 Scoop 的 manifest 提交到 main（dev 可以快轉的話，也提交到 dev），所以發布後兩個分支都要 pull 一下。`.github/release.sh v1.0.0 dist` 可以在本機打包出同樣的壓縮檔，在 Linux 上連每個位元組都相同。
 
 | 資料夾 | 內容 |
 | --- | --- |

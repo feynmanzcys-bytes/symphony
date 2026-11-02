@@ -85,7 +85,7 @@ func a11yTeam(t *testing.T) (*testBridge, *bridge.Task, map[string]string) {
 			continue
 		}
 		event(m.name, "s-"+m.name, map[string]any{"kind": "session.start", "cwd": dir(m.dir), "model": "claude-" + m.model + "-5-5", "effort": m.effort,
-			"engine": map[string]any{"version": "2.1.316"}, "mod": "1.1.2", "surface": "terminal", "repo": map[string]any{"root": dir(m.dir), "name": m.dir}})
+			"engine": map[string]any{"version": "2.1.316"}, "mod": "1.2.0", "surface": "terminal", "repo": map[string]any{"root": dir(m.dir), "name": m.dir}})
 		event(m.name, "s-"+m.name, map[string]any{"kind": "session.title", "title": m.name + "-desk"})
 	}
 	// alice: a prompt, thinking and an answer, tool calls that went well, failed and were denied, a compaction, an API

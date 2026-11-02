@@ -495,7 +495,7 @@ func (h *Hub) Abort(session string) error {
 
 // Inbox hands the mod what the page queued for its session, waiting up to timeout for something to come. ack is the
 // id of the last item the mod did (its last poll's): that one and the ones before it are dropped, the rest handed out
-// again. ack < 0 is a mod that acknowledges nothing (before 1.1.2): what is handed out is dropped at once, as before. A
+// again. ack < 0 is a mod that acknowledges nothing (before 1.2.0): what is handed out is dropped at once, as before. A
 // waiting mod means the session is alive, so it counts as a heartbeat.
 func (h *Hub) Inbox(session, account string, ack int64, timeout time.Duration, cancel <-chan struct{}) ([]InboxItem, error) {
 	h.mu.Lock()

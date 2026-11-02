@@ -201,7 +201,8 @@ func TestDocsScreens(t *testing.T) {
 			{"label": "completed", "description": "Every order placed before today has shipped"},
 			{"label": "From the shipments", "description": "completed when a shipment exists, pending otherwise"}}}}})
 	b.post(t, tokens["carol"], "/api/ask", map[string]any{"session": "s-carol", "kind": "permission", "tool": "Bash", "agentId": "c-ag1",
-		"input": map[string]any{"command": "psql -d shop_dev -f db/migrations/0042_order_status.sql", "description": "Apply the migration to the local database"}})
+		"input":    map[string]any{"command": "psql -d shop_dev -f db/migrations/0042_order_status.sql", "description": "Apply the migration to the local database"},
+		"remember": map[string]any{"tool": "Bash", "prefix": "psql"}}) // what the mod proposes: "Allow for this session"
 
 	// dave: the docs, asking to push
 	prompt("dave", "s-dave", "Document the new orders endpoints in the API reference.")
@@ -211,7 +212,8 @@ func TestDocsScreens(t *testing.T) {
 	stops = append(stops, func() { tokensOf("dave", "s-dave", "d1", 0, 12000, 1800) })
 	usage("dave", "s-dave", 17, 0.21)
 	b.post(t, tokens["dave"], "/api/ask", map[string]any{"session": "s-dave", "kind": "permission", "tool": "Bash",
-		"input": map[string]any{"command": "git push origin docs/orders-api", "description": "Push the docs branch"}})
+		"input":    map[string]any{"command": "git push origin docs/orders-api", "description": "Push the docs branch"},
+		"remember": map[string]any{"tool": "Bash", "prefix": "git push"}})
 
 	// erin and frank are done and idle: they will wander about
 	for _, x := range []struct{ name, text, answer string }{

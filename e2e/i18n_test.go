@@ -34,8 +34,8 @@ func TestI18n(t *testing.T) {
 	// development mode, so the launch dialog opens without an installed mod
 	b := startBridge(t, filepath.Join(repo, "mods", "symphony-bridge"))
 
-	// made-up activity in ASCII: alice works and waits for a permission and an answer, bob idles with a
-	// message from alice, carol is off duty
+	// made-up activity in ASCII: alice works and waits for a permission (one she could allow for the session), an
+	// answer and an MCP server's form, bob idles with a message from alice, carol is off duty
 	post := func(token, path string, body any) { t.Helper(); b.post(t, token, path, body) }
 	alice, _ := b.Hub.CreateAccount("alice")
 	bob, _ := b.Hub.CreateAccount("bob")
@@ -50,11 +50,14 @@ func TestI18n(t *testing.T) {
 	post(bob.Token, "/api/event", map[string]any{"session": "s-bob", "kind": "message.receive", "origin": map[string]any{"kind": "peer"},
 		"text": "<cross-session-message from=\"uds:/tmp/x.sock\" from-name=\"alice\" from-mode=\"prompting\">\nhello bob\n</cross-session-message>"})
 	post(alice.Token, "/api/event", map[string]any{"session": "s-alice", "kind": "message.send", "to": "bob", "text": "hello bob", "delivered": true})
-	post(alice.Token, "/api/ask", map[string]any{"session": "s-alice", "kind": "permission", "tool": "Bash", "input": map[string]any{"command": "rm -rf build"}})
+	post(alice.Token, "/api/ask", map[string]any{"session": "s-alice", "kind": "permission", "tool": "Bash", "input": map[string]any{"command": "npm run build"},
+		"remember": map[string]any{"tool": "Bash", "prefix": "npm run"}}) // with "Allow for this session"
 	post(alice.Token, "/api/ask", map[string]any{"session": "s-alice", "kind": "question", "questions": []map[string]any{{
 		"question": "Which layout?", "header": "Layout", "multiSelect": false,
 		"options": []map[string]string{{"label": "One column", "description": "simple"}, {"label": "Two columns", "description": "dense"}},
 	}}})
+	post(alice.Token, "/api/ask", map[string]any{"session": "s-alice", "kind": "elicitation", "server": "github", "message": "Which repository?",
+		"fields": []map[string]any{{"name": "repo", "title": "Repository", "type": "string", "required": true}}}) // an MCP server's form
 
 	browser := newBrowser(t)
 	langs := i18n.Langs
@@ -96,11 +99,11 @@ func checkOffice(t *testing.T, b *testBridge, browser context.Context, lang stri
 		return get(t, office, 5*time.Second, chromedp.Evaluate[bool](
 			`document.querySelectorAll('.emp-label').length === 3 && !!document.querySelector('#stats .chip.hot[data-group=waiting]')`))
 	})
-	// the red chip opens the waiting employee's window, with both asks' cards over the input
+	// the red chip opens the waiting employee's window, with her three asks' cards over the input
 	do(t, office, 10*time.Second, chromedp.Click(chromedp.CSS(`#stats .chip.hot[data-group=waiting]`)))
-	waitUntil(t, 10*time.Second, lang+": alice's window shows her two asks", func() bool {
+	waitUntil(t, 10*time.Second, lang+": alice's window shows her three asks", func() bool {
 		return get(t, office, 5*time.Second, chromedp.Evaluate[bool](
-			`!document.getElementById('chat').hidden && document.querySelector('#chat h2').textContent === 'alice' && document.querySelectorAll('#chat .dock.asking #asks .card').length === 2`))
+			`!document.getElementById('chat').hidden && document.querySelector('#chat h2').textContent === 'alice' && document.querySelectorAll('#chat .dock.asking #asks .card').length === 3 && !!document.querySelector('#chat #asks .allow-session')`))
 	})
 	if got := get(t, office, 5*time.Second, chromedp.Evaluate[string](`document.documentElement.lang`)); got != lang {
 		t.Fatalf("%s: the page says lang=%q", lang, got)
@@ -150,8 +153,8 @@ func checkApprove(t *testing.T, b *testBridge, browser context.Context, lang str
 	t.Helper()
 	approve, closeTab := openTab(t, browser, b.URL+"/approve?lang="+lang)
 	defer closeTab()
-	waitUntil(t, 20*time.Second, lang+": the approval page lists the two asks", func() bool {
-		return get(t, approve, 5*time.Second, chromedp.Evaluate[bool](`document.querySelectorAll('#list .card').length === 2`))
+	waitUntil(t, 20*time.Second, lang+": the approval page lists the three asks", func() bool {
+		return get(t, approve, 5*time.Second, chromedp.Evaluate[bool](`document.querySelectorAll('#list .card').length === 3`))
 	})
 	checkTexts(t, lang, "approval page", []string{get(t, approve, 5*time.Second, chromedp.Evaluate[string](pageText))})
 	if miss := get(t, approve, 5*time.Second, chromedp.Evaluate[[]string](`window.__i18nMissing`)); len(miss) > 0 {

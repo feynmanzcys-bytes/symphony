@@ -125,7 +125,7 @@ func newThemeLoad(t *testing.T) *themeLoad {
 		}
 		e := themeEmp{acc.ID, acc.Name, acc.Token, session}
 		mustSend(t, b.URL, e.token, "/api/event", map[string]any{"session": session, "kind": "session.start", "cwd": app,
-			"model": "claude-" + models[i%4] + "-5-5", "effort": efforts[i%5], "engine": map[string]any{"version": "2.1.316"}, "mod": "1.1.2",
+			"model": "claude-" + models[i%4] + "-5-5", "effort": efforts[i%5], "engine": map[string]any{"version": "2.1.316"}, "mod": "1.2.0",
 			"surface": "terminal", "repo": map[string]any{"root": app, "name": "app"}})
 		mustSend(t, b.URL, e.token, "/api/event", map[string]any{"session": session, "kind": "session.title", "title": name + "-desk"})
 		return e

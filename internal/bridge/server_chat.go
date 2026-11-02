@@ -41,7 +41,7 @@ func (s *Server) inbox(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	// ack: the id of the last item the mod did; a mod before 1.1.2 sends none, and gets each item once
+	// ack: the id of the last item the mod did; a mod before 1.2.0 sends none, and gets each item once
 	ack := int64(-1)
 	if v := r.URL.Query().Get("ack"); v != "" {
 		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n >= 0 {

@@ -106,7 +106,7 @@ func TestSayInboxAbort(t *testing.T) {
 	if len(log) != 1 || log[0].Status != "sent" || !log[0].Done {
 		t.Fatalf("the queued item should be marked sent: %+v", log)
 	}
-	// a mod that acknowledges (1.1.2 on): an item stays in the inbox until a poll names its id or a later one, so a
+	// a mod that acknowledges (1.2.0 on): an item stays in the inbox until a poll names its id or a later one, so a
 	// poll cut off on its way back loses nothing; the ids count up per session
 	page.ok("POST", "/api/say/s1", map[string]any{"text": "again"})
 	page.ok("POST", "/api/say/s1", map[string]any{"text": "and again"})
