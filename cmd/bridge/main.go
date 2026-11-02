@@ -523,6 +523,21 @@ func autostartArgs(set map[string]string, dataDir string) []string {
 	return args
 }
 
+// stableExe is the path the login entry names for this program, exe (symlinks resolved): the symphony that PATH finds
+// when it is this very file through a link, so a package manager's upgrade, which puts each version in a folder of its
+// own and moves the link (Homebrew's Cellar/symphony/<version>, linked from bin/), doesn't leave the entry naming a
+// folder that is gone; else exe.
+func stableExe(exe string, look func(string) (string, error)) string {
+	found, err := look("symphony")
+	if err != nil || !filepath.IsAbs(found) {
+		return exe
+	}
+	if real, err := filepath.EvalSymlinks(found); err == nil && real == exe {
+		return found
+	}
+	return exe
+}
+
 // setAutostart turns starting the bridge at login on or off. On, it also starts the bridge now, waits for it and
 // opens its office.
 func setAutostart(mode string, args []string, base, dataDir string, open bool) {
@@ -539,6 +554,7 @@ func setAutostart(mode string, args []string, base, dataDir string, open bool) {
 		if err != nil {
 			log.Fatal(i18n.T("log.autostart_failed", "reason", err.Error()))
 		}
+		exe = stableExe(exe, exec.LookPath)
 		// go run builds into a temporary folder that's gone afterwards
 		if strings.Contains(filepath.ToSlash(exe), "/go-build") {
 			log.Fatal(i18n.T("log.autostart_go_run"))

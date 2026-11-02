@@ -42,15 +42,30 @@ git --version             # only for collaborative tasks; note it in the report 
 symphony -version         # already installed? prints "symphony v1.1.1 (darwin/arm64)"
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:7788/api/state   # a bridge running? 401: symphony 1.x; 200: an older one; 000: none
 claude plugin list --json # the mod already installed? look for an entry with "id": "symphony-bridge@symphony"
+brew --version            # Homebrew there (macOS, Linux)? step 2 can install with it
 ```
 
-On Windows use PowerShell: `$env:PROCESSOR_ARCHITECTURE` is `AMD64` or `ARM64`.
+On Windows use PowerShell: `$env:PROCESSOR_ARCHITECTURE` is `AMD64` or `ARM64`, and `scoop --version` answers when Scoop is there.
 
 If `claude` is missing, stop and tell the user to install Claude Code first. If the program and the mod are both in place, go to "Update" below instead. If only one of them is, do the steps for the other: steps 2 and 3 for the program (unless `symphony -version` already prints the latest release), step 4 for the mod, then step 5. A bridge that is already running keeps the program it started with: if one runs, you'll stop it before step 5.
 
 #### Step 2: get the program
 
-Download the archive for this machine and the release's `checksums.txt` into a new folder of its own, and check the archive before you install anything. The archives are `symphony_<os>_<arch>.tar.gz`, with `<os>` `linux` or `darwin` (macOS) and `<arch>` `amd64` or `arm64`, and `symphony_windows_<arch>.zip`.
+**With Homebrew or Scoop.** This repository is also a Homebrew tap and a Scoop bucket. If step 1 found Homebrew (macOS, Linux) or Scoop (Windows), you can install with it instead of the rest of this step and step 3: it downloads the newest release's archive, checks it against the SHA-256 in the formula or the manifest (written from the release's `checksums.txt` when the release came out) and puts `symphony` on `PATH`. Then go on with step 4, and say in the report which one installed it.
+
+```bash
+brew tap feynmanzcys-bytes/symphony https://github.com/feynmanzcys-bytes/symphony
+brew install symphony
+symphony -version          # prints the version and the platform
+```
+
+```powershell
+scoop bucket add symphony https://github.com/feynmanzcys-bytes/symphony
+scoop install symphony
+symphony -version
+```
+
+Otherwise, download the archive for this machine and the release's `checksums.txt` into a new folder of its own, and check the archive before you install anything. The archives are `symphony_<os>_<arch>.tar.gz`, with `<os>` `linux` or `darwin` (macOS) and `<arch>` `amd64` or `arm64`, and `symphony_windows_<arch>.zip`.
 
 On Linux and macOS:
 
@@ -84,6 +99,19 @@ $want = ((Select-String -SimpleMatch -Path (Join-Path $d 'checksums.txt') -Patte
 $got = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $d $zip)).Hash
 if ($got -ne $want) { throw "checksum mismatch: $zip" } else { 'checksum OK' }
 ```
+
+Then, if `gh` is installed and signed in (`gh auth status` succeeds), check where the archive was built: every archive of a release carries GitHub's attestation that this repository's release workflow built it. Outside a terminal `gh` prints nothing when the check holds, so go by its exit status:
+
+```bash
+gh attestation verify "$d/symphony_<os>_<arch>.tar.gz" --repo feynmanzcys-bytes/symphony && echo 'attestation OK'
+```
+
+```powershell
+gh attestation verify (Join-Path $d $zip) --repo feynmanzcys-bytes/symphony
+if ($LASTEXITCODE -eq 0) { 'attestation OK' }
+```
+
+Releases before v1.2.0 have no attestation (`no attestations found`); for those the checksum is the check. Any other failure: stop, as for a wrong checksum. Without `gh`, or not signed in, skip this check and say so in the report.
 
 **From source** on Linux or macOS, when the user prefers it (Go 1.27 or later). Build the binary; `go run` won't do, because `-autostart` refuses a `go run` build:
 
@@ -215,6 +243,8 @@ Rules: the bridge listens only on this machine (it refuses any address that isn'
 
 Download the new release as in step 2. The running bridge keeps the old program until it restarts (and on Windows a running program can't be replaced), so stop it with `symphony -stop`, replace the program as in step 3, and start it again the way it ran before: `symphony -autostart on -open=false` if it starts at login (this starts it now too), else `symphony -background -open=false`. If the bridge runs with an `-addr` or `-data` other than the defaults, give the same ones to each of these commands: `-stop` stops only the bridge of that data folder (at `-addr`, or wherever that folder's bridge runs), and says `nothing to stop` when none answers. Stopping the bridge ends the sessions it started, so tell the user before. (`-stop` came with v1.1.0; to stop a v1.0.0 bridge, end its process: `pkill -x symphony` on Linux and macOS, `Stop-Process -Name symphony` on Windows.)
 
+Installed with Homebrew or Scoop, `brew update && brew upgrade symphony` (or `scoop update; scoop update symphony`) takes the place of the download and step 3, between the same `-stop` and new start. If symphony starts at login, the login entry names Homebrew's link to the program (`bin/symphony`), which the upgrade moves to the new version, so `-autostart on` there only starts it again now.
+
 The mod follows with `claude plugin update symphony-bridge@symphony` (with a clone as the marketplace, `git pull` there instead).
 
 The program and the mod share one version number; [CHANGELOG.md](CHANGELOG.md) lists what each release changed.
@@ -241,6 +271,8 @@ Remove-Item -Recurse -Force $dest                            # the program
 $p = ([Environment]::GetEnvironmentVariable('Path', 'User') -split ';' | Where-Object { $_ -and $_ -ne $dest }) -join ';'
 [Environment]::SetEnvironmentVariable('Path', $p, 'User')    # the Path entry step 3 added
 ```
+
+Installed with Homebrew, run `brew uninstall symphony` and `brew untap feynmanzcys-bytes/symphony` in place of the `rm` line; with Scoop, `scoop uninstall symphony` and `scoop bucket rm symphony` in place of the last four PowerShell lines.
 
 The data folder (the accounts with their tokens, the page key, the message log, the ledger, the tasks, and files such as `lock`, `bridge.addr` or a `*.corrupt-<time>` set aside) stays; delete it to remove everything. Deleting it also deletes the page key: the next start makes a new one, and every browser has to sign in again. On Linux with a snap or flatpak browser, `open.html` is in that browser's own folder (`~/snap/<snap>/common` or `~/.var/app/<app id>`); delete it too.
 
@@ -361,7 +393,7 @@ The page can start sessions, which means running commands on this machine, so th
 - **This machine only**: the bridge listens on and accepts connections from this machine only. It refuses requests addressed to any other host (DNS rebinding) and writes that other websites send through your browser, and its API answers no request your browser says comes from another site or another port, not even a link. Other sites can't frame its pages. The pages load only the bridge's own files (a Content Security Policy).
 - **The mod checks the bridge** before it sends its token, and the `symphony` program before it shows the page key, so something else listening at the bridge's address gets neither.
 - **What it doesn't protect against**: programs running as your own user can read the page key and the tokens in the data folder, like any of your files. And browsers send a site's cookies to every port of it: a server another user of this machine runs on `127.0.0.1` gets the page key's cookie when your browser opens it, or when it takes the bridge's port while the bridge is stopped and the office is still open in a tab. On a machine you share, close the office before you stop the bridge, and if the key may have leaked, delete the `key` file in the data folder (the next start makes a new one).
-- The programs aren't signed. macOS may refuse a copy downloaded with a browser because it can't verify the developer: click "Open Anyway" under System Settings → Privacy & Security, or run `xattr -d com.apple.quarantine symphony` once. Windows SmartScreen may warn you too: click "More info", then "Run anyway". The release's `checksums.txt` holds the SHA-256 of every archive; step 2 of the install checks it.
+- The programs aren't signed. macOS may refuse a copy downloaded with a browser because it can't verify the developer: click "Open Anyway" under System Settings → Privacy & Security, or run `xattr -d com.apple.quarantine symphony` once. Windows SmartScreen may warn you too: click "More info", then "Run anyway". The release's `checksums.txt` holds the SHA-256 of every archive, and every archive carries GitHub's attestation of where it was built; step 2 of the install checks both.
 
 To report a vulnerability, see [SECURITY.md](SECURITY.md).
 
@@ -392,7 +424,7 @@ SYMPHONY_E2E=1 go test -tags e2e -v -count=1 -timeout 20m ./e2e/   # end-to-end:
 - The screenshots in this README: `SYMPHONY_E2E=1 SYMPHONY_E2E_DOCS=1 go test -tags e2e -run TestDocsScreens ./e2e/` takes them again with made-up activity (no tokens).
 - Translations: each language is one file, `web/locales/<lang>.json` for the pages and `internal/i18n/locales/<lang>.json` for the bridge, with the same keys as `en.json`; the mod's few messages are in `mods/symphony-bridge/hooks/messages.ts`. The unit tests check that every language has every key and the same `{placeholders}`, and the `TestI18n` end-to-end test opens the pages in every language.
 - The end-to-end tests need claude, tmux (for the sessions the tests drive themselves) and Chromium or Chrome, so they run on Linux and on macOS. `TestOffice` and `TestModStartsBridge` start real sessions and spend tokens; the others don't. They use this repository's mod by default; set `SYMPHONY_E2E_MOD=installed` to use the installed mod. Screenshots go to `e2e/artifacts/`.
-- Releases: bump the version in `mods/symphony-bridge/.claude-plugin/plugin.json`, add a `## vX.Y.Z (date)` section to `CHANGELOG.md`, bring dev to main, then tag that commit on main and push the tag (`git tag -a v1.0.0 -m v1.0.0 && git push origin v1.0.0`); GitHub Actions checks that the tag is `plugin.json`'s version and that the section exists, builds the program for every platform and publishes a release whose notes start with that section (`.github/workflows/release.yml`; a suffix like `-rc.1` makes a pre-release). `.github/release.sh v1.0.0 dist` builds the same archives locally.
+- Releases: bump the version in `mods/symphony-bridge/.claude-plugin/plugin.json`, add a `## vX.Y.Z (date)` section to `CHANGELOG.md`, bring dev to main, then tag that commit on main and push the tag (`git tag -a v1.0.0 -m v1.0.0 && git push origin v1.0.0`); GitHub Actions checks that the tag is `plugin.json`'s version and that the section exists, builds the program for every platform, attests where the archives were built and publishes a release whose notes start with that section (`.github/workflows/release.yml`; a suffix like `-rc.1` makes a pre-release); for a release that isn't a pre-release it then commits the Homebrew formula and the Scoop manifest to main (and to dev when that is a fast-forward), so pull both afterwards. `.github/release.sh v1.0.0 dist` builds the same archives locally, byte for byte on Linux.
 
 | Folder | What it is |
 | --- | --- |

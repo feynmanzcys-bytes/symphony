@@ -42,15 +42,30 @@ git --version             # só para as tarefas em equipe; se faltar, anote no r
 symphony -version         # já instalado? mostra "symphony v1.1.1 (darwin/arm64)"
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:7788/api/state   # um bridge rodando? 401: symphony 1.x; 200: um mais antigo; 000: nenhum
 claude plugin list --json # o mod já está instalado? procure uma entrada com "id": "symphony-bridge@symphony"
+brew --version            # tem Homebrew (macOS, Linux)? o passo 2 pode instalar com ele
 ```
 
-No Windows, use o PowerShell: `$env:PROCESSOR_ARCHITECTURE` é `AMD64` ou `ARM64`.
+No Windows, use o PowerShell: `$env:PROCESSOR_ARCHITECTURE` é `AMD64` ou `ARM64`, e `scoop --version` responde quando o Scoop está instalado.
 
 Se o `claude` não existir, pare e diga ao usuário para instalar o Claude Code primeiro. Se o programa e o mod já estiverem no lugar, vá para "Atualizar", mais abaixo. Se só um deles estiver, faça os passos do outro: os passos 2 e 3 para o programa (a não ser que `symphony -version` já mostre a versão mais recente), o passo 4 para o mod e depois o passo 5. Um bridge que já está rodando continua com o programa com que foi iniciado: se houver um, você vai pará-lo antes do passo 5.
 
 #### Passo 2: obter o programa
 
-Baixe o arquivo para esta máquina e o `checksums.txt` da versão para uma pasta nova, só para eles, e confira o arquivo antes de instalar qualquer coisa. Os arquivos são `symphony_<os>_<arch>.tar.gz`, com `<os>` `linux` ou `darwin` (macOS) e `<arch>` `amd64` ou `arm64`, e `symphony_windows_<arch>.zip`.
+**Com Homebrew ou Scoop.** Este repositório também é um tap do Homebrew e um bucket do Scoop. Se o passo 1 encontrou o Homebrew (macOS, Linux) ou o Scoop (Windows), você pode instalar com ele no lugar do resto deste passo e do passo 3: ele baixa o arquivo da versão mais recente, confere com o SHA-256 da fórmula ou do manifesto (escrito a partir do `checksums.txt` da versão quando ela saiu) e põe o `symphony` no `PATH`. Depois siga para o passo 4 e diga no relatório com qual dos dois instalou.
+
+```bash
+brew tap feynmanzcys-bytes/symphony https://github.com/feynmanzcys-bytes/symphony
+brew install symphony
+symphony -version          # mostra a versão e a plataforma
+```
+
+```powershell
+scoop bucket add symphony https://github.com/feynmanzcys-bytes/symphony
+scoop install symphony
+symphony -version
+```
+
+Senão, baixe o arquivo para esta máquina e o `checksums.txt` da versão para uma pasta nova, só para eles, e confira o arquivo antes de instalar qualquer coisa. Os arquivos são `symphony_<os>_<arch>.tar.gz`, com `<os>` `linux` ou `darwin` (macOS) e `<arch>` `amd64` ou `arm64`, e `symphony_windows_<arch>.zip`.
 
 No Linux e no macOS:
 
@@ -84,6 +99,19 @@ $want = ((Select-String -SimpleMatch -Path (Join-Path $d 'checksums.txt') -Patte
 $got = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $d $zip)).Hash
 if ($got -ne $want) { throw "checksum mismatch: $zip" } else { 'checksum OK' }
 ```
+
+Depois, se o `gh` estiver instalado e com login feito (`gh auth status` dá certo), confira onde o arquivo foi compilado: todo arquivo de uma versão traz o atestado do GitHub de que o workflow de publicação deste repositório o compilou. Fora de um terminal, o `gh` não mostra nada quando a verificação passa, então vá pelo código de saída:
+
+```bash
+gh attestation verify "$d/symphony_<os>_<arch>.tar.gz" --repo feynmanzcys-bytes/symphony && echo 'attestation OK'
+```
+
+```powershell
+gh attestation verify (Join-Path $d $zip) --repo feynmanzcys-bytes/symphony
+if ($LASTEXITCODE -eq 0) { 'attestation OK' }
+```
+
+Versões anteriores à v1.2.0 não têm atestado (`no attestations found`); para elas, vale a verificação do SHA-256. Qualquer outra falha: pare, como se a verificação do SHA-256 falhasse. Sem o `gh`, ou sem login, pule esta verificação e diga isso no relatório.
 
 **Pelo código-fonte** no Linux ou no macOS, quando o usuário preferir (Go 1.27 ou mais recente). Compile o binário; `go run` não serve, porque o `-autostart` recusa um build feito com `go run`:
 
@@ -215,6 +243,8 @@ Regras: o bridge só escuta nesta máquina (ele recusa qualquer endereço que n�
 
 Baixe a nova versão como no passo 2. O bridge que está rodando continua com o programa antigo até reiniciar (e no Windows não dá para substituir um programa em execução), então pare-o com `symphony -stop`, substitua o programa como no passo 3 e inicie-o de novo do jeito que ele rodava antes: `symphony -autostart on -open=false` se ele inicia ao entrar no sistema (isso também já o inicia agora), senão `symphony -background -open=false`. Se o bridge roda com um `-addr` ou um `-data` diferente do padrão, passe os mesmos a cada um desses comandos: o `-stop` só para o bridge daquela pasta de dados (em `-addr`, ou onde quer que o bridge dessa pasta esteja rodando), e diz `nothing to stop` quando nenhum responde. Parar o bridge encerra as sessões que ele iniciou, então avise o usuário antes. (O `-stop` veio com a v1.1.0; para parar um bridge v1.0.0, encerre o processo dele: `pkill -x symphony` no Linux e no macOS, `Stop-Process -Name symphony` no Windows.)
 
+Se instalou com Homebrew ou Scoop, `brew update && brew upgrade symphony` (ou `scoop update; scoop update symphony`) substitui o download e o passo 3, entre o mesmo `-stop` e o novo início. Se o symphony inicia sempre que o usuário entra no sistema, a entrada desse início aponta o link do Homebrew para o programa (`bin/symphony`), que a atualização muda para a nova versão; então aí o `-autostart on` só o inicia de novo agora.
+
 O mod acompanha com `claude plugin update symphony-bridge@symphony` (com um clone como marketplace, rode `git pull` nele).
 
 O programa e o mod usam o mesmo número de versão; o [CHANGELOG.md](CHANGELOG.md) lista o que mudou em cada versão.
@@ -241,6 +271,8 @@ Remove-Item -Recurse -Force $dest                            # o programa
 $p = ([Environment]::GetEnvironmentVariable('Path', 'User') -split ';' | Where-Object { $_ -and $_ -ne $dest }) -join ';'
 [Environment]::SetEnvironmentVariable('Path', $p, 'User')    # a entrada do Path que o passo 3 adicionou
 ```
+
+Se instalou com Homebrew, rode `brew uninstall symphony` e `brew untap feynmanzcys-bytes/symphony` no lugar da linha do `rm`; com Scoop, `scoop uninstall symphony` e `scoop bucket rm symphony` no lugar das quatro últimas linhas do PowerShell.
 
 A pasta de dados (as contas com seus tokens, a chave das páginas, o histórico de mensagens, o registro de consumo, as tarefas, e arquivos como `lock`, `bridge.addr` ou um `*.corrupt-<time>` deixado de lado) continua lá; apague-a para remover tudo. Apagá-la também apaga a chave das páginas: o próximo início cria uma nova, e todos os navegadores precisam obter acesso de novo. No Linux, com um navegador snap ou flatpak, o `open.html` fica na pasta própria desse navegador (`~/snap/<snap>/common` ou `~/.var/app/<app id>`); apague-o também.
 

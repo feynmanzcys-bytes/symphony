@@ -39,5 +39,3 @@
   - "remember this rule";
   - MCP elicitation;
   - Mission Control in light colors.
-- Build provenance for the release archives.
-- Homebrew and Scoop packages.

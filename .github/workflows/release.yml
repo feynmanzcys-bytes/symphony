@@ -1,10 +1,16 @@
 # Publishes a release when a version tag is pushed on main (git tag -a v0.3.0 -m v0.3.0 && git push origin v0.3.0):
 # a few checks and the unit tests, then the symphony program for every platform with checksums (.github/release.sh),
-# attached to a GitHub release. Its notes are what's new, the version's section of CHANGELOG.md (.github/changelog.sh),
-# then .github/release-notes.md ({tag} there becomes the tag, so its links point at this release's archives), then
-# GitHub's generated notes. A tag with a suffix (v0.3.0-rc.1) makes a pre-release. Run by hand (workflow_dispatch, on
-# a branch or a tag) it's a dry run: the same build, kept for 7 days as a workflow artifact, nothing published.
-# Plain go build and the gh on the runner, no third-party actions; only this job may write (to create the release).
+# attested and attached to a GitHub release. Its notes are what's new, the version's section of CHANGELOG.md
+# (.github/changelog.sh), then .github/release-notes.md ({tag} there becomes the tag, so its links point at this
+# release's archives), then GitHub's generated notes. A tag with a suffix (v0.3.0-rc.1) makes a pre-release.
+# The attestation (actions/attest: SLSA build provenance, signed with a Sigstore certificate for this workflow and
+# logged in Sigstore's public transparency log) covers every archive and checksums.txt, so
+# gh attestation verify <archive> --repo feynmanzcys-bytes/symphony shows that this workflow built it.
+# Once a release (not a pre-release) is out, the packages job writes its Homebrew formula and Scoop manifest
+# (.github/packages.sh; this repository is the tap and the bucket) and commits them to main, and to dev unless dev has
+# moved on. Run by hand (workflow_dispatch, on a branch or a tag) it's a dry run: the same build and the packages it
+# would commit, kept for 7 days as a workflow artifact; nothing is attested, published or pushed.
+# Plain go build, the gh on the runner and GitHub's own actions; only these two jobs may write.
 name: Release
 
 on:
@@ -24,7 +30,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
-      contents: write
+      contents: write # to create the release
+      id-token: write # the attestation: its signing certificate is issued for this workflow's token
+      attestations: write # the attestation: stored with the repository
     steps:
       - uses: actions/checkout@v7
         with:
@@ -59,6 +67,12 @@ jobs:
           version=$GITHUB_REF_NAME
           if [ "$GITHUB_REF_TYPE" != tag ]; then version=$GITHUB_REF_NAME-${GITHUB_SHA::7}; fi
           .github/release.sh "$version" dist
+      # before publishing, so a release never goes out without it; public, so never in a dry run
+      - name: Attest where the archives were built
+        if: github.event_name == 'push' && github.ref_type == 'tag'
+        uses: actions/attest@v4
+        with:
+          subject-path: dist/*
       - name: Publish the release
         if: github.event_name == 'push' && github.ref_type == 'tag'
         env:
@@ -79,10 +93,65 @@ jobs:
           if [[ $GITHUB_REF_NAME == *-* ]]; then pre=(--prerelease); fi
           gh release create "$GITHUB_REF_NAME" dist/* --verify-tag "${pre[@]}" \
             --title "symphony $GITHUB_REF_NAME" --notes-file "$RUNNER_TEMP/notes.md" --generate-notes
-      - name: Keep the dry run's archives
+      # outside dist/, which holds the release's files and nothing else
+      - name: The packages a release of this version would commit (with this build's checksums)
+        if: github.event_name != 'push'
+        run: .github/packages.sh "v$(jq -r .version mods/symphony-bridge/.claude-plugin/plugin.json)" dist/checksums.txt packages
+      - name: Keep the dry run's archives and packages
         if: github.event_name != 'push'
         uses: actions/upload-artifact@v7
         with:
           name: symphony-${{ github.sha }}
-          path: dist/
+          path: |
+            dist/
+            packages/
           retention-days: 7
+
+  # The formula and the manifest need the archives' SHA-256s, which exist only now. A job of its own, so a failed push
+  # can be run again without the release. Pushed with the workflow's token, the commit starts no other workflow.
+  packages:
+    name: Homebrew formula and Scoop manifest
+    needs: release
+    if: github.event_name == 'push' && github.ref_type == 'tag' && !contains(github.ref_name, '-')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write # to push them to main and dev
+    concurrency:
+      group: release-packages # one release's at a time
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main # the commit goes on main, which holds the tag (checked above)
+          fetch-depth: 0
+      - name: Commit them to main, and to dev unless it has moved on
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GIT_AUTHOR_NAME: github-actions[bot]
+          GIT_AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+          GIT_COMMITTER_NAME: github-actions[bot]
+          GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+        run: |
+          tag=$GITHUB_REF_NAME
+          gh release download "$tag" --repo "$GITHUB_REPOSITORY" --pattern checksums.txt --dir "$RUNNER_TEMP"
+          # an older release whose run ends after a newer one's leaves the newer one's packages
+          have=$(sed -n 's/^  version "\(.*\)"$/\1/p' Formula/symphony.rb 2>/dev/null || true)
+          if [ -n "$have" ] && [ "$(printf '%s\n' "$have" "${tag#v}" | sort -V | tail -n 1)" != "${tag#v}" ]; then
+            echo "::notice::main's packages are for v$have, newer than $tag: left as they are"
+            exit 0
+          fi
+          .github/packages.sh "$tag" "$RUNNER_TEMP/checksums.txt" .
+          git add Formula bucket
+          if git diff --cached --quiet; then
+            echo "main's packages are $tag's already"
+          else
+            git commit -q -m "Homebrew formula and Scoop manifest for $tag"
+            # main may have moved on since the checkout
+            git push origin HEAD:main || { git pull -q --rebase origin main && git push origin HEAD:main; }
+            echo "The Homebrew formula and the Scoop manifest for $tag are on main: $(git rev-parse --short HEAD)." >>"$GITHUB_STEP_SUMMARY"
+          fi
+          # dev is usually main at a release and takes the commit as a fast-forward; one that has moved on needs a merge
+          if ! git push origin HEAD:dev; then
+            echo "::notice::dev has moved on, so it doesn't have $tag's packages yet: merge main into it (git merge origin/main on dev)"
+            echo "dev has moved on, so it doesn't have $tag's packages yet: merge main into it (\`git merge origin/main\` on dev)." >>"$GITHUB_STEP_SUMMARY"
+          fi
