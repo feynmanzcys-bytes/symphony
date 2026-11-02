@@ -22,6 +22,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -177,9 +178,13 @@ func main() {
 			terms.KillAll()
 		}
 	}
+	var forced atomic.Bool // a second signal came while the stop ran: the bridge exits with 1, whichever path gets there first
 	shutdown := func() {
 		stopping.Do(func() {
 			stopAll()
+			if forced.Load() {
+				os.Exit(1)
+			}
 			os.Exit(0)
 		})
 	}
@@ -195,6 +200,7 @@ func main() {
 		go shutdown()
 		// a second signal while the stop runs (a task's git work, a disk that hangs): don't wait for it
 		<-stop
+		forced.Store(true)
 		log.Print(i18n.T("log.stop_forced"))
 		if terms != nil {
 			terms.KillAll()
