@@ -7,8 +7,9 @@
 import { t, lang, errorText, applyI18n, langPicker } from '/i18n.js'
 import { esc } from '/asks.js'
 import { connect } from '/symphony.js'
-import { STATE_COLOR, GRAY, base, lower, buildText, statusText as statusOf, deferWhilePressed } from '/ui/common.js'
+import { STATE_MARK, GRAY_MARK, base, lower, buildText, statusText as statusOf, deferWhilePressed } from '/ui/common.js'
 import { connectionBanner } from '/ui/banner.js'
+import { announceAsks } from '/ui/a11y.js'
 import { createChat } from '/ui/chat.js'
 import { createLaunchDialog } from '/ui/launch.js'
 import { createTaskUI } from '/ui/task.js'
@@ -21,6 +22,21 @@ sym.on('snapshot', s => { snapshot = s; ring(s.asks.length); document.title = (s
 const statusText = s => statusOf(sym, s)
 applyI18n()
 connectionBanner(sym)
+announceAsks(sym)
+
+// ---------- the room at night or by day: the system's choice, or the switch's, remembered ----------
+const DARK_STORE = 'symphony.mission.dark'
+const darkBtn = document.getElementById('dark')
+darkBtn.setAttribute('aria-label', t('mc.dark')) // a switch: its name stays, aria-pressed says whether it's on
+function setDark(on, remember = true) {
+  document.documentElement.toggleAttribute('data-dark', on)
+  darkBtn.textContent = on ? '☀' : '☾'
+  darkBtn.title = t(on ? 'mc.light' : 'mc.dark')
+  darkBtn.setAttribute('aria-pressed', String(on))
+  if (remember) try { localStorage.setItem(DARK_STORE, on ? '1' : '0') } catch {}
+}
+setDark((() => { try { const v = localStorage.getItem(DARK_STORE); if (v !== null) return v === '1' } catch {} return matchMedia('(prefers-color-scheme: dark)').matches })(), false)
+darkBtn.onclick = () => setDark(!document.documentElement.hasAttribute('data-dark'))
 const prefs = document.querySelector('.bar .prefs'), langSel = langPicker()
 prefs.appendChild(langSel)
 themePicker(sym).then(sel => prefs.insertBefore(sel, langSel))
@@ -36,9 +52,9 @@ const STATE_WORD_SHORT = { idle: 'mc.state.idle', thinking: 'mc.state.thinking',
 // the rate-limit windows, short: the ones known by name, any other as Claude Code calls it
 const LIMIT_KEY = { five_hour: 'mc.limit.fiveHour', seven_day: 'mc.limit.sevenDay', spend_limit: 'mc.limit.spend' }
 const limitLabel = kind => LIMIT_KEY[kind] ? t(LIMIT_KEY[kind]) : String(kind).replace(/_/g, ' ').toUpperCase()
-// the task colors: one per task, by its number
-const TASK_HUES = [36, 200, 290, 150, 330, 60, 250, 100]
-const taskColor = id => `hsl(${TASK_HUES[(+String(id).slice(1) || 0) % TASK_HUES.length]} 80% 60%)`
+// the task colors: a hue per task, by its number (OKLCH hues: mission.css gives them the lightness the scheme needs)
+const TASK_HUES = [70, 230, 310, 150, 0, 105, 275, 190]
+const taskHue = id => TASK_HUES[(+String(id).slice(1) || 0) % TASK_HUES.length]
 
 // ---------- the tokens over the last minute: from the usage pushes (the totals), per session ----------
 const SPARK_SECS = 60, BIN = 5
@@ -140,6 +156,7 @@ function showChat() {
 
 // ---------- the wall ----------
 const wall = document.getElementById('wall'), findEl = document.getElementById('find')
+findEl.setAttribute('aria-label', t('mc.search'))
 findEl.addEventListener('input', () => renderWall()) // at once: the box narrows the wall as one types
 // the tiles: every session online (a desk's, a task member's), then every account off duty
 function tiles() {
@@ -187,17 +204,21 @@ const renderWall = deferWhilePressed(() => {
     if (!el || el.dataset.sig !== sig) {
       const fresh = document.createElement('div')
       fresh.className = `tile ${st === 'ended' ? 'off' : st} ${x.task ? 'member' : ''} ${size}`
+      fresh.setAttribute('role', 'button') // a click opens its window: so do Enter and Space
+      fresh.tabIndex = 0
       fresh.dataset.key = x.key; fresh.dataset.sig = sig; fresh.dataset.account = x.acc?.id || ''; fresh.dataset.session = s?.id || ''
       if (x.task) fresh.dataset.task = x.task.id
-      fresh.innerHTML = (x.task ? `<div class="stripe" style="--c:${taskColor(x.task.id)}" title="${esc(x.task.title)}"><span>${esc(x.task.id)}</span></div>` : '') +
-        `<div class="hd"><span class="nm" title="${esc(x.name)}">${esc(x.name)}</span><span class="st" style="--c:${STATE_COLOR[st] ?? GRAY}"><i></i>${esc(t(STATE_WORD_SHORT[st] ?? 'mc.state.off'))}</span></div>` +
+      fresh.innerHTML = (x.task ? `<div class="stripe" style="--h:${taskHue(x.task.id)}" title="${esc(x.task.title)}"><span>${esc(x.task.id)}</span></div>` : '') +
+        `<div class="hd"><span class="nm" title="${esc(x.name)}">${esc(x.name)}</span><span class="st" style="--c:${STATE_MARK[st] ?? GRAY_MARK}"><i></i>${esc(t(STATE_WORD_SHORT[st] ?? 'mc.state.off'))}</span></div>` +
         `<div class="model">${esc(on && s.model ? s.model.replace(/^claude-/, '') + (s.effort ? ' · ' + s.effort : '') : x.acc?.last?.model || '')}</div>` +
         (on ? `<div class="gauges">` +
           (typeof ctx === 'number' ? `<span class="lbl">${esc(t('mc.ctx'))}</span><span class="gauge${ctx >= 90 ? ' full' : ctx >= 70 ? ' high' : ''}"><i style="width:${Math.min(100, ctx)}%"></i></span><span class="val">${Math.round(ctx)}%</span>` : '') +
           limits.map(l => `<span class="lbl">${esc(limitLabel(l.kind))}</span><span class="gauge${l.percentUsed >= 90 ? ' full' : l.percentUsed >= 70 ? ' high' : ''}"><i style="width:${Math.min(100, l.percentUsed)}%"></i></span><span class="val">${Math.round(l.percentUsed)}%</span>`).join('') + `</div>` +
           `<div class="spark">${spark(bins(s.id))}</div>` : '') +
         `<div class="now" title="${esc(now)}">${esc(now)}</div>`
+      const focused = el?.contains(document.activeElement) // (the new tile takes the focus the old one had)
       if (el) el.replaceWith(fresh); else wall.appendChild(fresh)
+      if (focused) fresh.focus({ preventScroll: true })
       el = fresh
     } else if (on) { // only the minute's line moves
       const sp = el.querySelector('.spark')
@@ -216,6 +237,13 @@ wall.addEventListener('click', ev => {
   if (tile.dataset.task) { tasks.openWindow(tile.dataset.task); openChat(tile.dataset.account, tile.dataset.session, tile.dataset.task) } else openChat(tile.dataset.account)
 })
 addEventListener('resize', render)
+// Esc closes the window on top (never one whose asks are being answered, nor the task window under it), and the dialogs
+addEventListener('keydown', ev => {
+  if (ev.key !== 'Escape') return
+  if (!chat.hidden) { if (!chat.asking) chat.close() } else if (!tasks.win.hidden) tasks.closeWindow()
+  if (!tasks.dialogHidden) tasks.closeDialog()
+  if (!launch.hidden) launch.close()
+})
 
 // ---------- the bar: mission time, sessions, alarms, cost ----------
 // The bell: two short tones when the alarms go up (not for the ones there when the page opens). With the sound on, the
@@ -237,11 +265,13 @@ function wake() {
 addEventListener('pointerdown', wake, true)
 addEventListener('keydown', wake, true)
 const canPlay = () => ac?.state === 'running'
+soundBtn.setAttribute('aria-label', t('mc.sound')) // a switch: its name stays, aria-pressed says whether it's on
 function showSound() {
   const blocked = sound && !canPlay()
   soundBtn.textContent = sound ? '🔔' : '🔕'
   soundBtn.classList.toggle('blocked', blocked)
   soundBtn.title = t(!sound ? 'mc.soundOff' : blocked ? 'mc.soundBlocked' : 'mc.soundOn')
+  soundBtn.setAttribute('aria-pressed', String(sound))
 }
 function setSound(on) {
   sound = on

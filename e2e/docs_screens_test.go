@@ -568,6 +568,8 @@ func TestDocsScreens(t *testing.T) {
 			mission.is(`[...document.querySelectorAll('#wall .tile:not(.off) .spark .lbl')].filter(l => !/^0 /.test(l.textContent)).length >= 5`)
 	}, func() string { return mission.js(`document.getElementById('wall').innerText`) })
 	time.Sleep(time.Until(missionSince.Add(70 * time.Second))) // a full minute of the pushes on the sparklines
+	// the room at night, as the README says (the browser's scheme is light)
+	mission.run(`document.documentElement.hasAttribute('data-dark') || document.getElementById('dark').click()`)
 	shot(mission, "mission.png", 1400, 860)
 	mission.done()
 

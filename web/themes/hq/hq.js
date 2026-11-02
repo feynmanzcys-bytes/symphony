@@ -5,8 +5,9 @@
 import { t, lang, errorText, applyI18n, langPicker } from '/i18n.js'
 import { esc, syncCards } from '/asks.js'
 import { connect } from '/symphony.js'
-import { STATE_COLOR, TASK_COLOR, GRAY, base, lower, dot, buildText, statusText as statusOf, setHTML, deferWhilePressed } from '/ui/common.js'
+import { STATE_MARK, TASK_MARK, base, lower, dot, buildText, statusText as statusOf, setHTML, deferWhilePressed } from '/ui/common.js'
 import { connectionBanner } from '/ui/banner.js'
+import { announceAsks } from '/ui/a11y.js'
 import { createChat } from '/ui/chat.js'
 import { createLaunchDialog } from '/ui/launch.js'
 import { createTaskUI } from '/ui/task.js'
@@ -19,14 +20,17 @@ sym.on('snapshot', s => { snapshot = s; document.title = (s.asks.length ? `(${s.
 const statusText = s => statusOf(sym, s)
 applyI18n()
 connectionBanner(sym)
+announceAsks(sym)
 
 // ---------- dark or light: the system's choice, or the switch's, remembered ----------
 const DARK_STORE = 'symphony.hq.dark'
 const darkBtn = document.getElementById('dark')
+darkBtn.setAttribute('aria-label', t('hq.dark')) // a switch: its name stays, aria-pressed says whether it's on
 function setDark(on, remember = true) {
   document.documentElement.toggleAttribute('data-dark', on)
   darkBtn.textContent = on ? '☀' : '☾'
   darkBtn.title = t(on ? 'hq.light' : 'hq.dark')
+  darkBtn.setAttribute('aria-pressed', String(on))
   if (remember) try { localStorage.setItem(DARK_STORE, on ? '1' : '0') } catch {}
 }
 setDark((() => { try { const v = localStorage.getItem(DARK_STORE); if (v !== null) return v === '1' } catch {} return matchMedia('(prefers-color-scheme: dark)').matches })(), false)
@@ -41,7 +45,10 @@ const tabsEl = document.getElementById('tabs')
 let tab = TABS.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'overview'
 function showTab(name) {
   tab = name
-  for (const b of tabsEl.querySelectorAll('button')) b.classList.toggle('on', b.dataset.tab === name)
+  for (const b of tabsEl.querySelectorAll('button')) {
+    b.classList.toggle('on', b.dataset.tab === name)
+    if (b.dataset.tab === name) b.setAttribute('aria-current', 'true'); else b.removeAttribute('aria-current') // (an empty aria-current means false)
+  }
   for (const s of document.querySelectorAll('main > section')) s.hidden = s.dataset.tab !== name
   if (location.hash !== '#' + name) history.replaceState(null, '', '#' + name)
   refreshActivity(true) // a tab that shows it: the log as it is now
@@ -77,7 +84,7 @@ function renderKPIs() {
     ['context', avg === null ? '—' : avg + '<small>%</small>', 'people'], ['errors', String(errors), 'activity', errors > 0],
   ]
   setHTML(document.getElementById('kpis'), tiles.map(([k, v, to, hot]) =>
-    `<div class="kpi click${hot ? ' hot' : ''}" data-tab="${to}"><div class="lbl">${esc(t('hq.kpi.' + k))}</div><div class="val">${v}</div></div>`).join(''))
+    `<div class="kpi click${hot ? ' hot' : ''}" data-tab="${to}" role="button" tabindex="0"><div class="lbl">${esc(t('hq.kpi.' + k))}</div><div class="val">${v}</div></div>`).join(''))
   const count = (name, n, hot) => { const el = tabsEl.querySelector(`[data-tab=${name}] .count`); el.hidden = !n; if (el.textContent !== String(n)) el.textContent = n; el.classList.toggle('hot', !!hot) }
   count('approvals', waiting, waiting > 0)
   count('projects', snapshot.tasks.length, false)
@@ -89,7 +96,7 @@ let chatFor = null, chatSid = null
 const askWho = a => {
   const acc = sym.accountById(a.account)
   return `<div class="who"><span class="name">${esc(acc?.name || '?')}</span><span class="kind">${esc(t(a.kind === 'question' ? 'asks.question' : 'asks.permission'))}` +
-    (a.agentId ? ` · ${esc(t('common.subagent'))}` : '') + `</span><span class="open" data-session="${esc(a.session)}">${esc(t('hq.btn.chat'))}</span></div>`
+    (a.agentId ? ` · ${esc(t('common.subagent'))}` : '') + `</span><span class="open" data-session="${esc(a.session)}" role="button" tabindex="0">${esc(t('hq.btn.chat'))}</span></div>`
 }
 const askWhoInChat = a => `<div class="who"><span class="name">${esc(t(a.kind === 'question' ? 'asks.question' : 'asks.permission'))}</span>` + (a.agentId ? `<span class="kind">${esc(t('common.subagent'))}</span>` : '') + `</div>`
 const chat = createChat(sym, { askWho: askWhoInChat, onClose: () => { chatFor = null; chatSid = null }, onTaskChip: id => tasks.openWindow(id) })
@@ -172,7 +179,7 @@ function renderOverview() {
   // who waits for you, a click opens the window
   const waiting = snapshot.asks.map(a => ({ a, acc: sym.accountById(a.account), s: sym.sessionById(a.session) }))
   setHTML(document.getElementById('ov-waiting'), waiting.length ? waiting.map(({ a, acc, s }) =>
-    `<div class="row click" data-session="${esc(a.session)}" data-account="${esc(a.account)}">${dot('waiting')}<b>${esc(nameOf(s, acc))}</b><span class="txt">${esc(t(a.kind === 'question' ? 'asks.question' : 'asks.permission'))}${esc(t('common.colon'))}${esc(a.tool ? a.tool + ' ' : '')}${esc(summaryOf(a))}</span><time>${esc(fmtTime(a.created))}</time></div>`).join('')
+    `<div class="row click" data-session="${esc(a.session)}" data-account="${esc(a.account)}" role="button" tabindex="0">${dot('waiting')}<b>${esc(nameOf(s, acc))}</b><span class="txt">${esc(t(a.kind === 'question' ? 'asks.question' : 'asks.permission'))}${esc(t('common.colon'))}${esc(a.tool ? a.tool + ' ' : '')}${esc(summaryOf(a))}</span><time>${esc(fmtTime(a.created))}</time></div>`).join('')
     : `<div class="empty">${esc(t('hq.overview.nothingWaiting'))}</div>`)
   // the activity of the last 30 minutes, events per minute
   const now = Date.now(), bins = new Array(30).fill(0)
@@ -240,7 +247,7 @@ function bars(el, rows, fmt, emptyText) {
 const COLS = ['name', 'state', 'model', 'folder', 'project', 'context', 'tools', 'turns', 'cost', 'uptime', 'actions']
 let sortBy = 'state', sortAsc = true, chipOn = null
 const thead = document.querySelector('#people thead tr')
-thead.innerHTML = COLS.map(c => `<th data-col="${c}">${esc(c === 'actions' ? '' : t('hq.col.' + c))}</th>`).join('')
+thead.innerHTML = COLS.map(c => `<th data-col="${c}" scope="col">${c === 'actions' ? '' : `<button type="button" class="sort">${esc(t('hq.col.' + c))}</button>`}</th>`).join('')
 thead.addEventListener('click', ev => {
   const th = ev.target.closest('th'), col = th?.dataset.col
   if (!col || col === 'actions') return
@@ -259,7 +266,7 @@ function renderPeople() {
   const n = { idle: 0, busy: 0, waiting: 0, off: 0 }
   for (const r of rows) n[r.g]++
   setHTML(document.getElementById('chips'), [['idle', 'idle', 'stats.idle'], ['busy', 'tool', 'stats.working'], ['waiting', 'waiting', 'stats.waiting'], ['off', 'ended', 'stats.offDuty']]
-    .map(([g, st, key]) => `<button class="chip${chipOn === g ? ' on' : ''}${g === 'waiting' && n.waiting ? ' hot' : ''}" data-group="${g}" style="--c:${STATE_COLOR[st]}"><i></i>${esc(t(key, { n: n[g] }))}</button>`).join(''))
+    .map(([g, st, key]) => `<button class="chip${chipOn === g ? ' on' : ''}${g === 'waiting' && n.waiting ? ' hot' : ''}" data-group="${g}" style="--c:${STATE_MARK[st]}" aria-pressed="${chipOn === g}"><i aria-hidden="true"></i>${esc(t(key, { n: n[g] }))}</button>`).join(''))
   const q = lower(findEl.value.trim())
   const shown = rows.filter(r => (!chipOn || r.g === chipOn) && (!q || matches(r, q)))
   const key = r => ({
@@ -267,7 +274,10 @@ function renderPeople() {
     project: r.task?.id || '~', context: r.ctx, tools: r.s?.tools || 0, turns: r.s?.turns || 0, cost: r.cost, uptime: r.on ? Date.parse(r.s.started) : Infinity,
   })[sortBy]
   shown.sort((a, b) => { const x = key(a), y = key(b); return (x < y ? -1 : x > y ? 1 : 0) * (sortAsc ? 1 : -1) || a.acc.name.localeCompare(b.acc.name, lang) })
-  for (const th of thead.children) { th.classList.toggle('on', th.dataset.col === sortBy); th.classList.toggle('asc', th.dataset.col === sortBy && sortAsc) }
+  for (const th of thead.children) {
+    th.classList.toggle('on', th.dataset.col === sortBy); th.classList.toggle('asc', th.dataset.col === sortBy && sortAsc)
+    if (th.dataset.col === sortBy) th.setAttribute('aria-sort', sortAsc ? 'ascending' : 'descending'); else th.removeAttribute('aria-sort')
+  }
   setHTML(document.querySelector('#people tbody'), shown.map(r => {
     const { acc, s, on, task } = r, state = on ? (sym.asking(s.id) ? 'waiting' : s.state) : 'ended'
     const ctx = r.ctx >= 0 ? `<span class="ctx${r.ctx >= 90 ? ' full' : r.ctx >= 70 ? ' high' : ''}" title="${esc(fmtNum.format(s.usage.context.tokens || 0) + ' / ' + fmtNum.format(s.usage.context.window))}"><i style="width:${Math.min(100, r.ctx)}%"></i></span>${Math.round(r.ctx)}%` : '<span class="dim">—</span>'
@@ -298,6 +308,7 @@ const matches = (r, q) => [r.acc.name, r.s?.title, base(r.s?.cwd || r.acc.dir ||
 
 // ---------- the search box: employees by name, session name or folder; tasks by id or title ----------
 const findEl = document.getElementById('find'), findList = document.getElementById('find-list')
+findEl.setAttribute('aria-label', t('hq.search'))
 let findSel = 0
 function findHits() {
   const q = lower(findEl.value.trim())
@@ -310,7 +321,10 @@ function renderFind() {
   const hits = findHits()
   findSel = Math.max(0, Math.min(findSel, hits.length - 1))
   findList.hidden = !findEl.value.trim() || document.activeElement !== findEl
-  findList.innerHTML = hits.map((h, i) => `<div class="hit${i === findSel ? ' on' : ''}" data-key="${esc(h.key)}">${dot(h.state)}<b>${esc(h.name)}</b><small>${esc(h.sub)}</small></div>`).join('') || `<div class="none">${esc(t('search.none'))}</div>`
+  findList.innerHTML = hits.map((h, i) => `<div class="hit${i === findSel ? ' on' : ''}" data-key="${esc(h.key)}" role="option" id="find-hit-${i}" aria-selected="${i === findSel}">${dot(h.state)}<b>${esc(h.name)}</b><small>${esc(h.sub)}</small></div>`).join('') || `<div class="none" role="option" aria-disabled="true">${esc(t('search.none'))}</div>`
+  findEl.setAttribute('aria-expanded', String(!findList.hidden))
+  if (!findList.hidden && hits.length) findEl.setAttribute('aria-activedescendant', 'find-hit-' + findSel)
+  else findEl.removeAttribute('aria-activedescendant')
   if (tab === 'people') renderPeople()
 }
 function pickFound(h) {
@@ -320,7 +334,7 @@ function pickFound(h) {
 }
 findEl.addEventListener('input', () => { findSel = 0; renderFind() })
 findEl.addEventListener('focus', renderFind)
-findEl.addEventListener('blur', () => { findList.hidden = true })
+findEl.addEventListener('blur', () => { findList.hidden = true; findEl.setAttribute('aria-expanded', 'false'); findEl.removeAttribute('aria-activedescendant') })
 findEl.addEventListener('keydown', ev => {
   if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') { findSel += ev.key === 'ArrowDown' ? 1 : -1; renderFind() }
   else if (ev.key === 'Enter') pickFound(findHits()[findSel])
@@ -330,7 +344,7 @@ findEl.addEventListener('keydown', ev => {
 })
 findList.addEventListener('mousedown', ev => { const row = ev.target.closest('.hit'); if (!row) return; ev.preventDefault(); pickFound(findHits().find(h => h.key === row.dataset.key)) })
 addEventListener('keydown', ev => {
-  if (ev.key === 'Escape') { if (!chat.hidden && !chat.asking) chat.close(); else if (!tasks.win.hidden) tasks.closeWindow(); if (!tasks.dialogHidden) tasks.closeDialog() }
+  if (ev.key === 'Escape') { if (!chat.hidden) { if (!chat.asking) chat.close() } else if (!tasks.win.hidden) tasks.closeWindow(); if (!tasks.dialogHidden) tasks.closeDialog(); if (!launch.hidden) launch.close() }
   if (ev.key !== '/' || ev.ctrlKey || ev.metaKey || ev.altKey || !chat.hidden || !launch.hidden || !tasks.dialogHidden || !tasks.win.hidden) return
   if (/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName)) return
   ev.preventDefault()
@@ -349,11 +363,11 @@ document.getElementById('queue').addEventListener('click', ev => { const o = ev.
 
 // ---------- projects: the board ----------
 function renderProjects() {
-  const cols = [['running', TASK_COLOR.running], ['ending', TASK_COLOR.ending], ['failed', TASK_COLOR.failed]]
+  const cols = [['running', TASK_MARK.running], ['ending', TASK_MARK.ending], ['failed', TASK_MARK.failed]]
   setHTML(document.getElementById('board'), cols.map(([st, c]) => {
     const list = snapshot.tasks.filter(k => k.status === st)
     return `<div class="col"><h2><i style="--c:${c}"></i>${esc(t('hq.projects.' + st))}<span class="badge">${list.length}</span></h2>` + (list.map(task =>
-      `<div class="task" data-task="${esc(task.id)}"><div class="hd"><b>${esc(task.id)}</b>${task.leader ? `<span class="lead">${esc(t('task.lead'))}${esc(t('common.colon'))}${esc(task.members.find(m => m.account === task.leader)?.name || '')}</span>` : `<span class="lead">${esc(t('task.flat'))}</span>`}</div>` +
+      `<div class="task" data-task="${esc(task.id)}" role="button" tabindex="0"><div class="hd"><b>${esc(task.id)}</b>${task.leader ? `<span class="lead">${esc(t('task.lead'))}${esc(t('common.colon'))}${esc(task.members.find(m => m.account === task.leader)?.name || '')}</span>` : `<span class="lead">${esc(t('task.flat'))}</span>`}</div>` +
         `<div class="title">${esc(task.title)}</div>` + task.members.map(m => { const s = sym.sessionById(m.session), on = online(s); return `<div class="mem">${dot(!on ? 'ended' : sym.asking(m.session) ? 'waiting' : s.state)}<b>${esc(m.name)}</b><span class="dim">${esc(m.branch)}</span><span class="st">${esc(!m.session ? t('task.memberStarting') : on ? statusText(s) : t('task.memberEnded'))}</span></div>` }).join('') +
         (task.status === 'failed' ? `<div class="err">${esc(errorText({ code: task.errorCode, params: task.errorParams, error: task.error }))}</div>` : '') + `</div>`).join('') || `<div class="empty">${esc(t('hq.empty.projects'))}</div>`) + '</div>'
   }).join(''))

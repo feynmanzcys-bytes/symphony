@@ -7,6 +7,7 @@ import { esc } from '/asks.js'
 import { connect } from '/symphony.js'
 import { base, lower, hash, buildText, statusText as statusOf, setHTML, deferWhilePressed } from '/ui/common.js'
 import { connectionBanner } from '/ui/banner.js'
+import { announceAsks } from '/ui/a11y.js'
 import { createChat } from '/ui/chat.js'
 import { createLaunchDialog } from '/ui/launch.js'
 import { createTaskUI } from '/ui/task.js'
@@ -19,14 +20,17 @@ sym.on('snapshot', s => { snapshot = s; document.title = (s.asks.length ? `(${s.
 const statusText = s => statusOf(sym, s)
 applyI18n()
 connectionBanner(sym)
+announceAsks(sym)
 
 // ---------- dark or light ----------
 const DARK_STORE = 'symphony.messenger.dark'
 const darkBtn = document.getElementById('dark')
+darkBtn.setAttribute('aria-label', t('msgr.dark')) // a switch: its name stays, aria-pressed says whether it's on
 function setDark(on, remember = true) {
   document.documentElement.toggleAttribute('data-dark', on)
   darkBtn.textContent = on ? '☀' : '☾'
   darkBtn.title = t(on ? 'msgr.light' : 'msgr.dark')
+  darkBtn.setAttribute('aria-pressed', String(on))
   if (remember) try { localStorage.setItem(DARK_STORE, on ? '1' : '0') } catch {}
 }
 setDark((() => { try { const v = localStorage.getItem(DARK_STORE); if (v !== null) return v === '1' } catch {} return matchMedia('(prefers-color-scheme: dark)').matches })(), false)
@@ -55,7 +59,7 @@ const limitLabel = kind => LIMIT_KEY[kind] ? t(LIMIT_KEY[kind]) : String(kind).r
 const SHAPES = ['<circle class="body" cx="22" cy="22" r="20"/>', '<rect class="body" x="3" y="3" width="38" height="38" rx="10"/>', '<polygon class="body" points="22,2 40,12 40,32 22,42 4,32 4,12"/>', '<path class="body" d="M22 3 L41 22 L22 41 L3 22 Z" />']
 function face(name, state, cls = '') {
   const h = hash(name), hue = h % 360, shape = SHAPES[(h >>> 8) % SHAPES.length], mouth = (h >>> 12) % 2
-  return `<div class="face ${cls}" data-state="${esc(state)}" style="--c:hsl(${hue} 48% ${document.documentElement.hasAttribute('data-dark') ? 52 : 44}%)"><svg viewBox="0 0 44 44">` +
+  return `<div class="face ${cls}" data-state="${esc(state)}" aria-hidden="true" style="--c:hsl(${hue} 48% ${document.documentElement.hasAttribute('data-dark') ? 52 : 44}%)"><svg viewBox="0 0 44 44">` +
     `<circle class="ring" cx="22" cy="22" r="21.5"/>${shape}` +
     `<ellipse class="eye" cx="15" cy="19" rx="4" ry="4.5"/><ellipse class="eye" cx="29" cy="19" rx="4" ry="4.5"/>` +
     `<circle class="pupil" cx="15.5" cy="19.5" r="2"/><circle class="pupil" cx="29.5" cy="19.5" r="2"/>` +
@@ -154,9 +158,11 @@ function showChat() {
 
 // ---------- the sidebar ----------
 const findEl = document.getElementById('find')
+findEl.setAttribute('aria-label', t('msgr.search'))
 findEl.addEventListener('input', renderSide)
 addEventListener('keydown', ev => {
   if (ev.key === 'Escape' && !tasks.dialogHidden) tasks.closeDialog()
+  if (ev.key === 'Escape' && !launch.hidden) launch.close()
   if (ev.key !== '/' || ev.ctrlKey || ev.metaKey || ev.altKey || !launch.hidden || !tasks.dialogHidden) return
   if (/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName)) return
   ev.preventDefault()
@@ -184,7 +190,9 @@ function syncRows(box, items, empty) {
       tpl.innerHTML = it.html
       const fresh = tpl.content.firstElementChild
       fresh.dataset.key = it.key; fresh.dataset.sig = it.sig
+      const focused = el?.contains(document.activeElement)
       if (el) el.replaceWith(fresh); else box.appendChild(fresh)
+      if (focused) fresh.focus({ preventScroll: true })
       el = fresh
     }
     if ((prev ? prev.nextSibling : box.firstChild) !== el) { if (prev) prev.after(el); else box.prepend(el) }
@@ -201,7 +209,7 @@ function renderSide() {
     const st = stateOf(s), on = online(s), hot = st === 'waiting', line = progress(acc, s), when = on ? fmtTime(s.updated) : ''
     const title = on ? [s.model ? s.model.replace(/^claude-/, '').replace(/-\d+-\d+$/, '') + (s.effort ? ' · ' + s.effort : '') : '', base(s.cwd || '')].filter(Boolean).join(' · ') : (acc.last?.model || '')
     const picked_ = picked?.account === acc.id && !picked.sid
-    const html = `<div class="row${picked_ ? ' on' : ''}${on ? '' : ' off'}" data-account="${esc(acc.id)}">${face(acc.name, st)}` +
+    const html = `<div class="row${picked_ ? ' on' : ''}${on ? '' : ' off'}" data-account="${esc(acc.id)}" role="button" tabindex="0"${picked_ ? ' aria-current="true"' : ''}>${face(acc.name, st)}` +
       `<div class="nm">${esc(acc.name)}${task ? ` <span class="badge" title="${esc(task.title)}">${esc(task.id)}</span>` : ''}</div>` +
       `<div class="when">${esc(when)}</div>` +
       `<div class="sub${hot ? ' hot' : ''}" title="${esc(line)}">${esc(title ? title + ' — ' : '')}${esc(line)}</div></div>`
@@ -213,7 +221,7 @@ function renderSide() {
   syncRows(document.getElementById('groups'), groups.map(k => {
     const waiting = k.members.some(m => sym.asking(m.session)), st = k.status === 'failed' ? 'ended' : waiting ? 'waiting' : 'tool'
     const picked_ = picked?.group === k.id || picked?.task === k.id, line = k.title.split('\n')[0]
-    const html = `<div class="row${picked_ ? ' on' : ''}" data-group="${esc(k.id)}">${face(k.id, st)}` +
+    const html = `<div class="row${picked_ ? ' on' : ''}" data-group="${esc(k.id)}" role="button" tabindex="0"${picked_ ? ' aria-current="true"' : ''}>${face(k.id, st)}` +
       `<div class="nm">${esc(k.id)} <span class="badge${waiting ? ' hot' : ''}">${esc(t('msgr.members', { n: k.members.length }))}</span></div><div class="when">${esc(t('task.status.' + k.status))}</div>` +
       `<div class="sub" title="${esc(k.title)}">${esc(line)}</div></div>`
     return { key: k.id, sig: `${st}|${k.status}|${k.members.length}|${waiting}|${picked_}|${line}|${dark}`, html }
@@ -246,7 +254,7 @@ function renderProfile() {
     if (!k) { profileEl.hidden = true; return }
     setHTML(profileEl, `<div class="top">${face(k.id, k.status === 'failed' ? 'ended' : 'tool', 'big')}<h2>${esc(k.id)}</h2><div class="st">${esc(t('task.status.' + k.status))}</div></div>` +
       `<h3>${esc(t('msgr.profile.about'))}</h3><div class="wrap" style="font-size:13px;white-space:pre-wrap;overflow-wrap:anywhere">${esc(k.title)}</div>` +
-      `<h3>${esc(t('msgr.profile.members'))}</h3><div class="list">` + k.members.map(m => { const s = sym.sessionById(m.session); return `<div class="row" data-session="${esc(m.session || '')}" data-account="${esc(m.account)}">${face(m.name, stateOf(s))}<span class="txt"><b>${esc(m.name)}</b>${k.leader === m.account ? ` <span class="tag">${esc(t('task.lead'))}</span>` : ''}</span><span class="dim">${esc(!m.session ? t('task.memberStarting') : online(s) ? statusText(s) : t('task.memberEnded'))}</span></div>` }).join('') + '</div>')
+      `<h3>${esc(t('msgr.profile.members'))}</h3><div class="list">` + k.members.map(m => { const s = sym.sessionById(m.session); return `<div class="row" data-session="${esc(m.session || '')}" data-account="${esc(m.account)}"${m.session ? ' role="button" tabindex="0"' : ''}>${face(m.name, stateOf(s))}<span class="txt"><b>${esc(m.name)}</b>${k.leader === m.account ? ` <span class="tag">${esc(t('task.lead'))}</span>` : ''}</span><span class="dim">${esc(!m.session ? t('task.memberStarting') : online(s) ? statusText(s) : t('task.memberEnded'))}</span></div>` }).join('') + '</div>')
     return
   }
   const acc = sym.accountById(picked.account)
@@ -258,7 +266,7 @@ function renderProfile() {
   const totals = u?.totals ? Object.values(u.totals).reduce((n, tk) => n + tk.input + tk.output, 0) : 0
   const recent = activity.filter(a => a.session === s?.id && (a.kind === 'tool' || a.kind === 'ask' || a.kind === 'error')).slice(-5).reverse()
   const drawn = setHTML(profileEl, `<div class="top">${face(name, st, 'big')}<h2>${esc(name)}</h2><div class="st">${esc(on ? statusText(s) : t('state.ended'))}</div></div>` +
-    (picked.task ? `<span class="link" data-group="${esc(picked.task)}">← ${esc(t('msgr.profile.backToGroup', { id: picked.task }))}</span>` : task ? `<span class="link" data-group="${esc(task.id)}">${esc(t('msgr.profile.inGroup', { id: task.id }))}</span>` : '') +
+    (picked.task ? `<span class="link" data-group="${esc(picked.task)}" role="button" tabindex="0">← ${esc(t('msgr.profile.backToGroup', { id: picked.task }))}</span>` : task ? `<span class="link" data-group="${esc(task.id)}" role="button" tabindex="0">${esc(t('msgr.profile.inGroup', { id: task.id }))}</span>` : '') +
     `<h3>${esc(t('msgr.profile.computer'))}</h3><div class="computer">` +
     `<div class="now ${on && s.state === 'tool' ? 'on' : on ? '' : 'off'}"><i></i><span>${esc(on ? (s.state === 'tool' && s.tool ? s.tool : s.state === 'thinking' ? t('state.thinking') : t('msgr.profile.idle')) : t('state.ended'))}</span></div>` +
     (recent.length ? `<div class="recent">${recent.map(a => `<div><time>${esc(fmtTime(a.time))}</time>${esc(a.text)}</div>`).join('')}</div>` : '') +

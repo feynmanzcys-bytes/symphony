@@ -9,7 +9,7 @@
 </head>
 <body>
 <header class="top">
-  <div class="brand"><span class="mark"></span><h1 data-i18n="hq.title"></h1></div>
+  <div class="brand"><span class="mark" aria-hidden="true"></span><h1 data-i18n="hq.title"></h1></div>
   <nav class="tabs" id="tabs">
     <button data-tab="overview" data-i18n="hq.tab.overview"></button>
     <button data-tab="people" data-i18n="hq.tab.people"></button>
@@ -17,7 +17,7 @@
     <button data-tab="projects"><span data-i18n="hq.tab.projects"></span><b class="count" hidden></b></button>
     <button data-tab="activity" data-i18n="hq.tab.activity"></button>
   </nav>
-  <div class="find"><input id="find" type="search" autocomplete="off" spellcheck="false" data-i18n-placeholder="hq.search"><div id="find-list" hidden></div></div>
+  <div class="find"><input id="find" type="search" autocomplete="off" spellcheck="false" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="find-list" data-i18n-placeholder="hq.search"><div id="find-list" role="listbox" hidden></div></div>
   <div class="actions">
     <button class="px primary" id="new-emp" data-i18n="office.newEmployee" hidden></button>
     <button class="px" id="new-task" data-i18n="office.newTask" hidden></button>
@@ -39,7 +39,7 @@
   </section>
   <section data-tab="people" class="people" hidden>
     <div class="toolbar"><div class="chips" id="chips"></div></div>
-    <table id="people"><thead><tr></tr></thead><tbody></tbody></table>
+    <div class="scroll"><table id="people"><thead><tr></tr></thead><tbody></tbody></table></div>
     <div class="empty" id="people-empty" data-i18n="hq.empty.people" hidden></div>
   </section>
   <section data-tab="approvals" class="approvals" hidden>

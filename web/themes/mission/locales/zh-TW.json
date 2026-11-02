@@ -9,6 +9,8 @@
   "mc.soundOn": "響鈴已開：來警報時響一聲",
   "mc.soundOff": "響鈴已關",
   "mc.soundBlocked": "響鈴已開，但瀏覽器要等你點一下頁面才會出聲",
+  "mc.dark": "深色：夜間的控制室",
+  "mc.light": "淺色：白天的控制室",
   "mc.noSessions": "沒有工作階段",
   "mc.noActivity": "還沒有動態",
   "mc.alarm": "警報：{what}",

@@ -16,8 +16,8 @@ import (
 	"github.com/feynmanzcys-bytes/symphony/internal/bridge"
 )
 
-// TestLayout checks the office's layout with made-up sessions (no tokens). In windows of a few sizes the building
-// fills the whole window with the open office in the middle, and the room left over goes to small meeting rooms for 3 to
+// TestLayout checks the office's layout with made-up sessions (no tokens). In windows of a few sizes (down to 800 by 600)
+// the building fills the whole window with the open office in the middle, and the room left over goes to small meeting rooms for 3 to
 // 5, on the office's left (in a tall window some go below the lounge too), whose nameplates show; the HUD sits at the
 // top in the middle, its tab slides it up out of the way (showing the pending asks while it's up) and back down, the
 // page remembers which, and the side panels start below it. Each finer step of the pixel size draws the same building in
@@ -89,7 +89,7 @@ func TestLayout(t *testing.T) {
 	for _, size := range []struct {
 		w, h  int64
 		scale float64
-	}{{1400, 860, 1}, {1000, 1300, 1}, {2400, 1000, 1}, {820, 620, 1}, {1280, 800, 2}} {
+	}{{1400, 860, 1}, {1000, 1300, 1}, {2400, 1000, 1}, {820, 620, 1}, {800, 600, 1}, {1280, 800, 2}} {
 		name := fmt.Sprintf("%dx%d@%gx", size.w, size.h, size.scale)
 		do(t, office, 10*time.Second, chromedp.EmulateViewport(size.w, size.h, chromedp.EmulateScale(size.scale)))
 		waitUntil(t, 10*time.Second, name+": the building fills the window, the nameplates show and the HUD is at the top in the middle", func() bool {

@@ -22,21 +22,24 @@ async function answer(el, id, body) {
   return false
 }
 
-// who: the HTML of the card's top line (who, and what kind of ask); the page decides how it reads
+// who: the HTML of the card's top line (who, and what kind of ask); the page decides how it reads. For screen readers
+// a card is a group named by that line, and each question a group named by itself.
 export function askCard(a, who) {
   const el = document.createElement('div')
   el.className = 'card'
   el.dataset.id = a.id
   el.dataset.session = a.session
   el.dataset.kind = a.kind
+  el.setAttribute('role', 'group')
+  const id = 'ask-' + String(a.id).replace(/[^\w-]/g, '_')
   if (a.kind === 'question') {
     el.innerHTML = who + (a.questions || []).map((q, i) => `
-      <div class="q" data-i="${i}">
-        <h3><span class="hd">${esc(q.header)}</span>${esc(q.question)}</h3>
+      <div class="q" data-i="${i}" role="group" aria-labelledby="${id}-q${i}">
+        <h3 id="${id}-q${i}"><span class="hd">${esc(q.header)}</span>${esc(q.question)}</h3>
         ${(q.options || []).map(o => `
           <label class="opt"><input type="${q.multiSelect ? 'checkbox' : 'radio'}" name="${a.id}-q${i}" value="${esc(o.label)}">
           ${esc(o.label)}<small>${esc(o.description)}</small></label>`).join('')}
-        <input type="text" class="other" placeholder="${esc(t('asks.other'))}">
+        <input type="text" class="other" placeholder="${esc(t('asks.other'))}" aria-label="${esc(t('asks.other'))}">
         <div class="need" hidden>${esc(t('asks.answerRequired'))}</div>
       </div>`).join('') +
       `<div class="row"><button class="submit">${esc(t('asks.submit'))}</button></div>`
@@ -65,7 +68,7 @@ export function askCard(a, who) {
       <pre>${esc(JSON.stringify(a.input, null, 2))}</pre>
       ${a.inputTruncated ? `<div class="cut"><span class="warn">${esc(t('asks.truncatedWarn'))}</span><button class="show-all">${esc(t('asks.showAll'))}</button></div>` : ''}
       <div class="row">
-        <input type="text" class="reason" placeholder="${esc(t('asks.reason'))}">
+        <input type="text" class="reason" placeholder="${esc(t('asks.reason'))}" aria-label="${esc(t('asks.reason'))}">
         <button class="allow">${esc(t('asks.allow'))}</button><button class="deny">${esc(t('asks.deny'))}</button>
       </div>`
     const reason = el.querySelector('.reason'), allow = el.querySelector('.allow')
@@ -96,6 +99,8 @@ export function askCard(a, who) {
       }
     }
   }
+  const top = el.querySelector('.who')
+  if (top) { top.id = id + '-who'; el.setAttribute('aria-labelledby', top.id) }
   return el
 }
 
