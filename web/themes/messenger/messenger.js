@@ -6,7 +6,7 @@
 import { t, lang, errorText, applyI18n, langPicker } from '/i18n.js'
 import { esc } from '/asks.js'
 import { connect } from '/symphony.js'
-import { base, lower, hash, buildText, statusText as statusOf, setHTML, deferWhilePressed } from '/ui/common.js'
+import { base, lower, hash, buildText, statusText as statusOf, setHTML, deferWhilePressed, askKind, askSummary } from '/ui/common.js'
 import { connectionBanner } from '/ui/banner.js'
 import { announceAsks } from '/ui/a11y.js'
 import { createChat } from '/ui/chat.js'
@@ -75,8 +75,8 @@ function face(name, state, cls = '') {
 // ---------- the shared pieces, embedded in the middle column ----------
 let picked = null // what the middle column shows: { account, sid?, task? } for a conversation, { group: taskId } for a group chat
 const center = document.getElementById('center'), placeholder = document.getElementById('placeholder')
-const askWho = a => `<div class="who"><span class="name">${esc(t(a.kind === 'question' ? 'asks.question' : 'asks.permission'))}</span>` + (a.agentId ? `<span class="kind">${esc(t('common.subagent'))}</span>` : '') + `</div>`
-const chat = createChat(sym, { askWho, onClose: () => { if (picked?.account) picked = null; showCenter() }, onTaskChip: id => openGroup(id) })
+const askWho = a => `<div class="who"><span class="name">${esc(askKind(a.kind))}</span>` + (a.agentId ? `<span class="kind">${esc(t('common.subagent'))}</span>` : '') + `</div>`
+const chat = createChat(sym, { askWho, asks: 'inline', onClose: () => { if (picked?.account) picked = null; showCenter() }, onTaskChip: id => openGroup(id) })
 const launch = createLaunchDialog(sym, { options: loadOptions, onOnline: l => openCoworker(l.account), log: () => {} })
 const tasks = createTaskUI(sym, {
   options: loadOptions,
@@ -178,7 +178,7 @@ addEventListener('keydown', ev => {
 function progress(acc, s) {
   if (!online(s)) return s ? t('msgr.offSince', { time: fmtTime(s.updated) }) : t('state.ended')
   const ask = snapshot.asks.find(a => a.session === s.id)
-  if (ask) return t('msgr.waitingFor', { what: ask.kind === 'question' ? (ask.questions?.[0]?.question || t('asks.question')) : [ask.tool, ask.input?.command || ask.input?.file_path || ''].filter(Boolean).join(' ') })
+  if (ask) return t('msgr.waitingFor', { what: ask.kind === 'permission' ? [ask.tool, askSummary(ask)].filter(Boolean).join(' ') : askSummary(ask) || askKind(ask.kind) })
   if (s.state === 'tool' && s.tool) return t('state.working', { tool: s.tool })
   if (s.state === 'thinking') return t('state.thinking')
   return s.prompt ? t('msgr.lastAsked', { text: s.prompt }) : t('state.idle')

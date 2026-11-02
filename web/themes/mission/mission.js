@@ -7,7 +7,7 @@
 import { t, lang, errorText, applyI18n, langPicker } from '/i18n.js'
 import { esc } from '/asks.js'
 import { connect } from '/symphony.js'
-import { STATE_MARK, GRAY_MARK, base, lower, buildText, statusText as statusOf, setHTML, deferWhilePressed } from '/ui/common.js'
+import { STATE_MARK, GRAY_MARK, base, lower, buildText, statusText as statusOf, setHTML, deferWhilePressed, askKind, askSummary } from '/ui/common.js'
 import { connectionBanner } from '/ui/banner.js'
 import { announceAsks } from '/ui/a11y.js'
 import { createChat } from '/ui/chat.js'
@@ -83,7 +83,7 @@ function spark(values) {
 
 // ---------- the shared pieces ----------
 let chatFor = null, chatSid = null
-const askWho = a => `<div class="who"><span class="name">${esc(t(a.kind === 'question' ? 'asks.question' : 'asks.permission'))}</span>` + (a.agentId ? `<span class="kind">${esc(t('common.subagent'))}</span>` : '') + `</div>`
+const askWho = a => `<div class="who"><span class="name">${esc(askKind(a.kind))}</span>` + (a.agentId ? `<span class="kind">${esc(t('common.subagent'))}</span>` : '') + `</div>`
 const chat = createChat(sym, { askWho, onClose: () => { chatFor = null; chatSid = null }, onTaskChip: id => tasks.openWindow(id) })
 const launch = createLaunchDialog(sym, { options: loadOptions, onOnline: l => openChat(l.account), onOpen: () => chat.close(), log: () => {} })
 const tasks = createTaskUI(sym, {
@@ -229,7 +229,7 @@ const renderWall = deferWhilePressed(() => {
     prev = el
   }
 })
-const askText = s => { const a = snapshot.asks.find(a => a.session === s.id); return !a ? '' : a.kind === 'question' ? (a.questions?.[0]?.question || t('asks.question')) : [a.tool, a.input?.command || a.input?.file_path || ''].filter(Boolean).join(' ') }
+const askText = s => { const a = snapshot.asks.find(a => a.session === s.id); return !a ? '' : a.kind === 'permission' ? [a.tool, askSummary(a)].filter(Boolean).join(' ') : askSummary(a) || askKind(a.kind) }
 wall.addEventListener('click', ev => {
   const stripe = ev.target.closest('.stripe')
   if (stripe) return tasks.openWindow(stripe.parentElement.dataset.task)

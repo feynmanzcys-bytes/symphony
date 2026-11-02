@@ -1,6 +1,7 @@
 import type { EngineInterface, HttpResponse, Register } from 'claude-code'
 import { type Plan, download, targetOf } from './download'
 import { type Lang, matchLang, message } from './messages'
+import { type Rule, ruleAllows, sameRule, suggestRule } from './rules'
 
 // Environment variables:
 //   SYMPHONY_TOKEN    the office account's token: one account serves one session at a time and sets its identity and seat
@@ -64,7 +65,7 @@ const USAGE_FLUSH = 2_000
 const INBOX_RETRY = 3_000
 
 type Answer =
-  | { decision: 'allow' | 'deny'; reason?: string }
+  | { decision: 'allow' | 'deny'; reason?: string; remember?: boolean }
   | { answers: Record<string, string> }
 
 // insecure: SYMPHONY_BRIDGE is neither on this machine nor https, so the bridge is never contacted
@@ -165,6 +166,25 @@ async function sessionLang($: EngineInterface): Promise<Lang> {
 // token leaves the environment once the session started (hideToken), so the tools, scripts and servers it starts don't
 // inherit it
 const OFFICE = { plugin: 'symphony-bridge', key: 'office' } as const
+// the rules the page gave for the rest of the session (rules.ts), held the same way through a reload
+const RULES = { plugin: 'symphony-bridge', key: 'rules' } as const
+let rules: Rule[] | undefined // undefined: not read from the session's state yet
+
+async function rulesOf($: EngineInterface): Promise<Rule[]> {
+  if (rules) return rules
+  const kept = (await safe($.state.get(RULES)))?.value
+  return (rules = Array.isArray(kept) ? (kept as Rule[]) : [])
+}
+
+// keepRule adds what the page allowed for the rest of the session, tells the bridge (the chat says so) and keeps it in
+// the session's state
+async function keepRule($: EngineInterface, rule: Rule) {
+  const have = await rulesOf($)
+  if (have.some(r => sameRule(r, rule))) return
+  rules = [...have, rule]
+  report($, 'session.rule', { rule })
+  await safe($.state.set(RULES, rules))
+}
 
 async function ident($: EngineInterface) {
   if (identity !== undefined) return identity
@@ -776,6 +796,8 @@ function pollInbox($: EngineInterface) {
 function begin(id: string | undefined, model: string) {
   sessionId = id
   ended = false
+  rules = [] // a new session (after /clear too) starts without the page's rules; the state forgets them at the next keep
+  officeContext = undefined
   pollRound++
   polling = false
   inboxAck = 0
@@ -796,6 +818,77 @@ function beat($: EngineInterface) {
   heartbeat = $.clock.every(15_000, () => {
     report($, 'heartbeat', knownNow())
   })
+}
+
+// ---------- the office in the session's prompt (SYMPHONY_CONTEXT=1, a launch option) ----------
+// Who else is in the office as the conversation begins, by the names SendMessage reaches them by: one section of the
+// system prompt, written once per conversation (a changing one would cost the prompt cache on every turn).
+let officeContext: Promise<string | undefined> | undefined
+
+async function officeText($: EngineInterface): Promise<string | undefined> {
+  const res = await call($, `/api/roster?session=${encodeURIComponent(await sid($))}`, undefined, REPORT_TIMEOUT)
+  if (!res?.ok) return undefined
+  let roster: { you?: string; others?: { name: string; folder?: string; task?: string }[] }
+  try {
+    roster = JSON.parse(res.text)
+  } catch {
+    return undefined
+  }
+  const others = (roster.others ?? []).slice(0, 30)
+  const line = (o: { name: string; folder?: string; task?: string }) =>
+    `- ${o.name}${o.folder ? `, working in ${o.folder}` : ''}${o.task ? `, a member of task ${o.task}` : ''}`
+  return [
+    `You are ${roster.you || 'a session'}, one of several Claude Code sessions on this machine that the symphony office (a web page) shows as a team.`,
+    others.length ? 'The others online as this conversation began:' : 'No other session was online as this conversation began.',
+    ...others.map(line),
+    'You can reach one with SendMessage, by its name. They work on their own requests: message one only when it helps with yours.',
+  ].join('\n')
+}
+
+// ---------- an MCP server's form (an elicitation) on the page ----------
+// The engine asks the person in the terminal; the page shows the form as an ask card, which the terminal's answer
+// settles (the mod can't answer one: the hook API has no way to). Keyed by the elicitation's id, else its server.
+const elicitations = new Map<string, Promise<string | undefined>>()
+
+type Schema = { properties?: Record<string, { type?: string; title?: string; description?: string; enum?: unknown[] }>; required?: string[] }
+
+function fieldsOf(schema: unknown) {
+  const s = (schema ?? {}) as Schema
+  return Object.entries(s.properties ?? {})
+    .slice(0, 50)
+    .map(([name, p]) => ({
+      name,
+      title: typeof p?.title === 'string' ? p.title : undefined,
+      description: typeof p?.description === 'string' ? p.description : undefined,
+      type: typeof p?.type === 'string' ? p.type : undefined,
+      required: s.required?.includes(name) || undefined,
+      enum: Array.isArray(p?.enum) ? p.enum.map(String).slice(0, 50) : undefined,
+    }))
+}
+
+async function elicitCard($: EngineInterface, e: { mcp_server_name: string; message: string; mode?: string; url?: string; requested_schema?: unknown }) {
+  const res = await call($, '/api/ask', {
+    session: await sid($),
+    kind: 'elicitation',
+    server: e.mcp_server_name,
+    message: e.message,
+    mode: e.mode,
+    url: e.url,
+    fields: fieldsOf(e.requested_schema),
+  }, ASK_TIMEOUT)
+  try {
+    const id = res?.ok ? JSON.parse(res.text)?.id : undefined
+    return typeof id === 'string' ? id : undefined
+  } catch {
+    return undefined
+  }
+}
+
+// settleElicitation tells the bridge what the terminal answered (accept, decline, cancel)
+async function settleElicitation($: EngineInterface, key: string, action: string) {
+  const card = await elicitations.get(key)
+  elicitations.delete(key)
+  if (card) await call($, `/api/settle/${card}`, { action }, ASK_TIMEOUT)
 }
 
 export const register: Register = on => {
@@ -995,7 +1088,11 @@ export const register: Register = on => {
 
   // why the turn ended (answered, interrupted, refused, an API error) and what it cost
   on('turn.complete', async ($, e, next) => {
-    if (!('agentId' in e && e.agentId) && mainTurn === e.turnId) mainTurn = undefined
+    if (!('agentId' in e && e.agentId) && mainTurn === e.turnId) {
+      mainTurn = undefined
+      // a form the turn left without a result (interrupted): its card goes
+      for (const key of [...elicitations.keys()]) void settleElicitation($, key, 'cancel')
+    }
     report($, 'turn.complete', {
       turnId: e.turnId,
       durationMs: e.durationMs,
@@ -1112,23 +1209,56 @@ export const register: Register = on => {
   })
 
   // permissions: when the engine's verdict is ask, the web page decides instead.
+  // the office in the prompt, once per conversation, when the launch asked for it
+  on('prompt.compose', async ($, e, next) => {
+    const composed = await next(e)
+    if ((await $.env.get('SYMPHONY_CONTEXT')) !== '1' || !(await office($))) return composed
+    officeContext ??= officeText($).catch(() => undefined)
+    const text = await officeContext
+    return text ? { ...composed, sections: [...composed.sections, { id: 'symphony:office', text, scope: 'session' as const }] } : composed
+  })
+
+  // an MCP server's form: a card on the page while the terminal asks; the terminal's answer settles it
+  on('classic.Elicitation', async ($, e, next) => {
+    if (await office($)) {
+      const key = e.elicitation_id ?? e.mcp_server_name
+      elicitations.set(key, elicitCard($, e).catch(() => undefined))
+    }
+    return next(e)
+  })
+  on('classic.ElicitationResult', async ($, e, next) => {
+    const key = e.elicitation_id ?? e.mcp_server_name
+    if (elicitations.has(key)) void settleElicitation($, key, e.action)
+    return next(e)
+  })
+
   on('tool.check', async ($, e, next) => {
     const verdict = await next(e)
     if (verdict.decision !== 'ask' || e.tool_use_id === undefined) return verdict
     if (e.tool === 'AskUserQuestion') return verdict
 
+    // what the page allowed for the rest of the session lets the engine's own ask through without a card, within the
+    // organization's ceiling; an ask another plugin made stays a person's
+    const allowed = e.ceiling === undefined || e.ceiling === 'allow'
+    if (verdict.plugin === undefined && allowed && (await office($)) && ruleAllows(await rulesOf($), e.tool, e.input)) {
+      return { decision: 'allow', reason: message(identity?.lang ?? 'en', 'remembered') }
+    }
+    // what an allow could be kept as, offered on the card ("Allow for this session")
+    const remember = verdict.plugin === undefined && allowed ? suggestRule(e.tool, e.input) : undefined
     const answer = await ask($, next.signal, {
       kind: 'permission',
       tool: e.tool,
       input: e.input,
       reason: verdict.reason,
       agentId: e.agentId,
+      remember,
     })
     // no answer, or one that is neither allow nor deny: the engine's verdict stands
     if (!answer || !('decision' in answer) || (answer.decision !== 'allow' && answer.decision !== 'deny')) return verdict
     if (answer.decision === 'allow' && e.ceiling !== undefined && e.ceiling !== 'allow') {
       return verdict
     }
+    if (answer.decision === 'allow' && answer.remember === true && remember) await keepRule($, remember)
     if (answer.decision === 'deny') deniedByWeb.add(e.tool_use_id)
     return {
       decision: answer.decision,

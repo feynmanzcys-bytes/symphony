@@ -6,7 +6,9 @@
 // and fetches the log again when it shows; it fetches it again too after a resync (pushes may have been missed), and
 // keeps as many items as the bridge does.
 //
-//   const chat = createChat(sym, { askWho, onClose, onTaskChip })
+//   const chat = createChat(sym, { askWho, onClose, onTaskChip, asks })
+//   asks: 'overlay' (the cards rise over the input from the dock) or 'inline' (each card sits in the flow, under its own
+//   line, and the input stays usable for a message that doesn't answer it: Coworkers)
 //   chat.show({ name, state, line, chips, taskChip, buttons, session, online, offText, terminal })   draw it for a session (again on every change)
 //   chat.setLine(text)      the status line alone (it follows what the employee does, every frame)
 //   chat.close()            hide it (onClose is told)
@@ -16,8 +18,8 @@
 // terminal is the launch id of a page-started session that is online: the window then offers its terminal in the page
 // (ui/terminal.js), interactive, with a button of its own beside the theme's "terminal" button (the one that opens a
 // window on this machine), or first; the button, or Ctrl+], brings the chat back, and so does another session.
-import { t, esc, errorText, richText, timeOf, STATE_MARK, GRAY_MARK, button } from '/ui/common.js'
-import { syncCards } from '/asks.js'
+import { t, esc, errorText, richText, timeOf, STATE_MARK, GRAY_MARK, button, askKind } from '/ui/common.js'
+import { askCard, syncCards } from '/asks.js'
 import { createTerminal } from '/ui/terminal.js'
 import { dialog } from '/ui/a11y.js'
 
@@ -47,7 +49,9 @@ const MARKUP = `
   </div>
 </div>`
 
-export function createChat(sym, { askWho, onClose = () => {}, onTaskChip = () => {} } = {}) {
+export function createChat(sym, { askWho, onClose = () => {}, onTaskChip = () => {}, asks: asksMode = 'overlay' } = {}) {
+  const inline = asksMode === 'inline'
+  const cards = new Map() // (inline) ask id -> its card: one element, moved into its line whenever the flow is drawn
   const tpl = document.createElement('template')
   tpl.innerHTML = MARKUP.trim()
   const el = tpl.content.firstElementChild
@@ -114,6 +118,7 @@ export function createChat(sym, { askWho, onClose = () => {}, onTaskChip = () =>
     const list = [...items.values()].sort((a, b) => a.seq - b.seq)
     if (!list.length) flow.innerHTML = `<div class="empty">${esc(t('chat.empty'))}</div>`
     for (const it of list) flow.appendChild(itemEl(it, old.get(it.id)))
+    if (inline) drawAsks()
     flow.scrollTop = atEnd ? flow.scrollHeight : top // it follows the end only if it was there
   }
   // as many items as the bridge keeps of a session (keepChat): the oldest go
@@ -185,8 +190,9 @@ export function createChat(sym, { askWho, onClose = () => {}, onTaskChip = () =>
       if (focus) term.focus()
     } else {
       term?.close()
-      if (focus) chat.focus()
     }
+    drawAsks() // the cards over the terminal, or back in their places
+    if (!on && focus) chat.focus()
     labelTermBtn()
   }
   function labelTermBtn() {
@@ -196,6 +202,37 @@ export function createChat(sym, { askWho, onClose = () => {}, onTaskChip = () =>
     termBtn.classList.toggle('on', termOn)
   }
   new MutationObserver(() => { if (el.hidden && termOn) showTerminal(false, false) }).observe(el, { attributes: true, attributeFilter: ['hidden'] })
+
+  // the session's pending asks, as show() saw them last
+  let pending = [], asking = false
+  // an MCP server's form is answered in the session's terminal: its card has a button that shows it here, hidden while
+  // the session has none (termButtons, on every show: the terminal may come after the card)
+  const cardOpts = { onTerminal: () => showTerminal(true) }
+  function termButtons() { for (const b of el.querySelectorAll('.card .to-term')) b.parentElement.hidden = !termFor }
+  // Where the cards go. Overlay: all in the dock, which rises over the input. Inline: each in its line of the flow (at
+  // the end while its line hasn't come), drawn again after the flow is (render). While the terminal shows, the dock
+  // rises over it with the cards the page answers (inline: they move there, and back to their lines with the chat); an
+  // MCP server's form, which is answered in the terminal itself, stays out of its way.
+  function drawAsks() {
+    if (!inline) syncCards(asksEl, pending, askWho, '', cardOpts)
+    else {
+      const ids = new Set(pending.map(a => a.id))
+      for (const [id, card] of cards) if (!ids.has(id)) { card.remove(); cards.delete(id) }
+      for (const a of pending) {
+        let card = cards.get(a.id)
+        if (!card) { card = askCard(a, askWho(a), cardOpts); cards.set(a.id, card) }
+        const line = flow.querySelector(`.it.ask[data-ask="${CSS.escape(String(a.id))}"]`)
+        if (termOn && a.kind !== 'elicitation') { if (card.parentNode !== asksEl) asksEl.appendChild(card) }
+        else if (line) { if (card.parentNode !== line) { line.classList.add('carded'); line.appendChild(card) } }
+        else if (card.parentNode !== flow) flow.appendChild(card)
+      }
+      for (const line of flow.querySelectorAll('.it.ask.carded')) if (!line.querySelector('.card')) line.classList.remove('carded')
+    }
+    const over = pending.filter(a => !termOn || a.kind !== 'elicitation')
+    dock.classList.toggle('asking', over.length > 0 && (!inline || termOn))
+    asking = pending.length > 0
+    termButtons()
+  }
 
   function itemEl(it, old) {
     const node = document.createElement('div')
@@ -250,12 +287,17 @@ export function createChat(sym, { askWho, onClose = () => {}, onTaskChip = () =>
         node.innerHTML = `<div class="from">${esc(out ? t('chat.msgTo', { name: it.to || '?' }) : t('chat.msgFrom', { name: it.from || '?' }))}</div><div class="body">${richText(it.text)}</div>${timeOf(it)}`
         break
       }
-      case 'ask':
+      case 'ask': {
         node.className = `it ask ${it.status || ''}`
-        node.innerHTML = `${sub}${esc(t(it.askKind === 'question' ? 'asks.question' : 'asks.permission'))}${esc(t('common.colon'))}` +
+        node.dataset.ask = it.ask
+        node.innerHTML = `${sub}${esc(askKind(it.askKind))}${esc(t('common.colon'))}` +
           `${esc(it.tool ? it.tool + ' ' : '')}${esc(it.summary || '')} · ${esc(t('chat.ask.' + (it.status || 'pending')))}${it.text ? esc(' · ' + it.text) : ''}`
         node.title = (it.summary || '') + (it.text ? '\n' + it.text : '')
+        // (inline) a pending ask's card, under its line
+        const card = inline && (it.status || 'pending') === 'pending' ? cards.get(it.ask) : null
+        if (card) { node.classList.add('carded'); node.appendChild(card) }
         break
+      }
       default: // a notice: the code translated, then the detail the bridge adds (an error's text, the models of a switch)
         node.className = 'it notice'
         node.textContent = t('chat.notice.' + it.text) + (it.summary ? `${t('common.colon')}${it.summary}` : '')
@@ -267,7 +309,7 @@ export function createChat(sym, { askWho, onClose = () => {}, onTaskChip = () =>
     el, dock, sayBox,
     get hidden() { return el.hidden },
     get session() { return session },
-    get asking() { return dock.classList.contains('asking') },
+    get asking() { return asking },
     // the window for a session: the head as the theme describes it, the flow of that session, the dock
     show(p) {
       name = p.name
@@ -303,6 +345,10 @@ export function createChat(sym, { askWho, onClose = () => {}, onTaskChip = () =>
         session = sid
         items.clear()
         flow.innerHTML = ''
+        for (const c of cards.values()) c.remove() // (inline) another session's cards
+        cards.clear()
+        pending = []
+        shown.asks = undefined
         if (sid) load(sid)
         else flow.innerHTML = `<div class="empty">${esc(t('chat.noSession'))}</div>`
       }
@@ -310,9 +356,9 @@ export function createChat(sym, { askWho, onClose = () => {}, onTaskChip = () =>
       const askKey = mine.map(a => a.id).join(',')
       if (askKey !== shown.asks) {
         shown.asks = askKey
-        syncCards(asksEl, mine, askWho)
-        dock.classList.toggle('asking', mine.length > 0)
-      }
+        pending = mine
+        drawAsks()
+      } else termButtons()
       sayBox.disabled = !p.online
       sayForm.hidden = !p.online
       const off = dock.querySelector('.offline')
@@ -329,6 +375,7 @@ export function createChat(sym, { askWho, onClose = () => {}, onTaskChip = () =>
       if (el.hidden) return
       if (termOn) term.focus()
       else if (dock.classList.contains('asking')) dock.querySelector('#asks input, #asks button')?.focus()
+      else if (inline && asking) flow.querySelector('.card input, .card button')?.focus()
       else if (!sayBox.disabled) sayBox.focus()
     },
     close() {

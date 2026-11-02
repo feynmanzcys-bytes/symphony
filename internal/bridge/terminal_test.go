@@ -113,12 +113,12 @@ func TestChildEnvDropsClaudeSession(t *testing.T) {
 	}
 }
 
-// TestChildEnvSessionVars: a session gets its own token, launch, task and bridge, never the bridge's (a bridge the mod
-// started has the starting session's), and each name once, regardless of case on Windows, where a program may read the
+// TestChildEnvSessionVars: a session gets its own token, launch, task, bridge and office context, never the bridge's (a
+// bridge the mod started has the starting session's), and each name once, regardless of case on Windows, where a program may read the
 // first of two; SYMPHONY_DATA stays.
 func TestChildEnvSessionVars(t *testing.T) {
 	environ := []string{"PATH=/bin", "SYMPHONY_TOKEN=starter", "SYMPHONY_TASK=T9", "SYMPHONY_LAUNCH=Lstarter",
-		"SYMPHONY_BRIDGE=http://x", "SYMPHONY_DATA=/d", "SYMPHONY_LANG=fr", "symphony_token=lower", "TERM=xterm"}
+		"SYMPHONY_BRIDGE=http://x", "SYMPHONY_CONTEXT=1", "SYMPHONY_DATA=/d", "SYMPHONY_LANG=fr", "symphony_token=lower", "TERM=xterm"}
 	extra := map[string]string{"SYMPHONY_TOKEN": "new", "SYMPHONY_LAUNCH": "L1", "SYMPHONY_LANG": "ja", "SYMPHONY_BRIDGE": "http://y"}
 	count := func(env []string, goos, name string) (n int, value string) {
 		for _, kv := range env {
@@ -136,8 +136,10 @@ func TestChildEnvSessionVars(t *testing.T) {
 				t.Errorf("%s: %s %d times (%q), want once: %q\n%q", goos, name, n, v, want, env)
 			}
 		}
-		if n, _ := count(env, goos, "SYMPHONY_TASK"); n != 0 {
-			t.Errorf("%s: the bridge's task reached the session: %q", goos, env)
+		for _, name := range []string{"SYMPHONY_TASK", "SYMPHONY_CONTEXT"} {
+			if n, _ := count(env, goos, name); n != 0 {
+				t.Errorf("%s: the bridge's %s reached the session: %q", goos, name, env)
+			}
 		}
 	}
 	// on Linux another case is another variable

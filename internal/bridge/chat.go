@@ -268,6 +268,9 @@ func (h *Hub) chatAskLocked(a *Ask) {
 	it := &ChatItem{Kind: ChatAsk, Ask: a.ID, AskKind: a.Kind, Tool: a.Tool, AgentID: a.AgentID, Status: "pending", key: "ask/" + a.ID}
 	if a.Kind == "question" {
 		it.Summary = askSummary(a.Questions)
+	} else if a.Kind == "elicitation" {
+		it.Tool = a.Server
+		it.Summary = cutRunes(a.Message, 200)
 	} else {
 		it.Summary = toolSummary(a.Tool, a.Input)
 	}
@@ -299,9 +302,14 @@ func (h *Hub) chatSettledLocked(a *Ask) {
 			}
 		}
 		it.Text = cutRunes(strings.Join(parts, " · "), 500)
+	case a.Kind == "elicitation":
+		it.Status, _ = a.Answer["action"].(string) // accept | decline | cancel, as the terminal answered it
 	default:
 		it.Status, _ = a.Answer["decision"].(string)
 		it.Text, _ = a.Answer["reason"].(string)
+		if a.Answer["remember"] == true && a.Remember != nil && it.Status == "allow" {
+			it.Status = "allowSession"
+		}
 	}
 	h.pushChatLocked(a.Session, it, "")
 }

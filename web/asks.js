@@ -1,5 +1,10 @@
-// Cards for pending asks (permission requests / AskUserQuestion), shared by the office popup and the
-// approval page. A card submits its own answer to the bridge; the page styles .card and friends.
+// Cards for pending asks (permission requests / AskUserQuestion / an MCP server's form), shared by the office popup and
+// the approval page. A card submits its own answer to the bridge; the page styles .card and friends.
+//
+// A permission the mod could keep for the rest of the session (a.remember, the rule it proposes) gets a third button,
+// "Allow for this session", which answers { decision: 'allow', remember: true }. An MCP server's form (kind
+// elicitation) can't be answered here: its card shows what the server asks and says to answer it in the session's
+// terminal, with a button that opens it when the page offers one (opts.onTerminal); the terminal's answer takes it away.
 //
 // A card's buttons are off while its answer is on its way (back on if it failed, which an alert says). A question
 // can't be answered with nothing: every question needs a pick or words of its own. A permission whose input the bridge
@@ -22,9 +27,18 @@ async function answer(el, id, body) {
   return false
 }
 
+// the words of a rule on its button: every edit, the commands that start with a prefix, or a tool
+export function ruleText(r) {
+  if (!r) return ''
+  if (r.tool === 'Edit') return t('asks.allowSessionEdits')
+  if (r.tool === 'Bash' && r.prefix) return t('asks.allowSessionCmd', { prefix: r.prefix })
+  return t('asks.allowSessionTool', { tool: r.tool })
+}
+
 // who: the HTML of the card's top line (who, and what kind of ask); the page decides how it reads. For screen readers
-// a card is a group named by that line, and each question a group named by itself.
-export function askCard(a, who) {
+// a card is a group named by that line, and each question a group named by itself. opts.onTerminal: (an MCP server's
+// form) the page can show the session's terminal, where it is answered.
+export function askCard(a, who, opts = {}) {
   const el = document.createElement('div')
   el.className = 'card'
   el.dataset.id = a.id
@@ -61,6 +75,17 @@ export function askCard(a, who) {
       if (missing) return (missing.querySelector('input:not([type=text])') ?? missing.querySelector('.other')).focus()
       answer(el, a.id, { answers })
     }
+  } else if (a.kind === 'elicitation') {
+    const fields = (a.fields || []).map(f => `<li><b>${esc(f.title || f.name)}</b>${f.required ? ` <span class="req">${esc(t('asks.elicitRequired'))}</span>` : ''}` +
+      `${f.type ? ` <small>${esc(f.enum?.length ? f.enum.join(' / ') : f.type)}</small>` : ''}${f.description ? `<div class="meta">${esc(f.description)}</div>` : ''}</li>`).join('')
+    el.innerHTML = `${who}
+      <div class="tool">${esc(t('asks.elicitFrom', { server: a.server || '?' }))}</div>
+      <div class="msg">${esc(a.message)}</div>
+      ${fields ? `<ul class="fields">${fields}</ul>` : ''}
+      ${a.mode === 'url' && /^https?:\/\//i.test(a.url || '') ? `<div class="meta"><a href="${esc(a.url)}" target="_blank" rel="noopener noreferrer">${esc(a.url)}</a></div>` : ''}
+      <div class="meta">${esc(t('asks.elicitTerminal'))}</div>
+      ${opts.onTerminal ? `<div class="row"><button class="to-term">${esc(t('asks.elicitOpen'))}</button></div>` : ''}`
+    el.querySelector('.to-term')?.addEventListener('click', () => opts.onTerminal(a))
   } else {
     el.innerHTML = `${who}
       <div class="tool">${esc(a.tool)}</div>
@@ -69,15 +94,17 @@ export function askCard(a, who) {
       ${a.inputTruncated ? `<div class="cut"><span class="warn">${esc(t('asks.truncatedWarn'))}</span><button class="show-all">${esc(t('asks.showAll'))}</button></div>` : ''}
       <div class="row">
         <input type="text" class="reason" placeholder="${esc(t('asks.reason'))}" aria-label="${esc(t('asks.reason'))}">
-        <button class="allow">${esc(t('asks.allow'))}</button><button class="deny">${esc(t('asks.deny'))}</button>
+        <button class="allow">${esc(t('asks.allow'))}</button>${a.remember ? `<button class="allow-session" title="${esc(t('asks.allowSessionTitle'))}">${esc(ruleText(a.remember))}</button>` : ''}<button class="deny">${esc(t('asks.deny'))}</button>
       </div>`
-    const reason = el.querySelector('.reason'), allow = el.querySelector('.allow')
+    const reason = el.querySelector('.reason'), allow = el.querySelector('.allow'), session = el.querySelector('.allow-session')
     allow.onclick = () => answer(el, a.id, { decision:'allow', reason:reason.value })
+    if (session) session.onclick = () => answer(el, a.id, { decision:'allow', remember:true, reason:reason.value })
     el.querySelector('.deny').onclick = () => answer(el, a.id, { decision:'deny', reason:reason.value })
     if (a.inputTruncated) {
       // part of the input isn't shown: not to be allowed unseen
       allow.disabled = true
       allow.title = t('asks.allowAfterAll')
+      if (session) session.disabled = true
       const cut = el.querySelector('.cut'), more = cut.querySelector('.show-all')
       more.onclick = async () => {
         more.disabled = true
@@ -96,6 +123,7 @@ export function askCard(a, who) {
         }
         allow.disabled = false
         allow.title = ''
+        if (session) session.disabled = false
       }
     }
   }
@@ -104,12 +132,13 @@ export function askCard(a, who) {
   return el
 }
 
-// renders a list of cards incrementally: existing cards are left alone, so nothing interrupts typing
-export function syncCards(container, asks, who, emptyHTML) {
+// renders a list of cards incrementally: existing cards are left alone, so nothing interrupts typing. opts go to every
+// card (askCard: onTerminal).
+export function syncCards(container, asks, who, emptyHTML, opts = {}) {
   const ids = new Set(asks.map(a => a.id))
   for (const el of [...container.querySelectorAll('.card')]) if (!ids.has(el.dataset.id)) el.remove()
   for (const a of asks) {
-    if (!container.querySelector(`.card[data-id="${a.id}"]`)) container.appendChild(askCard(a, who(a)))
+    if (!container.querySelector(`.card[data-id="${a.id}"]`)) container.appendChild(askCard(a, who(a), opts))
   }
   container.querySelector('.empty')?.remove()
   if (!asks.length && emptyHTML) container.insertAdjacentHTML('beforeend', emptyHTML)

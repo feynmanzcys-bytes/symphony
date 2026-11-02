@@ -54,6 +54,8 @@ type LaunchRequest struct {
 	PermissionMode string `json:"permissionMode"`
 	Resume         string `json:"resume"`
 	Lang           string `json:"lang,omitempty"`
+	// Context: the session tells its model who else is in the office (SYMPHONY_CONTEXT=1, the mod's prompt.compose)
+	Context bool `json:"context,omitempty"`
 }
 
 // Launch is one start of a session from the page.

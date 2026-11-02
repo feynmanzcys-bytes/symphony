@@ -92,6 +92,15 @@ button.close:hover { color:var(--ink); }
 .it.ask { align-self:center; font-size:12px; color:var(--muted); background:var(--pane-2); padding:1px 10px; max-width:90%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .it.ask.pending { color:var(--danger-ink); font-weight:700; }
 .it.ask.deny, .it.ask.cancelled { color:var(--danger-ink); }
+/* an ask's card in the flow (createChat's asks: 'inline'): under its line, the line wrapping */
+.it.ask.carded { align-self:stretch; max-width:100%; white-space:normal; overflow:visible; }
+.flow .card { margin:6px 0 4px; font-size:13px; font-weight:400; text-align:left; white-space:normal; }
+/* an MCP server's form: what it asks, answered in the terminal */
+:is(#asks, .flow .card) .msg { margin:4px 0; white-space:pre-wrap; overflow-wrap:anywhere; }
+:is(#asks, .flow .card) .fields { margin:4px 0; padding-left:18px; }
+:is(#asks, .flow .card) .fields small { color:var(--muted); margin-left:6px; }
+:is(#asks, .flow .card) .req { color:var(--danger-ink); font-size:12px; }
+:is(#asks, .flow .card) button.allow-session { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:16em; }
 .it.notice { align-self:center; font-size:11px; color:var(--muted); white-space:pre-wrap; max-width:100%; }
 .it time { display:block; font-size:10px; color:var(--muted); margin-top:2px; }
 .it.user time { color:var(--me-muted); text-align:right; }
@@ -109,21 +118,22 @@ button.close:hover { color:var(--ink); }
 .chat .offline { color:var(--muted); font-size:12px; padding:4px 0; }
 .chat .offline[hidden] { display:none; }
 /* pending cards (built by asks.js) */
-#asks .card { border:2px solid var(--ink); padding:10px 12px; margin-bottom:10px; background:var(--card); color:var(--ink); }
-#asks .who { display:flex; gap:8px; align-items:baseline; margin-bottom:6px; }
-#asks .who .name { font-weight:700; }
-#asks .who .kind, #asks .meta { color:var(--muted); font-size:12px; }
-#asks .tool { font:700 13px var(--mono); }
-#asks pre { background:var(--paper-2); border:1px solid var(--line); padding:6px 8px; max-height:200px; overflow:auto; white-space:pre-wrap; word-break:break-all; font-size:12px; margin:6px 0; }
-#asks .row { display:flex; gap:8px; align-items:center; margin-top:6px; }
-#asks .row input { flex:1; }
-#asks input[type=text] { border:2px solid var(--ink); padding:3px 6px; font:inherit; background:var(--field); color:var(--ink); }
-#asks button { border:2px solid var(--ink); background:var(--paper); color:var(--ink); padding:2px 12px; font:inherit; cursor:pointer; }
-#asks button:disabled { opacity:.5; cursor:default; }
-#asks button.allow, #asks button.submit { background:var(--ink); color:var(--paper); }
-#asks .q h3 { margin:4px 0; font-size:14px; } #asks .q .hd { color:var(--muted); font-weight:400; font-size:12px; margin-right:6px; }
-#asks label.opt { display:block; cursor:pointer; padding:1px 0; } #asks label.opt small { color:var(--muted); margin-left:6px; }
-#asks .q input.other { display:block; width:100%; box-sizing:border-box; margin-top:4px; }
+:is(#asks, .flow) .card { border:2px solid var(--ink); padding:10px 12px; margin-bottom:10px; background:var(--card); color:var(--ink); }
+:is(#asks, .flow .card) .who { display:flex; gap:8px; align-items:baseline; margin-bottom:6px; }
+:is(#asks, .flow .card) .who .name { font-weight:700; }
+:is(#asks, .flow .card) .who .kind, :is(#asks, .flow .card) .meta { color:var(--muted); font-size:12px; }
+:is(#asks, .flow .card) .tool { font:700 13px var(--mono); }
+:is(#asks, .flow .card) pre { background:var(--paper-2); border:1px solid var(--line); padding:6px 8px; max-height:200px; overflow:auto; white-space:pre-wrap; word-break:break-all; font-size:12px; margin:6px 0; }
+:is(#asks, .flow .card) .row { display:flex; gap:8px; align-items:center; margin-top:6px; }
+:is(#asks, .flow .card) .row input { flex:1; }
+:is(#asks, .flow .card) .row[hidden] { display:none; }
+:is(#asks, .flow .card) input[type=text] { border:2px solid var(--ink); padding:3px 6px; font:inherit; background:var(--field); color:var(--ink); }
+:is(#asks, .flow .card) button { border:2px solid var(--ink); background:var(--paper); color:var(--ink); padding:2px 12px; font:inherit; cursor:pointer; }
+:is(#asks, .flow .card) button:disabled { opacity:.5; cursor:default; }
+:is(#asks, .flow .card) button.allow, :is(#asks, .flow .card) button.submit { background:var(--ink); color:var(--paper); }
+:is(#asks, .flow .card) .q h3 { margin:4px 0; font-size:14px; } :is(#asks, .flow .card) .q .hd { color:var(--muted); font-weight:400; font-size:12px; margin-right:6px; }
+:is(#asks, .flow .card) label.opt { display:block; cursor:pointer; padding:1px 0; } :is(#asks, .flow .card) label.opt small { color:var(--muted); margin-left:6px; }
+:is(#asks, .flow .card) .q input.other { display:block; width:100%; box-sizing:border-box; margin-top:4px; }
 /* (any page's cards) an input the bridge cut: the warning, and the button that shows all of it; Allow waits for it */
 .card .cut { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:4px 0; }
 .card .cut .warn { flex:1; min-width:200px; color:var(--danger-ink); font-weight:700; font-size:12px; }
@@ -133,7 +143,7 @@ button.close:hover { color:var(--ink); }
 .card .q .need[hidden] { display:none; }
 /* launch dialog */
 #launch label { display:block; margin:8px 0 2px; font-size:12px; color:var(--muted-2); }
-#launch input, #launch select { width:100%; box-sizing:border-box; font:inherit; color:var(--ink); background:var(--field); border:2px solid var(--ink); padding:3px 6px; }
+#launch input:not([type=checkbox]), #launch select { width:100%; box-sizing:border-box; font:inherit; color:var(--ink); background:var(--field); border:2px solid var(--ink); padding:3px 6px; }
 #launch input[readonly] { background:var(--field-ro); }
 :is(#launch, #task) :is(input:not([type=checkbox]), select, textarea):focus { outline:none; border-color:var(--accent); }
 #launch .row { display:flex; gap:6px; }
@@ -184,7 +194,7 @@ button.close:hover { color:var(--ink); }
 #task .adv .row { display:flex; gap:6px; margin-top:4px; }
 #task .adv .row input { flex:1; }
 #task .add-adv { margin-top:6px; }
-#task label.check { display:flex; align-items:center; gap:6px; color:var(--ink); font-size:13px; margin-top:10px; cursor:pointer; }
+:is(#launch, #task) label.check { display:flex; align-items:center; gap:6px; color:var(--ink); font-size:13px; margin-top:10px; cursor:pointer; }
 #task .actions { align-items:center; }
 /* the status line and the buttons stay at the bottom of the dialog while the rest scrolls */
 #task .foot { position:sticky; bottom:-14px; z-index:1; margin:10px -16px -14px; padding:0 16px 14px; background:var(--paper); border-top:1px solid var(--line); }
@@ -290,4 +300,6 @@ button.close:hover { color:var(--ink); }
 .chat .termpane { flex:1; min-height:0; display:flex; background:var(--term-bg); }
 .chat .termpane .term { flex:1; min-width:0; }
 .chat .termpane[hidden], .panel.chat.term-on .flow, .panel.chat.term-on .dock:not(.asking) { display:none; }
+/* over the terminal, an MCP server's form is answered in it: its card stays out of the way */
+.panel.chat.term-on #asks .card[data-kind=elicitation] { display:none; }
 .chat .btns button.termview.on { background:var(--ink); color:var(--paper); }

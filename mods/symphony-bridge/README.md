@@ -9,6 +9,12 @@ The Claude Code mod of [symphony](https://github.com/feynmanzcys-bytes/symphony)
 - The symphony bridge, the program that serves the office page. Get it from the [releases](https://github.com/feynmanzcys-bytes/symphony/releases/latest); the repository's README says how to install and start it. When the bridge on this machine isn't running as a session starts, the mod starts it with `symphony -background`, if `symphony` is on PATH; when it isn't, the mod downloads the release of its own version from GitHub (over https, checked against the release's checksums.txt) into its own folder and starts that (`SYMPHONY_DOWNLOAD=0` turns this off).
 - A session started with `SYMPHONY_TOKEN`, an office account's token (sessions started from the office page get one). In every other session the mod does nothing: it contacts no bridge, shows no message and leaves approvals alone. Once the session started, the mod takes the token out of its environment, so the commands and servers the session starts don't get it.
 
+## What it changes in a session
+
+- Permission requests and AskUserQuestion questions wait for an answer on the page; Esc in the terminal takes them back there. "Allow for this session" on a permission's card lets the same kind of call through without asking until the session ends: every file edit, a command by how it starts (`npm test`, `git status`; never a compound command), or a tool. It lets through only what Claude Code would have asked about, within the organization's settings.
+- An MCP server's form shows on the page as a card; it is answered in the terminal.
+- Started with `SYMPHONY_CONTEXT=1` (the office page's "Tell it who else is in the office"), the session's system prompt names the others online, once per conversation, so it can reach them with SendMessage.
+
 ## Install
 
 ```sh

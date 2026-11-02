@@ -4,7 +4,7 @@
 import { t, lang, errorText, fmtTime, applyI18n, langPicker } from '/i18n.js'
 import { esc } from '/asks.js'
 import { connect } from '/symphony.js'
-import { GREEN, YELLOW, RED, GRAY, STATE_COLOR, STATE_MARK, GRAY_MARK, base, lower, dot, element, hash, build, buildText, statusText as statusOf, richText, setHTML, deferWhilePressed } from '/ui/common.js'
+import { GREEN, YELLOW, RED, GRAY, STATE_COLOR, STATE_MARK, GRAY_MARK, base, lower, dot, element, hash, build, buildText, statusText as statusOf, richText, setHTML, deferWhilePressed, askKind } from '/ui/common.js'
 import { connectionBanner } from '/ui/banner.js'
 import { announceAsks } from '/ui/a11y.js'
 import { createChat } from '/ui/chat.js'
@@ -1991,7 +1991,7 @@ function applyEvent(ev, name) {
 // They are handled in the employee window: the HUD's red chip opens the window of the first employee waiting.
 // the card's top line: inside the employee's own window the name would only repeat, so it's the kind alone
 function askWho(a) {
-  return `<div class="who"><span class="name">${esc(t(a.kind === 'question' ? 'asks.question' : 'asks.permission'))}</span>` +
+  return `<div class="who"><span class="name">${esc(askKind(a.kind))}</span>` +
     (a.agentId ? `<span class="kind">${esc(t('common.subagent'))}</span>` : '') + `</div>`
 }
 function openAsks(session = null) {

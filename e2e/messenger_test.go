@@ -19,8 +19,8 @@ import (
 )
 
 // TestMessenger walks through the Messenger theme with made-up activity (no tokens): the coworkers in the sidebar
-// with their faces and progress lines, a coworker's conversation in the middle with her ask's card over the input,
-// answered there, the profile and the computer on the right with the figures, a group chat (a task) with its team
+// with their faces and progress lines, a coworker's conversation in the middle with her ask's card in the flow, under
+// its line, the input still usable, answered there, the profile and the computer on the right with the figures, a group chat (a task) with its team
 // chat and a member's conversation from it, a new group from the button, the search box, dark mode, and the sidebar
 // in zh-CN. Screenshots into e2e/artifacts/screens/messenger-*. It fails on a page error, a key a catalog lacks, or
 // a raw key on screen.
@@ -120,16 +120,20 @@ func TestMessenger(t *testing.T) {
 	p.shot("start")
 	p.check()
 
-	// carol: the conversation with her question's card over the input; answer it there
+	// carol: the conversation with her question's card in the flow, under its line, and the input still there; answer it
 	p.run(`[...document.querySelectorAll('#people .row')].find(r => r.textContent.includes('carol')).click()`)
-	waitUntil(t, 10*time.Second, "carol's conversation shows with the card", func() bool {
-		return p.is(fmt.Sprintf(`!document.getElementById('chat').hidden && !!document.querySelector('#chat #asks .card[data-id="%s"]') && !document.getElementById('profile').hidden`, askID))
+	card := fmt.Sprintf(`#chat .flow .it.ask.carded[data-ask="%s"] .card[data-id="%s"]`, askID, askID)
+	waitUntil(t, 10*time.Second, "carol's conversation shows with the card in its line", func() bool {
+		return p.is(fmt.Sprintf(`!document.getElementById('chat').hidden && !!document.querySelector('%s') && !document.getElementById('profile').hidden`, card))
 	})
+	if !p.is(`!document.querySelector('#chat .dock').classList.contains('asking') && getComputedStyle(document.querySelector('#chat .say')).display !== 'none' && !document.querySelector('#chat .say textarea').disabled`) {
+		t.Fatal("the input should stay usable while the card waits in the flow")
+	}
 	p.shot("conversation-ask")
 	p.check()
-	p.run(fmt.Sprintf(`(c => { c.querySelector('input[type=radio]').click(); c.querySelector('.submit').click() })(document.querySelector('#chat #asks .card[data-id="%s"]'))`, askID))
-	waitUntil(t, 10*time.Second, "the question is answered", func() bool {
-		return !b.pending(askID) && p.is(`!document.querySelector('#chat .dock').classList.contains('asking')`)
+	p.run(fmt.Sprintf(`(c => { c.querySelector('input[type=radio]').click(); c.querySelector('.submit').click() })(document.querySelector('%s'))`, card))
+	waitUntil(t, 10*time.Second, "the question is answered, its card gone from its line", func() bool {
+		return !b.pending(askID) && p.is(fmt.Sprintf(`!document.querySelector('#chat .flow .card') && !document.querySelector('#chat .flow .it.ask[data-ask="%s"]')?.classList.contains('carded')`, askID))
 	})
 
 	// alice: the profile shows her figures and the computer what runs

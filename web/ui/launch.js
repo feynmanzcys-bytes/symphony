@@ -27,6 +27,7 @@ const MARKUP = `
       <div><label for="launch-resume" data-i18n="launch.resume"></label><select id="launch-resume" name="resume"></select></div>
       <div class="warn" data-i18n="launch.bypassWarning" hidden></div>
     </div>
+    <label class="check context"><input type="checkbox" name="context"><span data-i18n="launch.context"></span></label>
     <pre class="preview"></pre>
     <div class="status"></div>
     <div class="actions"><button type="button" class="px cancel" data-i18n="common.cancel"></button><button type="submit" class="px primary go" data-i18n="launch.go"></button></div>
@@ -43,6 +44,7 @@ export function createLaunchDialog(sym, { options = () => sym.launchOptions(true
   for (const el of dlg.querySelectorAll('[data-i18n]')) el.textContent = t(el.dataset.i18n)
   for (const el of dlg.querySelectorAll('[data-i18n-placeholder]')) el.placeholder = t(el.dataset.i18nPlaceholder)
   const form = dlg.querySelector('form')
+  form.querySelector('.context').title = t('launch.contextTitle')
   dialog(dlg, form.querySelector('.title'))
   const field = name => form.elements[name]
   let opts = null
@@ -60,6 +62,7 @@ export function createLaunchDialog(sym, { options = () => sym.launchOptions(true
   function request() {
     const r = { dir: field('dir').value.trim(), model: field('model').value, effort: field('effort').value,
       permissionMode: field('permissionMode').value, resume: field('resume').value, lang }
+    if (field('context').checked) r.context = true // the session hears who else is in the office (SYMPHONY_CONTEXT=1)
     if (account) r.account = account
     else r.name = field('name').value.trim()
     return r
@@ -74,7 +77,7 @@ export function createLaunchDialog(sym, { options = () => sym.launchOptions(true
     if (r.permissionMode) args.push('--permission-mode', r.permissionMode)
     if (r.resume === 'continue') args.push('--continue')
     const note = t(opts?.mod?.dev ? 'launch.previewNoteDev' : 'launch.previewNote')
-    form.querySelector('.preview').textContent = `cd ${q(r.dir || '?')}\n${args.join(' ')}\n# ${note}`
+    form.querySelector('.preview').textContent = `cd ${q(r.dir || '?')}\n${r.context ? 'SYMPHONY_CONTEXT=1 ' : ''}${args.join(' ')}\n# ${note}`
   }
 
   // bypassPermissions runs everything without asking: a red line under the select says what that means (picked, it
@@ -132,6 +135,7 @@ export function createLaunchDialog(sym, { options = () => sym.launchOptions(true
       fill(field('model'), opts.models, acc ? last.model : '')
       fill(field('effort'), opts.efforts, acc ? last.effort : '')
       fill(field('permissionMode'), opts.permissionModes, acc ? last.permissionMode : '')
+      field('context').checked = !!(acc && last.context)
       warn()
       fill(field('resume'), opts.resumes, '')
       form.querySelector('.recent').innerHTML = recent.map(d => `<span role="button" tabindex="0" title="${esc(d)}">${esc(base(d))}</span>`).join('')

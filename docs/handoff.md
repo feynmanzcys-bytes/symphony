@@ -25,8 +25,4 @@
 
 ## Later features
 
-- From the status block of [the plan](plan-protocol-themes.md):
-  - approval cards inline in the chat;
-  - `prompt.compose` with the office's context;
-  - "remember this rule";
-  - MCP elicitation;
+None are left: the plan's deferred ones (approval cards inline in the chat, `prompt.compose` with the office's context, "remember this rule", MCP elicitation) shipped in v1.2.0.

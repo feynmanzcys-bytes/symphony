@@ -82,6 +82,8 @@ func NewServer(hub *Hub, web fs.FS) *Server {
 	s.mux.HandleFunc("POST /api/ask", s.ask)
 	s.mux.HandleFunc("GET /api/wait/{id}", s.wait)
 	s.mux.HandleFunc("POST /api/cancel/{id}", s.cancel)
+	s.mux.HandleFunc("POST /api/settle/{id}", s.settle)
+	s.mux.HandleFunc("GET /api/roster", s.roster)
 	s.mux.HandleFunc("GET /api/inbox", s.inbox)
 
 	// called by the page: answers, accounts, starting sessions
@@ -200,7 +202,7 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 var errStatus = map[string]int{
 	"task_member_busy": http.StatusConflict, "task_ended": http.StatusConflict,
 	"task_running": http.StatusConflict, "task_unknown": http.StatusNotFound, "task_no_git": http.StatusPreconditionFailed,
-	"task_git_failed": http.StatusInternalServerError, "pty_start_failed": http.StatusInternalServerError, "cmd_unsafe_arg": http.StatusBadRequest, "task_repo_in_use": http.StatusConflict,
+	"ask_not_mod_settled": http.StatusForbidden, "ask_not_page_answered": http.StatusForbidden, "task_git_failed": http.StatusInternalServerError, "pty_start_failed": http.StatusInternalServerError, "cmd_unsafe_arg": http.StatusBadRequest, "task_repo_in_use": http.StatusConflict,
 	"data_write_failed": http.StatusInternalServerError, "launch_still_running": http.StatusConflict,
 }
 
@@ -278,7 +280,7 @@ func (s *Server) ask(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &req) {
 		return
 	}
-	if req.Session == "" || (req.Kind != "permission" && req.Kind != "question") {
+	if req.Session == "" || (req.Kind != "permission" && req.Kind != "question" && req.Kind != "elicitation") {
 		writeJSON(w, http.StatusBadRequest, errorBody(newError("ask_bad_request", "missing session or unknown kind")))
 		return
 	}
@@ -315,12 +317,40 @@ func (s *Server) cancel(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]bool{"ok": true})
 }
 
+// settle is the mod saying what became of an ask the page can't answer, an MCP server's form the session's terminal
+// answered: {action, content}.
+func (s *Server) settle(w http.ResponseWriter, r *http.Request) {
+	acc, ok := s.authed(w, r)
+	if !ok {
+		return
+	}
+	var answer map[string]any
+	if !decode(w, r, &answer) {
+		return
+	}
+	if err := s.Hub.SettleByMod(r.PathValue("id"), acc.ID, answer); err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, 200, map[string]bool{"ok": true})
+}
+
+// roster is who else is in the office, for a session that tells its model (the mod's office context): the other
+// sessions online, by the name SendMessage reaches them by.
+func (s *Server) roster(w http.ResponseWriter, r *http.Request) {
+	acc, ok := s.authed(w, r)
+	if !ok {
+		return
+	}
+	writeJSON(w, 200, s.Hub.Roster(r.URL.Query().Get("session"), acc.ID))
+}
+
 func (s *Server) answer(w http.ResponseWriter, r *http.Request) {
 	var answer map[string]any
 	if !decode(w, r, &answer) {
 		return
 	}
-	if err := s.Hub.Settle(r.PathValue("id"), "", AskDone, answer); err != nil {
+	if err := s.Hub.AnswerByPage(r.PathValue("id"), answer); err != nil {
 		writeErr(w, err)
 		return
 	}
@@ -577,6 +607,9 @@ func (s *Server) launch(w http.ResponseWriter, r *http.Request) {
 	env := map[string]string{"SYMPHONY_BRIDGE": s.Launcher.BridgeURL, "SYMPHONY_LAUNCH": id, "SYMPHONY_TOKEN": acc.Token}
 	if req.Lang != "" {
 		env["SYMPHONY_LANG"] = req.Lang // the mod speaks the page's language
+	}
+	if req.Context {
+		env["SYMPHONY_CONTEXT"] = "1" // the session tells its model who else is in the office
 	}
 	l := &Launch{ID: id, Name: acc.Name, Dir: req.Dir, Account: acc.ID,
 		Model: req.Model, Effort: req.Effort, Status: LaunchStarting, Time: time.Now()}

@@ -203,9 +203,9 @@ func modEndpoint(r *http.Request) bool {
 	}
 	switch r.Method {
 	case http.MethodPost:
-		return p == "/api/event" || p == "/api/ask" || p == "/api/hello" || oneID("/api/cancel/")
+		return p == "/api/event" || p == "/api/ask" || p == "/api/hello" || oneID("/api/cancel/") || oneID("/api/settle/")
 	case http.MethodGet, http.MethodHead:
-		return p == "/api/inbox" || oneID("/api/wait/")
+		return p == "/api/inbox" || p == "/api/roster" || oneID("/api/wait/")
 	}
 	return false
 }

@@ -71,7 +71,7 @@ func leakedToChild(k string) bool {
 // sessionVars tie a process to one office session: its account, its launch, its task and the bridge it reports to. A
 // bridge started from inside a session (the mod starts one that way) has that session's; a session it starts gets its
 // own from the launch, and nothing else it runs gets any. SYMPHONY_DATA and SYMPHONY_LANG aren't a session's.
-var sessionVars = []string{"SYMPHONY_TOKEN", "SYMPHONY_LAUNCH", "SYMPHONY_TASK", "SYMPHONY_BRIDGE"}
+var sessionVars = []string{"SYMPHONY_TOKEN", "SYMPHONY_LAUNCH", "SYMPHONY_TASK", "SYMPHONY_BRIDGE", "SYMPHONY_CONTEXT"}
 
 // envName is how a variable's name compares: as it is, but regardless of case on Windows.
 func envName(goos, k string) string {

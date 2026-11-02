@@ -17,6 +17,7 @@ const MESSAGES = {
     waiting: 'symphony: waiting for your answer in the office page ({bridge}); Esc cancels',
     allowed: 'symphony: allowed in the web page',
     denied: 'symphony: denied in the web page',
+    remembered: "symphony: allowed for this session in the web page",
   },
   'zh-CN': {
     unreachable: 'symphony: 连不上 bridge（{bridge}），审批先走终端',
@@ -31,6 +32,7 @@ const MESSAGES = {
     waiting: 'symphony: 正在等你在办公室网页（{bridge}）上回复，按 Esc 取消',
     allowed: 'symphony: 网页端允许',
     denied: 'symphony: 网页端拒绝',
+    remembered: "symphony: 网页端已允许本会话这样做",
   },
   'zh-TW': {
     unreachable: 'symphony: 連不上 bridge（{bridge}），核准暫時改在終端機進行',
@@ -45,6 +47,7 @@ const MESSAGES = {
     waiting: 'symphony: 正在等你在辦公室網頁（{bridge}）上回覆，按 Esc 取消',
     allowed: 'symphony: 已在網頁上允許',
     denied: 'symphony: 已在網頁上拒絕',
+    remembered: "symphony: 網頁端已允許本工作階段這樣做",
   },
   ja: {
     unreachable: 'symphony: bridge（{bridge}）に接続できません。承認はひとまずターミナルで行います',
@@ -59,6 +62,7 @@ const MESSAGES = {
     waiting: 'symphony: オフィスの Web ページ（{bridge}）での回答を待っています。Esc でキャンセルします',
     allowed: 'symphony: Web ページで許可されました',
     denied: 'symphony: Web ページで拒否されました',
+    remembered: "symphony: このセッションでは Web ページで許可済み",
   },
   ko: {
     unreachable: 'symphony: bridge({bridge})에 연결할 수 없습니다. 승인은 당분간 터미널에서 처리합니다',
@@ -73,6 +77,7 @@ const MESSAGES = {
     waiting: 'symphony: 사무실 웹 페이지({bridge})에서 응답을 기다리는 중입니다. Esc를 누르면 취소됩니다',
     allowed: 'symphony: 웹 페이지에서 허용됨',
     denied: 'symphony: 웹 페이지에서 거부됨',
+    remembered: "symphony: 이 세션에서는 웹 페이지에서 허용됨",
   },
   es: {
     unreachable: 'symphony: no se puede conectar con el bridge ({bridge}); por ahora las aprobaciones se hacen en la terminal',
@@ -87,6 +92,7 @@ const MESSAGES = {
     waiting: 'symphony: esperando tu respuesta en la página de la oficina ({bridge}); Esc cancela',
     allowed: 'symphony: permitido en la página web',
     denied: 'symphony: denegado en la página web',
+    remembered: "symphony: permitido para esta sesión en la página web",
   },
   fr: {
     unreachable: 'symphony : impossible de joindre le bridge ({bridge}) ; les approbations se font dans le terminal pour l’instant',
@@ -101,6 +107,7 @@ const MESSAGES = {
     waiting: 'symphony : en attente de votre réponse dans la page du bureau ({bridge}) ; Échap annule',
     allowed: 'symphony : autorisé dans la page web',
     denied: 'symphony : refusé dans la page web',
+    remembered: "symphony : autorisé pour cette session dans la page web",
   },
   de: {
     unreachable: 'symphony: Bridge ({bridge}) nicht erreichbar; Freigaben laufen vorerst im Terminal',
@@ -115,6 +122,7 @@ const MESSAGES = {
     waiting: 'symphony: wartet auf deine Antwort auf der Webseite des Büros ({bridge}); Esc bricht ab',
     allowed: 'symphony: auf der Webseite erlaubt',
     denied: 'symphony: auf der Webseite abgelehnt',
+    remembered: "symphony: für diese Sitzung in der Webseite erlaubt",
   },
   'pt-BR': {
     unreachable: 'symphony: não foi possível conectar ao bridge ({bridge}); por enquanto as aprovações ficam no terminal',
@@ -129,6 +137,7 @@ const MESSAGES = {
     waiting: 'symphony: aguardando sua resposta na página do escritório ({bridge}); Esc cancela',
     allowed: 'symphony: permitido na página web',
     denied: 'symphony: negado na página web',
+    remembered: "symphony: permitido para esta sessão na página web",
   },
   ru: {
     unreachable: 'symphony: не удаётся подключиться к bridge ({bridge}); пока подтверждения — в терминале',
@@ -143,6 +152,7 @@ const MESSAGES = {
     waiting: 'symphony: ждём вашего ответа на странице офиса ({bridge}); Esc — отмена',
     allowed: 'symphony: разрешено на веб-странице',
     denied: 'symphony: отклонено на веб-странице',
+    remembered: "symphony: разрешено для этого сеанса на веб-странице",
   },
 } as const
 

@@ -437,7 +437,7 @@ func TestContrast(t *testing.T) {
 		{"messenger", `document.querySelectorAll('#people .row').length === 5`, append([]contrastView{
 			{"sidebar", ``, ``, `body`, ``},
 			{"chat", `[...document.querySelectorAll('#people .row')].find(r => r.textContent.includes('alice')).click()`, `!document.getElementById('chat').hidden && document.querySelectorAll('#chat .flow .it').length >= 8 && !document.getElementById('profile').hidden`, `body`, ``},
-			{"asks", `[...document.querySelectorAll('#people .row')].find(r => r.textContent.includes('carol')).click()`, `document.querySelectorAll('#chat #asks .card').length === 2`, `body`, ``},
+			{"asks", `[...document.querySelectorAll('#people .row')].find(r => r.textContent.includes('carol')).click()`, `document.querySelectorAll('#chat .flow .it.ask.carded .card').length === 2`, `body`, ``},
 			{"off duty", `[...document.querySelectorAll('#people .row')].find(r => r.textContent.includes('erin')).click()`, `!document.getElementById('chat').hidden && !document.querySelector('#chat .offline').hidden`, `body`, ``},
 			{"group", `document.querySelector('#groups .row').click()`, `!document.getElementById('taskwin').hidden && document.querySelectorAll('#taskwin .tmsg').length >= 3`, `body`, ``},
 		}, dialogs...)},
@@ -544,7 +544,7 @@ func TestNarrow(t *testing.T) {
 		{"messenger", 800, 600, `document.querySelectorAll('#people .row').length === 5`, []step{
 			{"sidebar", ``, ``},
 			{"chat", `[...document.querySelectorAll('#people .row')].find(r => r.textContent.includes('alice')).click()`, `!document.getElementById('chat').hidden`},
-			{"asks", `[...document.querySelectorAll('#people .row')].find(r => r.textContent.includes('carol')).click()`, `document.querySelectorAll('#chat #asks .card').length === 2`},
+			{"asks", `[...document.querySelectorAll('#people .row')].find(r => r.textContent.includes('carol')).click()`, `document.querySelectorAll('#chat .flow .it.ask.carded .card').length === 2`},
 			{"group", `document.querySelector('#groups .row').click()`, `!document.getElementById('taskwin').hidden`},
 			{"launch", `document.getElementById('new-emp').click()`, `!document.getElementById('launch').hidden`},
 		}},

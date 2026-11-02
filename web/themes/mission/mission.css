@@ -38,12 +38,12 @@ button.px.primary { background: var(--accent); border-color: var(--accent); colo
 button.px.alert { background: var(--danger-strong); border-color: var(--danger-strong); color: #fff; }
 button.px.icon { width: 32px; padding: 2px 0; text-align: center; }
 button.px.icon.blocked { opacity: .55; border-style: dashed; border-color: var(--amber); } /* the sound is on, but the browser won't play it before a click */
-.panel, #asks .card, #taskwin .tlist { border-radius: 6px; box-shadow: 0 0 0 1px var(--line), 0 24px 60px rgba(0,0,0,.6); }
-:root:not([data-dark]) :is(.panel, #asks .card, #taskwin .tlist) { box-shadow: 0 0 0 1px var(--line), 0 18px 48px rgba(13,21,32,.22); }
+.panel, :is(#asks, .flow) .card, #taskwin .tlist { border-radius: 6px; box-shadow: 0 0 0 1px var(--line), 0 24px 60px rgba(0,0,0,.6); }
+:root:not([data-dark]) :is(.panel, :is(#asks, .flow) .card, #taskwin .tlist) { box-shadow: 0 0 0 1px var(--line), 0 18px 48px rgba(13,21,32,.22); }
 .modal { background: rgba(0,0,0,.6); }
 :root:not([data-dark]) .modal { background: rgba(13,21,32,.45); }
-#asks input[type=text], #asks button, #launch input, #launch select, #task :is(input:not([type=checkbox]), select, textarea), .chat .say textarea, #taskwin .tsay textarea { border-radius: 4px; border-color: var(--line); background: var(--pane); color: var(--ink); }
-#asks button.allow, #asks button.submit { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+:is(#asks, .flow .card) input[type=text], :is(#asks, .flow .card) button, #launch input:not([type=checkbox]), #launch select, #task :is(input:not([type=checkbox]), select, textarea), .chat .say textarea, #taskwin .tsay textarea { border-radius: 4px; border-color: var(--line); background: var(--pane); color: var(--ink); }
+:is(#asks, .flow .card) button.allow, :is(#asks, .flow .card) button.submit { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 #task .lead-tag, #taskwin .badge.lead { background: var(--accent); color: var(--on-accent); }
 .it.user { border-color: var(--accent); }
 .it.text { border-color: var(--line); background: var(--paper-2); color: var(--ink); }

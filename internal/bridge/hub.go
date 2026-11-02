@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"sort"
@@ -62,6 +63,8 @@ var (
 	ErrUnknownAsk     = newError("ask_unknown", "unknown ask")
 	ErrSettled        = newError("ask_settled", "ask already settled")
 	ErrWrongAccount   = newError("ask_wrong_account", "belongs to another account")
+	ErrNotModSettled  = newError("ask_not_mod_settled", "only the page answers this ask")
+	ErrNotPageAnswer  = newError("ask_not_page_answered", "this ask is answered in the session's terminal")
 	ErrSessionOffline = newError("session_offline", "the session is not online")
 )
 
@@ -117,19 +120,45 @@ type Session struct {
 	LastError   string      `json:"lastError,omitempty"`   // the last API error that ended a turn
 	EndReason   string      `json:"endReason,omitempty"`   // why the session ended (clear, logout, ...)
 	Notify      *Notify     `json:"notify,omitempty"`      // the last notification
+	Rules       []Rule      `json:"rules,omitempty"`       // what the page allowed for the rest of the session (session.rule)
 	costSeen    float64     // the session's cost at the last report, for the ledger's difference
+}
+
+// Rule is what a person allowed on the page for the rest of a session: a tool (every file edit for "Edit"), and for
+// Bash the commands that start with Prefix. The mod proposes it with an ask (Ask.Remember) and keeps it; the page only
+// says yes.
+type Rule struct {
+	Tool   string `json:"tool"`
+	Prefix string `json:"prefix,omitempty"`
+}
+
+// AskField is one field of an MCP server's form (an elicitation), as the page shows it: what the server asks for, never
+// answered from the page (the session's terminal answers it).
+type AskField struct {
+	Name        string   `json:"name"`
+	Title       string   `json:"title,omitempty"`
+	Description string   `json:"description,omitempty"`
+	Type        string   `json:"type,omitempty"` // string | number | integer | boolean
+	Required    bool     `json:"required,omitempty"`
+	Enum        []string `json:"enum,omitempty"`
 }
 
 type Ask struct {
 	ID        string         `json:"id"`
 	Session   string         `json:"session"`
 	Account   string         `json:"account"`
-	Kind      string         `json:"kind"` // permission | question
+	Kind      string         `json:"kind"` // permission | question | elicitation
 	Tool      string         `json:"tool,omitempty"`
 	Input     any            `json:"input,omitempty"`
 	Reason    string         `json:"reason,omitempty"`
 	Questions any            `json:"questions,omitempty"`
 	AgentID   string         `json:"agentId,omitempty"`
+	Remember  *Rule          `json:"remember,omitempty"` // what an allow could be kept as for the session (a permission's)
+	Server    string         `json:"server,omitempty"`   // an elicitation's MCP server
+	Message   string         `json:"message,omitempty"`  // an elicitation's question
+	Mode      string         `json:"mode,omitempty"`     // an elicitation's: form | url
+	URL       string         `json:"url,omitempty"`      // an elicitation's page to open (mode url)
+	Fields    []AskField     `json:"fields,omitempty"`   // an elicitation's form
 	Status    string         `json:"status"`
 	Answer    map[string]any `json:"answer,omitempty"`
 	Created   time.Time      `json:"created"`
@@ -234,6 +263,7 @@ type Event struct {
 	BgCrons     int         `json:"bgCrons,omitempty"`
 	ToolCount   int         `json:"toolCount,omitempty"` // session.tools
 	MCP         []string    `json:"mcp,omitempty"`
+	Rule        *Rule       `json:"rule,omitempty"` // session.rule: what the page allowed for the rest of the session
 }
 
 // Snapshot is the whole state as the pages see it. Messages is the message log in a full snapshot (the first one a
@@ -744,7 +774,7 @@ func (h *Hub) apply(ev Event, acc *Account, created *bool) error {
 		if ev.From != "" && ev.From != ev.Model {
 			h.chatNoticeDetailLocked(s.ID, "modelSwitched", ev.From+" → "+ev.Model)
 		}
-	case "session.cwd", "session.surfaces", "session.tools", "session.background", "session.compact", "session.notify", "todo.create", "todo.done", "agent.start", "agent.end", "turn.error":
+	case "session.cwd", "session.surfaces", "session.tools", "session.background", "session.compact", "session.notify", "session.rule", "todo.create", "todo.done", "agent.start", "agent.end", "turn.error":
 		h.detailsLocked(s, ev, target)
 	case "session.title":
 		// a new session's SessionStart carries no name; don't clear the known one
@@ -828,6 +858,14 @@ func (h *Hub) detailsLocked(s *Session, ev Event, target *Agent) {
 	case "session.compact":
 		s.Compactions++
 		h.chatNoticeLocked(s.ID, "compacted")
+	case "session.rule":
+		if ev.Rule != nil && ev.Rule.Tool != "" {
+			r := Rule{Tool: cutRunes(ev.Rule.Tool, 200), Prefix: cutRunes(ev.Rule.Prefix, 200)}
+			if !slices.Contains(s.Rules, r) && len(s.Rules) < 100 {
+				s.Rules = append(s.Rules, r)
+				h.chatNoticeDetailLocked(s.ID, "remembered", strings.TrimSpace(r.Tool+" "+r.Prefix))
+			}
+		}
 	case "session.notify":
 		s.Notify = &Notify{Type: ev.NotifyType, Title: ev.Title, Text: ev.Text, Time: h.now()}
 		if ev.NotifyType != "idle_prompt" { // "waiting for your input" every minute is no news for the chat
@@ -1322,13 +1360,19 @@ func trimInput(v any) (any, bool) {
 }
 
 type AskRequest struct {
-	Session   string `json:"session"`
-	Kind      string `json:"kind"`
-	Tool      string `json:"tool,omitempty"`
-	Input     any    `json:"input,omitempty"`
-	Reason    string `json:"reason,omitempty"`
-	Questions any    `json:"questions,omitempty"`
-	AgentID   string `json:"agentId,omitempty"`
+	Session   string     `json:"session"`
+	Kind      string     `json:"kind"`
+	Tool      string     `json:"tool,omitempty"`
+	Input     any        `json:"input,omitempty"`
+	Reason    string     `json:"reason,omitempty"`
+	Questions any        `json:"questions,omitempty"`
+	AgentID   string     `json:"agentId,omitempty"`
+	Remember  *Rule      `json:"remember,omitempty"`
+	Server    string     `json:"server,omitempty"`
+	Message   string     `json:"message,omitempty"`
+	Mode      string     `json:"mode,omitempty"`
+	URL       string     `json:"url,omitempty"`
+	Fields    []AskField `json:"fields,omitempty"`
 }
 
 func (h *Hub) CreateAsk(req AskRequest, acc *Account) (string, error) {
@@ -1350,11 +1394,33 @@ func (h *Hub) CreateAsk(req AskRequest, acc *Account) (string, error) {
 		Tool: req.Tool, Input: req.Input, Reason: req.Reason, Questions: req.Questions,
 		AgentID: req.AgentID, Status: AskPending, Created: h.now(), done: make(chan struct{}),
 	}
+	if req.Kind == "permission" && req.Remember != nil && req.Remember.Tool != "" {
+		r := Rule{Tool: cutRunes(req.Remember.Tool, 200), Prefix: cutRunes(req.Remember.Prefix, 200)}
+		a.Remember = &r
+	}
+	if req.Kind == "elicitation" {
+		a.Server, a.Message, a.Mode, a.URL = cutRunes(req.Server, 200), cutRunes(req.Message, 4000), req.Mode, cutRunes(req.URL, 2000)
+		if a.Mode != "url" {
+			a.Mode, a.URL = "form", ""
+		}
+		for i, f := range req.Fields {
+			if i == 50 {
+				break
+			}
+			f.Name, f.Title, f.Description = cutRunes(f.Name, 200), cutRunes(f.Title, 200), cutRunes(f.Description, 1000)
+			if len(f.Enum) > 50 {
+				f.Enum = f.Enum[:50]
+			}
+			a.Fields = append(a.Fields, f)
+		}
+	}
 	a.preview, a.InputTruncated = trimInput(req.Input)
 	h.asks[a.ID] = a
 	h.chatAskLocked(a)
 	if req.Kind == "question" {
 		h.noteLocked(s, "ask", strings.TrimSpace("question "+askSummary(req.Questions)))
+	} else if req.Kind == "elicitation" {
+		h.noteLocked(s, "ask", strings.TrimSpace("elicitation "+a.Server+" "+cutRunes(a.Message, 120)))
 	} else {
 		h.noteLocked(s, "ask", strings.TrimSpace(req.Tool+" "+toolSummary(req.Tool, req.Input)))
 	}
@@ -1439,6 +1505,69 @@ func (h *Hub) Settle(id, account, status string, answer map[string]any) error {
 	h.noteLocked(s, "settled", strings.TrimSpace(outcome+" "+a.Tool))
 	h.broadcastLocked(map[string]any{"type": "settled", "id": id, "status": status})
 	return nil
+}
+
+// RosterEntry is one session in the office as another session's model hears of it (the mod's office context).
+type RosterEntry struct {
+	Name   string `json:"name"`             // the session's name, the one SendMessage finds it by
+	Folder string `json:"folder,omitempty"` // the last element of its working folder
+	Task   string `json:"task,omitempty"`
+	State  string `json:"state"`
+}
+
+// Roster is the sessions online besides session (of account), and session's own name.
+func (h *Hub) Roster(session, account string) map[string]any {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	you := ""
+	if s := h.sessions[session]; s != nil && s.Account == account {
+		you = sessionName(h, s)
+	}
+	others := []RosterEntry{}
+	for _, s := range h.sessions {
+		if s.ID == session || s.State == StateEnded {
+			continue
+		}
+		others = append(others, RosterEntry{Name: sessionName(h, s), Folder: filepath.Base(s.Cwd), Task: s.Task, State: s.State})
+	}
+	slices.SortFunc(others, func(a, b RosterEntry) int { return strings.Compare(a.Name, b.Name) })
+	return map[string]any{"you": you, "others": others}
+}
+
+// sessionName is the name a session goes by in Claude Code (--name, /rename), else the one the office gives it.
+func sessionName(h *Hub, s *Session) string {
+	if s.Title != "" {
+		return s.Title
+	}
+	return h.nameLocked(s)
+}
+
+// SettleByMod settles an ask the mod made that the page can't answer (an elicitation, answered in the session's
+// terminal) with what became of it; any other kind is the page's to answer (ErrNotModSettled).
+func (h *Hub) SettleByMod(id, account string, answer map[string]any) error {
+	if k := h.askKind(id); k != "" && k != "elicitation" {
+		return ErrNotModSettled
+	}
+	return h.Settle(id, account, AskDone, answer)
+}
+
+// AnswerByPage settles an ask with the page's answer: a permission's decision or a question's answers. An elicitation
+// is answered in the session's terminal, not here (ErrNotPageAnswer).
+func (h *Hub) AnswerByPage(id string, answer map[string]any) error {
+	if h.askKind(id) == "elicitation" {
+		return ErrNotPageAnswer
+	}
+	return h.Settle(id, "", AskDone, answer)
+}
+
+// askKind is a pending ask's kind ("" for none): the kind never changes, so a check before Settle holds.
+func (h *Hub) askKind(id string) string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if a := h.asks[id]; a != nil {
+		return a.Kind
+	}
+	return ""
 }
 
 // ---------- starts from the page ----------

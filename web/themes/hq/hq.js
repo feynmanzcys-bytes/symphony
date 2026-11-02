@@ -5,7 +5,7 @@
 import { t, lang, errorText, applyI18n, langPicker } from '/i18n.js'
 import { esc, syncCards } from '/asks.js'
 import { connect } from '/symphony.js'
-import { STATE_MARK, TASK_MARK, base, lower, dot, buildText, statusText as statusOf, setHTML, deferWhilePressed } from '/ui/common.js'
+import { STATE_MARK, TASK_MARK, base, lower, dot, buildText, statusText as statusOf, setHTML, deferWhilePressed, askKind, askSummary } from '/ui/common.js'
 import { connectionBanner } from '/ui/banner.js'
 import { announceAsks } from '/ui/a11y.js'
 import { createChat } from '/ui/chat.js'
@@ -98,10 +98,10 @@ document.getElementById('kpis').addEventListener('click', ev => { const k = ev.t
 let chatFor = null, chatSid = null
 const askWho = a => {
   const acc = sym.accountById(a.account)
-  return `<div class="who"><span class="name">${esc(acc?.name || '?')}</span><span class="kind">${esc(t(a.kind === 'question' ? 'asks.question' : 'asks.permission'))}` +
+  return `<div class="who"><span class="name">${esc(acc?.name || '?')}</span><span class="kind">${esc(askKind(a.kind))}` +
     (a.agentId ? ` · ${esc(t('common.subagent'))}` : '') + `</span><span class="open" data-session="${esc(a.session)}" role="button" tabindex="0">${esc(t('hq.btn.chat'))}</span></div>`
 }
-const askWhoInChat = a => `<div class="who"><span class="name">${esc(t(a.kind === 'question' ? 'asks.question' : 'asks.permission'))}</span>` + (a.agentId ? `<span class="kind">${esc(t('common.subagent'))}</span>` : '') + `</div>`
+const askWhoInChat = a => `<div class="who"><span class="name">${esc(askKind(a.kind))}</span>` + (a.agentId ? `<span class="kind">${esc(t('common.subagent'))}</span>` : '') + `</div>`
 const chat = createChat(sym, { askWho: askWhoInChat, onClose: () => { chatFor = null; chatSid = null }, onTaskChip: id => tasks.openWindow(id) })
 const launch = createLaunchDialog(sym, { options: loadOptions, onOnline: l => openChat(l.account), onOpen: () => chat.close(), log: () => {} })
 const tasks = createTaskUI(sym, {
@@ -183,7 +183,7 @@ function renderOverview() {
   // who waits for you, a click opens the window
   const waiting = snapshot.asks.map(a => ({ a, acc: sym.accountById(a.account), s: sym.sessionById(a.session) }))
   setHTML(document.getElementById('ov-waiting'), waiting.length ? waiting.map(({ a, acc, s }) =>
-    `<div class="row click" data-session="${esc(a.session)}" data-account="${esc(a.account)}" role="button" tabindex="0">${dot('waiting')}<b>${esc(nameOf(s, acc))}</b><span class="txt">${esc(t(a.kind === 'question' ? 'asks.question' : 'asks.permission'))}${esc(t('common.colon'))}${esc(a.tool ? a.tool + ' ' : '')}${esc(summaryOf(a))}</span><time>${esc(fmtTime(a.created))}</time></div>`).join('')
+    `<div class="row click" data-session="${esc(a.session)}" data-account="${esc(a.account)}" role="button" tabindex="0">${dot('waiting')}<b>${esc(nameOf(s, acc))}</b><span class="txt">${esc(askKind(a.kind))}${esc(t('common.colon'))}${esc(a.tool ? a.tool + ' ' : '')}${esc(summaryOf(a))}</span><time>${esc(fmtTime(a.created))}</time></div>`).join('')
     : `<div class="empty">${esc(t('hq.overview.nothingWaiting'))}</div>`)
   // the activity of the last 30 minutes, events per minute
   const now = Date.now(), bins = new Array(30).fill(0)
@@ -199,7 +199,7 @@ function renderOverview() {
   setHTML(document.getElementById('ov-recent'), activity.length ? activity.slice(-8).reverse().map(activityRow).join('') : `<div class="empty">${esc(t('hq.overview.noActivity'))}</div>`)
 }
 const nameOf = (s, acc) => (s?.task && s.title) ? s.title : acc?.name || s?.title || '?'
-const summaryOf = a => a.kind === 'question' ? (a.questions?.[0]?.question || '') : (a.input?.command || a.input?.file_path || a.input?.pattern || a.input?.url || a.input?.description || '')
+const summaryOf = askSummary
 document.getElementById('ov-waiting').addEventListener('click', ev => { const r = ev.target.closest('.row'); if (r) openAsk(r.dataset.session, r.dataset.account) })
 // an ask's session: a task member's window from the task window, else the employee's
 function openAsk(sid, account) {

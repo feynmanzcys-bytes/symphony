@@ -28,11 +28,20 @@ export const element = html => { const tpl = document.createElement('template');
 export const hash = s => [...String(s)].reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 7) >>> 0
 
 // ---------- a session in words ----------
-// what a session waits for: an approval or an answer
+// what a session waits for: an approval or an answer (on the page), or an MCP server's form (in its terminal)
 export function waitingText(sym, sessionId) {
   const kinds = new Set(sym.state.asks.filter(a => a.session === sessionId).map(a => a.kind))
   const approval = kinds.has('permission'), answer = kinds.has('question')
+  if (!approval && !answer && kinds.has('elicitation')) return t('state.waitingForm')
   return t(approval && answer ? 'state.waitingBoth' : approval ? 'state.waitingApproval' : answer ? 'state.waitingAnswer' : 'state.waiting')
+}
+// an ask's kind in words: a permission, a question, an MCP server's form
+export const askKind = kind => t(kind === 'question' ? 'asks.question' : kind === 'elicitation' ? 'asks.elicitation' : 'asks.permission')
+// what an ask is about, in a line: the question, the form's server and message, the tool's main argument
+export function askSummary(a) {
+  if (a.kind === 'question') return a.questions?.[0]?.question || ''
+  if (a.kind === 'elicitation') return [a.server, a.message].filter(Boolean).join(': ')
+  return a.input?.command || a.input?.file_path || a.input?.pattern || a.input?.url || a.input?.description || ''
 }
 export function statusText(sym, s) {
   if (!s || s.state === 'ended') return t('state.ended')
