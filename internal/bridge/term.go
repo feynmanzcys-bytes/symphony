@@ -325,8 +325,23 @@ func plainText(raw []byte) string {
 	return b.String()
 }
 
-// Screen is the recent output as plain text: the last n non-empty lines.
+// Screen is what the terminal shows: the last n non-empty lines of a screen model (vt) fed with the whole history at the
+// terminal's size, so text that was typed and erased, or drawn over, isn't in it. It goes into an exit notice and a
+// failed launch's error.
 func (t *Term) Screen(n int) string {
+	t.mu.Lock()
+	hist := append([]byte(nil), t.hist...)
+	cols, rows := t.cols, t.rows
+	t.mu.Unlock()
+	v := newVT(cols, rows)
+	v.feed(hist)
+	return cutFront(lastLines(strings.Join(v.lines(), "\n"), n), screenMax)
+}
+
+// Recent is the recent output laid out as it came, the last n non-empty lines: every redraw one after another, with
+// the gaps the cursor moves made (plainText). The trust prompt is read from it: whatever a console draws or leaves
+// out, the words and the cursor's last position are in it.
+func (t *Term) Recent(n int) string {
 	t.mu.Lock()
 	hist := append([]byte(nil), t.hist...)
 	t.mu.Unlock()

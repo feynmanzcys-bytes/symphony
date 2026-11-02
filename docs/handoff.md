@@ -24,10 +24,6 @@
 
 ## Sessions and terminals
 
-1. **A notice's screen lines can hold text that was typed and then deleted.**
-   - What happens: the `exited` notice and a failed launch's error show the last lines of the session's screen. `plainText` (term.go) makes them from the raw output by laying every redraw out one after another, so text that was erased or overwritten on screen stays in. Seen on Windows: `…(shift+tab to cycle)要一个一个;ugygtfrdrderdTry "refactor <filepath>"`.
-   - Fix: keep a small screen model, a grid of the terminal's size fed with the output (cursor moves, erasing in the line and the display, scrolling), and take the last lines from it. `plainText` stays for the trust prompt.
-   - Test: replay a recorded Claude Code screen with typing and erasing, and compare the lines.
 2. **On Linux and macOS, a process that a tool starts in the background with a plain `&` outlives the session.**
    - What happens: ending a session (`Term.Kill`) kills its process group, plus what it started that still descends from it (`descendants` in pty_unix.go). A process started with `&` is adopted by init once the tool's shell exits, so nothing finds it. Claude Code's own background mode keeps the shell, so its processes are found. On Windows the job object ends them all.
    - Fix idea: every process the session starts inherits `SYMPHONY_LAUNCH=<launch id>`. At Kill, also kill the user's processes whose environment holds it (`/proc/<pid>/environ` on Linux, `ps -E` on macOS).
