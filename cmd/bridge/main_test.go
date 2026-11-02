@@ -601,22 +601,9 @@ func TestAttachHint(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	bin := t.TempDir()
-	link := filepath.Join(bin, "symphony"+exeSuffix())
-	if err := os.Symlink(self, link); err != nil {
-		t.Skip("no symlinks:", err)
-	}
-	t.Setenv("PATH", bin)
-	if got := attachHint(defaultAddr, bridge.DefaultDataDir())("L1"); got != "symphony attach L1" {
-		t.Errorf("defaults: %q", got)
-	}
-	dir := filepath.Join(t.TempDir(), "my data")
-	if got, want := attachHint("127.0.0.1:7799", dir)("L2"), "symphony attach -addr 127.0.0.1:7799 -data "+strconv.Quote(dir)+" L2"; got != want {
-		t.Errorf("got %q, want %q", got, want)
-	}
 	// PATH leads nowhere, or to another symphony: the full path
 	t.Setenv("PATH", t.TempDir())
-	if got, want := attachHint(defaultAddr, bridge.DefaultDataDir())("L3"), self+" attach L3"; got != want {
+	if got, want := attachHint(defaultAddr, bridge.DefaultDataDir())("L3"), shellWord(self)+" attach L3"; got != want {
 		t.Errorf("off PATH: got %q, want %q", got, want)
 	}
 	other := filepath.Join(t.TempDir(), "symphony"+exeSuffix())
@@ -624,8 +611,29 @@ func TestAttachHint(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", filepath.Dir(other))
-	if got, want := attachHint(defaultAddr, bridge.DefaultDataDir())("L4"), self+" attach L4"; got != want {
+	if got, want := attachHint(defaultAddr, bridge.DefaultDataDir())("L4"), shellWord(self)+" attach L4"; got != want {
 		t.Errorf("another symphony on PATH: got %q, want %q", got, want)
+	}
+	dir := filepath.Join(t.TempDir(), "my data")
+	if got, want := attachHint("127.0.0.1:7799", dir)("L2"), shellWord(self)+" attach -addr 127.0.0.1:7799 -data "+shellWord(dir)+" L2"; got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+	if runtime.GOOS == "windows" {
+		// plain quotes, no doubled backslashes, and "& " before a quoted program for PowerShell
+		if got := shellWord(`C:\bin dir\symphony.exe`); got != `"C:\bin dir\symphony.exe"` {
+			t.Errorf("a Windows path with a space: %q", got)
+		}
+	} else if got := shellWord(dir); got != strconv.Quote(dir) {
+		t.Errorf("a path with a space: %q", got)
+	}
+	// PATH leads to this very program (through a link): plain "symphony"
+	bin := t.TempDir()
+	if err := os.Symlink(self, filepath.Join(bin, "symphony"+exeSuffix())); err != nil {
+		t.Skip("no symlinks:", err) // Windows without developer mode
+	}
+	t.Setenv("PATH", bin)
+	if got := attachHint(defaultAddr, bridge.DefaultDataDir())("L1"); got != "symphony attach L1" {
+		t.Errorf("on PATH: %q", got)
 	}
 }
 

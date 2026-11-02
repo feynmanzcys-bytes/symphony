@@ -608,16 +608,14 @@ func attachHint(addr, dataDir string) func(launchID string) string {
 		cmd += "-addr " + addr + " "
 	}
 	if abs, err := filepath.Abs(dataDir); err == nil && abs != bridge.DefaultDataDir() {
-		if strings.ContainsAny(abs, " '\"") {
-			abs = strconv.Quote(abs)
-		}
-		cmd += "-data " + abs + " "
+		cmd += "-data " + shellWord(abs) + " "
 	}
 	return func(launchID string) string { return cmd + launchID }
 }
 
 // attachProgram is how a shell reaches this program: symphony when PATH finds this very file, else its full path,
-// quoted when it holds a space or a quote.
+// quoted when it holds a space or a quote. On Windows a quoted program needs "& " before it in PowerShell (the default
+// shell of Windows Terminal; cmd takes the line without it).
 func attachProgram() string {
 	self, err := os.Executable()
 	if err != nil {
@@ -626,10 +624,24 @@ func attachProgram() string {
 	if found, err := exec.LookPath("symphony"); err == nil && sameFile(found, self) {
 		return "symphony"
 	}
-	if strings.ContainsAny(self, " '\"") {
-		return strconv.Quote(self)
+	word := shellWord(self)
+	if word != self && runtime.GOOS == "windows" {
+		return "& " + word
 	}
-	return self
+	return word
+}
+
+// shellWord is s as a word of a command line: as it is, or quoted when it holds a space or a quote. On Windows plain
+// double quotes (a path never holds one, and cmd and PowerShell read no escapes in them; strconv.Quote would double
+// every backslash), elsewhere a Go string literal, which the shells read.
+func shellWord(s string) string {
+	if !strings.ContainsAny(s, " '\"") {
+		return s
+	}
+	if runtime.GOOS == "windows" {
+		return "\"" + s + "\""
+	}
+	return strconv.Quote(s)
 }
 
 // sameFile says whether two paths name the same file (through symlinks).

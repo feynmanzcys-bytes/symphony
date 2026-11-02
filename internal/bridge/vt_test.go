@@ -1,6 +1,7 @@
 package bridge
 
 import (
+	"bytes"
 	"strings"
 	"testing"
 )
@@ -82,5 +83,47 @@ func TestVTCutOff(t *testing.T) {
 		if got := strings.Join(v.lines(), "\n"); got != "ab" {
 			t.Fatalf("%q: got %q", raw, got)
 		}
+	}
+}
+
+// (plainText is what the trust prompt is read from, on every platform)
+func TestPlainText(t *testing.T) {
+	raw := []byte("\x1b[1m❯\x1b[0m\x1b[2CNo,\x1b[1Cexit\r\n\x1b[3CYes,\x1b[CI\x1b[Ctrust\x1b[Cthis\x1b[Cfolder\x1b[K\r\n")
+	if got := plainText(raw); got != "❯  No, exit\n   Yes, I trust this folder\n" {
+		t.Fatalf("plainText: %q", got)
+	}
+	if !hasTrustPrompt(plainText(raw)) || hasTrustPrompt("trust me") {
+		t.Fatal("the trust prompt should be found through cursor moves and nowhere else")
+	}
+	// Claude Code 2.1.316 draws the gaps with moves to a column (CHA): the words keep them
+	status := "\x1b[3G\x1b[38;2;255;107;128m⏵⏵\x1b[6Gbypass\x1b[13Gpermissions\x1b[25Gon\x1b[38;2;153;153;153m (shift+tab\x1b[39Gto\x1b[42Gcycle)\x1b[49G·\x1b[51G←\x1b[53Gfor\x1b[57Gagents\x1b[104G○"
+	if got, want := plainText([]byte(status)), "  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← for agents"+strings.Repeat(" ", 41)+"○"; got != want {
+		t.Fatalf("moves to a column:\n got %q\nwant %q", got, want)
+	}
+	trust := "\x1b[2G❯\x1b[4GNo,\x1b[8Gexit\r\n\x1b[4GYes,\x1b[9GI\x1b[11Gtrust\x1b[17Gthis\x1b[22Gfolder\r\n"
+	if got := plainText([]byte(trust)); got != " ❯ No, exit\n   Yes, I trust this folder\n" || !hasTrustPrompt(got) {
+		t.Fatalf("the trust prompt drawn with moves to a column: %q", got)
+	}
+	// two-byte escape sequences and ones with intermediates leave nothing behind: ESC ( B (a charset), ESC 7 and ESC 8
+	// (save and restore the cursor), ESC = (the keypad)
+	if got := plainText([]byte("a\x1b(Bb\x1b7c\x1b8d\x1b=e\x1b>f\x1b[?25lg")); got != "abcdefg" {
+		t.Fatalf("escape sequences left bits: %q", got)
+	}
+	// a move back to a column already passed keeps the words apart; a carriage return starts the line's columns again
+	if got := plainText([]byte("abc\x1b[2Gx\x1b[Gy\rz\x1b[3Gw")); got != "abc x yz w" {
+		t.Fatalf("moves back: %q", got)
+	}
+	// a session's output may ask to move any distance: it becomes at most maxForward spaces, never a huge allocation
+	for _, n := range []string{"99999999999999999999", "2000000000", "1002"} {
+		for _, op := range []string{"C", "G"} {
+			if got := plainText([]byte("a\x1b[" + n + op + "b")); got != "a"+strings.Repeat(" ", maxForward)+"b" {
+				t.Fatalf("a move %s%s: %d characters", n, op, len(got))
+			}
+		}
+	}
+	// and all the moves together become at most forwardBudget spaces, then one each
+	many := bytes.Repeat([]byte("x\x1b[1000C"), 32768)
+	if got := len(plainText(many)); got > 2*32768+forwardBudget {
+		t.Fatalf("32768 moves became %d characters", got)
 	}
 }

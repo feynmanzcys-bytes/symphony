@@ -211,7 +211,8 @@ func (p *windowsProc) Wait() error {
 		if err := syscall.GetExitCodeProcess(process, &code); err != nil {
 			p.err = err
 		} else if code != 0 {
-			// TerminateProcess (Kill) ends it with -1, which GetExitCodeProcess gives unsigned: 4294967295
+			// a process ended from outside (Stop-Process, .NET's Process.Kill) has -1, which GetExitCodeProcess
+			// gives unsigned: 4294967295; the bridge's own Kill ends the job with 1
 			p.err = fmt.Errorf("exit status %d", int32(code))
 		}
 	}

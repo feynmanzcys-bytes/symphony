@@ -79,7 +79,7 @@ button.px:disabled { opacity:.5; cursor:default; }
 .it.ask { align-self:center; font-size:12px; color:var(--muted); background:var(--pane-2); padding:1px 10px; max-width:90%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .it.ask.pending { color:var(--danger); font-weight:700; }
 .it.ask.deny, .it.ask.cancelled { color:#8a2a26; }
-.it.notice { align-self:center; font-size:11px; color:var(--muted); }
+.it.notice { align-self:center; font-size:11px; color:var(--muted); white-space:pre-wrap; max-width:100%; }
 .it time { display:block; font-size:10px; color:var(--muted); margin-top:2px; }
 .it.user time { color:#b9b3a8; text-align:right; }
 .it.message time { color:rgba(255,255,255,.75); } .it.message.out time { color:rgba(29,17,51,.6); text-align:right; }
