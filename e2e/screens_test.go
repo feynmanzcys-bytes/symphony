@@ -11,7 +11,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -36,9 +35,6 @@ import (
 // page; the task screens and the message log again in zh-CN and ja, with a task started in that language (its kickoff).
 // The screenshots go to e2e/artifacts/screens/. It fails on a page error, a key a catalog lacks, or a raw key on screen.
 func TestScreens(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("the fake claude is a shell script")
-	}
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not found")
 	}
@@ -51,11 +47,7 @@ func TestScreens(t *testing.T) {
 		}
 		b.Hub.Stop()
 	})
-	fake := filepath.Join(t.TempDir(), "claude")
-	if err := os.WriteFile(fake, []byte("#!/bin/sh\nexec sleep 100000\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	b.Launcher.Claude = fake
+	b.Launcher.Claude = sleeper(t) // claude sits there; the test reports its sessions in
 
 	// the folders: app is a repository, the others plain folders (made repositories for the tasks)
 	work := t.TempDir()

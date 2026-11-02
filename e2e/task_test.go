@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -25,9 +24,6 @@ import (
 // everyone, a plain folder made a repository), the kickoff prompts, the members seated in the room, the task
 // window and a member's chat window, then ends the task and checks that everything is cleaned up.
 func TestTask(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("the fake claude is a shell script")
-	}
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not found")
 	}
@@ -35,11 +31,7 @@ func TestTask(t *testing.T) {
 	repo, _ := filepath.Abs("..")
 	b := startBridge(t, filepath.Join(repo, "mods", "symphony-bridge"))
 	// claude: a script that ignores its arguments and stays alive until the bridge kills it
-	fake := filepath.Join(t.TempDir(), "claude")
-	if err := os.WriteFile(fake, []byte("#!/bin/sh\nexec sleep 100000\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	b.Launcher.Claude = fake
+	b.Launcher.Claude = sleeper(t) // claude sits there; the test reports its sessions in
 
 	// bob's folder is a repository, alice's a plain folder; carol has never worked (no folder) and can't be picked
 	work := t.TempDir()

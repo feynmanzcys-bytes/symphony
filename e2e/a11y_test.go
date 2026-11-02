@@ -11,7 +11,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"sort"
 	"strings"
 	"testing"
@@ -33,9 +32,6 @@ import (
 // between them and one from you. It gives the bridge, the task and the accounts' tokens by name.
 func a11yTeam(t *testing.T) (*testBridge, *bridge.Task, map[string]string) {
 	t.Helper()
-	if runtime.GOOS == "windows" {
-		t.Skip("the fake claude is a shell script")
-	}
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not found")
 	}
@@ -48,11 +44,7 @@ func a11yTeam(t *testing.T) (*testBridge, *bridge.Task, map[string]string) {
 		}
 		b.Hub.Stop()
 	})
-	fake := filepath.Join(t.TempDir(), "claude")
-	if err := os.WriteFile(fake, []byte("#!/bin/sh\nexec sleep 100000\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	b.Launcher.Claude = fake
+	b.Launcher.Claude = sleeper(t) // claude sits there; the test reports its sessions in
 	work := t.TempDir()
 	dir := func(name string) string { return filepath.Join(work, name) }
 	for _, d := range []string{"app", "web", "docs"} {

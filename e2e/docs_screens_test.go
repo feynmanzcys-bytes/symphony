@@ -14,7 +14,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -41,9 +40,6 @@ func TestDocsScreens(t *testing.T) {
 	if os.Getenv("SYMPHONY_E2E") != "1" || os.Getenv("SYMPHONY_E2E_DOCS") != "1" {
 		t.Skip("writes docs/*.png; set SYMPHONY_E2E=1 and SYMPHONY_E2E_DOCS=1 to remake them")
 	}
-	if runtime.GOOS == "windows" {
-		t.Skip("the fake claude is a shell script")
-	}
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not found")
 	}
@@ -58,11 +54,7 @@ func TestDocsScreens(t *testing.T) {
 		}
 		b.Hub.Stop()
 	})
-	fake := filepath.Join(t.TempDir(), "claude")
-	if err := os.WriteFile(fake, []byte("#!/bin/sh\nexec sleep 100000\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	b.Launcher.Claude = fake
+	b.Launcher.Claude = sleeper(t) // claude sits there; the test reports its sessions in
 	var plugin struct{ Version string }
 	if raw, err := os.ReadFile(filepath.Join(repo, "mods", "symphony-bridge", ".claude-plugin", "plugin.json")); err != nil || json.Unmarshal(raw, &plugin) != nil {
 		t.Fatalf("reading the mod's version: %v", err)

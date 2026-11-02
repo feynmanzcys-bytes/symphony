@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -24,9 +23,6 @@ import (
 // of the roster opening the employee window, the board opening the task window, the search box, dark mode, and the
 // overview and the roster again in zh-CN. It fails on a page error, a key a catalog lacks, or a raw key on screen.
 func TestHQ(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("the fake claude is a shell script")
-	}
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not found")
 	}
@@ -39,11 +35,7 @@ func TestHQ(t *testing.T) {
 		}
 		b.Hub.Stop()
 	})
-	fake := filepath.Join(t.TempDir(), "claude")
-	if err := os.WriteFile(fake, []byte("#!/bin/sh\nexec sleep 100000\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	b.Launcher.Claude = fake
+	b.Launcher.Claude = sleeper(t) // claude sits there; the test reports its sessions in
 	work := t.TempDir()
 	dir := func(name string) string { return filepath.Join(work, name) }
 	for _, d := range []string{"app", "web", "docs"} {

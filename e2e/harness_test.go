@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -374,6 +375,9 @@ func newBrowser(t *testing.T) context.Context {
 		chromedp.Flag("enable-unsafe-swiftshader", true),
 		// the pages as in a light system, whatever this machine's is: the themes follow prefers-color-scheme
 		chromedp.Flag("blink-settings", "preferredColorScheme=1"),
+		// English whatever the machine's language (a browser takes it from the system), so a page without ?lang= is English
+		chromedp.Flag("lang", "en-US"),
+		chromedp.Flag("accept-lang", "en-US"),
 		chromedp.NoSandbox,
 		chromedp.WindowSize(1400, 860),
 	)
@@ -462,4 +466,30 @@ func screenshot(t *testing.T, ctx context.Context, name string) {
 	}
 	abs, _ := filepath.Abs(path)
 	t.Logf("screenshot: %s", abs)
+}
+
+// sleeper is a stand-in for claude that starts and sits there, for the tests that start sessions from the page and
+// report them in themselves: a shell script, or on Windows a program built for the test (a .cmd would go through
+// cmd.exe, and a pseudo console needs a program).
+func sleeper(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	if runtime.GOOS != "windows" {
+		path := filepath.Join(dir, "claude")
+		if err := os.WriteFile(path, []byte("#!/bin/sh\nexec sleep 100000\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+	src := filepath.Join(dir, "main.go")
+	if err := os.WriteFile(src, []byte("package main\n\nimport \"time\"\n\nfunc main() { time.Sleep(100000 * time.Second) }\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	exe := filepath.Join(dir, "claude.exe")
+	build := exec.Command("go", "build", "-o", exe, src)
+	build.Dir = dir
+	if out, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("building the stand-in for claude: %v\n%s", err, out)
+	}
+	return exe
 }

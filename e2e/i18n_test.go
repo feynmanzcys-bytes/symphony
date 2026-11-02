@@ -77,7 +77,7 @@ func TestI18n(t *testing.T) {
 	if want := "zh-TW zh-CN zh-TW pt-BR de en en ja"; got != want {
 		t.Fatalf("pickLang: got %q, want %q", got, want)
 	}
-	// an unsupported ?lang= falls through to the browser's language (English in headless chromium)
+	// an unsupported ?lang= falls through to the browser's language (English: newBrowser pins it)
 	odd := tab(t, browser, b.URL+"/?lang=xx")
 	if lang := get(t, odd, 10*time.Second, chromedp.Evaluate[string](`document.documentElement.lang`)); lang != "en" {
 		t.Fatalf("?lang=xx should fall back to English, got %q", lang)
