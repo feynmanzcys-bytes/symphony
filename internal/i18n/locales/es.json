@@ -26,6 +26,7 @@
   "log.stop_none": "ningún bridge de symphony con esta carpeta de datos responde en {addr}: no hay nada que detener",
   "log.stop_failed": "no se puede detener el bridge en {addr}: {reason}",
   "log.stop_slow": "se pidió al bridge en {addr} que se detuviera, pero sigue respondiendo después de un minuto (puede que aún esté terminando una tarea); inténtalo más tarde o termina su proceso",
+  "log.stop_forced": "detenido por una segunda señal antes de terminar la parada: las sesiones se mataron, y lo que aún se escribía o fusionaba puede haber quedado a medias",
   "log.push_failed": "no se puede enviar una actualización a la página de la oficina: {reason}",
   "log.page_behind": "una página de la oficina se quedó atrás con sus actualizaciones (una pestaña congelada o detenida); se cerró su flujo, y vuelve a conectarse para recibir el estado completo",
   "log.task_end_failed": "al terminar la tarea {task}: {reason}",

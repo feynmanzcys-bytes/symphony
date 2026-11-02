@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -390,5 +391,56 @@ func TestTermEndsWhileOutputHeld(t *testing.T) {
 	}
 	if !term.Ended() || !strings.Contains(term.Screen(3), "last words") {
 		t.Fatalf("ended=%v screen=%q", term.Ended(), term.Screen(3))
+	}
+}
+
+// TestTermReapsWhatItLeftRunning: a process the session started in a session of its own and left running as it exited
+// (a tool's command put in the background with &, adopted by init) ends with it, found by the launch id in its
+// environment; the same when the session is killed.
+func TestTermReapsWhatItLeftRunning(t *testing.T) {
+	shorten(t, &killGrace, 500*time.Millisecond)
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, kill := range []bool{false, true} {
+		t.Run(map[bool]string{false: "exits", true: "killed"}[kill], func(t *testing.T) {
+			pidFile := filepath.Join(t.TempDir(), "pid")
+			launch := "L-reap-" + strconv.FormatInt(time.Now().UnixNano(), 36)
+			// the shell waits for the tool to be up before it exits, or stays (the session is killed then)
+			tail := "while [ ! -s " + shellQuote(pidFile) + " ]; do sleep 0.1; done; exit 0"
+			if kill {
+				tail = "exec sleep 1000"
+			}
+			term, err := newTerm("r1", "ray", t.TempDir(), append(childEnv(nil), "SYMPHONY_TEST_TOOL="+pidFile, launchVar+"="+launch),
+				[]string{"/bin/sh", "-c", shellQuote(exe) + ` -test.run='^TestSetsidHelper$' </dev/null >/dev/null 2>&1 & ` + tail})
+			if err != nil {
+				t.Fatal(err)
+			}
+			var pid int
+			waitFor(t, "the tool to start", func() bool {
+				data, err := os.ReadFile(pidFile)
+				pid, _ = strconv.Atoi(strings.TrimSpace(string(data)))
+				return err == nil && pid > 0
+			})
+			t.Cleanup(func() { _ = syscall.Kill(pid, syscall.SIGKILL) })
+			if got := procsWithEnv(launchVar, launch); !slices.Contains(got, pid) {
+				t.Fatalf("the tool should be found by its environment: %v", got)
+			}
+			if kill {
+				term.Kill()
+			}
+			select {
+			case <-term.Exited():
+			case <-time.After(5 * time.Second):
+				t.Fatal("the session should be gone")
+			}
+			if !processGone(pid) {
+				time.Sleep(200 * time.Millisecond) // the kill is sent; give it a moment to land
+				if !processGone(pid) {
+					t.Fatal("what the session left running should be killed with it")
+				}
+			}
+		})
 	}
 }

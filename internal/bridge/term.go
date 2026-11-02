@@ -29,6 +29,12 @@ type hanger interface {
 	Hangup() error
 }
 
+// reaper is a process that, once it exited by itself, can end what it left running (a tool's command put in the
+// background with &): Linux and macOS; on Windows the job object does it as the console closes.
+type reaper interface {
+	Reap()
+}
+
 const (
 	// termHistory is how much of a terminal's output is kept, so a window that opens later shows the recent screen
 	termHistory = 256 << 10
@@ -135,6 +141,8 @@ func (t *Term) pump() {
 	t.mu.Unlock()
 	if killing != nil {
 		<-killing // what it started goes too before the session counts as gone (a task's worktrees are removed next)
+	} else if r, ok := t.proc.(reaper); ok {
+		r.Reap() // it exited by itself: what it left running goes with it, as on Windows
 	}
 	select { // the last words, which a failed launch shows
 	case <-read:

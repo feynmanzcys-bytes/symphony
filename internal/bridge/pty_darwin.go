@@ -6,6 +6,9 @@ import (
 	"context"
 	"os"
 	"os/exec"
+	"slices"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 	"unsafe"
@@ -51,4 +54,34 @@ func listProcs() []procInfo {
 		return nil
 	}
 	return parsePS(string(out))
+}
+
+// procsWithEnv is every process whose environment holds key=value, as ps -E shows it after each command (this user's
+// processes only; a session's are).
+func procsWithEnv(key, value string) []int {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "/bin/ps", "-A", "-E", "-o", "pid=", "-o", "command=")
+	cmd.Env = append(os.Environ(), "LC_ALL=C")
+	cmd.WaitDelay = time.Second
+	out, err := cmd.Output()
+	if err != nil {
+		return nil
+	}
+	return parsePSEnv(string(out), key+"="+value)
+}
+
+// parsePSEnv reads the output of ps -E -o pid= -o command=: the id, then the command and its environment, a word each.
+func parsePSEnv(out, want string) []int {
+	var pids []int
+	for line := range strings.Lines(out) {
+		f := strings.Fields(line)
+		if len(f) < 2 {
+			continue
+		}
+		if pid, err := strconv.Atoi(f[0]); err == nil && slices.Contains(f[1:], want) {
+			pids = append(pids, pid)
+		}
+	}
+	return pids
 }

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"os/exec"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -39,6 +40,21 @@ type unixProc struct {
 	mu     sync.Mutex
 	asked  bool       // Hangup has been sent
 	family []procInfo // what the process had started when it was asked to end
+	launch string     // SYMPHONY_LAUNCH in its environment, which everything it starts inherits
+}
+
+// launchVar is the variable every process of a session inherits, and how what the session left running (a tool's
+// command put in the background with &, adopted by init once the tool's shell exited) is found at its end.
+const launchVar = "SYMPHONY_LAUNCH"
+
+// envValue is the value of key in env, "" when it isn't there.
+func envValue(env []string, key string) string {
+	for _, kv := range env {
+		if v, ok := strings.CutPrefix(kv, key+"="); ok {
+			return v
+		}
+	}
+	return ""
 }
 
 // startPTY starts argv in dir on a new pseudo-terminal of cols x rows, with env as its whole environment.
@@ -64,7 +80,7 @@ func startPTY(dir string, env []string, argv []string, cols, rows int) (ptyProc,
 		master.Close()
 		return nil, err
 	}
-	return &unixProc{cmd: cmd, master: master}, nil
+	return &unixProc{cmd: cmd, master: master, launch: envValue(env, launchVar)}, nil
 }
 
 func (p *unixProc) Read(b []byte) (int, error)  { return p.master.Read(b) }
@@ -94,7 +110,7 @@ func (p *unixProc) Hangup() error {
 }
 
 // Kill ends the session for good: its process group, then what it had started (noted by Hangup, else now) that still
-// runs, what those started since, and their process groups.
+// runs, what those started since, whatever else carries its launch id in its environment, and their process groups.
 func (p *unixProc) Kill() error {
 	if p.cmd.Process == nil {
 		return nil
@@ -107,11 +123,24 @@ func (p *unixProc) Kill() error {
 		family = descendants(listProcs(), pid)
 	}
 	err := syscall.Kill(-pid, syscall.SIGKILL)
-	killLeftovers(family, pid)
+	killLeftovers(family, pid, p.launch)
 	if err != nil {
 		return p.cmd.Process.Kill()
 	}
 	return nil
+}
+
+// Reap, once the process exited by itself, ends what it left running: what it had started when it was asked to end,
+// and whatever carries its launch id (as on Windows, where the job ends with the session, a session leaves nothing
+// behind).
+func (p *unixProc) Reap() {
+	if p.cmd.Process == nil {
+		return
+	}
+	p.mu.Lock()
+	family := p.family
+	p.mu.Unlock()
+	killLeftovers(family, p.cmd.Process.Pid, p.launch)
 }
 
 // procInfo is a process of this machine: its id, its parent's, its process group's, and when it started (in the
@@ -156,10 +185,16 @@ func signalGroups(procs []procInfo, pid int, sig syscall.Signal) {
 }
 
 // killLeftovers kills what of family still runs (the same id and start time: an id used again since is left alone),
+// every process whose environment carries the session's launch id (what a tool put in the background with & and
+// left behind: init adopted it, so no parent leads to it; the bridge's own environment never holds one, childEnv),
 // what those have started since, and their process groups. Every member of those groups descends from the session:
 // a group only takes processes of its own session, and these sessions were made by the session's processes.
-func killLeftovers(family []procInfo, pid int) {
-	if len(family) == 0 {
+func killLeftovers(family []procInfo, pid int, launch string) {
+	var tagged []int
+	if launch != "" {
+		tagged = procsWithEnv(launchVar, launch)
+	}
+	if len(family) == 0 && len(tagged) == 0 {
 		return
 	}
 	now := listProcs()
@@ -173,6 +208,12 @@ func killLeftovers(family []procInfo, pid int) {
 		if p, ok := byPID[f.pid]; ok && p.start == f.start {
 			left = append(left, p)
 			roots = append(roots, p.pid)
+		}
+	}
+	for _, t := range tagged {
+		if p, ok := byPID[t]; ok && !slices.Contains(roots, t) && t != pid {
+			left = append(left, p)
+			roots = append(roots, t)
 		}
 	}
 	left = append(left, descendants(now, roots...)...)

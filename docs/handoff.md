@@ -22,35 +22,19 @@
 
   It never touched the user's own office, plugins or start at login.
 
-## Sessions and terminals
-
-2. **On Linux and macOS, a process that a tool starts in the background with a plain `&` outlives the session.**
-   - What happens: ending a session (`Term.Kill`) kills its process group, plus what it started that still descends from it (`descendants` in pty_unix.go). A process started with `&` is adopted by init once the tool's shell exits, so nothing finds it. Claude Code's own background mode keeps the shell, so its processes are found. On Windows the job object ends them all.
-   - Fix idea: every process the session starts inherits `SYMPHONY_LAUNCH=<launch id>`. At Kill, also kill the user's processes whose environment holds it (`/proc/<pid>/environ` on Linux, `ps -E` on macOS).
-   - Test: TestTermKillEndsToolsOfTheirOwn, with a shell that runs `sleep 1000 &` and exits.
-3. **On Windows, a clean `/exit` also ends what the session left running.** The job closes with the terminal (`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`, pty_windows.go). Linux and macOS leave those processes alone unless the session is ended. Decide which behavior is right, then make the platforms agree, or say so in the README.
-
 ## Tasks
 
 11. **A session that names its task late joins it only when the account has no other session in that task** (`joinableLocked` in hub.go). Only an older mod's early report, together with a stale, crashed member, can meet this; the session then stays a desk session. It is fine as it is; this note is for whoever changes how sessions join tasks.
 
 ## Bridge lifecycle and platforms
 
-14. **A start at login that fails for good restarts forever.**
-    - What happens: systemd restarts it every 5 s (`Restart=on-failure`, `RestartSec=5`), and its default limit of 5 starts in 10 s is never reached. launchd restarts it every 10 s (`SuccessfulExit` false) and appends to `~/Library/Logs/symphony.log`, which nothing rotates. Permanent causes: the data folder used by another bridge (`data_in_use`), a damaged accounts.json or tasks.json, another program on the address.
-    - Fix: in internal/autostart/autostart.go, put `StartLimitIntervalSec=60` and `StartLimitBurst=5` in the unit's `[Unit]` section, and `ThrottleInterval` 60 in the plist. Or exit 0 for the permanent causes. Have the README say how to look (`systemctl --user status symphony`).
 15. **Starting at login passes only PATH.** `-autostart on` gives the bridge nothing but `PATH` (`autostart.Entry`). So `CLAUDE_CONFIG_DIR`, `HTTP(S)_PROXY`, `NO_PROXY` or `NODE_EXTRA_CA_CERTS` set in a shell never reach a bridge started at login, or its sessions: the mod looks uninstalled, or sessions sit at a login screen.
     - Fix: at `-autostart on`, capture those variables from a short allowlist and write them into the unit or plist.
     - Never capture `ANTHROPIC_*`: the unit file is 0644.
     - Have the README say what is captured.
-16. **A second Ctrl-C while the bridge stops does nothing.** `stopAll` (cmd/bridge/main.go) runs once (`sync.Once`), so a slow stop can't be cut short: a task's git work, or a disk that hangs (writing the data is bounded at 10 s). Fix: on a second signal, run `KillAll` and exit at once.
 17. **The goodbye can be lost on `/clear`.**
     - What happens: the mod queues `session.end` at the back of its outbox (register.ts), and the engine gives the session.end hook 1.5 s. With reports backed up, the goodbye is cut off. A session started by hand has no launch id to prove it is the same process, so its new id then gets 409 until the old one counts as lost, about 60 s.
     - Fix: put `session.end` at the front of the outbox, or send it at once.
-18. **A damaged page key, with two sessions starting the bridge at once.**
-    - What happens: each `symphony -background` writes a new key over the damaged `key` file. That path (`errBadKey` in key.go) renames over the file instead of using the `os.Link` that the first creation uses. The process whose key lost takes the running bridge for another program and says the address is taken, and its session falls back to the terminal.
-    - It is rare: the key has to be damaged in the seconds after the first start, or by hand.
-    - Fix: in `startBackground`, when the answer is "another", read the key again and retry if it changed.
 
 ## The mod
 

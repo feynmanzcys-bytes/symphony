@@ -192,7 +192,14 @@ func main() {
 	}
 	go func() {
 		<-stop
-		shutdown()
+		go shutdown()
+		// a second signal while the stop runs (a task's git work, a disk that hangs): don't wait for it
+		<-stop
+		log.Print(i18n.T("log.stop_forced"))
+		if terms != nil {
+			terms.KillAll()
+		}
+		os.Exit(1)
 	}()
 	go func() {
 		for range time.Tick(time.Minute) {
@@ -323,7 +330,20 @@ func startBackground(base, dataDir string) {
 	// made before the copy starts, so both have the same one
 	key := loadKey(dataDir)
 	office := officeURL(base, key)
-	switch bridgeAt(base, key) {
+	// "another" may be this data folder's bridge with a key written over ours: two symphony -background at once over a
+	// damaged key file each write a new one (LoadKey renames over it then), and the bridge that came up has the other;
+	// the key file is read again before the answer counts
+	at := func() answer {
+		a := bridgeAt(base, key)
+		if a == another {
+			if k, err := bridge.ReadKey(dataDir); err == nil && k != key {
+				key, office = k, officeURL(base, k)
+				a = bridgeAt(base, key)
+			}
+		}
+		return a
+	}
+	switch at() {
 	case ours:
 		log.Print(i18n.T("log.already_running", "url", office))
 		return
@@ -361,7 +381,7 @@ func startBackground(base, dataDir string) {
 	go func() { exited <- cmd.Wait() }()
 	deadline := time.After(15 * time.Second)
 	for {
-		switch bridgeAt(base, key) {
+		switch at() {
 		case ours:
 			log.Print(i18n.T("log.background", "url", office, "log", logPath))
 			return
@@ -371,7 +391,7 @@ func startBackground(base, dataDir string) {
 		select {
 		case err := <-exited:
 			// another bridge may have taken the address a moment ago; then this one stepped aside
-			switch bridgeAt(base, key) {
+			switch at() {
 			case ours:
 				log.Print(i18n.T("log.already_running", "url", office))
 				return

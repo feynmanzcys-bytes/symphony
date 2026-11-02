@@ -26,6 +26,7 @@
   "log.stop_none": "unter {addr} antwortet keine symphony-Bridge mit diesem Datenordner: nichts zu beenden",
   "log.stop_failed": "die Bridge unter {addr} lässt sich nicht beenden: {reason}",
   "log.stop_slow": "die Bridge unter {addr} wurde gebeten zu beenden, antwortet aber nach einer Minute noch (sie beendet vielleicht noch eine Aufgabe); versuche es später erneut oder beende ihren Prozess",
+  "log.stop_forced": "durch ein zweites Signal beendet, bevor das Anhalten fertig war: die Sitzungen wurden abgebrochen, und was noch geschrieben oder zusammengeführt wurde, kann unfertig zurückbleiben",
   "log.push_failed": "die Büroseite kann nicht aktualisiert werden: {reason}",
   "log.page_behind": "eine Büroseite ist mit ihren Aktualisierungen in Rückstand geraten (ein eingefrorener oder hängender Tab); ihr Stream wurde geschlossen, und sie verbindet sich neu, um den ganzen Stand zu holen",
   "log.task_end_failed": "beim Beenden von Aufgabe {task}: {reason}",

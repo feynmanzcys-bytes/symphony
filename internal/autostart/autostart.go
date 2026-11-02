@@ -155,6 +155,10 @@ func (s System) unit(argv []string, path string) string {
 	return `# Starts the symphony bridge when you log in. Made by "symphony -autostart on"; "symphony -autostart off" removes it.
 [Unit]
 Description=symphony bridge, the office for Claude Code sessions
+# a bridge that can't start (its data folder used by another bridge, a damaged accounts.json, something else on its
+# address) is tried 5 times in a minute, then left stopped: systemctl --user status symphony says why
+StartLimitIntervalSec=60
+StartLimitBurst=5
 
 [Service]
 ExecStart=` + strings.Join(line, " ") + `
@@ -216,6 +220,8 @@ func (s System) plist(argv []string, path string) string {
 		<key>SuccessfulExit</key>
 		<false/>
 	</dict>
+	<key>ThrottleInterval</key>
+	<integer>60</integer>
 	<key>StandardOutPath</key>
 	` + str(s.logPath()) + `
 	<key>StandardErrorPath</key>
