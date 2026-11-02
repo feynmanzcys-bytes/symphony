@@ -1,7 +1,8 @@
 // Messenger: the sessions as coworkers in a messaging app. The sidebar lists them (a face whose motion is the state,
 // the name, a title line, a progress line) and the tasks as group chats; the middle column holds the conversation
 // (the shared employee window, or the task window with the team chat, embedded there); the right column the profile
-// and the computer: what runs now, what ran, and "Take over" (the session's terminal in a window).
+// and the computer: what runs now, its screen (a page-started session's terminal, live and small; a click shows it in
+// the conversation), what ran, and "Take over" (the session's terminal in a window).
 import { t, lang, errorText, applyI18n, langPicker } from '/i18n.js'
 import { esc } from '/asks.js'
 import { connect } from '/symphony.js'
@@ -10,6 +11,7 @@ import { connectionBanner } from '/ui/banner.js'
 import { createChat } from '/ui/chat.js'
 import { createLaunchDialog } from '/ui/launch.js'
 import { createTaskUI } from '/ui/task.js'
+import { createTerminal } from '/ui/terminal.js'
 import { themePicker } from '/ui/themes.js'
 
 const sym = connect()
@@ -147,6 +149,7 @@ function showChat() {
     taskChip: task ? { id: task.id, title: task.title, label: `${task.id} · ${task.title.split('\n')[0].slice(0, 40)}` } : null,
     chips: [['model', on ? buildText(s) : ''], ['dir', s?.cwd || (picked.sid ? member?.worktree : acc.last?.dir || acc.dir)]],
     buttons, buttonsKey: `${picked.account}|${picked.sid}|${on}|${busy}|${!!launchOpts?.enabled}|${task?.id}|${member?.session}`,
+    terminal: on && s.launch ? s.launch : null, // its terminal in the conversation, as the computer's screen shows it small
     session: picked.sid || s?.id || null, online: on,
     offText: picked.sid ? t('task.offline') : task && member ? t('chat.awayInTask', { id: task.id, name: member.name }) : t('chat.offline'),
   })
@@ -238,10 +241,23 @@ sym.on('resync', () => refreshActivity(true))
 document.addEventListener('visibilitychange', () => refreshActivity(true))
 const profileEl = document.getElementById('profile')
 const row = (k, v, wrap = false) => v === undefined || v === null || v === '' ? '' : `<dt>${esc(t('msgr.profile.' + k))}</dt><dd class="${wrap ? 'wrap' : ''}">${v}</dd>`
+// The computer's screen: a page-started session's terminal, live and small. It only watches (the session's terminal
+// keeps its size); a click shows it in the conversation, to work in. One element, moved into the profile's slot
+// whenever the profile is drawn again.
+const screen = createTerminal(sym)
+screen.el.title = t('msgr.profile.screenTitle')
+screen.el.addEventListener('click', () => chat.showTerminal(true))
+function placeScreen(launch) {
+  const slot = launch && profileEl.querySelector('.screen-slot')
+  if (!slot) return screen.close()
+  if (screen.el.parentNode !== slot) slot.appendChild(screen.el)
+  screen.open(launch)
+}
 function renderProfile() {
-  if (!picked) { profileEl.hidden = true; return }
+  if (!picked) { profileEl.hidden = true; placeScreen(null); return }
   profileEl.hidden = false
   if (picked.group) {
+    placeScreen(null)
     const k = sym.taskById(picked.group)
     if (!k) { profileEl.hidden = true; return }
     setHTML(profileEl, `<div class="top">${face(k.id, k.status === 'failed' ? 'ended' : 'tool', 'big')}<h2>${esc(k.id)}</h2><div class="st">${esc(t('task.status.' + k.status))}</div></div>` +
@@ -250,7 +266,7 @@ function renderProfile() {
     return
   }
   const acc = sym.accountById(picked.account)
-  if (!acc) { profileEl.hidden = true; return }
+  if (!acc) { profileEl.hidden = true; placeScreen(null); return }
   const s = picked.sid ? sym.sessionById(picked.sid) : sym.sessionOf(acc), on = online(s), st = stateOf(s)
   const task = picked.sid ? sym.taskOfSession(picked.sid) : taskOf(acc)
   const name = picked.sid ? task?.members.find(m => m.session === picked.sid)?.name || acc.name : acc.name
@@ -261,6 +277,7 @@ function renderProfile() {
     (picked.task ? `<span class="link" data-group="${esc(picked.task)}">← ${esc(t('msgr.profile.backToGroup', { id: picked.task }))}</span>` : task ? `<span class="link" data-group="${esc(task.id)}">${esc(t('msgr.profile.inGroup', { id: task.id }))}</span>` : '') +
     `<h3>${esc(t('msgr.profile.computer'))}</h3><div class="computer">` +
     `<div class="now ${on && s.state === 'tool' ? 'on' : on ? '' : 'off'}"><i></i><span>${esc(on ? (s.state === 'tool' && s.tool ? s.tool : s.state === 'thinking' ? t('state.thinking') : t('msgr.profile.idle')) : t('state.ended'))}</span></div>` +
+    (on && s.launch ? `<div class="screen-slot"></div>` : '') +
     (recent.length ? `<div class="recent">${recent.map(a => `<div><time>${esc(fmtTime(a.time))}</time>${esc(a.text)}</div>`).join('')}</div>` : '') +
     (on && s.launch ? `<button class="px" id="take-over" title="${esc(t('chat.terminalTitle'))}">${esc(t('msgr.profile.takeOver'))}</button>` : '') + `</div>` +
     `<h3>${esc(t('msgr.profile.about'))}</h3><dl>` +
@@ -276,6 +293,7 @@ function renderProfile() {
       row('agents', Object.values(s.agents || {}).map(a => `<span class="tag" title="${esc(a.description || '')}">${esc(a.type || a.id.slice(0, 6))}${a.state === 'done' || a.ended ? ' ✓' : ''}</span>`).join('')) +
       row('todos', (s.todos || []).map(x => esc(x.subject)).join('<br>'), true) + `</dl>` : ''))
   if (drawn) for (const dd of profileEl.querySelectorAll('dd')) dd.title = dd.textContent // the tooltip: the row's text as shown
+  placeScreen(on && s.launch ? s.launch : null)
 }
 profileEl.addEventListener('click', async ev => {
   if (ev.target.id === 'take-over') {

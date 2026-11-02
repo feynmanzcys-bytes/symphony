@@ -2080,6 +2080,7 @@ function showChat(id) {
       ['dir', s?.cwd || (chatSid ? member?.worktree : acc.last?.dir || acc.dir)], ['subagents', online ? s.agentsTotal || Object.keys(s.agents || {}).length || '' : ''], ['tools', online ? s.tools : ''],
       ['login', s?.login]],
     buttons, buttonsKey:`${id}|${chatSid}|${online}|${busy}|${online && !!s.launch}|${!!launchOpts?.enabled}|${away?.id}|${member?.session}`,
+    terminal:online && s.launch ? s.launch : null, // its terminal in the window too, beside the one that opens a window
     // the chat follows the account's current desk session (an employee off duty keeps the last one's log while the bridge
     // has it), or shows the one task session
     session:chatSid || s?.id || null,

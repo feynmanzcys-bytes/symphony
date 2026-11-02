@@ -18,6 +18,7 @@
   "msgr.profile.computer": "コンピュータ",
   "msgr.profile.idle": "待機中",
   "msgr.profile.takeOver": "引き継ぐ（ターミナルを開く）",
+  "msgr.profile.screenTitle": "セッションのターミナル（ライブ）。クリックすると会話の中で操作できます",
   "msgr.profile.backToGroup": "グループ {id} に戻る",
   "msgr.profile.inGroup": "グループ {id} に参加中",
   "msgr.profile.members": "メンバー",

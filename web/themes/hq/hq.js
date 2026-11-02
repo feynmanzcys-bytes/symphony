@@ -162,6 +162,7 @@ function showChat() {
     chips: [['model', on ? buildText(s) : ''], ['session', s?.title], ['dir', s?.cwd || (chatSid ? member?.worktree : acc.last?.dir || acc.dir)],
       ['subagents', on ? s.agentsTotal || Object.keys(s.agents || {}).length || '' : ''], ['tools', on ? s.tools : ''], ['login', s?.login]],
     buttons, buttonsKey: `${chatFor}|${chatSid}|${on}|${busy}|${on && !!s.launch}|${!!launchOpts?.enabled}|${task?.id}|${member?.session}`,
+    terminal: on && s.launch ? s.launch : null, // its terminal in the window too
     session: chatSid || s?.id || null, online: on,
     offText: chatSid ? t('task.offline') : task && member ? t('chat.awayInTask', { id: task.id, name: member.name }) : t('chat.offline'),
   })

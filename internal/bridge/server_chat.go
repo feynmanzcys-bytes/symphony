@@ -78,7 +78,9 @@ func size(r *http.Request) (cols, rows int) {
 }
 
 // termStream is the terminal's output: the recent history first, then everything new as it comes, until the
-// process ends or the client goes. cols and rows size the terminal to the window.
+// process ends or the client goes. cols and rows size the terminal to the window. sizes=1 (a window that draws the
+// screen itself, the page's terminal view) puts the terminal's size in the output, first and whenever it changes
+// (sizeNote).
 func (s *Server) termStream(w http.ResponseWriter, r *http.Request) {
 	t := s.term(w, r)
 	if t == nil {
@@ -89,7 +91,11 @@ func (s *Server) termStream(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
 		return
 	}
-	history, c, detach := t.Attach(size(r))
+	attach := t.Attach
+	if r.URL.Query().Get("sizes") == "1" {
+		attach = t.AttachSizes
+	}
+	history, c, detach := attach(size(r))
 	defer detach()
 	w.Header().Set("content-type", "application/octet-stream")
 	w.Header().Set("cache-control", "no-cache")

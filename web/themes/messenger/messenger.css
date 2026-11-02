@@ -20,7 +20,7 @@ body:lang(zh-TW) { font-family: var(--sans), "PingFang TC", "Microsoft JhengHei"
 body:lang(ja) { font-family: var(--sans), "Hiragino Sans", "Yu Gothic UI", "Noto Sans CJK JP"; }
 body:lang(ko) { font-family: var(--sans), "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans CJK KR"; }
 .app { display: grid; grid-template-columns: 320px 1fr 300px; height: 100vh; }
-@media (max-width: 1100px) { .app { grid-template-columns: 280px 1fr; } .profile { display: none; } }
+@media (max-width: 1100px) { .app { grid-template-columns: 280px 1fr; } .app > .profile { display: none; } } /* (over .profile's own display below) */
 
 /* the shared pieces, in the app's flat style */
 button.px { border-radius: 8px; box-shadow: none; border-color: var(--line); background: var(--paper); font-size: 13px; }
@@ -153,6 +153,7 @@ button.px.icon { width: 32px; padding: 2px 0; text-align: center; }
 .profile .computer .recent div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .profile .computer .recent time { color: var(--muted); margin-right: 6px; }
 .profile .computer button { margin-top: 8px; width: 100%; }
+.profile .computer .term { margin-top: 8px; border-radius: 6px; cursor: zoom-in; }
 .profile .list .row { display: flex; align-items: center; gap: 8px; padding: 3px 0; font-size: 13px; cursor: pointer; }
 .profile .list .row:hover { background: var(--pane); }
 .profile .list .row .face { width: 28px; height: 28px; }

@@ -92,12 +92,21 @@ type Term struct {
 // termClient is one attached window: output reaches it through out; a window that can't keep up is dropped
 // (it reconnects and gets the history again).
 type termClient struct {
-	out  chan []byte
-	gone chan struct{}
-	once sync.Once
+	out   chan []byte
+	gone  chan struct{}
+	once  sync.Once
+	sizes bool // it draws the screen itself (the page's terminal view): it is told the terminal's size (sizeNote)
 }
 
 func (c *termClient) close() { c.once.Do(func() { close(c.gone) }) }
+
+// sizeNote is how a window that draws the screen itself learns the terminal's size, which others may set (a window
+// that follows the size rather than setting it can't lay the output out without it): as xterm reports the size of its
+// text area (the answer to CSI 18 t), CSI 8 ; rows ; cols t. It goes to the windows that asked for it, never into the
+// history.
+func sizeNote(cols, rows int) []byte {
+	return []byte("\x1b[8;" + strconv.Itoa(rows) + ";" + strconv.Itoa(cols) + "t")
+}
 
 // newTerm starts argv in dir on a pseudo-terminal and follows its output in the background.
 func newTerm(id, name, dir string, env []string, argv []string) (*Term, error) {
@@ -170,7 +179,16 @@ func (t *Term) push(b []byte) {
 	if len(t.hist) > termHistory {
 		t.hist = t.hist[len(t.hist)-termHistory:]
 	}
+	t.sendLocked(chunk, false)
+}
+
+// sendLocked hands a chunk to every attached window (only to those that draw the screen themselves for a size note);
+// a window that can't keep up is dropped.
+func (t *Term) sendLocked(chunk []byte, sizesOnly bool) {
 	for c := range t.clients {
+		if sizesOnly && !c.sizes {
+			continue
+		}
 		select {
 		case c.out <- chunk:
 		default:
@@ -183,9 +201,24 @@ func (t *Term) push(b []byte) {
 // Attach registers a window of cols x rows: it gets the history so far and then every new chunk on out, until
 // gone is closed (the process ended, or the window fell behind). Call detach when the window closes.
 func (t *Term) Attach(cols, rows int) (history []byte, c *termClient, detach func()) {
-	c = &termClient{out: make(chan []byte, 1024), gone: make(chan struct{})}
+	return t.attach(cols, rows, false)
+}
+
+// AttachSizes is Attach for a window that draws the screen itself (the page's terminal view): its history starts with
+// the size the terminal had (the output so far is laid out at it), and every later size comes on out where it took
+// effect (sizeNote), its own cols x rows first when it gave them.
+func (t *Term) AttachSizes(cols, rows int) (history []byte, c *termClient, detach func()) {
+	return t.attach(cols, rows, true)
+}
+
+func (t *Term) attach(cols, rows int, sizes bool) (history []byte, c *termClient, detach func()) {
+	c = &termClient{out: make(chan []byte, 1024), gone: make(chan struct{}), sizes: sizes}
 	t.mu.Lock()
-	history = append([]byte(nil), t.hist...)
+	if sizes {
+		history = append(sizeNote(t.cols, t.rows), t.hist...)
+	} else {
+		history = append([]byte(nil), t.hist...)
+	}
 	if t.ended.IsZero() {
 		t.clients[c] = struct{}{}
 	} else {
@@ -219,6 +252,10 @@ func (t *Term) Resize(cols, rows int) error {
 	t.mu.Lock()
 	same := t.cols == cols && t.rows == rows
 	t.cols, t.rows = cols, rows
+	if !same {
+		// before the process hears of it: what it draws for the new size comes after the note
+		t.sendLocked(sizeNote(cols, rows), true)
+	}
 	t.mu.Unlock()
 	if same {
 		return nil
