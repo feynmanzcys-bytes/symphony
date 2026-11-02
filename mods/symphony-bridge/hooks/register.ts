@@ -1,4 +1,5 @@
 import type { EngineInterface, HttpResponse, Register } from 'claude-code'
+import { type Plan, download, targetOf } from './download'
 import { type Lang, matchLang, message } from './messages'
 
 // Environment variables:
@@ -160,11 +161,24 @@ async function sessionLang($: EngineInterface): Promise<Lang> {
   return matchLang(posix) ?? 'en'
 }
 
+// the session's own record of its token, held by the engine for the session (a reloaded module finds it there): the
+// token leaves the environment once the session started (hideToken), so the tools, scripts and servers it starts don't
+// inherit it
+const OFFICE = { plugin: 'symphony-bridge', key: 'office' } as const
+
 async function ident($: EngineInterface) {
   if (identity !== undefined) return identity
-  const token = await $.env.get('SYMPHONY_TOKEN')
+  let token = await $.env.get('SYMPHONY_TOKEN')
+  let bridgeVar = await $.env.get('SYMPHONY_BRIDGE')
+  if (!token) {
+    const kept = (await safe($.state.get(OFFICE)))?.value
+    if (kept?.token) {
+      token = kept.token
+      bridgeVar ||= kept.bridge
+    }
+  }
   if (!token) return (identity = null)
-  const bridge = ((await $.env.get('SYMPHONY_BRIDGE')) || DEFAULT_BRIDGE).replace(/\/+$/, '')
+  const bridge = (bridgeVar || DEFAULT_BRIDGE).replace(/\/+$/, '')
   identity = {
     bridge,
     token,
@@ -175,6 +189,21 @@ async function ident($: EngineInterface) {
     insecure: !LOCAL_BRIDGE.test(bridge) && !/^https:\/\/./i.test(bridge),
   }
   return identity
+}
+
+// hideToken takes SYMPHONY_TOKEN out of the session's environment, so what the session starts from now on (Bash
+// commands, npm scripts, MCP servers) doesn't inherit it: they could call the mod's endpoints with it (empty the
+// inbox, make up events or ask cards). The token stays in the module and in the session's state, which a module
+// reloaded by /reload-plugins reads. When the state can't be written, the token stays where it is: a reload would
+// lose the session otherwise.
+async function hideToken($: EngineInterface, id: Identity) {
+  try {
+    const kept = await $.state.set(OFFICE, { token: id.token, bridge: id.bridge })
+    if (!kept.isSet) return
+    await $.env.set('SYMPHONY_TOKEN', undefined)
+  } catch {
+    // an engine without session state or env.set: the environment keeps it, as before
+  }
 }
 
 async function sid($: EngineInterface) {
@@ -305,20 +334,28 @@ async function call(
 }
 
 // p's value; late once ms have passed first (the request itself isn't stopped: the HTTP API has no way to, so it is
-// just not waited for); neither when p fails
+// just not waited for); neither when p fails. p's outcome is taken before the timer starts: when the timer can't (a
+// module the engine unloaded, its code still running), p's failure is still handled and the answer is neither.
 function within<T>($: EngineInterface, ms: number, p: Promise<T>): Promise<{ value?: T; late?: true }> {
   return new Promise(resolve => {
-    const timer = $.clock.after(ms, () => resolve({ late: true }))
+    let timer: { cancel: () => void } | undefined
+    let done = false
+    const settle = (r: { value?: T; late?: true }) => {
+      if (done) return
+      done = true
+      timer?.cancel()
+      resolve(r)
+    }
     p.then(
-      value => {
-        timer.cancel()
-        resolve({ value })
-      },
-      () => {
-        timer.cancel()
-        resolve({})
-      },
+      value => settle({ value }),
+      () => settle({}),
     )
+    try {
+      timer = $.clock.after(ms, () => settle({ late: true }))
+      if (done) timer.cancel()
+    } catch {
+      settle({})
+    }
   })
 }
 
@@ -329,18 +366,23 @@ const LOCAL_BRIDGE = /^http:\/\/(127\.0\.0\.1|localhost|\[::1\]):(\d+)\/?$/
 // it's on PATH: -background detaches it, so it keeps running after this session, and returns once it answers (a
 // session starting it at the same moment finds it running and starts nothing). When symphony ran and failed, reason
 // is what it said last (the log line of its fatal error, without the time or the page key), else its exit status.
-async function startBridge($: EngineInterface, bridge: string): Promise<{ ok: boolean; reason?: string }> {
+async function startBridge(
+  $: EngineInterface,
+  bridge: string,
+  program = 'symphony',
+): Promise<{ ok: boolean; reason?: string; missing?: true }> {
   const local = LOCAL_BRIDGE.exec(bridge)
   if (!local) return { ok: false }
   let ran
   try {
     // in the mod's own folder, never the session's: a symphony.exe lying there could win over the one on PATH
-    ran = await $.process.run(['symphony', '-background', '-open=false', '-addr', `${local[1]}:${local[2]}`], {
+    ran = await $.process.run([program, '-background', '-open=false', '-addr', `${local[1]}:${local[2]}`], {
       cwd: $.plugin.root,
       timeoutMs: 30_000,
     })
-  } catch {
-    return { ok: false } // no symphony on PATH, or it didn't finish in time
+  } catch (err) {
+    // no symphony on PATH, or it didn't finish in time
+    return /time/i.test(err instanceof Error ? err.message : String(err)) ? { ok: false } : { ok: false, missing: true }
   }
   if (ran.exitCode === 0) return { ok: true }
   const last = (s: string) =>
@@ -353,6 +395,39 @@ async function startBridge($: EngineInterface, bridge: string): Promise<{ ok: bo
     ?.replace(/^\d{4}\/\d{2}\/\d{2} \d{2}:\d{2}:\d{2}(\.\d+)? /, '')
     .replace(/([?&]key=)[0-9a-fA-F]+/g, '$1…')
   return { ok: false, reason: (said || `exit status ${ran.exitCode}`).slice(0, 300) }
+}
+
+// downloadPlan says whether the mod gets the symphony program itself, it not being installed: the mod's own version
+// (whose release it fetches), a system and processor the releases are built for, and SYMPHONY_DOWNLOAD not 0
+async function downloadPlan($: EngineInterface): Promise<Plan | undefined> {
+  if ((await $.env.get('SYMPHONY_DOWNLOAD')) === '0') return undefined
+  const version = await modVersion($)
+  if (!version || !/^\d+\.\d+\.\d+(-[0-9A-Za-z.]+)?$/.test(version)) return undefined
+  const uname = await safe($.process.run(['uname', '-sm'], { timeoutMs: 5_000 }))
+  const winArch = uname?.exitCode === 0 ? undefined : (await $.env.get('PROCESSOR_ARCHITEW6432')) || (await $.env.get('PROCESSOR_ARCHITECTURE'))
+  const target = targetOf(uname?.exitCode === 0 ? uname.stdout : undefined, winArch)
+  return target ? { version, target } : undefined
+}
+
+// once per process: a /clear's new session waits for the same download
+let fetchingBridge: Promise<void> | undefined
+
+// fetchBridge downloads the program (download.ts) in the background, starts the bridge with it and reports in again;
+// until then the session goes on with the terminal's approvals (its heartbeat finds the bridge once it's up)
+async function fetchBridge($: EngineInterface, id: Identity, plan: Plan) {
+  const got = await download($, plan, `${$.plugin.root}/bin`)
+  if (!got.exe) {
+    $.ui.toast(message(id.lang, 'fetchFailed', { version: plan.version, reason: got.reason ?? '' }))
+    return
+  }
+  const ran = await startBridge($, id.bridge, got.exe)
+  if (!ran.ok) {
+    $.ui.toast(message(id.lang, 'startFailed', { bridge: id.bridge, reason: ran.reason ?? `${got.exe} didn't run` }))
+    return
+  }
+  checked = undefined // the bridge that answers now is the one just started: check it
+  const res = await emit($, 'session.start', { interactive, ...knownNow() }, ASK_TIMEOUT)
+  if (res?.ok) $.ui.toast(message(id.lang, 'started', { bridge: id.bridge }))
 }
 
 // reports an event to the office page and waits for the answer (at most timeout); a failure is ignored and never
@@ -736,6 +811,7 @@ export const register: Register = on => {
         $.ui.toast(message(id.lang, 'insecure', { bridge: id.bridge }))
         return started
       }
+      await hideToken($, id)
       withdrawLater = card => void $.clock.after(0, () => void call($, `/api/cancel/${card}`, {}, ASK_TIMEOUT))
       // sessions started from the page carry the bridge's launch id, which matches the session with its terminal in the bridge
       sticky = { cwd: e.cwd, launch: (await $.env.get('SYMPHONY_LAUNCH')) || undefined, task: (await $.env.get('SYMPHONY_TASK')) || undefined }
@@ -758,17 +834,22 @@ export const register: Register = on => {
       // holds the address: no bridge could start there.
       let res = await emit($, 'session.start', online, ASK_TIMEOUT)
       let failed: string | undefined
+      let fetching: Plan | undefined
       if (!res && !refused && !(await isStuck($))) {
         const ran = await startBridge($, id.bridge)
         if (ran.ok) {
           res = await emit($, 'session.start', online, ASK_TIMEOUT)
           if (res?.ok) $.ui.toast(message(id.lang, 'started', { bridge: id.bridge }))
+        } else if (ran.missing && (fetching = await downloadPlan($))) {
+          const plan = fetching
+          fetchingBridge ??= fetchBridge($, id, plan).catch(() => {})
         } else failed = ran.reason
       }
       if (!res) {
         if (refused) {
           // said already
-        } else if (failed) $.ui.toast(message(id.lang, 'startFailed', { bridge: id.bridge, reason: failed }))
+        } else if (fetching) $.ui.toast(message(id.lang, 'fetching', { version: fetching.version }))
+        else if (failed) $.ui.toast(message(id.lang, 'startFailed', { bridge: id.bridge, reason: failed }))
         else $.ui.toast(message(id.lang, 'unreachable', { bridge: id.bridge }))
       } else if (res.status === 401) {
         refused = true // the token won't change while the session runs: don't knock again

@@ -9,6 +9,7 @@
   "homepage": "https://github.com/feynmanzcys-bytes/symphony",
   "repository": "https://github.com/feynmanzcys-bytes/symphony",
   "license": "MIT",
+  "types": "./types/symphony-bridge.d.ts",
   "keywords": [
     "symphony",
     "multi-session",
