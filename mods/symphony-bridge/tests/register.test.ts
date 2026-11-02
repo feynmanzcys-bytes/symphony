@@ -187,21 +187,70 @@ test('the token leaves the environment once the session started, kept in the ses
 
   await $.session.start(start)
   expect(st.unset).toEqual(['SYMPHONY_TOKEN']) // not SYMPHONY_LAUNCH: what a session starts carries its launch id on purpose
-  expect(st.values.get('symphony-bridge.office')).toEqual({ token: 'tok', bridge: 'https://bridge.test' })
+  expect(st.values.get('symphony-bridge.office')).toEqual({ token: 'tok', bridge: 'https://bridge.test', session: 'sess-1' })
   expect(w.reqs[0]).toEqual(expect.objectContaining({ auth: 'Bearer tok' }))
 })
 
-test('a module reloaded by /reload-plugins finds the token in the session state', async ($, on) => {
-  // the environment no longer has it (the first module took it out); no session.start comes after a reload
+test('a module reloaded by /reload-plugins gets session.start again: the session goes on with its rules and office text, the bridge hears a heartbeat', async ($, on) => {
+  // the environment no longer has the token (the first module took it out); what that module kept is in the state
+  const w = world(on, { SYMPHONY_BRIDGE: 'https://bridge.test', SYMPHONY_CONTEXT: '1' }, r =>
+    r.url.includes('/api/roster') ? { status: 200, text: '{"you":"alice","others":[]}' } : { status: 200, text: '{}' },
+  )
+  const st = sessionState(on)
+  st.values.set('symphony-bridge.office', { token: 'tok', bridge: 'https://bridge.test', session: 'sess-1', context: 'You are alice, as kept.' })
+  st.values.set('symphony-bridge.rules', [{ tool: 'Bash', prefix: 'npm test' }])
+  on('tool.check', () => ({ decision: 'ask', reason: 'ask a person' }))
+  on('prompt.compose', () => ({ sections: [{ id: 'core', text: 'You are Claude Code.', scope: 'shared' as const }] }))
+  const compose = { model: 'claude-sonnet-5-5', promptModel: 'claude-sonnet-5-5', surfaces: [], tools: [], outputStyle: null, traits: [] }
+
+  await $.session.start(start)
+  await w.clock.settle()
+  expect(w.reqs[0]?.body).toEqual(expect.objectContaining({ kind: 'heartbeat', session: 'sess-1' }))
+  expect(w.reqs[0]?.auth).toBe('Bearer tok')
+  expect(w.reqs.some(r => r.body?.kind === 'session.start')).toBe(false) // no start line, no kickoff
+  expect(st.unset).toEqual([])
+  // the page's rule still lets npm test through, without a card
+  expect((await $.tool.check({ tool: 'Bash', input: { command: 'npm test' }, tool_use_id: 'tu-1' })).decision).toBe('allow')
+  expect(w.reqs.some(r => r.url.endsWith('/api/ask'))).toBe(false)
+  // the prompt keeps the office text it had: the cache holds, no roster is fetched
+  const composed = await $.prompt.compose(compose)
+  expect(composed.sections.at(-1)?.text).toBe('You are alice, as kept.')
+  expect(w.reqs.some(r => r.url.includes('/api/roster'))).toBe(false)
+  // the heartbeat and the inbox poll go on
+  const beats = w.reqs.filter(r => r.body?.kind === 'heartbeat').length
+  await w.clock.advance(15_000)
+  expect(w.reqs.filter(r => r.body?.kind === 'heartbeat').length).toBeGreaterThan(beats)
+  expect(w.polls.length).toBeGreaterThan(0)
+})
+
+test('a module reloaded with no session.start finds the token in the session state, and its first report starts the heartbeat', async ($, on) => {
   const w = world(on, { SYMPHONY_BRIDGE: 'https://bridge.test' })
   const st = sessionState(on)
-  st.values.set('symphony-bridge.office', { token: 'tok', bridge: 'https://bridge.test' })
+  st.values.set('symphony-bridge.office', { token: 'tok', bridge: 'https://bridge.test', session: 'sess-1' })
   on('tool.call', () => ({ result: {} }))
 
   await $.tool.call({ tool: 'Bash', command: 'ls' })
   await w.until(() => w.reqs.some(r => r.body?.kind === 'tool.start'))
   const started = w.reqs.find(r => r.body?.kind === 'tool.start')
   expect(started).toEqual(expect.objectContaining({ url: 'https://bridge.test/api/event', auth: 'Bearer tok' }))
+  await w.clock.advance(15_000)
+  expect(w.reqs.at(-1)?.body).toEqual(expect.objectContaining({ kind: 'heartbeat', session: 'sess-1' }))
+})
+
+test('/clear: the state names the new session, so a reload after it carries that one on; the office text is the new conversation\'s', async ($, on) => {
+  const w = world(on, { SYMPHONY_TOKEN: 'tok', SYMPHONY_BRIDGE: 'https://bridge.test' })
+  const st = sessionState(on)
+  on('session.end', (_$, e) => ({ sessionId: e.sessionId }))
+  on('classic.SessionStart', () => ({}))
+
+  await $.session.start(start)
+  await w.clock.settle()
+  st.values.set('symphony-bridge.office', { ...(st.values.get('symphony-bridge.office') as object), context: 'the old conversation' })
+  w.session.id = 'sess-2'
+  await $.session.end({ reason: 'clear', sessionId: 'sess-1', resume: { id: 'sess-1' } })
+  await $.classic.SessionStart({ source: 'clear', session_id: 'sess-2', session_title: 'alice', cwd: '/work' })
+  await w.until(() => (st.values.get('symphony-bridge.office') as { session?: string })?.session === 'sess-2')
+  expect(st.values.get('symphony-bridge.office')).toEqual({ token: 'tok', bridge: 'https://bridge.test', session: 'sess-2' })
 })
 
 test('an engine that keeps no session state: the token stays in the environment (a reload would lose the session)', async ($, on) => {
@@ -1133,7 +1182,7 @@ test('the mod names the last inbox item it did in its next poll, so a poll cut o
   await w.clock.advance(300)
   await w.clock.settle()
   expect(acks.slice(0, 4)).toEqual(['0', '7', '8', '8'])
-  // a bridge without ids (before 1.1.2): the ack stays where it was
+  // a bridge without ids (before 1.2.0): the ack stays where it was
   expect(w.reqs.filter(r => r.body?.kind === 'chat.sent').map(r => r.body?.text)).toEqual(['one', 'two'])
 })
 

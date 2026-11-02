@@ -83,6 +83,9 @@ type Known = {
 
 // undefined: the environment hasn't been read yet; null: no SYMPHONY_TOKEN, not an office session
 let identity: Identity | null | undefined
+// the token came from the session's state, not the environment: this module was loaded into a session an earlier
+// module of this process started (/reload-plugins, a worker respawn)
+let revived = false
 let sessionId: string | undefined
 let transcriptPath: string | undefined
 // every event carries the folder, the launch id and the task id, so a restarted bridge recognizes the session right away
@@ -195,6 +198,7 @@ async function ident($: EngineInterface) {
     if (kept?.token) {
       token = kept.token
       bridgeVar ||= kept.bridge
+      revived = true
     }
   }
   if (!token) return (identity = null)
@@ -218,12 +222,18 @@ async function ident($: EngineInterface) {
 // lose the session otherwise.
 async function hideToken($: EngineInterface, id: Identity) {
   try {
-    const kept = await $.state.set(OFFICE, { token: id.token, bridge: id.bridge })
+    const kept = await $.state.set(OFFICE, { token: id.token, bridge: id.bridge, session: await sid($) })
     if (!kept.isSet) return
     await $.env.set('SYMPHONY_TOKEN', undefined)
   } catch {
     // an engine without session state or env.set: the environment keeps it, as before
   }
+}
+
+// keepOffice changes what the session's state keeps besides the token (the session it is kept for, the office text)
+async function keepOffice($: EngineInterface, change: { session?: string; context?: string }) {
+  const kept = (await safe($.state.get(OFFICE)))?.value
+  if (kept?.token) await safe($.state.set(OFFICE, { ...kept, ...change }))
 }
 
 async function sid($: EngineInterface) {
@@ -472,6 +482,8 @@ async function emit($: EngineInterface, kind: string, data: object = {}, timeout
     heartbeat?.cancel()
   } else if (res?.ok && !ended) {
     pollInbox($)
+    // a reloaded module the engine gave no session.start: the session goes on, so does its heartbeat
+    if (revived && !heartbeat) beat($)
     if (kind !== 'session.start' && fresh(res)) tellAgain($)
   }
   // refused (busy, say) and no inbox poll that would notice the bridge going away: check it again before the next one
@@ -717,7 +729,7 @@ function reportTitle($: EngineInterface, name: string | undefined) {
 // after /clear starts its own at once).
 type InboxItem = ({ kind: 'say'; text: string } | { kind: 'abort' }) & { id?: number }
 // the id of the last inbox item done, named in the next poll (ack): the bridge drops an item only then, so a poll cut
-// off on its way back loses nothing (a bridge before 1.1.2 sends no ids and hands each item out once)
+// off on its way back loses nothing (a bridge before 1.2.0 sends no ids and hands each item out once)
 let inboxAck = 0
 // the ids already submitted (the last 200): an item handed out twice (two polls of one session out at the same time,
 // whatever brought that about) goes in once
@@ -793,10 +805,13 @@ function pollInbox($: EngineInterface) {
 }
 
 // begin starts reporting a session: at the start, and again under the new id after /clear or a /resume inside it
-function begin(id: string | undefined, model: string) {
+// begin starts the mod's record of a session; carryOn: the same session in a reloaded module, which keeps the page's
+// rules and the office text (read from the session's state)
+function begin(id: string | undefined, model: string, carryOn = false) {
   sessionId = id
   ended = false
-  rules = [] // a new session (after /clear too) starts without the page's rules; the state forgets them at the next keep
+  // a new session (after /clear too) starts without the page's rules; the state forgets them at the next keep
+  rules = carryOn ? undefined : []
   officeContext = undefined
   pollRound++
   polling = false
@@ -904,12 +919,19 @@ export const register: Register = on => {
         $.ui.toast(message(id.lang, 'insecure', { bridge: id.bridge }))
         return started
       }
-      await hideToken($, id)
+      // A module loaded into a session an earlier module of this process started (/reload-plugins, a worker respawn)
+      // gets session.start again. The session goes on: the page's rules and the office text stay, and the bridge hears
+      // a heartbeat, not a second start (no start line in the activity; the inbox poll and the heartbeat start anew).
+      const current = await safe($.session.id())
+      const kept = revived ? (await safe($.state.get(OFFICE)))?.value : undefined
+      const carryOn = kept?.session !== undefined && kept.session === current
+      if (!carryOn) await hideToken($, id)
       withdrawLater = card => void $.clock.after(0, () => void call($, `/api/cancel/${card}`, {}, ASK_TIMEOUT))
       // sessions started from the page carry the bridge's launch id, which matches the session with its terminal in the bridge
       sticky = { cwd: e.cwd, launch: (await $.env.get('SYMPHONY_LAUNCH')) || undefined, task: (await $.env.get('SYMPHONY_TASK')) || undefined }
       const model = await $.session.model()
-      begin(await safe($.session.id()), model)
+      begin(current, model, carryOn)
+      if (carryOn && typeof kept?.context === 'string') officeContext = Promise.resolve(kept.context)
       // what the engine knows of itself and the folder: its version, the mod's, the repository, where it draws
       const [engine, mod, repo] = await Promise.all([safe($.session.version()), modVersion($), safe($.session.repo())])
       interactive = e.isInteractive
@@ -922,16 +944,18 @@ export const register: Register = on => {
         // not the remote: its URL may carry credentials
         repo: repo ? { root: repo.root, name: repo.name ?? undefined, internal: repo.internal } : undefined,
       }
-      const online = { interactive, ...knownNow() }
+      const kind = carryOn ? 'heartbeat' : 'session.start'
+      const online = carryOn ? knownNow() : { interactive, ...knownNow() }
+      if (carryOn) told() // the bridge knows the session: no report waits for a start
       // no answer and refused: the bridge's check failed, and said why. Something that took the check and never answered
       // holds the address: no bridge could start there.
-      let res = await emit($, 'session.start', online, ASK_TIMEOUT)
+      let res = await emit($, kind, online, ASK_TIMEOUT)
       let failed: string | undefined
       let fetching: Plan | undefined
       if (!res && !refused && !(await isStuck($))) {
         const ran = await startBridge($, id.bridge)
         if (ran.ok) {
-          res = await emit($, 'session.start', online, ASK_TIMEOUT)
+          res = await emit($, kind, online, ASK_TIMEOUT)
           if (res?.ok) $.ui.toast(message(id.lang, 'started', { bridge: id.bridge }))
         } else if (ran.missing && (fetching = await downloadPlan($))) {
           const plan = fetching
@@ -1014,6 +1038,7 @@ export const register: Register = on => {
     const goesOn = e.source === 'clear' || e.source === 'resume' || e.source === 'fork'
     if (ended && goesOn && known && (await office($))) {
       begin(e.session_id, (await safe($.session.model())) || reported.model || known.model)
+      void keepOffice($, { session: e.session_id, context: undefined }) // a reload from now on is this session's
       if (e.cwd) sticky = { ...sticky, cwd: e.cwd }
       report($, 'session.start', { interactive, ...knownNow() })
       beat($)
@@ -1213,7 +1238,13 @@ export const register: Register = on => {
   on('prompt.compose', async ($, e, next) => {
     const composed = await next(e)
     if ((await $.env.get('SYMPHONY_CONTEXT')) !== '1' || !(await office($))) return composed
-    officeContext ??= officeText($).catch(() => undefined)
+    officeContext ??= officeText($).then(
+      text => {
+        if (text !== undefined) void keepOffice($, { context: text }) // a reloaded module's prompt says the same
+        return text
+      },
+      () => undefined,
+    )
     const text = await officeContext
     return text ? { ...composed, sections: [...composed.sections, { id: 'symphony:office', text, scope: 'session' as const }] } : composed
   })
