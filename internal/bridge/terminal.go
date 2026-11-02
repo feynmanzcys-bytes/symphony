@@ -284,6 +284,7 @@ func (w *Window) Open(title string, argv []string) error {
 		return err
 	}
 	var run []string
+	var script string // the Terminal.app script written for this window
 	switch w.GOOS {
 	case "windows":
 		run = argv
@@ -304,11 +305,15 @@ func (w *Window) Open(title string, argv []string) error {
 			_ = os.Remove(path)
 			return err
 		}
+		script = path
 		run = append(slices.Clone(opener), path)
 	default:
 		run = append(slices.Clone(opener), argv...)
 	}
 	if err := w.spawn(run); err != nil {
+		if script != "" {
+			_ = os.Remove(script) // it deletes itself once Terminal.app ran it; it won't run now
+		}
 		return newError("window_open_failed", fmt.Sprintf("can't open a terminal window (%s): %v", run[0], err),
 			"opener", run[0], "detail", err.Error())
 	}

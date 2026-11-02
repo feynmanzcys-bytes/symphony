@@ -2,7 +2,9 @@ package bridge
 
 import (
 	"errors"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -52,13 +54,26 @@ func TestWindowOpeners(t *testing.T) {
 		t.Fatalf("windows should run the command in a new console: %v %v", err, spawned)
 	}
 
+	// the Terminal.app script goes into the temp folder (a folder of this test's: the script deletes itself only once
+	// Terminal.app ran it, which nothing does here)
+	tmp := t.TempDir()
+	for _, v := range []string{"TMPDIR", "TMP", "TEMP"} {
+		t.Setenv(v, tmp)
+	}
 	w.GOOS = "darwin"
 	if err := w.Open("alice", argv); err != nil || len(spawned) != 4 || spawned[0] != "open" || spawned[2] != "Terminal" || !strings.HasSuffix(spawned[3], ".command") {
 		t.Fatalf("darwin should open a script in Terminal.app: %v %v", err, spawned)
 	}
+	if _, err := os.Stat(spawned[3]); err != nil {
+		t.Fatalf("the script should be there for Terminal.app: %v", err)
+	}
 	w.spawn = func([]string) error { return errors.New("boom") }
 	if e := asError(w.Open("alice", argv)); e == nil || e.Code != "window_open_failed" || e.Params["detail"] != "boom" {
 		t.Fatalf("a failed opener: %v", e)
+	}
+	// the opener failed: its script is removed (Terminal.app would have deleted it after running it)
+	if left, _ := filepath.Glob(filepath.Join(tmp, "symphony-*.command")); len(left) != 1 {
+		t.Fatalf("one script (the opened one) should be left, got %v", left)
 	}
 }
 

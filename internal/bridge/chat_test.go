@@ -213,6 +213,19 @@ func TestTellingLines(t *testing.T) {
 	if got := tellingLines("────\n\n❯ x\n⏵⏵ y", 4, 400); got != "" {
 		t.Fatalf("borders, input and status only: %q", got)
 	}
+	// a console that doesn't show the ❯: the input box's content still goes, from its top border on
+	noPrompt := "ledger.json 里还留着上次的演示记录\n✻ Worked for 4m 20s · done 18:50\n" + strings.Repeat("─", 100) + " win-g ─\n清空 ledger.json 里的演示记录\n" + strings.Repeat("─", 110) + "\n⏵⏵ auto mode on"
+	if got := tellingLines(noPrompt, 4, 400); got != "ledger.json 里还留着上次的演示记录\n✻ Worked for 4m 20s · done 18:50" {
+		t.Fatalf("the input box without ❯: %q", got)
+	}
+	// a screen without an input box (a crash before the prompt drew): a single rule and what follows it go, the
+	// lines before stay
+	if got := tellingLines("a\nb\n────\nc", 4, 400); got != "a\nb" {
+		t.Fatalf("a rule near the end: %q", got)
+	}
+	if got := tellingLines("error: unknown option --foo\nexit", 4, 400); got != "error: unknown option --foo\nexit" {
+		t.Fatalf("no box at all: %q", got)
+	}
 	if got := tellingLines("error: unknown option --foo\nexit", 4, 400); got != "error: unknown option --foo\nexit" {
 		t.Fatalf("plain lines: %q", got)
 	}

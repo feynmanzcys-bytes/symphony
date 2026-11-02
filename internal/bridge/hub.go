@@ -944,8 +944,19 @@ func (h *Hub) exitedLocked(s *Session, exitErr error, screen string) {
 // line (⏵⏵), and only lines with a letter or a digit; whole lines from the end within max runes, so a notice shows
 // "✻ Churned for 2m" rather than half a border.
 func tellingLines(screen string, n, max int) string {
+	lines := strings.Split(screen, "\n")
+	// the input box is the screen's bottom: from its top border on, nothing is the session's output: the typed or
+	// suggested prompt (❯, which a console may not show), the bottom border, the status line. The bottom border is
+	// the last line mostly of box-drawing characters; the top one the border within the few lines above it
+	if bottom := lastBorder(lines, len(lines)-1); bottom >= 0 {
+		cut := bottom
+		if top := lastBorder(lines, bottom-1); top >= 0 && bottom-top <= 6 {
+			cut = top
+		}
+		lines = lines[:cut]
+	}
 	var keep []string
-	for _, l := range strings.Split(screen, "\n") {
+	for _, l := range lines {
 		l = strings.TrimSpace(l)
 		if strings.HasPrefix(l, "❯") || strings.HasPrefix(l, "⏵⏵") || !tells(l) {
 			continue
@@ -969,23 +980,35 @@ func tellingLines(screen string, n, max int) string {
 	return strings.Join(keep, "\n")
 }
 
-// tells says whether a line says something: a letter or a digit in it, and box-drawing characters (U+2500 to U+257F)
-// not making up most of it.
+// lastBorder is the index of the last border line at or before i, -1 when there is none.
+func lastBorder(lines []string, i int) int {
+	for ; i >= 0; i-- {
+		if border(strings.TrimSpace(lines[i])) {
+			return i
+		}
+	}
+	return -1
+}
+
+// tells says whether a line says something: a letter or a digit in it, and it isn't a border.
 func tells(l string) bool {
-	letters, boxes, all := 0, 0, 0
+	return !border(l) && strings.IndexFunc(l, func(r rune) bool { return unicode.IsLetter(r) || unicode.IsDigit(r) }) >= 0
+}
+
+// border says whether a line is mostly box-drawing characters (U+2500 to U+257F): the input box's edges, the
+// employee's name in one or not.
+func border(l string) bool {
+	boxes, all := 0, 0
 	for _, r := range l {
 		if r == ' ' {
 			continue
 		}
 		all++
-		switch {
-		case r >= 0x2500 && r <= 0x257f:
+		if r >= 0x2500 && r <= 0x257f {
 			boxes++
-		case unicode.IsLetter(r) || unicode.IsDigit(r):
-			letters++
 		}
 	}
-	return letters > 0 && boxes*2 < all
+	return all > 0 && boxes*2 >= all
 }
 
 // cleanExit is true for a process that exited by itself with status 0 (a Term reports that as "exit 0").
