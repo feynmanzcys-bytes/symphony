@@ -749,7 +749,9 @@ func (h *Hub) apply(ev Event, acc *Account, created *bool) error {
 	var target *Agent
 	if ev.AgentID != "" {
 		target = s.Agents[ev.AgentID]
-		if target == nil {
+		// the end of an agent the session never showed is no subagent to show or count: the engine ends its own helpers
+		// as subagents too (the prompt suggestion it makes after a turn), and one let go already stays gone
+		if target == nil && ev.Kind != "agent.end" {
 			target = &Agent{ID: ev.AgentID, State: StateIdle}
 			s.Agents[ev.AgentID] = target
 			s.AgentsTotal++

@@ -52,6 +52,12 @@ func TestSessionDetails(t *testing.T) {
 	if a := session(t, srv, "s1").Agents["ag1"]; a.State != StateDone {
 		t.Fatalf("agent.end should mark the subagent done: %+v", a)
 	}
+	// the end of an agent that never showed (the engine's prompt suggestion after a turn ends as a subagent, typeless):
+	// no subagent, nothing counted
+	c.ok("POST", "/api/event", Event{Session: "s1", Kind: "agent.end", AgentID: "a53e2daed73c541e0"})
+	if s := session(t, srv, "s1"); len(s.Agents) != 1 || s.AgentsTotal != 1 {
+		t.Fatalf("an unseen agent's end should add no subagent: %d agents, agentsTotal %d", len(s.Agents), s.AgentsTotal)
+	}
 	// an older mod sends none of it: nothing breaks, nothing is invented
 	c2, _ := as(t, srv, base, "b")
 	c2.ok("POST", "/api/event", Event{Session: "s2", Kind: "session.start", Cwd: "/v"})
