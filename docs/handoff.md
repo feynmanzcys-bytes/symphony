@@ -43,12 +43,6 @@
     - What happens: the session's Bash commands, npm scripts and MCP servers inherit `SYMPHONY_TOKEN`. With it they could call the mod's endpoints: empty the inbox, report made-up events, make ask cards. They could not answer the cards; that needs the page key. Since v1.1.0 the bridge no longer passes the token on.
     - Fix: `$.env.set('SYMPHONY_TOKEN', undefined)` once the mod has read it. First check that a module reloaded by `/reload-plugins` can still read it.
 
-## Bridge lifecycle and platforms, continued
-
-30. **On macOS, a session's leftover Apple programs aren't ended.** The launch-id kill (`procsWithEnv`, `ps -E`) can't read the environment of Apple's platform binaries (`/bin/sleep`, `bash`, `zsh`, `perl`: `KERN_PROCARGS2` hides it from a plain user on macOS 26.7), so a `nohup sleep &` left by a tool survives the session; `node`, Homebrew programs and anything Go-built are found. Seen on the Mac check of handoff/all. The README says so.
-    - Fix ideas: snapshot the session's descendants (pid, start, pgid, sid) every second while it runs and, at the end, kill what still runs in those process groups or sessions (a tool's shell lives milliseconds, so this misses the quick `nohup x &` too); or have the mod's `tool.call` hook record `pgrep -P` of the tool's shell; or accept it.
-    - Test: TestTermReapsWhatItLeftRunning on a Mac with `/bin/sleep` as the leftover.
-
 ## Code structure (no visible effect)
 
 23. **The message log and the ledger are encoded under the hub's lock.** Each message's send and receive re-encode the whole message log: about 6 ms at 3,900 messages, which is 12 tasks with full logs. Each `chat.stop` re-encodes the ledger: about 1 ms at 2,700 rows. Fix: copy the values under the lock and encode them in the saver's goroutine (accounts.go, usage.go). Guard it with a benchmark.
@@ -62,8 +56,6 @@
 ## Tests
 
 27. **The mod's tests sometimes fail under heavy parallel load** (six runs at once). The old code does the same. Run alone, and in CI, they pass.
-28. **TestBackgroundLeavesTheSession runs on Linux only**, because it reads `/proc`. On macOS, `ps -E -p <pid>` and `lsof -a -p <pid> -d cwd` give the same information. For v1.1.0 it was checked by hand on a Mac.
-
 ## Later features
 
 - From the status block of [the plan](plan-protocol-themes.md):

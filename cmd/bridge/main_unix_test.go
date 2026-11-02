@@ -69,8 +69,8 @@ func TestHangup(t *testing.T) {
 // TestBackgroundLeavesTheSession: the copy -background starts runs in the data folder (a relative -data still finds it),
 // not in the folder it was started from, and without the session variables of the session that started it.
 func TestBackgroundLeavesTheSession(t *testing.T) {
-	if runtime.GOOS != "linux" {
-		t.Skip("reads the bridge's folder and environment from /proc")
+	if runtime.GOOS != "linux" && runtime.GOOS != "darwin" {
+		t.Skip("reads the bridge's folder and environment from /proc, or from ps and lsof on macOS")
 	}
 	exe := buildBridge(t)
 	project := t.TempDir()
@@ -90,25 +90,12 @@ func TestBackgroundLeavesTheSession(t *testing.T) {
 	if err != nil || bridgeAt("http://"+addr, key) != ours {
 		t.Fatalf("the bridge should run with the data folder given relative to where it was started: %v", err)
 	}
-	pid := 0 // the bridge: this program, with this test's folder in its flags
-	entries, _ := os.ReadDir("/proc")
-	for _, e := range entries {
-		args, err := os.ReadFile(filepath.Join("/proc", e.Name(), "cmdline"))
-		if err == nil && strings.HasPrefix(string(args), exe+"\x00") && strings.Contains(string(args), project) {
-			pid, _ = strconv.Atoi(e.Name())
-		}
-	}
-	if pid == 0 {
-		t.Fatal("can't find the bridge")
-	}
-	if wd, err := os.Readlink(filepath.Join("/proc", strconv.Itoa(pid), "cwd")); err != nil || wd != data {
-		t.Errorf("the bridge runs in %s (%v), want its data folder %s", wd, err, data)
-	}
-	environ, err := os.ReadFile(filepath.Join("/proc", strconv.Itoa(pid), "environ"))
-	if err != nil {
+	_, wd, env := bridgeProcess(t, exe, project)
+	if real, err := filepath.EvalSymlinks(data); err == nil && wd != data && wd != real { // macOS: /var is /private/var
+		t.Errorf("the bridge runs in %s, want its data folder %s", wd, data)
+	} else if err != nil {
 		t.Fatal(err)
 	}
-	env := strings.Split(string(environ), "\x00")
 	for _, name := range []string{"SYMPHONY_TOKEN", "SYMPHONY_TASK", "SYMPHONY_LAUNCH", "SYMPHONY_BRIDGE"} {
 		if slices.ContainsFunc(env, func(kv string) bool { return strings.HasPrefix(kv, name+"=") }) {
 			t.Errorf("the bridge got the starting session's %s", name)
@@ -121,5 +108,59 @@ func TestBackgroundLeavesTheSession(t *testing.T) {
 	stop.Env = append(os.Environ(), "SYMPHONY_LANG=en")
 	if out, err := stop.CombinedOutput(); err != nil {
 		t.Fatalf("-stop: %v\n%s", err, out)
+	}
+}
+
+// bridgeProcess finds the bridge this test started (this program, with the test's folder in its flags) and answers its
+// pid, its working folder and its environment: from /proc on Linux; on macOS from ps (-E adds the environment after the
+// command, a word each: enough for names, which is all the test needs) and lsof (the cwd).
+func bridgeProcess(t *testing.T, exe, project string) (pid int, wd string, env []string) {
+	t.Helper()
+	switch runtime.GOOS {
+	case "linux":
+		entries, _ := os.ReadDir("/proc")
+		for _, e := range entries {
+			args, err := os.ReadFile(filepath.Join("/proc", e.Name(), "cmdline"))
+			if err == nil && strings.HasPrefix(string(args), exe+"\x00") && strings.Contains(string(args), project) {
+				pid, _ = strconv.Atoi(e.Name())
+			}
+		}
+		if pid == 0 {
+			t.Fatal("can't find the bridge")
+		}
+		wd, _ = os.Readlink(filepath.Join("/proc", strconv.Itoa(pid), "cwd"))
+		environ, err := os.ReadFile(filepath.Join("/proc", strconv.Itoa(pid), "environ"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return pid, wd, strings.Split(string(environ), "\x00")
+	default: // darwin
+		out, err := exec.Command("ps", "-A", "-o", "pid=", "-o", "command=").Output()
+		if err != nil {
+			t.Fatal(err)
+		}
+		for line := range strings.Lines(string(out)) {
+			f := strings.Fields(line)
+			if len(f) > 1 && f[1] == exe && strings.Contains(line, project) {
+				pid, _ = strconv.Atoi(f[0])
+			}
+		}
+		if pid == 0 {
+			t.Fatal("can't find the bridge")
+		}
+		out, err = exec.Command("lsof", "-a", "-p", strconv.Itoa(pid), "-d", "cwd", "-Fn").Output()
+		if err != nil {
+			t.Fatalf("lsof: %v", err)
+		}
+		for line := range strings.Lines(string(out)) {
+			if strings.HasPrefix(line, "n") {
+				wd = strings.TrimSpace(line[1:])
+			}
+		}
+		out, err = exec.Command("ps", "-E", "-o", "command=", "-p", strconv.Itoa(pid)).Output()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return pid, wd, strings.Fields(string(out))
 	}
 }
