@@ -845,9 +845,10 @@ test('an item handed out twice goes in once', async ($, on) => {
   expect(submitted).toEqual(['once'])
 })
 
-test('a poll of an earlier round brings nothing in: the session\'s own loop gets the same items', async ($, on) => {
-  // a report before session.start (the session's name) starts the inbox loop; session.start then starts the session's
-  // own; the first loop's poll is still out and comes back with the item too (the bridge keeps it until acked)
+test('a report during the engine\'s start, then the start: one inbox loop, the item enters once', async ($, on) => {
+  // the engine's own start hook reports the session's name before session.start's own report; the inbox loop starts
+  // once, and an item the bridge keeps until acked (every poll out at that moment gets it) enters once. (The round
+  // check in pollInbox, for a poll of an earlier round, isn't what this exercises: no second loop arises here.)
   let polls = 0
   const w = world(on, { SYMPHONY_TOKEN: 'tok' }, r => {
     if (r.url.includes('/api/inbox?session=sess-1')) {

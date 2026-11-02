@@ -35,7 +35,7 @@
 
 ## The mod
 
-18. **Development mode loads two mods.** `claude --plugin-dir <folder>` (what the bridge's `-mod` gives its sessions) loads that mod beside the installed `symphony-bridge@symphony` when there is one (`claude plugin list` shows both: `@symphony` and `@inline`). Each runs its own hooks: two inbox polls, every report twice, two asks for one permission. Seen on Windows as a prompt from the page entering a session twice (the installed 1.1.1 mod without acks took the item the 1.1.2 mod had been handed). The bridge now hands unacknowledged items to one poll per 3 s (`inboxRehand`), which hides that case, not the rest.
+29. **Development mode loads two mods.** `claude --plugin-dir <folder>` (what the bridge's `-mod` gives its sessions) loads that mod beside the installed `symphony-bridge@symphony` when there is one (`claude plugin list` shows both: `@symphony` and `@inline`). Each runs its own hooks: two inbox polls, every report twice, two asks for one permission. Seen on Windows as a prompt from the page entering a session twice (the installed 1.1.1 mod without acks took the item the 1.1.2 mod had been handed). The bridge now hands unacknowledged items to one poll per 3 s (`inboxRehand`), which hides that case, not the rest.
     - Fix: when `-mod` is given and the installed plugin is enabled, have the bridge warn at start (`claude plugin list --json` already runs for the install check) and tell how to disable it (`claude plugin disable symphony-bridge@symphony`); or pass a flag that disables it for the session, if Claude Code grows one. Until then, disable the installed mod while developing with `-mod`.
     - Test: a session with both; the bridge's log, or the session's `mod` field alternating between the two versions.
 

@@ -13,8 +13,13 @@ Update both parts, as before: the program, and the mod with `claude plugin updat
 - **Starting at login**: a bridge that fails for good (its data folder used by another bridge, a damaged `accounts.json`, something else on its address) is no longer restarted forever: 5 tries in a minute on Linux, one a minute on macOS; the README says how to look.
 - A second Ctrl-C while the bridge stops (a task's git work, a disk that hangs) kills the sessions and exits at once. Two sessions starting the bridge at once over a damaged key file no longer leave one of them taking the bridge for another program.
 - **The mod (1.1.2)**: the goodbye (`session.end`) goes before the reports still queued, so a backlog doesn't cut it off and a session started by hand doesn't get 409 under its new id after /clear. A prompt from the page can't be lost when the mod's connection drops as the bridge hands it over: items are acknowledged in the next poll. The bridge is started from the mod's own folder, never the session's (where a `symphony.exe` could win over the one on `PATH`).
-- **Windows with npm's `claude.cmd`**: an employee name or folder holding one of `% ^ & | < > ! "` would have broken claude's command line through cmd.exe (`--name R`, then a second command); it is refused with a clear error instead.
+- **Windows with npm's `claude.cmd`**: an employee name or folder holding one of `% ^ & | < > ! "` would have broken claude's command line through cmd.exe (`--name R`, then a second command); it is refused with a clear error (400 `cmd_unsafe_arg`) instead.
+- **Prompts from the page**: several sent while the session is busy now enter the engine's queue at once, as typed in the terminal, instead of one per turn; a prompt sent in a session's first seconds no longer enters twice (two polls out at once both got it: the mod drops a poll of an earlier round and an id already done, and the bridge hands unacknowledged items to one poll per 3 s).
+- **The exit notice** shows the last lines the session wrote (the "✻ … for …" line among them), not the input box, its borders or the status line, whole lines up to 400 characters.
+- **The command the page shows for a terminal by hand**, on Windows: a path with a space in plain double quotes (no doubled backslashes), with `& ` before a quoted program so it runs as pasted into PowerShell (cmd takes it without the `& `).
+- A second Ctrl-C while the bridge stops exits with status 1 whichever stop finished first; the Terminal.app script a failed "Open terminal" wrote is removed, and the unit tests no longer leave such scripts in the temp folder.
 - The end-to-end harness answers the trust prompt as the bridge does (Down until the cursor is on Yes).
+- Found on the way, not fixed (in the handoff): the bridge's `-mod` development mode loads its mod beside an installed one, so every hook runs twice; disable the installed plugin while developing.
 
 ## v1.1.1 (2026-11-02)
 
