@@ -45,3 +45,7 @@ The bridge is Go (standard library only; the e2e tests also use chromedp), the m
 ## Branches and commits
 
 `dev` is the development line; pull requests go to dev (`CONTRIBUTING.md`). `main` is the default branch on GitHub, which `--marketplace feynmanzcys-bytes/symphony` reads. Commit messages are in English and carry no `Claude-Session:` line (`history.yml` fails on one).
+
+## Open work
+
+`docs/handoff.md` lists what v1.1.1 leaves for later: known issues by area, what isn't checked on a real machine yet, and later features, each with where it is in the code, a way to fix it and how to test it. A change that settles an item removes it there.
