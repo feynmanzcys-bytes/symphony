@@ -345,6 +345,8 @@ func newBrowser(t *testing.T) context.Context {
 		chromedp.ExecPath(path),
 		chromedp.Flag("headless", "new"),
 		chromedp.Flag("enable-unsafe-swiftshader", true),
+		// the pages as in a light system, whatever this machine's is: the themes follow prefers-color-scheme
+		chromedp.Flag("blink-settings", "preferredColorScheme=1"),
 		chromedp.NoSandbox,
 		chromedp.WindowSize(1400, 860),
 	)

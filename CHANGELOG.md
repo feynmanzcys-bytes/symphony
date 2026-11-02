@@ -2,6 +2,22 @@
 
 What changed in each release of symphony. The program (the bridge) and the mod share one version number. A release's notes start with its section here: the release workflow stops before building when the section is missing. Releases before v1.0.0 came out before the repository was public; their notes are kept below.
 
+## v1.1.1 (2026-11-02)
+
+Update both parts, as for v1.1.0: the program, and the mod with `claude plugin update symphony-bridge@symphony`. The program alone already fixes the tasks for an older mod.
+
+- **Collaborative tasks with real sessions**:
+  - A member started in a folder Claude Code hadn't trusted yet (a task's worktrees are always new folders) could end at once. The bridge answered "trust this folder" with Down and Enter as soon as the question showed; Claude Code sometimes missed the Down, or drew the question again with the cursor back on "No, exit", and Enter took that. The bridge now presses Down until the screen shows the cursor on "Yes, I trust this folder", and only then Enter; where the screen doesn't show the cursor, it waits a second before the Down and presses Enter a moment after. This holds for every session started from the page in a new folder.
+  - An advisor, or an employee off duty at its desk, often never joined its task. Its session's first report (its name, sent while Claude Code started it) went out before the one that named the task, and the bridge took the session for a desk session: no kickoff, the member "starting…" for good, and the task's mentions and its end when the last member leaves left it out. The mod now sends nothing before the session's start, and the bridge seats such a session in its task as soon as a report names it.
+- **Windows**:
+  - A bridge started with `-background` (as the mod starts one), or any bridge whose output goes to a file or a pipe, started no session from the page: claude got the bridge's output handles instead of its pseudo console, took itself for `claude --print` and exited. Sessions now always get the pseudo console.
+  - "Open terminal" opened a window that closed at once: `symphony attach` found no console on its standard handles there. It now uses the console's own.
+  - Ctrl-] didn't detach `symphony attach`: the session's pseudo console asks its host for win32-input-mode, and the attach window then sent Ctrl-] as a sequence. Attach no longer passes that request on.
+- `symphony attach` turns off, as it ends, what the session left on in the terminal it ran in (mouse and focus reports, bracketed paste, keyboard modes, the alternate screen), so the shell there gets no stray sequences afterwards.
+- **An employee window off duty** shows the last session's chat, as long as the bridge keeps it (10 minutes), in every theme. The notice of a process that exited, with its exit status and the last lines of its screen, was in the chat, but the pixel office, HQ and Mission Control showed "No session yet" (Coworkers already showed it).
+- **The last lines of a screen** (a failed start, a process that exited) keep the spaces between words: Claude Code 2.1.316 draws them with moves to a column, which the text dropped ("bypasspermissionson").
+- The end-to-end tests show the pages in a light color scheme whatever the machine's: on a Mac in dark mode, TestHQ and TestMessenger failed. Two unit tests that assumed Unix paths failed on Windows.
+
 ## v1.1.0 (2026-11-02)
 
 Update both parts: the program, and the mod with `claude plugin update symphony-bridge@symphony`. On Linux, when symphony starts at login, run `symphony -autostart on -open=false` again after updating, so the login service is rewritten (see "Stopping a session" below).

@@ -169,7 +169,8 @@ func (t *ptyTerminal) Watch(hub *Hub, l *Launch, timeout time.Duration) {
 // process exits or time runs out; it answers the launch's status then.
 func (t *ptyTerminal) untilOnline(hub *Hub, l *Launch, term *Term, timeout time.Duration) string {
 	deadline := time.Now().Add(timeout)
-	trusted := false
+	trusted, downs := false, 0
+	var asked time.Time // when the trust prompt showed
 	for time.Now().Before(deadline) {
 		if st := hub.launchStatus(l.ID); st != LaunchStarting {
 			return st
@@ -183,11 +184,31 @@ func (t *ptyTerminal) untilOnline(hub *Hub, l *Launch, term *Term, timeout time.
 			return hub.launchStatus(l.ID) // online, when the session reported in just before it went
 		case <-time.After(500 * time.Millisecond):
 		}
-		if !trusted && hasTrustPrompt(term.Screen(12)) {
-			_ = term.Write([]byte("\x1b[B")) // Down: "Yes, I trust this folder"
-			time.Sleep(200 * time.Millisecond)
-			_ = term.Write([]byte("\r"))
-			trusted = true
+		// "trust this folder" starts on "No, exit". The answer goes down to "Yes, I trust this folder" and takes it once
+		// the screen shows the cursor there, a round later: claude may miss a key that comes right after it drew the
+		// question, or draw it again with the cursor back on No, and Enter there would end it
+		if screen := term.Screen(12); !trusted && hasTrustPrompt(screen) {
+			if asked.IsZero() {
+				asked = time.Now()
+			}
+			switch at := trustCursor(screen); {
+			case at == "yes":
+				_ = term.Write([]byte("\r"))
+				trusted = true
+			case at == "no":
+				if downs < trustDowns {
+					_ = term.Write([]byte("\x1b[B")) // Down
+					downs++
+				}
+			// the screen doesn't say where the cursor is (a console that draws only what changed, another glyph):
+			// Down once claude had a moment to take keys, and Enter a round later
+			case downs > 0:
+				_ = term.Write([]byte("\r"))
+				trusted = true
+			case time.Since(asked) >= trustSettle:
+				_ = term.Write([]byte("\x1b[B"))
+				downs++
+			}
 		}
 	}
 	screen := term.Screen(8)

@@ -271,14 +271,111 @@ func TestLaunchFailedStartDropsNewAccount(t *testing.T) {
 	}
 }
 
+// trustPrompt is how claude asks whether to trust a new folder, the cursor on "No, exit"; trustYes and trustNo are the
+// two lines drawn again when the cursor moves.
+const (
+	trustPrompt = "\x1b[1mDo you \x1b[0mtrust this folder?\r\n\x1b[2G❯\x1b[4GNo,\x1b[8Gexit\r\n\x1b[4GYes,\x1b[9GI\x1b[11Gtrust\x1b[17Gthis\x1b[22Gfolder\r\n"
+	trustYes    = "\x1b[3A\r \x1b[4GNo, exit\r\n\x1b[2G❯\x1b[4GYes, I trust this folder\r\n"
+	trustNo     = "\x1b[3A\r\x1b[2G❯\x1b[4GNo, exit\r\n \x1b[4GYes, I trust this folder\r\n"
+)
+
+// redrawOnDown draws what draw says after each Down the process gets (the nth one, from 1), as claude moves its cursor.
+func redrawOnDown(t *testing.T, p *fakeProc, draw func(n int) string) {
+	go func() {
+		seen := 0
+		for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
+			n := strings.Count(p.typed(), "\x1b[B")
+			for ; seen < n; seen++ {
+				if _, err := p.outW.Write([]byte(draw(seen + 1))); err != nil {
+					return
+				}
+			}
+			if strings.Contains(p.typed(), "\r") {
+				return
+			}
+		}
+	}()
+}
+
 func TestLaunchAcceptsTrustPrompt(t *testing.T) {
 	_, base, starts := newLaunchBridge(t)
-	starts.screen = "\x1b[1mDo you \x1b[0mtrust this folder?\r\n ❯ No, exit\r\n   Yes, I trust this folder"
+	starts.screen = trustPrompt
 	id := client{t: t, base: base}.ok("POST", "/api/launch", LaunchRequest{Name: "a", Dir: t.TempDir()})["id"].(string)
-	waitFor(t, "the trust prompt to be answered", func() bool { return starts.proc(id).typed() == "\x1b[B\r" })
+	redrawOnDown(t, starts.proc(id), func(int) string { return trustYes })
+	waitFor(t, "the trust prompt to be answered", func() bool { return strings.HasSuffix(starts.proc(id).typed(), "\r") })
 	time.Sleep(700 * time.Millisecond)
 	if typed := starts.proc(id).typed(); typed != "\x1b[B\r" {
-		t.Fatalf("the trust prompt should be answered once (Down + Enter), got %q", typed)
+		t.Fatalf("the trust prompt should be answered once (Down, then Enter on Yes), got %q", typed)
+	}
+}
+
+// TestLaunchTrustWaitsForTheCursor: claude may miss the first key after it drew the question, or draw it again with the
+// cursor back on "No, exit"; Enter comes only once the screen shows the cursor on "Yes, I trust this folder".
+func TestLaunchTrustWaitsForTheCursor(t *testing.T) {
+	for name, draw := range map[string]func(n int) string{
+		"the first Down missed": func(n int) string {
+			if n == 1 {
+				return ""
+			}
+			return trustYes
+		},
+		"the cursor back on No": func(n int) string {
+			if n == 1 {
+				return trustYes + trustNo
+			}
+			return trustYes
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, base, starts := newLaunchBridge(t)
+			starts.screen = trustPrompt
+			id := client{t: t, base: base}.ok("POST", "/api/launch", LaunchRequest{Name: "a", Dir: t.TempDir()})["id"].(string)
+			redrawOnDown(t, starts.proc(id), draw)
+			waitFor(t, "the trust prompt to be answered", func() bool { return strings.HasSuffix(starts.proc(id).typed(), "\r") })
+			time.Sleep(700 * time.Millisecond)
+			if typed := starts.proc(id).typed(); typed != "\x1b[B\x1b[B\r" {
+				t.Fatalf("want Down, Down, then Enter once the cursor is on Yes, got %q", typed)
+			}
+		})
+	}
+}
+
+// TestLaunchTrustUnsure: a screen that doesn't say where the cursor is (another glyph, or a console that draws only
+// the cells that changed): the answer waits a moment after the question showed, presses Down, then Enter.
+func TestLaunchTrustUnsure(t *testing.T) {
+	for name, c := range map[string]struct{ prompt, redraw string }{
+		"another glyph":                 {"Do you trust this folder?\r\n > No, exit\r\n   Yes, I trust this folder\r\n", "\x1b[2A\r   No, exit\r\n > Yes, I trust this folder\r\n"},
+		"a console that draws a change": {trustPrompt, "\x1b[5;2H \x1b[6;2H❯\x1b[8;1H"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, base, starts := newLaunchBridge(t)
+			starts.screen = c.prompt
+			began := time.Now()
+			id := client{t: t, base: base}.ok("POST", "/api/launch", LaunchRequest{Name: "a", Dir: t.TempDir()})["id"].(string)
+			redrawOnDown(t, starts.proc(id), func(int) string { return c.redraw })
+			waitFor(t, "the trust prompt to be answered", func() bool { return strings.HasSuffix(starts.proc(id).typed(), "\r") })
+			time.Sleep(700 * time.Millisecond)
+			if typed := starts.proc(id).typed(); typed != "\x1b[B\r" {
+				t.Fatalf("want one Down, then Enter, got %q", typed)
+			}
+			if c.prompt != trustPrompt && time.Since(began) < trustSettle {
+				t.Fatalf("the Down should wait %s after the question, the answer took %s", trustSettle, time.Since(began))
+			}
+		})
+	}
+}
+
+// TestLaunchTrustGivesUp: a prompt whose cursor never reaches "Yes" gets a few Downs and never Enter, which would take
+// "No, exit"; the launch times out with its screen.
+func TestLaunchTrustGivesUp(t *testing.T) {
+	srv, base, starts := newLaunchBridge(t)
+	srv.Launcher.OnlineTimeout = 6 * time.Second
+	starts.screen = trustPrompt
+	id := client{t: t, base: base}.ok("POST", "/api/launch", LaunchRequest{Name: "a", Dir: t.TempDir()})["id"].(string)
+	waitFor(t, "the Downs", func() bool { return strings.Count(starts.proc(id).typed(), "\x1b[B") == trustDowns })
+	waitFor(t, "the launch to time out", func() bool { return srv.Hub.launchStatus(id) == LaunchFailed })
+	if typed := starts.proc(id).typed(); typed != strings.Repeat("\x1b[B", trustDowns) {
+		t.Fatalf("want %d Downs and no Enter, got %q", trustDowns, typed)
 	}
 }
 

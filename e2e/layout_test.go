@@ -311,6 +311,14 @@ func TestAsksDock(t *testing.T) {
 	}
 	run(`document.querySelector('` + card + ` input[value=L]').click(); document.querySelector('` + card + ` .submit').click()`)
 	waitUntil(t, 10*time.Second, "the question is answered", func() bool { return len(b.Hub.Snapshot().Asks) == 0 })
+
+	// off duty, her window keeps her last session's chat and says how it ended, its input closed
+	b.post(t, alice.Token, "/api/event", map[string]any{"session": "s-alice", "kind": "session.end", "reason": "prompt_input_exit"})
+	waitUntil(t, 10*time.Second, "alice's window keeps her last session's chat, with its end", func() bool {
+		return is(`!document.querySelector('#chat .flow .empty') && document.querySelectorAll('#chat .flow .it.ask').length >= 4 &&
+			[...document.querySelectorAll('#chat .flow .it.notice')].some(n => n.textContent.startsWith('Off duty')) &&
+			document.querySelector('#chat .say textarea').disabled`)
+	})
 	if missing := get(t, office, 5*time.Second, chromedp.Evaluate[[]string](`window.__i18nMissing || []`)); len(missing) > 0 {
 		t.Fatalf("keys the catalog lacks: %v", missing)
 	}

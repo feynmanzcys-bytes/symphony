@@ -39,7 +39,7 @@ symphony besteht aus zwei Teilen und braucht beide:
 uname -sm                 # Linux/macOS: bestimmt das Archiv unten (x86_64 → amd64; arm64/aarch64 → arm64)
 claude --version          # braucht Claude Code 2.1.x (getestet mit 2.1.316)
 git --version             # nur für gemeinsame Aufgaben; fehlt es, im Bericht vermerken, nicht abbrechen
-symphony -version         # schon installiert? gibt "symphony v1.1.0 (darwin/arm64)" aus
+symphony -version         # schon installiert? gibt "symphony v1.1.1 (darwin/arm64)" aus
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:7788/api/state   # läuft eine Bridge? 401: symphony 1.x; 200: eine ältere; 000: keine
 claude plugin list --json # Mod schon installiert? nach einem Eintrag mit "id": "symphony-bridge@symphony" suchen
 ```
@@ -108,7 +108,7 @@ Installier das Programm aus Schritt 2, `$d/symphony` (behält deine Shell keine 
 ```bash
 install -m 755 "$d/symphony" ~/.local/bin/symphony
 xattr -d com.apple.quarantine ~/.local/bin/symphony 2>/dev/null || true   # macOS: das Binary ist nicht signiert
-symphony -version          # gibt "symphony v1.1.0 (linux/amd64)" aus: Version und Plattform
+symphony -version          # gibt "symphony v1.1.1 (linux/amd64)" aus: Version und Plattform
 ```
 
 Liegt keiner dieser Ordner im `PATH`, frag den Benutzer, bevor du etwas änderst. Sagt er ja, leg `~/.local/bin` an, trag ihn in die rc-Datei der Shell ein (`~/.zshrc` oder `~/.bashrc`) und erwähn das im Bericht; sagt er nein, installier das Programm dort, wo er es sagt, und sag ihm, dass der Mod die Bridge nicht selbst starten kann, solange `symphony` nicht im `PATH` seiner Claude-Code-Sitzungen liegt (das Starten bei der Anmeldung in Schritt 5 funktioniert trotzdem).
@@ -118,7 +118,7 @@ Unter Windows entpackst du es in einen eigenen Ordner (`$d` und `$zip` stammen a
 ```powershell
 $dest = Join-Path $env:LOCALAPPDATA 'Programs\symphony'
 Expand-Archive -LiteralPath (Join-Path $d $zip) -DestinationPath $dest -Force
-& (Join-Path $dest 'symphony.exe') -version   # gibt "symphony v1.1.0 (windows/amd64)" aus
+& (Join-Path $dest 'symphony.exe') -version   # gibt "symphony v1.1.1 (windows/amd64)" aus
 ```
 
 Diesen Ordner zum `Path` des Benutzers hinzuzufügen, ist eine bleibende Änderung: Frag den Benutzer vorher. Sagt er ja, führ die Zeile unten aus und öffne eine neue Shell; sagt er nein, nimm den vollständigen Pfad. SmartScreen kann beim ersten Start warnen: „Weitere Informationen“, dann „Trotzdem ausführen“.
@@ -192,7 +192,7 @@ $data = if ($env:SYMPHONY_DATA) { $env:SYMPHONY_DATA } else { Join-Path $env:APP
 
 Der Datenordner ist `~/.config/symphony` unter Linux (`$XDG_CONFIG_HOME/symphony`, wenn das gesetzt ist), `~/Library/Application Support/symphony` unter macOS und `%AppData%\symphony` unter Windows, oder `SYMPHONY_DATA`, wenn das gesetzt ist.
 
-Die Antwort enthält `"enabled":true` und `"mod":{"ok":true,"id":"symphony-bridge@symphony","version":"1.1.0"}`: Die Bridge läuft, sie hat `claude` gefunden, und der Mod ist dort installiert, wo die Sitzungen ihn laden. Bei `"enabled":false` sagt `mod.code`, was nicht stimmt, und `mod.fix` den Befehl, der es behebt: `mod_not_installed` oder `mod_project_scope` (zurück zu Schritt 4), `mod_disabled` (aktivieren), `mod_check_failed` (`claude plugin list --json` ist fehlgeschlagen, Claude Code ist also wohl zu alt). `"mod":null` heißt, dass die Bridge `claude` in ihrem `PATH` gar nicht gefunden hat (ihr Log sagt das): Leg es dorthin oder starte die Bridge mit `-claude /path/to/claude`. Eine Antwort mit `"code":"page_key"` heißt, dass die Anfrage keinen oder den falschen Schlüssel vorgezeigt hat: Prüf, ob `cat` die Schlüsseldatei gefunden hat (zum Datenordner siehe oben); wenn ja, wurde die laufende Bridge mit einem anderen Datenordner gestartet.
+Die Antwort enthält `"enabled":true` und `"mod":{"ok":true,"id":"symphony-bridge@symphony","version":"1.1.1"}`: Die Bridge läuft, sie hat `claude` gefunden, und der Mod ist dort installiert, wo die Sitzungen ihn laden. Bei `"enabled":false` sagt `mod.code`, was nicht stimmt, und `mod.fix` den Befehl, der es behebt: `mod_not_installed` oder `mod_project_scope` (zurück zu Schritt 4), `mod_disabled` (aktivieren), `mod_check_failed` (`claude plugin list --json` ist fehlgeschlagen, Claude Code ist also wohl zu alt). `"mod":null` heißt, dass die Bridge `claude` in ihrem `PATH` gar nicht gefunden hat (ihr Log sagt das): Leg es dorthin oder starte die Bridge mit `-claude /path/to/claude`. Eine Antwort mit `"code":"page_key"` heißt, dass die Anfrage keinen oder den falschen Schlüssel vorgezeigt hat: Prüf, ob `cat` die Schlüsseldatei gefunden hat (zum Datenordner siehe oben); wenn ja, wurde die laufende Bridge mit einem anderen Datenordner gestartet.
 
 Das Log der Bridge ist `bridge.log` im Datenordner; bei der Anmeldung gestartet, loggt sie unter Linux nach `journalctl --user -u symphony` und unter macOS nach `~/Library/Logs/symphony.log`.
 

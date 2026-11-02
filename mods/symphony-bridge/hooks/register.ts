@@ -109,6 +109,10 @@ let stuckUntil = 0
 type Report = { kind: string; send: () => Promise<unknown> }
 const outbox: Report[] = []
 let sending: Promise<void> | undefined
+// settled once session.start has told the bridge, or tried to: the engine runs its own start hooks inside session.start
+// (SessionStart reports the session's name), and a report that went out first would seat the session before it named
+// its launch and task: the bridge took a task member's session for a desk session
+let startTold: Promise<void> | undefined
 // the person was told once that a request waits in the office page
 let toldWaiting = false
 // calls the web page denied. A denied tool reaches tool.call as an error result, not { deny }, so we remember them.
@@ -358,6 +362,8 @@ async function startBridge($: EngineInterface, bridge: string): Promise<{ ok: bo
 // restarted, or the session joins through this report) makes the mod tell it again what it reports only now and then.
 async function emit($: EngineInterface, kind: string, data: object = {}, timeout = REPORT_TIMEOUT, session?: string) {
   if (refused || !(await ident($))) return undefined
+  if (kind !== 'session.start') await startTold
+  if (refused) return undefined
   let res
   try {
     res = await call($, '/api/event', { session: session ?? (await sid($)), kind, ...sticky, ...data }, timeout)
@@ -688,58 +694,64 @@ function beat($: EngineInterface) {
 
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
-    const started = await next(e)
-    const id = await ident($)
-    if (!id) return started
-    if (id.insecure) {
-      refused = true // never contacted
-      $.ui.toast(message(id.lang, 'insecure', { bridge: id.bridge }))
+    let told = () => {}
+    startTold = new Promise<void>(resolve => (told = resolve))
+    try {
+      const started = await next(e)
+      const id = await ident($)
+      if (!id) return started
+      if (id.insecure) {
+        refused = true // never contacted
+        $.ui.toast(message(id.lang, 'insecure', { bridge: id.bridge }))
+        return started
+      }
+      withdrawLater = card => void $.clock.after(0, () => void call($, `/api/cancel/${card}`, {}, ASK_TIMEOUT))
+      // sessions started from the page carry the bridge's launch id, which matches the session with its terminal in the bridge
+      sticky = { cwd: e.cwd, launch: (await $.env.get('SYMPHONY_LAUNCH')) || undefined, task: (await $.env.get('SYMPHONY_TASK')) || undefined }
+      const model = await $.session.model()
+      begin(await safe($.session.id()), model)
+      // what the engine knows of itself and the folder: its version, the mod's, the repository, where it draws
+      const [engine, mod, repo] = await Promise.all([safe($.session.version()), modVersion($), safe($.session.repo())])
+      interactive = e.isInteractive
+      known = {
+        login: id.login,
+        model,
+        surface: e.surface ?? undefined,
+        engine: engine ? { version: engine.version, base: engine.base } : undefined,
+        mod,
+        // not the remote: its URL may carry credentials
+        repo: repo ? { root: repo.root, name: repo.name ?? undefined, internal: repo.internal } : undefined,
+      }
+      const online = { interactive, ...knownNow() }
+      // no answer and refused: the bridge's check failed, and said why. Something that took the check and never answered
+      // holds the address: no bridge could start there.
+      let res = await emit($, 'session.start', online, ASK_TIMEOUT)
+      let failed: string | undefined
+      if (!res && !refused && !(await isStuck($))) {
+        const ran = await startBridge($, id.bridge)
+        if (ran.ok) {
+          res = await emit($, 'session.start', online, ASK_TIMEOUT)
+          if (res?.ok) $.ui.toast(message(id.lang, 'started', { bridge: id.bridge }))
+        } else failed = ran.reason
+      }
+      if (!res) {
+        if (refused) {
+          // said already
+        } else if (failed) $.ui.toast(message(id.lang, 'startFailed', { bridge: id.bridge, reason: failed }))
+        else $.ui.toast(message(id.lang, 'unreachable', { bridge: id.bridge }))
+      } else if (res.status === 401) {
+        refused = true // the token won't change while the session runs: don't knock again
+        $.ui.toast(message(id.lang, 'badToken'))
+      } else if (res.status === 409) $.ui.toast(message(id.lang, 'busy'))
+      heartbeat?.cancel()
+      if (!refused) {
+        beat($)
+        void reportTools($)
+      }
       return started
+    } finally {
+      told()
     }
-    withdrawLater = card => void $.clock.after(0, () => void call($, `/api/cancel/${card}`, {}, ASK_TIMEOUT))
-    // sessions started from the page carry the bridge's launch id, which matches the session with its terminal in the bridge
-    sticky = { cwd: e.cwd, launch: (await $.env.get('SYMPHONY_LAUNCH')) || undefined, task: (await $.env.get('SYMPHONY_TASK')) || undefined }
-    const model = await $.session.model()
-    begin(await safe($.session.id()), model)
-    // what the engine knows of itself and the folder: its version, the mod's, the repository, where it draws
-    const [engine, mod, repo] = await Promise.all([safe($.session.version()), modVersion($), safe($.session.repo())])
-    interactive = e.isInteractive
-    known = {
-      login: id.login,
-      model,
-      surface: e.surface ?? undefined,
-      engine: engine ? { version: engine.version, base: engine.base } : undefined,
-      mod,
-      // not the remote: its URL may carry credentials
-      repo: repo ? { root: repo.root, name: repo.name ?? undefined, internal: repo.internal } : undefined,
-    }
-    const online = { interactive, ...knownNow() }
-    // no answer and refused: the bridge's check failed, and said why. Something that took the check and never answered
-    // holds the address: no bridge could start there.
-    let res = await emit($, 'session.start', online, ASK_TIMEOUT)
-    let failed: string | undefined
-    if (!res && !refused && !(await isStuck($))) {
-      const ran = await startBridge($, id.bridge)
-      if (ran.ok) {
-        res = await emit($, 'session.start', online, ASK_TIMEOUT)
-        if (res?.ok) $.ui.toast(message(id.lang, 'started', { bridge: id.bridge }))
-      } else failed = ran.reason
-    }
-    if (!res) {
-      if (refused) {
-        // said already
-      } else if (failed) $.ui.toast(message(id.lang, 'startFailed', { bridge: id.bridge, reason: failed }))
-      else $.ui.toast(message(id.lang, 'unreachable', { bridge: id.bridge }))
-    } else if (res.status === 401) {
-      refused = true // the token won't change while the session runs: don't knock again
-      $.ui.toast(message(id.lang, 'badToken'))
-    } else if (res.status === 409) $.ui.toast(message(id.lang, 'busy'))
-    heartbeat?.cancel()
-    if (!refused) {
-      beat($)
-      void reportTools($)
-    }
-    return started
   })
 
   // on every model request, note the model and effort actually used, and stream the response's thinking and

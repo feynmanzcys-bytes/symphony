@@ -139,7 +139,7 @@ function showChat() {
   if (!chatFor) return
   const acc = sym.accountById(chatFor)
   if (!acc) return chat.close()
-  const s = chatSid ? sym.sessionById(chatSid) : sym.sessionOf(acc), on = online(s)
+  const s = chatSid ? sym.sessionById(chatSid) : sym.deskOf(acc), on = online(s)
   const task = chatSid ? sym.taskOfSession(chatSid) : taskOf(acc)
   const member = task?.members.find(m => chatSid ? m.session === chatSid : m.account === chatFor)
   const busy = on && (s.state === 'thinking' || s.state === 'tool' || s.state === 'waiting')

@@ -85,8 +85,13 @@ func TestTermTrustPromptAndFailure(t *testing.T) {
 	pt := NewPTYTerminal()
 	l := &Launch{ID: "p1", Name: "bob", Status: LaunchStarting}
 	hub.addLaunch(l)
-	// a fake claude that asks "trust this folder", then echoes the keys it gets and exits
-	if err := pt.Start(l, t.TempDir(), nil, []string{"/bin/sh", "-c", `echo "Do you trust this folder?"; echo " > No, exit"; read -r k; echo "keys:$k"; exit 3`}); err != nil {
+	// a fake claude that asks "trust this folder" with the cursor on No, moves it to Yes on Down, says which keys it got
+	// once Enter comes, and exits
+	fake := `echo "Do you trust this folder?"; echo "❯ No, exit"; echo "  Yes, I trust this folder"; stty raw -echo
+k=$(dd bs=3 count=1 2>/dev/null); printf '\r\n  No, exit\r\n❯ Yes, I trust this folder\r\n'
+e=$(dd bs=1 count=1 2>/dev/null); stty sane
+[ "$k" = "$(printf '\033[B')" ] && [ "$e" = "$(printf '\r')" ] && echo "keys:down,enter"; exit 3`
+	if err := pt.Start(l, t.TempDir(), nil, []string{"/bin/sh", "-c", fake}); err != nil {
 		t.Fatal(err)
 	}
 	pt.Watch(hub, l, 10*time.Second)
@@ -96,8 +101,8 @@ func TestTermTrustPromptAndFailure(t *testing.T) {
 	if !strings.Contains(l.ErrorParams["screen"], "keys:") || !strings.Contains(l.ErrorParams["detail"], "exit status 3") {
 		t.Fatalf("the failure should carry the screen and the exit status: %v", l.ErrorParams)
 	}
-	// the Down and Enter keys reached the process (Down is an escape sequence; read -r keeps it)
-	if !strings.Contains(pt.Terms.Get(l.ID).Screen(5), "keys:") {
+	// Down, then Enter once the cursor was on Yes, reached the process
+	if !strings.Contains(pt.Terms.Get(l.ID).Screen(5), "keys:down,enter") {
 		t.Fatalf("screen: %q", pt.Terms.Get(l.ID).Screen(5))
 	}
 	if pt.Terms.Live(l.ID) {
@@ -117,10 +122,25 @@ func TestPlainText(t *testing.T) {
 	if !hasTrustPrompt(plainText(raw)) || hasTrustPrompt("trust me") {
 		t.Fatal("the trust prompt should be found through cursor moves and nowhere else")
 	}
+	// Claude Code 2.1.316 draws the gaps with moves to a column (CHA): the words keep them
+	status := "\x1b[3G\x1b[38;2;255;107;128m⏵⏵\x1b[6Gbypass\x1b[13Gpermissions\x1b[25Gon\x1b[38;2;153;153;153m (shift+tab\x1b[39Gto\x1b[42Gcycle)\x1b[49G·\x1b[51G←\x1b[53Gfor\x1b[57Gagents\x1b[104G○"
+	if got, want := plainText([]byte(status)), "  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← for agents"+strings.Repeat(" ", 41)+"○"; got != want {
+		t.Fatalf("moves to a column:\n got %q\nwant %q", got, want)
+	}
+	trust := "\x1b[2G❯\x1b[4GNo,\x1b[8Gexit\r\n\x1b[4GYes,\x1b[9GI\x1b[11Gtrust\x1b[17Gthis\x1b[22Gfolder\r\n"
+	if got := plainText([]byte(trust)); got != " ❯ No, exit\n   Yes, I trust this folder\n" || !hasTrustPrompt(got) {
+		t.Fatalf("the trust prompt drawn with moves to a column: %q", got)
+	}
+	// a move back to a column already passed keeps the words apart; a carriage return starts the line's columns again
+	if got := plainText([]byte("abc\x1b[2Gx\x1b[Gy\rz\x1b[3Gw")); got != "abc x yz w" {
+		t.Fatalf("moves back: %q", got)
+	}
 	// a session's output may ask to move any distance: it becomes at most maxForward spaces, never a huge allocation
-	for _, n := range []string{"99999999999999999999", "2000000000", "1001"} {
-		if got := plainText([]byte("a\x1b[" + n + "Cb")); got != "a"+strings.Repeat(" ", maxForward)+"b" {
-			t.Fatalf("a move of %s: %d characters", n, len(got))
+	for _, n := range []string{"99999999999999999999", "2000000000", "1002"} {
+		for _, op := range []string{"C", "G"} {
+			if got := plainText([]byte("a\x1b[" + n + op + "b")); got != "a"+strings.Repeat(" ", maxForward)+"b" {
+				t.Fatalf("a move %s%s: %d characters", n, op, len(got))
+			}
 		}
 	}
 	// and all the moves together become at most forwardBudget spaces, then one each

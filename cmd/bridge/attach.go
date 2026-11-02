@@ -57,7 +57,8 @@ func attach(args []string) {
 		os.Exit(1)
 	}
 	base := "http://" + at + "/api/terminal/" + id
-	cols, rows := consoleSize()
+	in, out := terminalFiles()
+	cols, rows := consoleSize(out)
 	req, _ := http.NewRequest("GET", base+"/stream?cols="+strconv.Itoa(cols)+"&rows="+strconv.Itoa(rows), nil)
 	req.Header.Set("X-Symphony-Key", key)
 	res, err := http.DefaultClient.Do(req)
@@ -80,14 +81,15 @@ func attach(args []string) {
 		os.Exit(1)
 	}
 	name := res.Header.Get("x-symphony-name")
-	restore, err := rawMode()
+	restore, err := rawMode(in, out)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, i18n.T("attach.failed", "reason", err.Error()))
 		os.Exit(1)
 	}
 	defer restore()
+	scr := &screen{w: out}
 	// the window's title, and one line of help before the session's screen
-	fmt.Fprintf(os.Stdout, "\x1b]0;%s\x07\r\n\x1b[2m%s\x1b[0m\r\n", name, i18n.T("attach.banner", "name", name))
+	fmt.Fprintf(out, "\x1b]0;%s\x07\r\n\x1b[2m%s\x1b[0m\r\n", name, i18n.T("attach.banner", "name", name))
 
 	client := &http.Client{Timeout: 10 * time.Second}
 	post := func(path string, body []byte, ctype string) {
@@ -102,7 +104,7 @@ func attach(args []string) {
 	go func() { // keystrokes
 		buf := make([]byte, 4096)
 		for {
-			n, err := os.Stdin.Read(buf)
+			n, err := in.Read(buf)
 			if n > 0 {
 				if i := bytes.IndexByte(buf[:n], detachKey); i >= 0 {
 					if i > 0 {
@@ -119,19 +121,22 @@ func attach(args []string) {
 			}
 		}
 	}()
-	go watchSize(func(cols, rows int) { // the window changes size
+	go watchSize(out, func(cols, rows int) { // the window changes size
 		body, _ := json.Marshal(map[string]int{"cols": cols, "rows": rows})
 		post("/resize", body, "application/json")
 	})
 	ended := make(chan struct{})
 	go func() {
-		_, _ = io.Copy(os.Stdout, res.Body)
+		_, _ = io.Copy(scr, res.Body)
 		close(ended)
 	}()
 	select {
 	case <-done:
-		fmt.Fprintf(os.Stdout, "\r\n\x1b[2m%s\x1b[0m\r\n", i18n.T("attach.detached", "name", name))
+		res.Body.Close() // the session's output stops before the terminal is reset
+		<-ended
+		fmt.Fprintf(out, "%s\r\n\x1b[2m%s\x1b[0m\r\n", scr.reset(), i18n.T("attach.detached", "name", name))
 	case <-ended:
-		fmt.Fprintf(os.Stdout, "\r\n\x1b[2m%s\x1b[0m\r\n", i18n.T("attach.ended", "name", name))
+		scr.Flush()
+		fmt.Fprintf(out, "%s\r\n\x1b[2m%s\x1b[0m\r\n", scr.reset(), i18n.T("attach.ended", "name", name))
 	}
 }

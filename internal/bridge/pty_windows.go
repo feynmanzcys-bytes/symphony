@@ -123,6 +123,10 @@ func startPTY(dir string, env []string, argv []string, cols, rows int) (ptyProc,
 
 	si := &startupInfoEx{AttributeList: &attrs[0]}
 	si.Cb = uint32(unsafe.Sizeof(*si))
+	// standard handles of none: the process uses the pseudo console's. Without the flag it would get the bridge's own
+	// when they are a file or a pipe (-background writes bridge.log, a terminal may pipe the output), and claude, its
+	// output no terminal, takes itself for claude --print and exits
+	si.Flags |= syscall.STARTF_USESTDHANDLES
 	var pi syscall.ProcessInformation
 	quoted := make([]string, len(argv))
 	for i, a := range argv {

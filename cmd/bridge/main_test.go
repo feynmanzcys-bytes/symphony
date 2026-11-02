@@ -505,8 +505,9 @@ func TestAutostartArgs(t *testing.T) {
 	if !slices.Equal(got, want) {
 		t.Errorf("got %q, want %q", got, want)
 	}
+	abs := func(p string) string { a, _ := filepath.Abs(p); return a } // a rooted path has a drive on Windows
 	got = autostartArgs(map[string]string{"claude": "./bin/claude", "mod": "/mods/x"}, "/data")
-	if want := []string{"-data=/data", "-mod=/mods/x", "-claude=" + filepath.Join(wd, "bin", "claude")}; !slices.Equal(got, want) {
+	if want := []string{"-data=" + abs("/data"), "-mod=" + abs("/mods/x"), "-claude=" + filepath.Join(wd, "bin", "claude")}; !slices.Equal(got, want) {
 		t.Errorf("a claude with a folder should become absolute: got %q, want %q", got, want)
 	}
 }

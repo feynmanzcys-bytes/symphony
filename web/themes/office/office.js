@@ -58,6 +58,9 @@ function weave(g, x, y, w, h, c) {
 
 let launchOpts = null // /api/launch/options: whether the page can start sessions, and the drop-down choices
 const sessionOf = acc => acc.session ? snapshot.sessions.find(s => s.id === acc.session) : null // the desk session
+// the desk session the employee window shows: the one online, else the last one the bridge still has (its chat, its end
+// and why)
+const deskSessionOf = acc => sessionOf(acc) ?? snapshot.sessions.filter(s => s.account === acc.id && !s.task).sort((a, b) => Date.parse(b.updated) - Date.parse(a.updated))[0] ?? null
 const sessionById = id => id ? snapshot.sessions.find(s => s.id === id) ?? null : null
 const asking = sid => !!sid && snapshot.asks.some(a => a.session === sid) // the session waits for an approval or an answer
 // tasks: a team of sessions; the snapshot has those running, ending or failed. The page seats each in a small meeting
@@ -2048,7 +2051,7 @@ function showChat(id) {
   const acc = snapshot.accounts.find(a => a.id === id)
   if (!acc || (!chatSid && !emps.has(id))) { closeChat(); return }
   chatFor = id
-  const s = chatSid ? sessionById(chatSid) : sessionOf(acc), online = !!s && s.state !== 'ended'
+  const s = chatSid ? sessionById(chatSid) : deskSessionOf(acc), online = !!s && s.state !== 'ended'
   // a task session's window: the member's name, the task (a click opens it), no seat; it can't start work or be deleted.
   // The desk window of an employee away in a task shows that task too, and a button to its window there; while it's away
   // it can't be deleted (the bridge refuses)

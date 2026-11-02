@@ -479,12 +479,35 @@ func (h *Hub) snapshotLocked(full bool) Snapshot {
 // refused (ErrAccountBusy), unless it starts in the same process (restart, the launch id of a session.start, is the
 // online one's): a fresh session after /clear may report in before the one it replaces says goodbye, which then ends.
 // A task session only comes (back) online while its task runs (ErrTaskEnded).
+// joinableLocked says whether session id of account may become task's: the task runs, the account is a member, and no
+// other session of the account works in it.
+func (h *Hub) joinableLocked(id, account, task string) bool {
+	t := h.taskLocked(task)
+	if t == nil || t.Status != TaskRunning || t.member(account) == nil {
+		return false
+	}
+	other := h.onlineTaskLocked(account, task)
+	return other == nil || other.ID == id
+}
+
 func (h *Hub) sessionLocked(id string, acc *Account, task, restart, launch string) (s *Session, fresh bool, err error) {
 	s = h.sessions[id]
 	if s != nil && s.Account != acc.ID {
 		return nil, false, ErrWrongAccount
 	}
 	if s != nil && s.State != StateEnded {
+		// a session that named no task and now names one is a task member whose first report went out before it said
+		// so (a mod before 1.1.1 reported the session's name as the engine started it): it joins its task now, as a
+		// session new to it would
+		if s.Task == "" && task != "" && h.joinableLocked(id, acc.ID, task) {
+			for sid, old := range h.sessions {
+				if old.Account == acc.ID && old.Task == task && sid != id {
+					h.dropSessionLocked(sid)
+				}
+			}
+			s.Task = task
+			return s, true, nil
+		}
 		return s, false, nil
 	}
 	// a report that was on its way when the session's process exited (it names that process's launch) doesn't bring

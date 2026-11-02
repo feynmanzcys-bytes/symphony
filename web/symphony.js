@@ -62,6 +62,9 @@ export function connect({ stream = true } = {}) {
     on, off,
     // ---------- lookups ----------
     sessionOf: acc => (acc?.session ? sym.state.sessions.find(s => s.id === acc.session) ?? null : null), // the desk session
+    // an account's desk session for its window: the one online, else the last one the bridge still has, so an employee
+    // off duty shows its last session's chat, its end and why
+    deskOf: acc => sym.sessionOf(acc) ?? (acc ? sym.state.sessions.filter(s => s.account === acc.id && !s.task).sort((a, b) => Date.parse(b.updated) - Date.parse(a.updated))[0] ?? null : null),
     sessionById: id => (id ? sym.state.sessions.find(s => s.id === id) ?? null : null),
     accountById: id => sym.state.accounts.find(a => a.id === id) ?? null,
     taskById: id => sym.state.tasks.find(k => k.id === id) ?? null,

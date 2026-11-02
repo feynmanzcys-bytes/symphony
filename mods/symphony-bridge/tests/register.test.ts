@@ -77,8 +77,13 @@ function world(
     reads.push(e.path)
     return { deny: 'tests read no files' }
   })
-  on('session.start', (_$, e) => ({ cwd: e.cwd }))
-  return { all, reqs, polls, hellos, toasts, runs, reads, clock, session }
+  // the engine's side of session.start; a test may have it run the engine's own start hooks first, as the engine does
+  const engine: { start?: () => Promise<void> } = {}
+  on('session.start', async (_$, e) => {
+    await engine.start?.()
+    return { cwd: e.cwd }
+  })
+  return { all, reqs, polls, hellos, toasts, runs, reads, clock, session, engine }
 }
 
 // The token leaves the session only for a bridge that has just proved it knows it: every request that carries it
@@ -1068,6 +1073,20 @@ test('/resume inside the session: the same, under the resumed id', async ($, on)
     ['session.title', 'sess-0'],
     ['heartbeat', 'sess-0'],
   ])
+})
+
+test('a report the engine makes while the session starts (its name) goes out after the start, naming the launch and the task', async ($, on) => {
+  const w = world(on, { SYMPHONY_TOKEN: 'tok', SYMPHONY_LAUNCH: 'L1', SYMPHONY_TASK: 'T7' })
+  on('classic.SessionStart', () => ({}))
+  // the engine runs its own start hooks inside session.start: the mod's SessionStart reports the session's name then
+  w.engine.start = async () => {
+    await $.classic.SessionStart({ source: 'startup', session_id: 'sess-1', session_title: 'helper-T7', cwd: '/work' })
+  }
+
+  await $.session.start(start)
+  await w.clock.settle()
+  expect(kinds(w).slice(0, 2)).toEqual(['session.start', 'session.title'])
+  expect(find(w, 'session.title')).toEqual(expect.objectContaining({ session: 'sess-1', title: 'helper-T7', launch: 'L1', task: 'T7' }))
 })
 
 test('claude --resume: the resume right after the start starts nothing again', async ($, on) => {

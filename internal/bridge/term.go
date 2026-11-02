@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 )
 
 // ptyProc is a child process on a pseudo-terminal, however the platform makes one (pty_*.go): its output is read
@@ -39,8 +40,8 @@ const (
 	termCols, termRows = 120, 40
 	// termMaxSize is the most columns or rows a window may ask for: within a pty's uint16 and a Windows console's int16
 	termMaxSize = 1<<15 - 1
-	// maxForward is the most spaces one cursor move to the right becomes in plain text, and forwardBudget all of them
-	// together: a session's output can ask for any number, as often as it likes
+	// maxForward is the most spaces one cursor move becomes in plain text, and forwardBudget all of them together: a
+	// session's output can ask for any number, as often as it likes
 	maxForward    = 1000
 	forwardBudget = 64 << 10
 	// screenMax is the most a screen's text may hold (Screen): it goes into a failed launch's error, in every snapshot
@@ -270,21 +271,58 @@ func (t *Term) Clients() int {
 }
 
 var (
-	ansi    = regexp.MustCompile(`\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[@-Z\\-_]|[\x00-\x08\x0b-\x1f\x7f]`)
-	forward = regexp.MustCompile(`\x1b\[(\d*)C`) // cursor forward: Ink draws the gaps between words with it
-	spaces  = regexp.MustCompile(`\s+`)
+	ansi   = regexp.MustCompile(`\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[@-Z\\-_]|[\x00-\x08\x0b-\x1f\x7f]`)
+	move   = regexp.MustCompile(`^\x1b\[(\d*)([CG])$`) // to the right (CUF) and to a column (CHA): Ink draws the gaps between words with both
+	spaces = regexp.MustCompile(`\s+`)
 )
 
-// plainText is terminal output as text: cursor moves to the right become spaces, the other escape sequences go.
+// plainText is terminal output as text, as far as a stream of it tells: a move to the right or to a column further
+// right becomes spaces, a move back to a column already passed one space (so words stay apart), and the other escape
+// sequences and control characters go.
 func plainText(raw []byte) string {
 	budget := forwardBudget // once spent, a move is one space
-	moved := forward.ReplaceAllFunc(raw, func(m []byte) []byte {
-		n, _ := strconv.Atoi(string(m[2 : len(m)-1]))
+	var b strings.Builder
+	b.Grow(len(raw))
+	col := 0 // the column the text has reached on its line
+	pad := func(n int) {
 		k := min(max(n, 1), maxForward, max(budget, 1))
 		budget -= k
-		return bytes.Repeat([]byte(" "), k)
-	})
-	return strings.ReplaceAll(string(ansi.ReplaceAll(moved, nil)), "\r", "")
+		b.WriteString(strings.Repeat(" ", k))
+		col += k
+	}
+	text := func(p []byte) {
+		if i := bytes.LastIndexByte(p, '\n'); i >= 0 {
+			b.Write(p[:i+1])
+			p, col = p[i+1:], 0
+		}
+		b.Write(p)
+		col += utf8.RuneCount(p)
+	}
+	at := 0
+	for _, m := range ansi.FindAllIndex(raw, -1) {
+		text(raw[at:m[0]])
+		seq := raw[m[0]:m[1]]
+		at = m[1]
+		if seq[0] == '\r' {
+			col = 0
+			continue
+		}
+		mv := move.FindSubmatch(seq)
+		if mv == nil {
+			continue
+		}
+		n, _ := strconv.Atoi(string(mv[1]))
+		switch to := max(n, 1) - 1; {
+		case mv[2][0] == 'C':
+			pad(n)
+		case to > col:
+			pad(to - col)
+		case to < col:
+			pad(1)
+		}
+	}
+	text(raw[at:])
+	return b.String()
 }
 
 // Screen is the recent output as plain text: the last n non-empty lines.
@@ -375,4 +413,29 @@ func (ts *Terms) KillAll() {
 // the words came out as).
 func hasTrustPrompt(screen string) bool {
 	return strings.Contains(spaces.ReplaceAllString(screen, ""), "trustthisfolder")
+}
+
+const (
+	// trustDowns is how many times the trust prompt's answer presses Down while the cursor shows on "No, exit" before
+	// it gives up (the launch then times out, its screen in the error)
+	trustDowns = 8
+	// trustSettle is how long the answer waits after the prompt showed before a Down when the screen doesn't say
+	// where the cursor is
+	trustSettle = time.Second
+)
+
+// trustCursor is the answer of the trust prompt the cursor is on, as the screen drew it last: "yes" or "no" from the
+// words after the last ❯, "" when they don't tell.
+func trustCursor(screen string) string {
+	i := strings.LastIndex(screen, "❯")
+	if i < 0 {
+		return ""
+	}
+	switch rest := strings.TrimSpace(screen[i+len("❯"):]); {
+	case strings.HasPrefix(rest, "Yes"):
+		return "yes"
+	case strings.HasPrefix(rest, "No"):
+		return "no"
+	}
+	return ""
 }

@@ -2,6 +2,7 @@ package bridge
 
 import (
 	"errors"
+	"runtime"
 	"slices"
 	"testing"
 )
@@ -65,6 +66,9 @@ func TestFileURL(t *testing.T) {
 // A snap or flatpak browser can't read the data folder (a hidden folder of the home folder): the file that opens the
 // office goes to that app's own folder instead; any other program reads it from the data folder.
 func TestConfinedDir(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("snaps and flatpaks are Linux's: ConfinedDir is asked only there")
+	}
 	files := map[string]bool{
 		"/var/lib/snapd/desktop/applications/firefox_firefox.desktop":                         true,
 		"/home/u/.local/share/flatpak/exports/share/applications/org.mozilla.firefox.desktop": true,

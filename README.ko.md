@@ -39,7 +39,7 @@ symphony는 두 부분으로 되어 있고, 둘 다 있어야 합니다.
 uname -sm                 # Linux/macOS: 아래에서 고를 압축 파일이 정해집니다 (x86_64 → amd64; arm64/aarch64 → arm64)
 claude --version          # Claude Code 2.1.x 필요 (2.1.316에서 테스트)
 git --version             # 협업 작업에만 필요. 없으면 보고에 적되 멈추지는 마세요
-symphony -version         # 이미 설치돼 있나? "symphony v1.1.0 (darwin/arm64)" 출력
+symphony -version         # 이미 설치돼 있나? "symphony v1.1.1 (darwin/arm64)" 출력
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:7788/api/state   # bridge가 실행 중인가? 401: symphony 1.x, 200: 그보다 오래된 버전, 000: 없음
 claude plugin list --json # mod가 이미 설치돼 있나? "id": "symphony-bridge@symphony"가 있는 항목을 찾으세요
 ```
@@ -108,7 +108,7 @@ cd "$d/src" && go build -o "$d/symphony" ./cmd/bridge   # 이제 프로그램은
 ```bash
 install -m 755 "$d/symphony" ~/.local/bin/symphony
 xattr -d com.apple.quarantine ~/.local/bin/symphony 2>/dev/null || true   # macOS: 바이너리에 서명이 없습니다
-symphony -version          # "symphony v1.1.0 (linux/amd64)" 출력: 버전과 플랫폼
+symphony -version          # "symphony v1.1.1 (linux/amd64)" 출력: 버전과 플랫폼
 ```
 
 이 폴더들 중 `PATH`에 있는 것이 하나도 없으면, 무엇이든 바꾸기 전에 사용자에게 물어보세요. 좋다고 하면 `~/.local/bin`을 만들어 셸의 rc 파일(`~/.zshrc` 또는 `~/.bashrc`)에 추가하고, 보고에 그렇게 적으세요. 싫다고 하면 사용자가 말하는 곳에 프로그램을 설치하고, `symphony`가 사용자의 Claude Code 세션의 `PATH`에 없는 동안에는 mod가 bridge를 스스로 시작할 수 없다고 알려 주세요(5단계의 로그인할 때 시작은 그래도 됩니다).
@@ -118,7 +118,7 @@ Windows에서는 전용 폴더에 압축을 푸세요(`$d`와 `$zip`은 2단계�
 ```powershell
 $dest = Join-Path $env:LOCALAPPDATA 'Programs\symphony'
 Expand-Archive -LiteralPath (Join-Path $d $zip) -DestinationPath $dest -Force
-& (Join-Path $dest 'symphony.exe') -version   # "symphony v1.1.0 (windows/amd64)" 출력
+& (Join-Path $dest 'symphony.exe') -version   # "symphony v1.1.1 (windows/amd64)" 출력
 ```
 
 그 폴더를 사용자의 `Path`에 추가하는 것은 계속 남는 변경이므로, 먼저 사용자에게 물어보세요. 좋다고 하면 아래 줄을 실행하고 새 셸을 여세요. 싫다고 하면 전체 경로를 쓰세요. 처음 실행할 때 SmartScreen이 경고할 수 있습니다. "추가 정보"를 누른 뒤 "실행"을 누르세요.
@@ -192,7 +192,7 @@ $data = if ($env:SYMPHONY_DATA) { $env:SYMPHONY_DATA } else { Join-Path $env:APP
 
 데이터 폴더는 Linux에서는 `~/.config/symphony`(`$XDG_CONFIG_HOME`이 설정돼 있으면 `$XDG_CONFIG_HOME/symphony`), macOS에서는 `~/Library/Application Support/symphony`, Windows에서는 `%AppData%\symphony`이고, `SYMPHONY_DATA`가 설정돼 있으면 그 폴더입니다.
 
-응답에 `"enabled":true`와 `"mod":{"ok":true,"id":"symphony-bridge@symphony","version":"1.1.0"}`가 있으면, bridge가 실행 중이고 `claude`를 찾았으며 세션이 로드할 위치에 mod가 설치된 것입니다. `"enabled":false`이면 `mod.code`가 무엇이 문제인지, `mod.fix`가 그것을 고치는 명령을 알려 줍니다. `mod_not_installed`나 `mod_project_scope`(4단계로 돌아가기), `mod_disabled`(활성화하기), `mod_check_failed`(`claude plugin list --json`이 실패한 것이니 Claude Code가 너무 오래된 버전일 가능성이 큽니다)입니다. `"mod":null`은 bridge가 자기 `PATH`에서 `claude`를 아예 찾지 못했다는 뜻입니다(로그에 나옵니다). claude를 거기에 넣거나 `-claude /path/to/claude`로 bridge를 시작하세요. 응답에 `"code":"page_key"`가 있으면 요청이 키를 제시하지 않았거나 틀린 키를 제시했다는 뜻입니다. `cat`이 키 파일을 찾았는지 확인하세요(데이터 폴더는 위 참고). 찾았다면 실행 중인 bridge가 다른 데이터 폴더로 시작된 것입니다.
+응답에 `"enabled":true`와 `"mod":{"ok":true,"id":"symphony-bridge@symphony","version":"1.1.1"}`가 있으면, bridge가 실행 중이고 `claude`를 찾았으며 세션이 로드할 위치에 mod가 설치된 것입니다. `"enabled":false`이면 `mod.code`가 무엇이 문제인지, `mod.fix`가 그것을 고치는 명령을 알려 줍니다. `mod_not_installed`나 `mod_project_scope`(4단계로 돌아가기), `mod_disabled`(활성화하기), `mod_check_failed`(`claude plugin list --json`이 실패한 것이니 Claude Code가 너무 오래된 버전일 가능성이 큽니다)입니다. `"mod":null`은 bridge가 자기 `PATH`에서 `claude`를 아예 찾지 못했다는 뜻입니다(로그에 나옵니다). claude를 거기에 넣거나 `-claude /path/to/claude`로 bridge를 시작하세요. 응답에 `"code":"page_key"`가 있으면 요청이 키를 제시하지 않았거나 틀린 키를 제시했다는 뜻입니다. `cat`이 키 파일을 찾았는지 확인하세요(데이터 폴더는 위 참고). 찾았다면 실행 중인 bridge가 다른 데이터 폴더로 시작된 것입니다.
 
 bridge의 로그는 데이터 폴더의 `bridge.log`입니다. 로그인할 때 시작된 bridge는 Linux에서는 `journalctl --user -u symphony`, macOS에서는 `~/Library/Logs/symphony.log`에 로그를 남깁니다.
 

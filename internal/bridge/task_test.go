@@ -992,6 +992,48 @@ func TestTaskMemberNeverComes(t *testing.T) {
 	waitFor(t, "the task to end", func() bool { return len(e.srv.Hub.Tasks()) == 0 })
 }
 
+// TestTaskMemberNamedLate: a mod before 1.1.1 could report a task member's session (its name, as the engine started it)
+// before it named its launch and task: the bridge took it for a desk session. When its start names the task, it joins:
+// it takes its member's place, gets the kickoff and binds its launch, an advisor's as an off-duty employee's, whose
+// remembered folder stays out of the worktree and who has no desk session online.
+func TestTaskMemberNamedLate(t *testing.T) {
+	e := newTaskEnv(t, "")
+	plain := e.folder(t, "plain")
+	_, bobAcc := as(t, e.srv, e.base, "bob")
+	e.srv.Hub.setLast(bobAcc.ID, LaunchRequest{Dir: plain})
+	task := asTask(t, e.page.ok("POST", "/api/tasks", TaskRequest{Room: hint(1), Title: "t", Leader: true,
+		Members: []TaskMemberRequest{{Account: bobAcc.ID}, {Advisor: &AdvisorRequest{Name: "helper", Dir: plain}}}}))
+	for i, sid := range []string{"b1", "h1"} {
+		m := task.Members[i]
+		mod := e.modOf(t, m.Account)
+		mod.ok("POST", "/api/event", Event{Session: sid, Kind: "session.title", Title: m.Name})
+		if s := session(t, e.srv, sid); s.Task != "" {
+			t.Fatalf("%s: a report that names no task is a desk session's: %q", m.Name, s.Task)
+		}
+		mod.ok("POST", "/api/event", Event{Session: sid, Kind: "session.start", Launch: m.Launch, Task: task.ID, Cwd: m.Worktree})
+		mod.ok("POST", "/api/event", Event{Session: sid, Kind: "heartbeat", Task: task.ID, Cwd: m.Worktree})
+		got := taskState(e.srv.Hub, task.ID).Members[i]
+		kickoffs := 0
+		for _, it := range e.srv.Hub.Chat(sid) {
+			if it.Kind == ChatUser && it.Origin == "task" {
+				kickoffs++
+			}
+		}
+		if s := session(t, e.srv, sid); s.Task != task.ID || got.Session != sid || kickoffs != 1 || e.srv.Hub.launchStatus(m.Launch) != LaunchOnline {
+			t.Fatalf("%s should join its task once its start names it: session task %q, member session %q, %d kickoffs, launch %s",
+				m.Name, s.Task, got.Session, kickoffs, e.srv.Hub.launchStatus(m.Launch))
+		}
+	}
+	if acc := e.srv.Hub.Account(bobAcc.ID); acc.Dir == task.Members[0].Worktree {
+		t.Fatalf("bob's remembered folder should stay out of his worktree: %s", acc.Dir)
+	}
+	for _, a := range e.srv.Hub.Snapshot().Accounts {
+		if a.ID == bobAcc.ID && a.Session != "" {
+			t.Fatalf("bob has no desk session online: %s", a.Session)
+		}
+	}
+}
+
 // TestTaskSessionStartsAgain: a member's session that starts afresh after its last one ended (/clear) gets the kickoff
 // again; a mod that doesn't report the task is known by its launch; a running task has no end time.
 func TestTaskSessionStartsAgain(t *testing.T) {

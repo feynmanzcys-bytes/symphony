@@ -21,28 +21,31 @@ func ioctl(fd uintptr, req uintptr, arg unsafe.Pointer) error {
 	return nil
 }
 
+// terminalFiles are where attach reads the keys and writes the screen: its standard input and output.
+func terminalFiles() (in, out *os.File) { return os.Stdin, os.Stdout }
+
 // consoleSize is this terminal's size in characters (80 x 24 when it can't be read).
-func consoleSize() (cols, rows int) {
+func consoleSize(out *os.File) (cols, rows int) {
 	var ws winsize
-	if err := ioctl(os.Stdout.Fd(), syscall.TIOCGWINSZ, unsafe.Pointer(&ws)); err != nil || ws.Col == 0 {
+	if err := ioctl(out.Fd(), syscall.TIOCGWINSZ, unsafe.Pointer(&ws)); err != nil || ws.Col == 0 {
 		return 80, 24
 	}
 	return int(ws.Col), int(ws.Row)
 }
 
 // watchSize calls fn with the new size whenever the window is resized.
-func watchSize(fn func(cols, rows int)) {
+func watchSize(out *os.File, fn func(cols, rows int)) {
 	ch := make(chan os.Signal, 1)
 	signal.Notify(ch, syscall.SIGWINCH)
 	for range ch {
-		fn(consoleSize())
+		fn(consoleSize(out))
 	}
 }
 
 // rawMode puts this terminal in raw mode (every key goes through as is, nothing is echoed or post-processed:
 // the session's own pty does that) and returns what restores it.
-func rawMode() (func(), error) {
-	fd := os.Stdin.Fd()
+func rawMode(in, _ *os.File) (func(), error) {
+	fd := in.Fd()
 	var old syscall.Termios
 	if err := ioctl(fd, termiosGet, unsafe.Pointer(&old)); err != nil {
 		return nil, err

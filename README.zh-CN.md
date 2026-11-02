@@ -39,7 +39,7 @@ symphony 分两部分，两部分都要装：
 uname -sm                 # Linux/macOS：据此选下面的压缩包（x86_64 → amd64；arm64/aarch64 → arm64）
 claude --version          # 要 Claude Code 2.1.x（在 2.1.316 上验证过）
 git --version             # 只有协作任务要用；没有的话在汇报里写明，不用停下
-symphony -version         # 已经装了？会输出 "symphony v1.1.0 (darwin/arm64)"
+symphony -version         # 已经装了？会输出 "symphony v1.1.1 (darwin/arm64)"
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:7788/api/state   # 有 bridge 在跑吗？401：symphony 1.x；200：旧版的；000：没有
 claude plugin list --json # mod 已经装了？找有 "id": "symphony-bridge@symphony" 的那一项
 ```
@@ -108,7 +108,7 @@ cd "$d/src" && go build -o "$d/symphony" ./cmd/bridge   # 程序现在就是 "$d
 ```bash
 install -m 755 "$d/symphony" ~/.local/bin/symphony
 xattr -d com.apple.quarantine ~/.local/bin/symphony 2>/dev/null || true   # macOS：程序没有签名
-symphony -version          # 输出 "symphony v1.1.0 (linux/amd64)"：版本号和平台
+symphony -version          # 输出 "symphony v1.1.1 (linux/amd64)"：版本号和平台
 ```
 
 这些目录一个都不在 `PATH` 里的话，动手改之前先问用户。用户同意，就建一个 `~/.local/bin`，把它加进 shell 的 rc 文件（`~/.zshrc` 或 `~/.bashrc`），并在汇报里说明；用户不同意，就把程序装到用户指定的地方，并告诉用户：`symphony` 不在他们 Claude Code 会话的 `PATH` 里时，mod 没法自己把 bridge 拉起来（第 5 步的随登录启动照样能用）。
@@ -118,7 +118,7 @@ Windows 上，把它解压到一个专门的目录（`$d` 和 `$zip` 来自第 2
 ```powershell
 $dest = Join-Path $env:LOCALAPPDATA 'Programs\symphony'
 Expand-Archive -LiteralPath (Join-Path $d $zip) -DestinationPath $dest -Force
-& (Join-Path $dest 'symphony.exe') -version   # 输出 "symphony v1.1.0 (windows/amd64)"
+& (Join-Path $dest 'symphony.exe') -version   # 输出 "symphony v1.1.1 (windows/amd64)"
 ```
 
 把这个目录加进用户的 `Path` 是一项长期的改动：先问用户。用户同意，就运行下面这行，再开一个新的 shell；用户不同意，就用完整路径。第一次运行时 SmartScreen 可能会警告：点“更多信息”，再点“仍要运行”。
@@ -192,7 +192,7 @@ $data = if ($env:SYMPHONY_DATA) { $env:SYMPHONY_DATA } else { Join-Path $env:APP
 
 数据目录：Linux 上是 `~/.config/symphony`（设了 `$XDG_CONFIG_HOME` 时是 `$XDG_CONFIG_HOME/symphony`），macOS 上是 `~/Library/Application Support/symphony`，Windows 上是 `%AppData%\symphony`；设了 `SYMPHONY_DATA` 的话就是它。
 
-返回里有 `"enabled":true` 和 `"mod":{"ok":true,"id":"symphony-bridge@symphony","version":"1.1.0"}`：说明 bridge 在跑、找到了 `claude`，mod 也装在会话会加载的地方。如果是 `"enabled":false`，`mod.code` 说明哪里不对，`mod.fix` 给出修复的命令：`mod_not_installed` 或 `mod_project_scope`（回到第 4 步），`mod_disabled`（启用它），`mod_check_failed`（`claude plugin list --json` 失败了，多半是 Claude Code 太旧）。`"mod":null` 说明 bridge 在它的 `PATH` 里根本没找到 `claude`（日志里会写）：把它放进去，或者用 `-claude /path/to/claude` 启动 bridge。返回里有 `"code":"page_key"` 的话，说明请求没出示密钥，或者出示的不对：检查 `cat` 有没有找到密钥文件（数据目录见上面）；找到了的话，就是正在跑的那个 bridge 是用另一个数据目录启动的。
+返回里有 `"enabled":true` 和 `"mod":{"ok":true,"id":"symphony-bridge@symphony","version":"1.1.1"}`：说明 bridge 在跑、找到了 `claude`，mod 也装在会话会加载的地方。如果是 `"enabled":false`，`mod.code` 说明哪里不对，`mod.fix` 给出修复的命令：`mod_not_installed` 或 `mod_project_scope`（回到第 4 步），`mod_disabled`（启用它），`mod_check_failed`（`claude plugin list --json` 失败了，多半是 Claude Code 太旧）。`"mod":null` 说明 bridge 在它的 `PATH` 里根本没找到 `claude`（日志里会写）：把它放进去，或者用 `-claude /path/to/claude` 启动 bridge。返回里有 `"code":"page_key"` 的话，说明请求没出示密钥，或者出示的不对：检查 `cat` 有没有找到密钥文件（数据目录见上面）；找到了的话，就是正在跑的那个 bridge 是用另一个数据目录启动的。
 
 bridge 的日志是数据目录里的 `bridge.log`；随登录启动的话，Linux 上日志用 `journalctl --user -u symphony` 看，macOS 上在 `~/Library/Logs/symphony.log`。
 

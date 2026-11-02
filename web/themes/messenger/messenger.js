@@ -43,7 +43,7 @@ const fmtNum = new Intl.NumberFormat(lang, { notation: 'compact', maximumFractio
 const fmtTime = when => new Date(when).toLocaleTimeString(lang, { hour: '2-digit', minute: '2-digit' })
 const costOf = acc => snapshot.ledger.filter(r => r.account === acc.id).reduce((n, r) => n + r.usd, 0)
 // an account's desk session: the one online, else the last one the bridge still has (off duty since when)
-const deskOf = acc => sym.sessionOf(acc) ?? snapshot.sessions.filter(x => x.account === acc.id && !x.task).sort((a, b) => Date.parse(b.updated) - Date.parse(a.updated))[0] ?? null
+const deskOf = acc => sym.deskOf(acc)
 const taskOf = acc => snapshot.tasks.find(k => k.members.some(m => m.account === acc.id && online(sym.sessionById(m.session)))) ?? null
 const stateOf = s => !online(s) ? 'ended' : sym.asking(s.id) ? 'waiting' : s.state
 const GROUP_ORDER = { waiting: 0, tool: 1, thinking: 1, idle: 2, ended: 3, done: 3 }
