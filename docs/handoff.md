@@ -75,11 +75,6 @@
 19. **The token stays in the session's environment.**
     - What happens: the session's Bash commands, npm scripts and MCP servers inherit `SYMPHONY_TOKEN`. With it they could call the mod's endpoints: empty the inbox, report made-up events, make ask cards. They could not answer the cards; that needs the page key. Since v1.1.0 the bridge no longer passes the token on.
     - Fix: `$.env.set('SYMPHONY_TOKEN', undefined)` once the mod has read it. First check that a module reloaded by `/reload-plugins` can still read it.
-20. **The mod starts the bridge as a bare `symphony`, in the session's folder** (`$.process.run(['symphony', …])` without `cwd`, register.ts). On Windows, a `symphony.exe` in that folder might win over the one on PATH, depending on how the engine looks programs up. Fix: pass `cwd: $.plugin.root`.
-21. **Windows with npm's `claude.cmd`: employee names go through cmd.exe.**
-    - What happens: `CreateProcess` runs a `.cmd` file through `cmd.exe /c`, and `syscall.EscapeArg` doesn't escape for cmd.exe (pty_windows.go). `validName` in accounts.go only refuses control characters. So an employee named `R&D` or `50%x%` gives a broken command line: `--name R`, then a second command.
-    - Fix: when the program is a `.cmd` or `.bat` file, either refuse arguments containing `% ^ & | < > ! "` with a coded error, or escape them for cmd.exe.
-22. **A prompt from the page can be lost when the mod's connection drops.** `/api/inbox` takes the items before it writes the answer (chat.go, server_chat.go). A poll cut off in between loses them, and the page's bubble stays "queued". Fix: hand items out with an id, and drop them only when the next poll acknowledges that id.
 
 ## Code structure (no visible effect)
 

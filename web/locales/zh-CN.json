@@ -219,6 +219,7 @@
   "chat.notice.notify": "通知",
   "launch.startingBg": "正在后台启动，会话上线后员工就会到工位…",
   "error.pty_start_failed": "无法启动 {program}：{detail}",
+  "error.cmd_unsafe_arg": "没法把 {arg} 传给 claude：Windows 上 claude.cmd 经 cmd.exe 运行，{chars} 这些字符会被它当成自己的；换一个不含它们的名字或目录",
   "error.launch_timeout_pty": "{timeout} 后仍未上线；终端最后几行：\n{screen}",
   "error.terminal_none": "找不到图形终端（x-terminal-emulator / gnome-terminal / konsole / xterm）",
   "error.terminal_unknown_session": "这个会话没有终端",

@@ -2,6 +2,7 @@ package bridge
 
 import (
 	"net/http"
+	"slices"
 	"testing"
 	"time"
 )
@@ -102,6 +103,29 @@ func TestSayInboxAbort(t *testing.T) {
 	log := srv.Hub.Chat("s1")
 	if len(log) != 1 || log[0].Status != "sent" || !log[0].Done {
 		t.Fatalf("the queued item should be marked sent: %+v", log)
+	}
+	// a mod that acknowledges (1.1.2 on): an item stays in the inbox until a poll names its id or a later one, so a
+	// poll cut off on its way back loses nothing; the ids count up per session
+	page.ok("POST", "/api/say/s1", map[string]any{"text": "again"})
+	page.ok("POST", "/api/say/s1", map[string]any{"text": "and again"})
+	ids := func(res map[string]any) (out []float64) {
+		for _, it := range res["items"].([]any) {
+			out = append(out, it.(map[string]any)["id"].(float64))
+		}
+		return out
+	}
+	if got := ids(mod.ok("GET", "/api/inbox?session=s1&ack=0", nil)); !slices.Equal(got, []float64{3, 4}) {
+		t.Fatalf("the first acknowledging poll should get both, ids 3 and 4: %v", got)
+	}
+	if got := ids(mod.ok("GET", "/api/inbox?session=s1&ack=0", nil)); !slices.Equal(got, []float64{3, 4}) {
+		t.Fatalf("the poll was cut off: the next one should get them again: %v", got)
+	}
+	if got := ids(mod.ok("GET", "/api/inbox?session=s1&ack=3", nil)); !slices.Equal(got, []float64{4}) {
+		t.Fatalf("acknowledging 3 should leave 4: %v", got)
+	}
+	start = time.Now()
+	if res := mod.ok("GET", "/api/inbox?session=s1&ack=4", nil); len(res["items"].([]any)) != 0 || time.Since(start) < 250*time.Millisecond {
+		t.Fatalf("acknowledging 4 should leave nothing, and wait: %v after %v", res, time.Since(start))
 	}
 	// a session that ended takes nothing more
 	mod.ok("POST", "/api/event", Event{Session: "s1", Kind: "session.end"})

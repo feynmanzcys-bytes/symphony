@@ -121,6 +121,11 @@ func startPTY(dir string, env []string, argv []string, cols, rows int) (ptyProc,
 		return nil, fmt.Errorf("UpdateProcThreadAttribute: %v", err)
 	}
 
+	// a .cmd runs through cmd.exe, which EscapeArg doesn't escape for: an argument it would read as its own is refused
+	if err := checkBatchArgs(argv); err != nil {
+		p.closeAll()
+		return nil, err
+	}
 	si := &startupInfoEx{AttributeList: &attrs[0]}
 	si.Cb = uint32(unsafe.Sizeof(*si))
 	// standard handles of none: the process uses the pseudo console's. Without the flag it would get the bridge's own

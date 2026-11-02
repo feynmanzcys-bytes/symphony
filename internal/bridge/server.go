@@ -200,7 +200,7 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 var errStatus = map[string]int{
 	"task_member_busy": http.StatusConflict, "task_ended": http.StatusConflict,
 	"task_running": http.StatusConflict, "task_unknown": http.StatusNotFound, "task_no_git": http.StatusPreconditionFailed,
-	"task_git_failed": http.StatusInternalServerError, "pty_start_failed": http.StatusInternalServerError, "task_repo_in_use": http.StatusConflict,
+	"task_git_failed": http.StatusInternalServerError, "pty_start_failed": http.StatusInternalServerError, "cmd_unsafe_arg": http.StatusBadRequest, "task_repo_in_use": http.StatusConflict,
 	"data_write_failed": http.StatusInternalServerError, "launch_still_running": http.StatusConflict,
 }
 

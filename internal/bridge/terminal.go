@@ -1,6 +1,7 @@
 package bridge
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -141,6 +142,10 @@ func (t *ptyTerminal) Start(l *Launch, dir string, env map[string]string, argv [
 		program := argv[0]
 		if i := strings.LastIndexAny(program, `/\`); i >= 0 {
 			program = program[i+1:]
+		}
+		var coded *Error
+		if errors.As(err, &coded) {
+			return coded // an argument cmd.exe would read as its own (checkBatchArgs)
 		}
 		return newError("pty_start_failed", fmt.Sprintf("can't start %s on a pseudo-terminal: %v", program, err), "program", program, "detail", err.Error())
 	}

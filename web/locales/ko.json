@@ -219,6 +219,7 @@
   "chat.notice.notify": "알림",
   "launch.startingBg": "백그라운드에서 시작 중. 세션이 온라인이 되면 직원이 자리로 옵니다…",
   "error.pty_start_failed": "{program}을(를) 시작할 수 없습니다: {detail}",
+  "error.cmd_unsafe_arg": "{arg}를 claude에 넘길 수 없습니다: Windows에서 claude.cmd는 cmd.exe를 거쳐 실행되고, {chars}는 cmd.exe가 자기 것으로 읽습니다. 이 문자가 없는 이름이나 폴더를 쓰세요",
   "error.launch_timeout_pty": "{timeout}이 지나도 온라인이 아닙니다. 터미널 마지막 줄:\n{screen}",
   "error.terminal_none": "그래픽 터미널을 찾을 수 없습니다 (x-terminal-emulator / gnome-terminal / konsole / xterm)",
   "error.terminal_unknown_session": "이 세션에는 터미널이 없습니다",

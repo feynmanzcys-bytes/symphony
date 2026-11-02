@@ -219,6 +219,7 @@
   "chat.notice.notify": "Уведомление",
   "launch.startingBg": "Запуск в фоне; сотрудник сядет за стол, как только сеанс будет в сети…",
   "error.pty_start_failed": "не удалось запустить {program}: {detail}",
+  "error.cmd_unsafe_arg": "не удаётся передать {arg} в claude: в Windows claude.cmd запускается через cmd.exe, который читает {chars} как свои; используйте имя или папку без них",
   "error.launch_timeout_pty": "не в сети спустя {timeout}; последние строки терминала:\n{screen}",
   "error.terminal_none": "графический терминал не найден (x-terminal-emulator / gnome-terminal / konsole / xterm)",
   "error.terminal_unknown_session": "у этого сеанса нет терминала",

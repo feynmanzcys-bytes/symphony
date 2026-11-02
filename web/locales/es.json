@@ -219,6 +219,7 @@
   "chat.notice.notify": "Notificación",
   "launch.startingBg": "Iniciando en segundo plano; el empleado llega a su mesa cuando la sesión esté en línea…",
   "error.pty_start_failed": "no se puede iniciar {program}: {detail}",
+  "error.cmd_unsafe_arg": "no se puede pasar {arg} a claude: en Windows, claude.cmd corre a través de cmd.exe, que lee {chars} como propios; use un nombre o una carpeta sin ellos",
   "error.launch_timeout_pty": "no está en línea tras {timeout}; últimas líneas del terminal:\n{screen}",
   "error.terminal_none": "no se encontró ningún terminal gráfico (x-terminal-emulator / gnome-terminal / konsole / xterm)",
   "error.terminal_unknown_session": "esta sesión no tiene terminal",

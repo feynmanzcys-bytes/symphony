@@ -41,7 +41,14 @@ func (s *Server) inbox(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	items, err := s.Hub.Inbox(r.URL.Query().Get("session"), acc.ID, s.WaitTimeout, r.Context().Done())
+	// ack: the id of the last item the mod did; a mod before 1.1.2 sends none, and gets each item once
+	ack := -1
+	if v := r.URL.Query().Get("ack"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+			ack = n
+		}
+	}
+	items, err := s.Hub.Inbox(r.URL.Query().Get("session"), acc.ID, ack, s.WaitTimeout, r.Context().Done())
 	if err != nil {
 		writeErr(w, err)
 		return

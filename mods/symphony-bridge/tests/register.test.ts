@@ -38,9 +38,11 @@ function world(
   const hellos: Req[] = [] // the bridge's checks, apart from the reports
   const toasts: string[] = []
   const runs: string[][] = []
+  const cwds: (string | undefined)[] = [] // where each run was started
   const reads: string[] = []
   on('process.run', (_$, e) => {
     runs.push([...e.argv])
+    cwds.push(e.init?.cwd)
     const ran = run(e.argv)
     if (ran === 'missing') return { deny: `${e.argv[0]}: not found` }
     return { value: { exitCode: ran.exitCode, stdout: ran.stdout ?? '', stderr: ran.stderr ?? '', isStdoutTruncated: false, isStderrTruncated: false } }
@@ -83,7 +85,7 @@ function world(
     await engine.start?.()
     return { cwd: e.cwd }
   })
-  return { all, reqs, polls, hellos, toasts, runs, reads, clock, session, engine }
+  return { all, reqs, polls, hellos, toasts, runs, cwds, reads, clock, session, engine }
 }
 
 // The token leaves the session only for a bridge that has just proved it knows it: every request that carries it
@@ -226,6 +228,10 @@ test('the bridge is unreachable and symphony is not installed: one message, appr
 
   await $.session.start(start)
   expect(w.runs).toEqual([['symphony', '-background', '-open=false', '-addr', '127.0.0.1:7788']])
+  // in the mod's own folder (its plugin.json's), never the session's: a symphony.exe lying there could win over PATH's
+  expect(w.cwds.length).toBe(1)
+  expect(typeof w.cwds[0]).toBe('string')
+  expect(w.cwds[0]).not.toBe('/work')
   expect(w.toasts).toEqual(["symphony: can't reach the bridge (http://127.0.0.1:7788); approvals stay in the terminal for now"])
   expect((await $.tool.check(bash)).decision).toBe('ask')
 })
@@ -768,6 +774,29 @@ test('the page sends text: the mod polls the inbox, submits it as the person\'s 
   expect(w.polls[0]).toEqual(expect.objectContaining({ auth: 'Bearer tok' }))
 })
 
+test('the mod names the last inbox item it did in its next poll, so a poll cut off loses nothing', async ($, on) => {
+  const acks: string[] = []
+  const w = world(on, { SYMPHONY_TOKEN: 'tok' }, r => {
+    if (r.url.includes('/api/inbox?session=sess-1')) {
+      const ack = /[&?]ack=(\d+)/.exec(r.url)?.[1] ?? 'none'
+      acks.push(ack)
+      // the first poll gets two items; the second, acknowledging 7, gets a third; then nothing
+      if (acks.length === 1) return { status: 200, text: '{"items":[{"id":6,"kind":"say","text":"one"},{"id":7,"kind":"abort"}]}' }
+      if (acks.length === 2) return { status: 200, text: '{"items":[{"id":8,"kind":"say","text":"two"}]}' }
+      return { status: 200, text: '{"items":[]}' }
+    }
+    return { status: 200, text: '{}' }
+  })
+  on('prompt.submit', (_$, e) => ({ text: e.text }))
+
+  await $.session.start(start)
+  await w.clock.advance(300)
+  await w.clock.settle()
+  expect(acks.slice(0, 4)).toEqual(['0', '7', '8', '8'])
+  // a bridge without ids (before 1.1.2): the ack stays where it was
+  expect(w.reqs.filter(r => r.body?.kind === 'chat.sent').map(r => r.body?.text)).toEqual(['one', 'two'])
+})
+
 test('the page stops the running turn: the mod aborts the main turn', async ($, on) => {
   let polls = 0
   const w = world(on, { SYMPHONY_TOKEN: 'tok' }, r => {
@@ -983,6 +1012,31 @@ test('a tool call reports how long it took, and a failure or a denial its reason
     expect.objectContaining({ tool: 'Bash', toolUseId: 'tu-9', text: 'exit 1' }),
     expect.objectContaining({ tool: 'Edit', toolUseId: 'tu-10', text: 'a deny rule', denied: true }),
   ])
+})
+
+test('the goodbye goes before the reports still queued', async ($, on) => {
+  let held: (() => void) | undefined
+  const w = world(on, { SYMPHONY_TOKEN: 'tok' }, r => {
+    // the bridge is slow on the first tool report: everything after it queues up
+    if (r.body?.kind === 'tool.start' && !held) return new Promise(resolve => { held = () => resolve({ status: 200, text: '{}' }) })
+    return { status: 200, text: '{}' }
+  })
+  on('session.end', (_$, e) => ({ sessionId: e.sessionId }))
+  on('tool.call', () => ({ result: {} }))
+
+  await $.session.start(start)
+  for (let i = 0; i < 5; i++) await $.tool.call({ tool: 'Bash', command: `ls ${i}` }) // the first is held, the rest queue behind it
+  await w.clock.settle()
+  expect(held).toBeDefined()
+  const end = $.session.end({ reason: 'exit', sessionId: 'sess-1' })
+  await w.clock.advance(10)
+  held?.()
+  await end
+  await w.clock.settle()
+  const kinds = w.reqs.map(r => r.body?.kind)
+  const first = kinds.indexOf('tool.start')
+  expect(kinds[first + 1]).toBe('session.end') // right after the held report, before the four tool reports behind it
+  expect(kinds.filter(k => k === 'tool.start').length).toBe(5)
 })
 
 test('the end says why the session ended', async ($, on) => {
