@@ -11,7 +11,8 @@ import (
 // was ever drawn over it: text that was typed and erased, a status line redrawn a hundred times. It knows what Ink
 // (Claude Code's renderer) and a shell use: printing, line feeds and scrolling, the cursor moves, erasing in the line
 // and the display, inserting and deleting characters and lines, a scroll region, saving the cursor. Colors, modes and
-// strings (OSC) are read and ignored; every rune is one cell (a wide one too: the words stay right, a column may not).
+// strings (OSC) are read and ignored. An East Asian wide or fullwidth rune takes two cells, as the terminal gives it and
+// Claude Code lays its lines out (a column move after 中文 lands two cells further).
 type vt struct {
 	cols, rows int
 	cells      [][]rune // cells[y][x], 0 for an empty cell
@@ -37,7 +38,10 @@ func (v *vt) lines() []string {
 	for _, row := range v.cells {
 		var b strings.Builder
 		for _, c := range row {
-			if c == 0 {
+			switch c {
+			case wideTail:
+				continue
+			case 0:
 				c = ' '
 			}
 			b.WriteRune(c)
@@ -92,17 +96,61 @@ func (v *vt) feed(p []byte) {
 	}
 }
 
+// wideTail marks the second cell of a wide rune.
+const wideTail rune = -1
+
 func (v *vt) put(r rune) {
-	if v.wrapNext {
+	w := 1
+	if wide(r) {
+		w = 2
+	}
+	if v.wrapNext || v.x+w > v.cols {
 		v.x, v.wrapNext = 0, false
 		v.lineFeed()
 	}
-	v.cells[v.y][v.x] = r
-	if v.x+1 < v.cols {
-		v.x++
+	row := v.cells[v.y]
+	// drawing over half of a wide rune: the other half goes too
+	if row[v.x] == wideTail && v.x > 0 {
+		row[v.x-1] = 0
+	}
+	if w == 1 && v.x+1 < v.cols && row[v.x+1] == wideTail && wide(row[v.x]) {
+		row[v.x+1] = 0
+	}
+	row[v.x] = r
+	if w == 2 {
+		row[v.x+1] = wideTail
+	}
+	if v.x+w < v.cols {
+		v.x += w
 	} else {
+		v.x = v.cols - 1
 		v.wrapNext = true
 	}
+}
+
+// wide says whether a rune takes two cells: East Asian Wide and Fullwidth (CJK, Hangul, kana, fullwidth forms) and the
+// emoji blocks, by range.
+func wide(r rune) bool {
+	switch {
+	case r < 0x1100:
+		return false
+	case r <= 0x115f, // Hangul Jamo
+		r >= 0x2e80 && r <= 0x303e, // CJK radicals, kangxi, punctuation
+		r >= 0x3041 && r <= 0x33ff, // kana, bopomofo, CJK compatibility
+		r >= 0x3400 && r <= 0x4dbf, // CJK extension A
+		r >= 0x4e00 && r <= 0x9fff, // CJK unified
+		r >= 0xa000 && r <= 0xa4cf, // Yi
+		r >= 0xac00 && r <= 0xd7a3, // Hangul syllables
+		r >= 0xf900 && r <= 0xfaff, // CJK compatibility ideographs
+		r >= 0xfe30 && r <= 0xfe4f, // CJK compatibility forms
+		r >= 0xff00 && r <= 0xff60, // fullwidth forms
+		r >= 0xffe0 && r <= 0xffe6,
+		r >= 0x1f300 && r <= 0x1f64f, // emoji
+		r >= 0x1f900 && r <= 0x1f9ff,
+		r >= 0x20000 && r <= 0x3fffd: // CJK extensions B and on
+		return true
+	}
+	return false
 }
 
 func (v *vt) lineFeed() {
