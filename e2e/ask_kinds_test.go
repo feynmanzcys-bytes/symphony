@@ -241,7 +241,11 @@ func TestAskKinds(t *testing.T) {
 	// ---------- a page opened later: the activity panel starts with what happened before (the bridge's lines) ----------
 	later, _ := clockTab(t, browser, b.URL+"/t/office/?lang=en", 0) // (the browser remembers Coworkers for /)
 	r := &screens{t: t, ctx: later, lang: "asks-later"}
-	waitUntil(t, 20*time.Second, "the later page is up", func() bool { return r.is(`!!document.getElementById('open-log')`) },
+	// the button is in the page's HTML from the start; its click handler comes with office.js, which runs only once the
+	// catalogs are in (i18n.js awaits them, the load event doesn't), and a click before that does nothing
+	waitUntil(t, 20*time.Second, "the later page is up", func() bool {
+		return r.is(`typeof document.getElementById('open-log')?.onclick === 'function'`)
+	},
 		func() string {
 			return r.js(`location.href + ' | ' + document.title + ' | ' + document.body.innerText.slice(0, 300) + ' | ' + JSON.stringify(window.__errors)`)
 		})
