@@ -303,6 +303,7 @@
   "task.openMember": "{name} を開く",
   "task.openMemberTitle": "{room} のタスク {id} でのこの社員のセッション",
   "task.chat": "チームチャット",
+  "task.mentionList": "メンションできるメンバー",
   "task.you": "あなた",
   "task.chatEmpty": "まだメッセージはありません。メンバー同士のメッセージと、あなたが送ったメッセージがここに表示されます",
   "task.chatPlaceholder": "@{name} … そのメンバーだけに送信。@ なしならタスクの全員に送信。Enter で送信、Shift+Enter で改行",

@@ -303,6 +303,7 @@
   "task.openMember": "開啟 {name}",
   "task.openMemberTitle": "這位員工在 {room} 的任務 {id} 裡的工作階段",
   "task.chat": "團隊對話",
+  "task.mentionList": "可以 @ 的成員",
   "task.you": "你",
   "task.chatEmpty": "還沒有訊息：成員之間互傳的訊息，和你傳給他們的訊息，都會顯示在這裡",
   "task.chatPlaceholder": "@{name} … 只傳給這位成員；不加 @ 就傳給任務裡的所有人。Enter 送出，Shift+Enter 換行",

@@ -17,6 +17,10 @@
   /* the state colors of the marks on the page (dots, bands, lights), each at least 3:1 against what it sits on: idle
      green, working amber (the drawing's yellow is too light for a mark on paper), waiting red, off duty gray */
   --st-idle: #2a9455; --st-busy: #a37a00; --st-wait: #d64541; --st-off: #858078;
+  /* a field to type in or pick from: its edge, at least 3:1 against what it sits on (WCAG 2.1 1.4.11); with the
+     focus, its edge and the ring around it, 3:1 too: here the ink edge stays and a ring in the accent and ink goes
+     round it; a theme whose accent reaches 3:1 turns the edge to it and draws no ring */
+  --field-line: var(--ink); --focus-line: var(--ink); --focus-ring: 0 0 0 2px var(--accent), 0 0 0 4px var(--ink);
 }
 .dot { display:inline-block; width:8px; height:8px; margin-right:4px; vertical-align:0; }
 button.px { background:var(--paper); color:var(--ink); border:2px solid var(--ink); padding:2px 10px; font:inherit; cursor:pointer; box-shadow:2px 2px 0 rgba(0,0,0,.3); }
@@ -45,7 +49,7 @@ button.close:hover { color:var(--ink); }
 .chat .meta span { font-size:11px; line-height:1.5; padding:0 6px; border:1px solid var(--line); background:var(--pane); color:var(--ink); max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .chat .meta span b { color:var(--muted); font-weight:400; margin-right:4px; }
 .chat .meta span.task { cursor:pointer; background:#fff3cf; border-color:#c9961a; } /* a task session's: opens the task window */
-.chat .meta span.task:hover { background:var(--accent); }
+.chat .meta span.task:hover { background:var(--accent); color:var(--on-accent, var(--ink)); }
 .chat .btns { display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
 .chat .btns button { font-size:12px; }
 .chat .flow { flex:1; overflow:auto; padding:12px 16px; background:var(--pane); display:flex; flex-direction:column; gap:8px; }
@@ -96,11 +100,11 @@ button.close:hover { color:var(--ink); }
 .it.ask.carded { align-self:stretch; max-width:100%; white-space:normal; overflow:visible; }
 .flow .card { margin:6px 0 4px; font-size:13px; font-weight:400; text-align:left; white-space:normal; }
 /* an MCP server's form: what it asks, answered in the terminal */
-:is(#asks, .flow .card) .msg { margin:4px 0; white-space:pre-wrap; overflow-wrap:anywhere; }
-:is(#asks, .flow .card) .fields { margin:4px 0; padding-left:18px; }
-:is(#asks, .flow .card) .fields small { color:var(--muted); margin-left:6px; }
-:is(#asks, .flow .card) .req { color:var(--danger-ink); font-size:12px; }
-:is(#asks, .flow .card) button.allow-session { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:16em; }
+:is(#asks, .flow .card, #queue) .msg { margin:4px 0; white-space:pre-wrap; overflow-wrap:anywhere; }
+:is(#asks, .flow .card, #queue) .fields { margin:4px 0; padding-left:18px; }
+:is(#asks, .flow .card, #queue) .fields small { color:var(--muted); margin-left:6px; }
+:is(#asks, .flow .card, #queue) .req { color:var(--danger-ink); font-size:12px; }
+:is(#asks, .flow .card, #queue) button.allow-session { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:16em; }
 .it.notice { align-self:center; font-size:11px; color:var(--muted); white-space:pre-wrap; max-width:100%; }
 .it time { display:block; font-size:10px; color:var(--muted); margin-top:2px; }
 .it.user time { color:var(--me-muted); text-align:right; }
@@ -112,28 +116,29 @@ button.close:hover { color:var(--ink); }
 @keyframes rise { from { transform:translateY(30%); opacity:.4; } }
 .chat .dock.asking .say, .chat .dock.asking .offline { display:none; }
 .chat .say { display:flex; gap:8px; align-items:flex-end; }
-.chat .say textarea { flex:1; resize:none; font:inherit; color:var(--ink); background:var(--field); border:2px solid var(--ink); padding:5px 8px; box-sizing:border-box; }
-.chat .say textarea:focus { outline:none; border-color:var(--accent); }
+.chat .say textarea { flex:1; resize:none; font:inherit; color:var(--ink); background:var(--field); border:2px solid var(--field-line); padding:5px 8px; box-sizing:border-box; }
+.chat .say textarea:focus { outline:none; border-color:var(--focus-line); box-shadow:var(--focus-ring); }
 .chat .say[hidden] { display:none; }
 .chat .offline { color:var(--muted); font-size:12px; padding:4px 0; }
 .chat .offline[hidden] { display:none; }
-/* pending cards (built by asks.js) */
-:is(#asks, .flow) .card { border:2px solid var(--ink); padding:10px 12px; margin-bottom:10px; background:var(--card); color:var(--ink); }
-:is(#asks, .flow .card) .who { display:flex; gap:8px; align-items:baseline; margin-bottom:6px; }
-:is(#asks, .flow .card) .who .name { font-weight:700; }
-:is(#asks, .flow .card) .who .kind, :is(#asks, .flow .card) .meta { color:var(--muted); font-size:12px; }
-:is(#asks, .flow .card) .tool { font:700 13px var(--mono); }
-:is(#asks, .flow .card) pre { background:var(--paper-2); border:1px solid var(--line); padding:6px 8px; max-height:200px; overflow:auto; white-space:pre-wrap; word-break:break-all; font-size:12px; margin:6px 0; }
-:is(#asks, .flow .card) .row { display:flex; gap:8px; align-items:center; margin-top:6px; }
-:is(#asks, .flow .card) .row input { flex:1; }
-:is(#asks, .flow .card) .row[hidden] { display:none; }
-:is(#asks, .flow .card) input[type=text] { border:2px solid var(--ink); padding:3px 6px; font:inherit; background:var(--field); color:var(--ink); }
-:is(#asks, .flow .card) button { border:2px solid var(--ink); background:var(--paper); color:var(--ink); padding:2px 12px; font:inherit; cursor:pointer; }
-:is(#asks, .flow .card) button:disabled { opacity:.5; cursor:default; }
-:is(#asks, .flow .card) button.allow, :is(#asks, .flow .card) button.submit { background:var(--ink); color:var(--paper); }
-:is(#asks, .flow .card) .q h3 { margin:4px 0; font-size:14px; } :is(#asks, .flow .card) .q .hd { color:var(--muted); font-weight:400; font-size:12px; margin-right:6px; }
-:is(#asks, .flow .card) label.opt { display:block; cursor:pointer; padding:1px 0; } :is(#asks, .flow .card) label.opt small { color:var(--muted); margin-left:6px; }
-:is(#asks, .flow .card) .q input.other { display:block; width:100%; box-sizing:border-box; margin-top:4px; }
+/* pending cards (built by asks.js): in the window's dock (#asks), in its flow (createChat's asks: 'inline') and in HQ's
+   approval queue (#queue) */
+:is(#asks, .flow, #queue) .card { border:2px solid var(--ink); padding:10px 12px; margin-bottom:10px; background:var(--card); color:var(--ink); }
+:is(#asks, .flow .card, #queue) .who { display:flex; gap:8px; align-items:baseline; margin-bottom:6px; }
+:is(#asks, .flow .card, #queue) .who .name { font-weight:700; }
+:is(#asks, .flow .card, #queue) .who .kind, :is(#asks, .flow .card, #queue) .meta { color:var(--muted); font-size:12px; }
+:is(#asks, .flow .card, #queue) .tool { font:700 13px var(--mono); }
+:is(#asks, .flow .card, #queue) pre { background:var(--paper-2); border:1px solid var(--line); padding:6px 8px; max-height:200px; overflow:auto; white-space:pre-wrap; word-break:break-all; font-size:12px; margin:6px 0; }
+:is(#asks, .flow .card, #queue) .row { display:flex; flex-wrap:wrap; gap:6px 8px; align-items:center; margin-top:6px; }
+:is(#asks, .flow .card, #queue) .row input { flex:1 1 10em; min-width:0; }
+:is(#asks, .flow .card, #queue) .row[hidden] { display:none; }
+:is(#asks, .flow .card, #queue) input[type=text] { border:2px solid var(--field-line); padding:3px 6px; font:inherit; background:var(--field); color:var(--ink); }
+:is(#asks, .flow .card, #queue) button { border:2px solid var(--ink); background:var(--paper); color:var(--ink); padding:2px 12px; font:inherit; cursor:pointer; }
+:is(#asks, .flow .card, #queue) button:disabled { opacity:.5; cursor:default; }
+:is(#asks, .flow .card, #queue) button.allow, :is(#asks, .flow .card, #queue) button.submit { background:var(--ink); color:var(--paper); }
+:is(#asks, .flow .card, #queue) .q h3 { margin:4px 0; font-size:14px; } :is(#asks, .flow .card, #queue) .q .hd { color:var(--muted); font-weight:400; font-size:12px; margin-right:6px; }
+:is(#asks, .flow .card, #queue) label.opt { display:block; cursor:pointer; padding:1px 0; } :is(#asks, .flow .card, #queue) label.opt small { color:var(--muted); margin-left:6px; }
+:is(#asks, .flow .card, #queue) .q input.other { display:block; width:100%; box-sizing:border-box; margin-top:4px; }
 /* (any page's cards) an input the bridge cut: the warning, and the button that shows all of it; Allow waits for it */
 .card .cut { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:4px 0; }
 .card .cut .warn { flex:1; min-width:200px; color:var(--danger-ink); font-weight:700; font-size:12px; }
@@ -143,9 +148,9 @@ button.close:hover { color:var(--ink); }
 .card .q .need[hidden] { display:none; }
 /* launch dialog */
 #launch label { display:block; margin:8px 0 2px; font-size:12px; color:var(--muted-2); }
-#launch input:not([type=checkbox]), #launch select { width:100%; box-sizing:border-box; font:inherit; color:var(--ink); background:var(--field); border:2px solid var(--ink); padding:3px 6px; }
+#launch input:not([type=checkbox]), #launch select { width:100%; box-sizing:border-box; font:inherit; color:var(--ink); background:var(--field); border:2px solid var(--field-line); padding:3px 6px; }
 #launch input[readonly] { background:var(--field-ro); }
-:is(#launch, #task) :is(input:not([type=checkbox]), select, textarea):focus { outline:none; border-color:var(--accent); }
+:is(#launch, #task) :is(input:not([type=checkbox]), select, textarea):focus, :is(#asks, .flow .card, #queue) input[type=text]:focus { outline:none; border-color:var(--focus-line); box-shadow:var(--focus-ring); }
 #launch .row { display:flex; gap:6px; }
 #launch .row input { flex:1; }
 #launch .grid { display:grid; grid-template-columns:1fr 1fr; gap:0 10px; }
@@ -168,7 +173,7 @@ button.close:hover { color:var(--ink); }
 /* the task dialog: the launch dialog's fields, the employees ticked in order and the advisors, numbered as the team */
 #task .panel { width:min(680px, calc(100vw - 32px)); }
 #task label { display:block; margin:8px 0 2px; font-size:12px; color:var(--muted-2); }
-#task :is(input:not([type=checkbox]), select, textarea) { width:100%; box-sizing:border-box; font:inherit; color:var(--ink); background:var(--field); border:2px solid var(--ink); padding:3px 6px; }
+#task :is(input:not([type=checkbox]), select, textarea) { width:100%; box-sizing:border-box; font:inherit; color:var(--ink); background:var(--field); border:2px solid var(--field-line); padding:3px 6px; }
 #task textarea { resize:vertical; }
 #task .mem, #task .adv { border:2px solid var(--line); background:var(--card); margin-top:4px; padding:3px 6px; }
 #task .mem { display:flex; align-items:center; gap:6px; }
@@ -214,7 +219,7 @@ button.close:hover { color:var(--ink); }
 #taskwin .err { margin-top:8px; padding:4px 8px; border:2px solid var(--danger); background:var(--danger-bg); color:var(--danger-ink); font-size:12px; white-space:pre-wrap; overflow-wrap:anywhere; }
 #taskwin .mode[hidden], #taskwin .err[hidden] { display:none; }
 #taskwin .members { margin-top:10px; border-top:2px solid var(--ink); }
-#taskwin .mrow { display:flex; align-items:center; gap:8px; padding:5px 6px; border-bottom:1px dashed var(--line); cursor:pointer; font-size:13px; }
+#taskwin .mrow { display:flex; flex-wrap:wrap; align-items:center; gap:4px 8px; padding:5px 6px; border-bottom:1px dashed var(--line); cursor:pointer; font-size:13px; }
 #taskwin .mrow:hover { background:var(--paper-2); }
 #taskwin .mrow.wait { cursor:default; color:var(--muted); }
 #taskwin .mrow.wait:hover { background:none; }
@@ -248,8 +253,8 @@ button.close:hover { color:var(--ink); }
 #taskwin .tmsg .body pre { background:rgba(0,0,0,.3); padding:6px 8px; margin:4px 0; font:12px/1.5 var(--mono); overflow:auto; white-space:pre; }
 #taskwin .tsay { display:flex; gap:8px; align-items:flex-end; margin-top:6px; }
 #taskwin .tbox { position:relative; flex:1; min-width:0; display:flex; }
-#taskwin .tsay textarea { flex:1; resize:none; font:inherit; color:var(--ink); background:var(--field); border:2px solid var(--ink); padding:5px 8px; box-sizing:border-box; }
-#taskwin .tsay textarea:focus { outline:none; border-color:var(--accent); }
+#taskwin .tsay textarea { flex:1; resize:none; font:inherit; color:var(--ink); background:var(--field); border:2px solid var(--field-line); padding:5px 8px; box-sizing:border-box; }
+#taskwin .tsay textarea:focus { outline:none; border-color:var(--focus-line); box-shadow:var(--focus-ring); }
 #taskwin .tsay textarea:disabled { background:var(--field-ro); }
 #taskwin .tstatus { margin-top:4px; font-size:12px; color:var(--danger-ink); white-space:pre-wrap; overflow-wrap:anywhere; }
 #taskwin .tstatus:empty { display:none; }

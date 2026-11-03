@@ -149,7 +149,7 @@ Expand-Archive -LiteralPath (Join-Path $d $zip) -DestinationPath $dest -Force
 & (Join-Path $dest 'symphony.exe') -version   # muestra "symphony v1.1.1 (windows/amd64)"
 ```
 
-Añadir esa carpeta al `Path` del usuario es un cambio duradero: pregunta antes al usuario. Si dice que sí, ejecuta la línea de abajo y abre una shell nueva; si dice que no, usa la ruta completa. SmartScreen puede avisar en la primera ejecución: «Más información» y luego «Ejecutar de todas formas».
+Añadir esa carpeta al `Path` del usuario es un cambio duradero: pregunta antes al usuario. Si dice que sí, ejecuta la línea de abajo y abre una shell nueva; si dice que no, usa la ruta completa. Descomprimido con `Expand-Archive`, el programa no lleva la marca de la descarga y SmartScreen lo deja ejecutarse; una copia descomprimida con «Extraer todo» del Explorador puede quedar bloqueada al abrirla con doble clic: «Más información» y luego «Ejecutar de todas formas».
 
 ```powershell
 [Environment]::SetEnvironmentVariable('Path', [Environment]::GetEnvironmentVariable('Path', 'User') + ";$dest", 'User')
@@ -394,7 +394,7 @@ La página puede abrir sesiones, lo que equivale a ejecutar comandos en esta má
 - **Solo esta máquina**: el bridge solo escucha en esta máquina y solo acepta conexiones de ella. Rechaza las peticiones dirigidas a cualquier otro host (DNS rebinding) y las escrituras que otros sitios web envíen a través de tu navegador, y su API no responde a ninguna petición que tu navegador indique que viene de otro sitio o de otro puerto, ni siquiera a un enlace. Otros sitios no pueden incrustar sus páginas en un marco. Las páginas solo cargan los archivos del propio bridge (una Content Security Policy).
 - **El mod comprueba el bridge** antes de enviar su token, y el programa `symphony` lo comprueba antes de presentar la clave de las páginas, así que otra cosa que escuche en la dirección del bridge no recibe ninguno de los dos.
 - **Contra qué no protege**: los programas que se ejecutan con tu propio usuario pueden leer la clave de las páginas y los tokens de la carpeta de datos, como cualquiera de tus archivos. Y los navegadores envían las cookies de un sitio a todos sus puertos: un servidor que otro usuario de esta máquina ejecute en `127.0.0.1` recibe la cookie de la clave de las páginas cuando tu navegador lo abre, o cuando ocupa el puerto del bridge mientras el bridge está detenido y la oficina sigue abierta en una pestaña. En una máquina compartida, cierra la oficina antes de detener el bridge y, si la clave puede haberse filtrado, borra el archivo `key` de la carpeta de datos (el siguiente arranque crea una nueva).
-- Los programas no están firmados. macOS puede rechazar una copia descargada con el navegador porque no puede verificar al desarrollador: haz clic en «Abrir igualmente» en Ajustes del Sistema → Privacidad y seguridad, o ejecuta una vez `xattr -d com.apple.quarantine symphony`. SmartScreen de Windows también puede avisarte: haz clic en «Más información» y luego en «Ejecutar de todas formas». El `checksums.txt` de la versión tiene el SHA-256 de cada archivo, y cada archivo lleva la atestación de GitHub de dónde se compiló; el paso 2 de la instalación comprueba ambas cosas.
+- Los programas no están firmados. macOS puede rechazar una copia descargada con el navegador porque no puede verificar al desarrollador: haz clic en «Abrir igualmente» en Ajustes del Sistema → Privacidad y seguridad, o ejecuta una vez `xattr -d com.apple.quarantine symphony`. En Windows, SmartScreen puede bloquear una copia descomprimida con «Extraer todo» del Explorador al abrirla con doble clic: haz clic en «Más información» y luego en «Ejecutar de todas formas» (`Expand-Archive`, el que usa la instalación, no le deja la marca de la descarga). El `checksums.txt` de la versión tiene el SHA-256 de cada archivo, y cada archivo lleva la atestación de GitHub de dónde se compiló; el paso 2 de la instalación comprueba ambas cosas.
 
 Para informar de una vulnerabilidad, consulta [SECURITY.md](SECURITY.md).
 
@@ -404,7 +404,7 @@ Para informar de una vulnerabilidad, consulta [SECURITY.md](SECURITY.md).
 | --- | --- | --- | --- |
 | Linux | Una pseudoterminal dentro del bridge | Una terminal gráfica (x-terminal-emulator, gnome-terminal, konsole, xterm) que ejecuta `symphony attach` | Pruebas de extremo a extremo completas |
 | macOS | Una pseudoterminal dentro del bridge | Terminal.app ejecutando `symphony attach` | Pruebas de extremo a extremo completas |
-| Windows | Una pseudoconsola (ConPTY) dentro del bridge | Una ventana de consola nueva que ejecuta `symphony attach` | Solo compilación cruzada y pruebas unitarias |
+| Windows | Una pseudoconsola (ConPTY) dentro del bridge | Una ventana de consola nueva que ejecuta `symphony attach` | Pruebas unitarias y las de extremo a extremo que no necesitan tmux; sesiones reales comprobadas en Windows 11 |
 
 El bridge acepta «confiar en esta carpeta» por ti en todas las plataformas.
 

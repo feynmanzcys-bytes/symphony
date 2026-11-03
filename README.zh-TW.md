@@ -149,7 +149,7 @@ Expand-Archive -LiteralPath (Join-Path $d $zip) -DestinationPath $dest -Force
 & (Join-Path $dest 'symphony.exe') -version   # 會印出 "symphony v1.1.1 (windows/amd64)"
 ```
 
-把那個資料夾加進使用者的 `Path` 是會一直留著的改動：要先問使用者。使用者同意的話，執行下面這行，再開一個新的 shell；不同意的話，就用完整路徑。第一次執行時 SmartScreen 可能會跳出警告：按「其他資訊」，再按「仍要執行」。
+把那個資料夾加進使用者的 `Path` 是會一直留著的改動：要先問使用者。使用者同意的話，執行下面這行，再開一個新的 shell；不同意的話，就用完整路徑。用 `Expand-Archive` 解壓縮出來的程式不帶下載標記，SmartScreen 不會攔；用檔案總管「全部解壓縮」解出來、再按兩下執行的，可能會被攔：按「其他資訊」，再按「仍要執行」。
 
 ```powershell
 [Environment]::SetEnvironmentVariable('Path', [Environment]::GetEnvironmentVariable('Path', 'User') + ";$dest", 'User')
@@ -394,7 +394,7 @@ SYMPHONY_TOKEN=<token> claude --name frontend-alice --permission-mode manual
 - **只限這台電腦**：bridge 只在本機監聽，也只接受來自本機的連線。它會拒絕發給其他主機的請求（DNS rebinding），也會拒絕其他網站透過你的瀏覽器送來的寫入請求；只要你的瀏覽器表明請求來自其他網站或其他連接埠，它的 API 一律不回應，就算只是點開一個連結也一樣。其他網站也不能用框架嵌入它的頁面。頁面只載入 bridge 自己的檔案（Content Security Policy）。
 - **mod 會先確認 bridge**，確認過才送出 token；`symphony` 程式也會先確認過才出示頁面金鑰，所以在 bridge 的位址上監聽的其他東西兩樣都拿不到。
 - **防不了的事**：以你自己的使用者身分執行的程式，可以讀取資料目錄裡的頁面金鑰和 token，就像它們能讀你的任何檔案一樣。另外，瀏覽器會把一個網站的 cookie 送給它的每一個連接埠：這台電腦上另一位使用者在 `127.0.0.1` 上執行的伺服器，只要你的瀏覽器開啟了它，或是在 bridge 停止、辦公室卻還開在某個分頁裡時占用了 bridge 的連接埠，就會拿到頁面金鑰的 cookie。在和別人共用的電腦上，請先關掉辦公室再停止 bridge；如果金鑰可能已經外洩，就刪掉資料目錄裡的 `key` 檔（下次啟動時會產生新的）。
-- 這些程式沒有簽章。用瀏覽器下載的話，macOS 可能因為無法驗證開發者而拒絕執行：請到「系統設定 → 隱私權與安全性」按「強制打開」，或執行一次 `xattr -d com.apple.quarantine symphony`。Windows 的 SmartScreen 也可能跳出警告：按「其他資訊」，再按「仍要執行」。Release 裡的 `checksums.txt` 列出了每個壓縮檔的 SHA-256，每個壓縮檔也都附有 GitHub 的證明（attestation），說明它是在哪裡建置的；安裝的第 2 步兩者都會檢查。
+- 這些程式沒有簽章。用瀏覽器下載的話，macOS 可能因為無法驗證開發者而拒絕執行：請到「系統設定 → 隱私權與安全性」按「強制打開」，或執行一次 `xattr -d com.apple.quarantine symphony`。在 Windows 上，用檔案總管「全部解壓縮」解出來的程式，按兩下時 SmartScreen 可能會攔：按「其他資訊」，再按「仍要執行」（安裝步驟用的 `Expand-Archive` 不會在它身上留下下載標記）。Release 裡的 `checksums.txt` 列出了每個壓縮檔的 SHA-256，每個壓縮檔也都附有 GitHub 的證明（attestation），說明它是在哪裡建置的；安裝的第 2 步兩者都會檢查。
 
 要回報安全漏洞，請見 [SECURITY.md](SECURITY.md)。
 
@@ -404,7 +404,7 @@ SYMPHONY_TOKEN=<token> claude --name frontend-alice --permission-mode manual
 | --- | --- | --- | --- |
 | Linux | bridge 內部的偽終端機 | 圖形終端機（x-terminal-emulator、gnome-terminal、konsole、xterm）執行 `symphony attach` | 完整的端對端測試 |
 | macOS | bridge 內部的偽終端機 | Terminal.app 執行 `symphony attach` | 完整的端對端測試 |
-| Windows | bridge 內部的偽主控台（ConPTY） | 新開主控台視窗執行 `symphony attach` | 只做過交叉編譯和單元測試 |
+| Windows | bridge 內部的偽主控台（ConPTY） | 新開主控台視窗執行 `symphony attach` | 單元測試和不需要 tmux 的端到端測試；真實工作階段在 Windows 11 上驗證過 |
 
 每個平台上都由 bridge 替你回答「信任此資料夾」。
 

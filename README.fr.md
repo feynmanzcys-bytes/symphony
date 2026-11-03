@@ -149,7 +149,7 @@ Expand-Archive -LiteralPath (Join-Path $d $zip) -DestinationPath $dest -Force
 & (Join-Path $dest 'symphony.exe') -version   # affiche "symphony v1.1.1 (windows/amd64)"
 ```
 
-Ajouter ce dossier au `Path` de l’utilisateur est un changement durable : demandez d’abord à l’utilisateur. S’il accepte, lancez la ligne ci-dessous et ouvrez un nouveau shell ; s’il refuse, utilisez le chemin complet. SmartScreen peut afficher un avertissement au premier lancement : « Informations complémentaires », puis « Exécuter quand même ».
+Ajouter ce dossier au `Path` de l’utilisateur est un changement durable : demandez d’abord à l’utilisateur. S’il accepte, lancez la ligne ci-dessous et ouvrez un nouveau shell ; s’il refuse, utilisez le chemin complet. Décompressé avec `Expand-Archive`, le programme ne porte pas la marque du téléchargement et SmartScreen le laisse s’exécuter ; une copie décompressée avec « Extraire tout » de l’Explorateur peut être bloquée au double-clic : « Informations complémentaires », puis « Exécuter quand même ».
 
 ```powershell
 [Environment]::SetEnvironmentVariable('Path', [Environment]::GetEnvironmentVariable('Path', 'User') + ";$dest", 'User')
@@ -394,7 +394,7 @@ La page peut démarrer des sessions, c’est-à-dire exécuter des commandes sur
 - **Cette machine seulement** : le bridge n’écoute que sur cette machine et n’accepte que les connexions qui en viennent. Il refuse les requêtes adressées à tout autre hôte (DNS rebinding) et les écritures que d’autres sites web envoient via votre navigateur, et son API ne répond à aucune requête dont votre navigateur indique qu’elle vient d’un autre site ou d’un autre port, pas même à un lien. Les autres sites ne peuvent pas afficher ses pages dans un cadre. Les pages ne chargent que les fichiers du bridge lui-même (une Content Security Policy).
 - **Le mod vérifie le bridge** avant d’envoyer son token, et le programme `symphony` avant de montrer la clé des pages, si bien qu’autre chose qui écouterait à l’adresse du bridge n’obtient ni l’un ni l’autre.
 - **Ce contre quoi il ne protège pas** : les programmes qui tournent sous votre propre utilisateur peuvent lire la clé des pages et les tokens du dossier de données, comme n’importe lequel de vos fichiers. Et les navigateurs envoient les cookies d’un site à tous ses ports : un serveur qu’un autre utilisateur de cette machine fait tourner sur `127.0.0.1` reçoit le cookie de la clé des pages quand votre navigateur l’ouvre, ou quand il prend le port du bridge pendant que le bridge est arrêté et que le bureau est encore ouvert dans un onglet. Sur une machine partagée, fermez le bureau avant d’arrêter le bridge, et si la clé a pu fuiter, supprimez le fichier `key` du dossier de données (le prochain démarrage en crée une nouvelle).
-- Les programmes ne sont pas signés. macOS peut refuser une copie téléchargée avec un navigateur, faute de pouvoir vérifier le développeur : cliquez sur « Ouvrir quand même » dans Réglages Système → Confidentialité et sécurité, ou lancez une fois `xattr -d com.apple.quarantine symphony`. Sous Windows, SmartScreen peut aussi vous avertir : cliquez sur « Informations complémentaires », puis sur « Exécuter quand même ». Le fichier `checksums.txt` de la version donne le SHA-256 de chaque archive, et chaque archive porte l’attestation de GitHub indiquant où elle a été compilée ; l’étape 2 de l’installation vérifie les deux.
+- Les programmes ne sont pas signés. macOS peut refuser une copie téléchargée avec un navigateur, faute de pouvoir vérifier le développeur : cliquez sur « Ouvrir quand même » dans Réglages Système → Confidentialité et sécurité, ou lancez une fois `xattr -d com.apple.quarantine symphony`. Sous Windows, SmartScreen peut bloquer au double-clic une copie décompressée avec « Extraire tout » de l’Explorateur : cliquez sur « Informations complémentaires », puis sur « Exécuter quand même » (`Expand-Archive`, qu’utilise l’installation, ne lui laisse pas la marque du téléchargement). Le fichier `checksums.txt` de la version donne le SHA-256 de chaque archive, et chaque archive porte l’attestation de GitHub indiquant où elle a été compilée ; l’étape 2 de l’installation vérifie les deux.
 
 Pour signaler une vulnérabilité, voir [SECURITY.md](SECURITY.md).
 
@@ -404,7 +404,7 @@ Pour signaler une vulnérabilité, voir [SECURITY.md](SECURITY.md).
 | --- | --- | --- | --- |
 | Linux | Un pseudo-terminal dans le bridge | Un terminal graphique (x-terminal-emulator, gnome-terminal, konsole, xterm) qui lance `symphony attach` | Tests de bout en bout complets |
 | macOS | Un pseudo-terminal dans le bridge | Terminal.app lançant `symphony attach` | Tests de bout en bout complets |
-| Windows | Une pseudo-console (ConPTY) dans le bridge | Une nouvelle fenêtre de console qui lance `symphony attach` | Compilation croisée et tests unitaires uniquement |
+| Windows | Une pseudo-console (ConPTY) dans le bridge | Une nouvelle fenêtre de console qui lance `symphony attach` | Tests unitaires et tests de bout en bout sans tmux ; sessions réelles vérifiées sous Windows 11 |
 
 Le bridge répond « faire confiance à ce dossier » à votre place, sur toutes les plateformes.
 

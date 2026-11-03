@@ -174,15 +174,27 @@ func httpPost(b *testBridge, path, body string) ([]byte, error) {
 	return out, nil
 }
 
-// contrastJS measures, under root, every piece of text the page shows against what it sits on, and the marks in the
-// state colors against theirs, from the computed styles: the backgrounds of the element and its ancestors composed
-// with their alpha and opacity (over the office's canvas for what floats on it), the font's size and weight for the
-// threshold (WCAG 2.1: 4.5:1, 3:1 for large text and for graphics). Disabled controls (and their labels), placeholders
-// and what a search dims are exempt; animations are stopped while it measures. It gives { checked, fails: [{ what, text, fg, bg, ratio, need }] }.
-const contrastJS = `(root => {
+// contrastJS measures, under root, the colors the way WCAG 2.1 AA asks, from the computed styles: what lies behind an
+// element is the backgrounds of it and its ancestors composed with their alpha and opacity (over the office's canvas for
+// what floats on it). pass says what it measures:
+//   - "colors": every piece of text against what it sits on (4.5:1, 3:1 for large text, by the font's size and
+//     weight), the marks in the state colors against theirs (3:1), and the edge of every text field and select (3:1:
+//     its border, a ring of its box-shadow or its own fill against what lies around it, the best of them), with the
+//     animations stopped;
+//   - "hover": the same over each element a :hover rule styles, one at a time, hovered (copies of the page's :hover
+//     rules that a class turns on, on the element and its ancestors, as the pointer does);
+//   - "frames": the same over the elements of each animation that runs longer than 5 seconds, stopped at each of its
+//     keyframes and between them;
+//   - "focus": every control's focus indicator (3:1 against what lies next to it: an outline, a border, a ring or a
+//     background that focus changes; the browser's own ring passes), each focused in turn as by the keyboard.
+//
+// Disabled controls (and their labels), placeholders and what a search dims are exempt. It gives
+// { checked, fails: [{ what, kind, text, fg, bg, ratio, need }], info }.
+const contrastJS = `((root, pass) => {
   const still = document.createElement('style')
-  still.textContent = '*, *::before, *::after { animation: none !important; transition: none !important }'
+  still.textContent = pass === 'frames' ? '*, *::before, *::after { transition: none !important }' : '*, *::before, *::after { animation: none !important; transition: none !important }'
   document.head.appendChild(still)
+  const later = [] // what a pass put on the page, taken away at the end
   try {
     const styles = new Map()
     const cs = el => { let s = styles.get(el); if (!s) { s = getComputedStyle(el); styles.set(el, s) } return s }
@@ -236,6 +248,8 @@ const contrastJS = `(root => {
         return { bg: under && parse(s.backgroundColor) || [0, 0, 0, 0], op: parseFloat(s.opacity) }
       })
     }
+    // the same chain with el's own background left out: what lies around el
+    const around = list => list.slice(0, -1).concat([{ bg: [0, 0, 0, 0], op: list[list.length - 1].op }])
     // what one pixel comes out as: the backgrounds painted down the chain (an opacity below 1 makes a group of its own,
     // put over what is below it at that opacity), then tops over the innermost
     function paint(list, tops, under) {
@@ -248,28 +262,33 @@ const contrastJS = `(root => {
       while (stack.length > 1) { const l = stack.pop(), below = stack[stack.length - 1]; below.c = over([l.c[0], l.c[1], l.c[2], l.c[3] * l.op], below.c) }
       return stack[0].c
     }
-    // the lowest contrast of color over el's backgrounds against the backgrounds alone, over every point behind them
-    function worst(list, tops, b) {
+    // the lowest contrast of one painting against another, over every point behind them
+    function versus(a, ta, c, tc, b) {
       let low = Infinity, at = null
       for (const under of b.under) {
-        const fg = paint(list, tops, under), bg = paint(list, [], under), r = ratio(fg, bg)
+        const fg = paint(a, ta, under), bg = paint(c, tc, under), r = ratio(fg, bg)
         if (r < low) { low = r; at = [fg, bg] }
       }
       return { r: low, fg: at[0], bg: at[1] }
     }
-    const part = n => n.tagName.toLowerCase() + (n.id ? '#' + n.id : '') + [...n.classList].map(c => '.' + c).join('')
+    // the lowest contrast of color over el's backgrounds against the backgrounds alone
+    const worst = (list, tops, b) => versus(list, tops, list, [], b)
+    const best = ms => ms.filter(Boolean).reduce((x, m) => !x || m.r > x.r ? m : x, null)
+    const part = n => n.tagName.toLowerCase() + (n.id ? '#' + n.id : '') + [...n.classList].filter(c => c !== '__hover').map(c => '.' + c).join('')
     const what = el => { const host = el.parentElement && el.parentElement.closest('[id]'); return (host ? part(host) + ' … ' : '') + part(el) }
     // out of sight for screen readers only (a box of a pixel, clipped away) counts as not shown
     const clipped = el => { for (let n = el; n; n = n.parentElement) { const b = n.getBoundingClientRect(), s = cs(n); if (b.width <= 1 && b.height <= 1 && (s.overflowX !== 'visible' || s.clipPath !== 'none')) return true } return false }
     const shown = el => el.getClientRects().length > 0 && cs(el).visibility === 'visible' && el.checkVisibility({ contentVisibilityAuto: false, visibilityProperty: true }) && !clipped(el)
     const EXEMPT = ':disabled, :disabled *, label:has(:disabled), label:has(:disabled) *, [aria-disabled="true"], [aria-disabled="true"] *, option, .dim, .dim *'
-    const fails = new Map()
+    const FIELDS = 'input:not([type=checkbox]):not([type=radio]):not([type=hidden]):not([type=range]):not([type=color]), textarea, select'
+    const fails = new Map(), info = {}
     let checked = 0
+    let tag = '' // what state the page is in: '' or ' hovered', ' at <animation> <n>%'
     function note(el, kind, m, need, text) {
       checked++
       if (m.r >= need - 0.005) return
-      const key = what(el) + '|' + hex(m.fg) + '|' + hex(m.bg)
-      if (!fails.has(key)) fails.set(key, { what: what(el), kind, text: String(text || '').trim().slice(0, 40), fg: hex(m.fg), bg: hex(m.bg), ratio: Math.round(m.r * 100) / 100, need })
+      const key = what(el) + '|' + kind + '|' + hex(m.fg) + '|' + hex(m.bg)
+      if (!fails.has(key)) fails.set(key, { what: what(el), kind: kind + tag, text: String(text || '').trim().slice(0, 40), fg: hex(m.fg), bg: hex(m.bg), ratio: Math.round(m.r * 100) / 100, need })
     }
     function text(el) {
       if (!shown(el) || el.closest(EXEMPT)) return
@@ -281,7 +300,36 @@ const contrastJS = `(root => {
       const b = base(el)
       const list = chain(el, b.from)
       if (list.some(n => n.op === 0)) return
-      note(el, 'text', worst(list, [fg], b), need, el.value || [...el.childNodes].filter(n => n.nodeType === 3).map(n => n.textContent).join(''))
+      const words = el.value || [...el.childNodes].filter(n => n.nodeType === 3).map(n => n.textContent).join('')
+      // a filter changes the colors in ways this doesn't follow: text under one can't be measured, so it fails
+      for (let n = el; n; n = n.parentElement) if (cs(n).filter !== 'none') return note(el, 'text under a filter', { r: 0, fg: fg, bg: [255, 255, 255, 1] }, need, words)
+      note(el, 'text', worst(list, [fg], b), need, words)
+    }
+    // the box-shadows of a computed value that draw a line (no blur): [{ c, inset }]
+    function rings(v) {
+      if (!v || v === 'none') return []
+      const out = []
+      for (const one of v.split(/,(?![^(]*\))/)) {
+        const c = /(rgba?\([^)]*\)|color\([^)]*\))/.exec(one), rest = one.replace(c ? c[0] : '', '').trim().split(/\s+/)
+        const inset = rest.includes('inset'), len = rest.filter(x => x !== 'inset').map(parseFloat)
+        const color = c && parse(c[0])
+        if (!color || !color[3] || (len[2] || 0) > 0) continue // blurred: a shadow, not a line
+        if ((len[3] || 0) <= 0 && !len[0] && !len[1]) continue
+        out.push({ c: color, inset })
+      }
+      return out
+    }
+    const sides = s => ['Top', 'Right', 'Bottom', 'Left'].filter(x => parseFloat(s['border' + x + 'Width']) >= 1 && !['none', 'hidden'].includes(s['border' + x + 'Style'])).map(x => parse(s['border' + x + 'Color'])).filter(c => c && c[3])
+    // a text field's or select's edge: the best of its border, a line its box-shadow draws and its own fill, against
+    // what lies around it
+    function edge(el) {
+      if (!shown(el) || el.closest(EXEMPT)) return
+      const s = cs(el), b = base(el), list = chain(el, b.from)
+      if (list.some(n => n.op === 0)) return
+      const out = around(list)
+      const m = best([versus(list, [], out, [], b), ...sides(s).map(c => versus(list, [c], out, [], b)),
+        ...rings(s.boxShadow).map(r => r.inset ? versus(list, [r.c], out, [], b) : versus(out, [r.c], out, [], b))])
+      note(el, 'edge', m, 3, el.getAttribute('aria-label') || el.placeholder || el.name)
     }
     // the marks in the state colors: [selector, the property with the color, what it sits on: its parent's background
     // ('parent') or its own (a band of its border: 'self')]
@@ -294,31 +342,146 @@ const contrastJS = `(root => {
       if (!c || !c[3]) return
       const b = base(el), list = chain(el, b.from)
       if (list.some(n => n.op === 0)) return
-      const self = list[list.length - 1]
-      const inner = against === 'self' ? list : list.slice(0, -1).concat([{ bg: [0, 0, 0, 0], op: self.op }])
-      note(el, 'mark', worst(inner, [c], b), 3, el.textContent)
+      note(el, 'mark', worst(against === 'self' ? list : around(list), [c], b), 3, el.textContent)
+    }
+    // everything measured under (and at) one element
+    function measure(top) {
+      const seen = new Set(), walk = document.createTreeWalker(top, NodeFilter.SHOW_TEXT)
+      while (walk.nextNode()) {
+        const n = walk.currentNode, el = n.parentElement
+        if (!el || seen.has(el) || !n.textContent.trim() || ['SCRIPT', 'STYLE', 'TITLE'].includes(el.tagName)) continue
+        seen.add(el)
+        text(el)
+      }
+      const all = sel => [top, ...top.querySelectorAll(sel)].filter(el => el.matches(sel))
+      for (const f of all(FIELDS)) { if (f.tagName !== 'SELECT') text(f); edge(f) }
+      for (const [sel, prop, against] of MARKS) for (const el of all(sel)) mark(el, prop, against)
     }
     const scope = document.querySelector(root)
     if (!scope) return JSON.stringify({ checked: 0, fails: [{ what: 'no ' + root }] })
-    const seen = new Set(), walk = document.createTreeWalker(scope, NodeFilter.SHOW_TEXT)
-    while (walk.nextNode()) {
-      const n = walk.currentNode, el = n.parentElement
-      if (!el || seen.has(el) || !n.textContent.trim() || ['SCRIPT', 'STYLE', 'TITLE'].includes(el.tagName)) continue
-      seen.add(el)
-      text(el)
+
+    if (pass === 'colors') measure(scope)
+
+    if (pass === 'hover') {
+      // a top-level split of a selector list, and the element a selector hovers: the selector up to its last compound
+      // with :hover, :hover taken out
+      const split = (sel, at) => {
+        const out = []; let depth = 0, q = null, start = 0
+        for (let i = 0; i <= sel.length; i++) {
+          const c = sel[i]
+          if (q) { if (c === q) q = null; continue }
+          if (c === '"' || c === "'") q = c
+          else if (c === '(' || c === '[') depth++
+          else if (c === ')' || c === ']') depth--
+          else if (i === sel.length || (depth === 0 && at.test(c))) { out.push([start, i]); start = i + 1 }
+        }
+        return out
+      }
+      const hovered = sel => {
+        let end = -1
+        for (const [a, z] of split(sel, /[\s>+~]/)) if (sel.slice(a, z).includes(':hover')) end = z
+        const s = end < 0 ? '' : sel.slice(0, end).replace(/:hover/g, '').trim()
+        return !s || /[\s>+~]$/.test(s) ? null : s
+      }
+      // each copy goes in right after its rule, so it takes the rule's place in the cascade (a later rule as specific
+      // still wins over it, as over the hover itself)
+      const added = [], targets = new Set()
+      const walkRules = box => {
+        for (let i = 0; i < box.cssRules.length; i++) {
+          const r = box.cssRules[i]
+          if (r instanceof CSSStyleRule) {
+            if (!r.selectorText.includes(':hover')) continue
+            try { box.insertRule(r.selectorText.replace(/:hover/g, '.__hover') + ' { ' + r.style.cssText + ' }', i + 1); added.push([box, box.cssRules[++i]]) } catch (e) {}
+            for (const [a, z] of split(r.selectorText, /,/)) {
+              const s = hovered(r.selectorText.slice(a, z).trim())
+              if (s) try { for (const el of scope.querySelectorAll(s)) targets.add(el) } catch (e) {}
+            }
+          } else if (r instanceof CSSMediaRule || r instanceof CSSSupportsRule) walkRules(r)
+        }
+      }
+      for (const sheet of document.styleSheets) { let ok = false; try { ok = !!sheet.cssRules } catch (e) {} if (ok) walkRules(sheet) }
+      later.push(() => { for (const [box, rule] of added.reverse()) { const k = [...box.cssRules].indexOf(rule); if (k >= 0) box.deleteRule(k) } })
+      info.rules = added.length; info.hovered = 0
+      tag = ' hovered'
+      for (const el of [...targets].slice(0, 300)) {
+        if (!shown(el)) continue
+        const up = []; for (let n = el; n; n = n.parentElement) { n.classList.add('__hover'); up.push(n) }
+        info.hovered++
+        try { measure(el) } finally { for (const n of up) n.classList.remove('__hover') }
+      }
     }
-    for (const f of scope.querySelectorAll('input:not([type=checkbox]):not([type=radio]):not([type=hidden]), textarea, select')) text(f)
-    for (const [sel, prop, against] of MARKS) for (const el of scope.querySelectorAll(sel)) mark(el, prop, against)
-    return JSON.stringify({ checked, fails: [...fails.values()] })
-  } finally { still.remove() }
+
+    if (pass === 'frames') {
+      const anims = document.getAnimations().filter(a => { const tg = a.effect && a.effect.target; return tg && (scope.contains(tg) || tg.contains(scope)) })
+      const was = anims.map(a => ({ a, t: a.currentTime, run: a.playState === 'running' }))
+      later.push(() => { for (const w of was) { w.a.currentTime = w.t; if (w.run) w.a.play() } })
+      for (const a of anims) a.pause()
+      info.animations = anims.length; info.frames = 0
+      for (const a of anims) {
+        const tm = a.effect.getComputedTiming(), dur = tm.duration, delay = tm.delay || 0, tg = a.effect.target
+        // one that is over within 5 seconds (a card rising into place, a find flashing) passes, as WCAG lets blinking
+        // that short be (2.2.2); what keeps going must keep its contrast in every frame
+        if (!(dur > 0) || !isFinite(dur) || tm.endTime <= 5000) continue
+        const offs = [...new Set(a.effect.getKeyframes().map(k => k.computedOffset))].sort((x, y) => x - y), at = new Set()
+        offs.forEach((o, i) => { at.add(o); if (i + 1 < offs.length) at.add((o + offs[i + 1]) / 2) })
+        for (const o of at) {
+          a.currentTime = delay + Math.min(o, 0.999) * dur
+          tag = ' at ' + (a.animationName || 'an animation') + ' ' + Math.round(o * 100) + '%'
+          info.frames++
+          measure(scope.contains(tg) ? tg : scope)
+        }
+        a.currentTime = delay
+      }
+    }
+
+    if (pass === 'focus') {
+      // each control focused in turn after a text field, as by the keyboard, so the browser shows its focus (a field
+      // always does, and a focus moved on from one that showed shows too)
+      const lead = document.createElement('input')
+      lead.style.cssText = 'position: fixed; left: 0; top: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none'
+      lead.tabIndex = -1; lead.setAttribute('aria-hidden', 'true')
+      const was = document.activeElement
+      scope.appendChild(lead)
+      later.push(() => { if (was && was !== document.body && was.isConnected) was.focus({ preventScroll: true }); else document.activeElement?.blur(); lead.remove() })
+      const look = el => { const s = cs(el); return { os: s.outlineStyle, ow: parseFloat(s.outlineWidth) || 0, oc: s.outlineColor, oo: parseFloat(s.outlineOffset) || 0,
+        bc: ['Top', 'Right', 'Bottom', 'Left'].map(x => s['border' + x + 'Color']).join(), bs: s.boxShadow, bg: s.backgroundColor } }
+      const els = [...scope.querySelectorAll('a[href], button, input:not([type=hidden]), select, textarea, summary, [tabindex]:not([tabindex="-1"])')]
+        .filter(el => el !== lead && !el.closest(EXEMPT) && !el.closest('[hidden], [inert]') && el.checkVisibility({ visibilityProperty: true }))
+      info.focused = 0; info.notVisible = []
+      for (const el of els.slice(0, 400)) {
+        lead.focus({ preventScroll: true })
+        const b = base(el), was = look(el), plain = chain(el, b.from)
+        el.focus({ preventScroll: true })
+        if (document.activeElement !== el || !shown(el)) continue
+        if (!el.matches(':focus-visible')) { info.notVisible.push(what(el)); continue }
+        info.focused++
+        const now = look(el)
+        if (now.os === 'auto') { checked++; continue } // the browser's own ring, drawn in two colors
+        const list = chain(el, b.from), out = around(list), s = cs(el)
+        const ms = []
+        if (now.os !== 'none' && now.ow >= 1) { const c = parse(now.oc); if (c && c[3]) ms.push(now.oo >= 0 ? versus(out, [c], out, [], b) : versus(list, [c], list, [], b)) }
+        if (now.bc !== was.bc) ms.push(...sides(s).map(c => versus(list, [c], out, [], b)))
+        if (now.bs !== was.bs) ms.push(...rings(s.boxShadow).map(r => r.inset ? versus(list, [r.c], list, [], b) : versus(out, [r.c], out, [], b)))
+        if (now.bg !== was.bg) ms.push(versus(list, [], plain, [], b), versus(list, [], out, [], b))
+        const m = best(ms) || { r: 1, fg: paint(list, [], b.under[0]), bg: paint(list, [], b.under[0]) }
+        note(el, 'focus', m, 3, el.getAttribute('aria-label') || el.textContent)
+      }
+      if (!info.notVisible.length) delete info.notVisible
+    }
+    return JSON.stringify({ checked, fails: [...fails.values()], info })
+  } finally { for (const f of later.reverse()) f(); still.remove() }
 })`
 
 // contrastView is one state of a page to measure: what to do to get there, what says it's there, where to measure,
 // and what to do after.
 type contrastView struct{ name, setup, ready, root, after string }
 
-// audit measures a view and gives its failures, each a line.
-func audit(t *testing.T, p *screens, label string, v contrastView) (int, []string) {
+// contrastPasses are what audit measures in every view (contrastJS).
+var contrastPasses = []string{"colors", "hover", "frames", "focus"}
+
+// audit measures a view in every pass and gives its failures, each a line, adding what the passes went through to
+// seen (contrastJS's info: the elements hovered, the animations and their frames, the controls focused).
+func audit(t *testing.T, p *screens, label string, v contrastView, seen map[string]float64) (int, []string) {
 	t.Helper()
 	if v.setup != "" {
 		p.run(v.setup)
@@ -327,24 +490,37 @@ func audit(t *testing.T, p *screens, label string, v contrastView) (int, []strin
 		waitUntil(t, 15*time.Second, label+": "+v.name, func() bool { return p.is(v.ready) })
 	}
 	time.Sleep(150 * time.Millisecond)
-	var res struct {
-		Checked int
-		Fails   []struct {
-			What, Kind, Text, Fg, Bg string
-			Ratio, Need              float64
-		}
-	}
-	if err := json.Unmarshal([]byte(get(t, p.ctx, 20*time.Second, chromedp.Evaluate[string](contrastJS+fmt.Sprintf("(%q)", v.root)))), &res); err != nil {
-		t.Fatalf("%s %s: %v", label, v.name, err)
-	}
+	total := 0
 	var out []string
-	for _, f := range res.Fails {
-		out = append(out, fmt.Sprintf("%s %s: %s %s on %s = %.2f < %g %q", label, v.name, f.Kind, f.Fg, f.Bg, f.Ratio, f.Need, f.What+" "+f.Text))
+	for _, pass := range contrastPasses {
+		var res struct {
+			Checked int
+			Fails   []struct {
+				What, Kind, Text, Fg, Bg string
+				Ratio, Need              float64
+			}
+			Info map[string]any
+		}
+		if err := json.Unmarshal([]byte(get(t, p.ctx, 30*time.Second, chromedp.Evaluate[string](contrastJS+fmt.Sprintf("(%q, %q)", v.root, pass)))), &res); err != nil {
+			t.Fatalf("%s %s %s: %v", label, v.name, pass, err)
+		}
+		if nv, ok := res.Info["notVisible"]; ok {
+			t.Logf("%s %s: focused without showing it (:focus-visible): %v", label, v.name, nv)
+		}
+		for k, n := range res.Info {
+			if f, ok := n.(float64); ok {
+				seen[k] += f
+			}
+		}
+		total += res.Checked
+		for _, f := range res.Fails {
+			out = append(out, fmt.Sprintf("%s %s: %s %s on %s = %.2f < %g %q", label, v.name, f.Kind, f.Fg, f.Bg, f.Ratio, f.Need, f.What+" "+f.Text))
+		}
 	}
 	if v.after != "" {
 		p.run(v.after)
 	}
-	return res.Checked, out
+	return total, out
 }
 
 // TestContrast measures the colors of every theme in each of its schemes the way WCAG 2.1 AA asks (no tokens): with
@@ -359,9 +535,10 @@ func TestContrast(t *testing.T) {
 	id := func(name string) string { return b.account(name).ID }
 	var fails []string
 	total := 0
+	seen := map[string]float64{}
 	run := func(p *screens, label string, views []contrastView) {
 		for _, v := range views {
-			n, f := audit(t, p, label, v)
+			n, f := audit(t, p, label, v, seen)
 			total += n
 			fails = append(fails, f...)
 		}
@@ -469,22 +646,57 @@ func TestContrast(t *testing.T) {
 	closeApprove()
 
 	sort.Strings(fails)
-	t.Logf("%d measured, %d short", total, len(fails))
+	t.Logf("%d measured, %d short; %.0f elements hovered (%.0f :hover rules), %.0f frames of %.0f animations, %.0f controls focused",
+		total, len(fails), seen["hovered"], seen["rules"], seen["frames"], seen["animations"], seen["focused"])
+	if seen["hovered"] == 0 || seen["frames"] == 0 || seen["focused"] == 0 {
+		t.Errorf("a pass measured nothing: %v", seen)
+	}
 	if len(fails) > 0 {
 		t.Errorf("colors short of WCAG 2.1 AA:\n%s", strings.Join(fails, "\n"))
 	}
 }
 
 // fitsJS says what doesn't fit the window: the page scrolling sideways, a window or dialog over the page reaching out
-// of it, or anything in one wider than its box (a scroller of its own aside).
+// of it, anything in one wider than its box (a scroller of its own aside), or a control of a bar or panel floating over
+// the page cut off by the window's edge; each with what sticks out.
 const fitsJS = `(() => {
   const out = [], W = innerWidth, H = innerHeight
-  for (const el of [document.documentElement, document.body]) if (el.scrollWidth > W + 1) out.push(el.tagName.toLowerCase() + ' scrolls sideways: ' + el.scrollWidth + ' > ' + W)
+  const name = c => c.tagName.toLowerCase() + (c.id ? '#' + c.id : '') + [...c.classList].map(x => '.' + x).join('')
+  // what reaches past a right edge: the outermost elements that do, inside a box that doesn't scroll them itself
+  const past = (root, right) => {
+    const hits = []
+    const walk = el => {
+      for (const n of el.childNodes) if (n.nodeType === 3 && n.textContent.trim()) {
+        const range = document.createRange(); range.selectNodeContents(n)
+        const r = range.getBoundingClientRect()
+        if (r.right > right + 1) { hits.push('text "' + n.textContent.trim().slice(0, 30) + '" in ' + name(el) + ' ' + Math.round(r.width) + 'px'); if (hits.length >= 4) return }
+      }
+      for (const c of el.children) {
+        if (!c.getClientRects().length || getComputedStyle(c).position === 'fixed') continue
+        const r = c.getBoundingClientRect()
+        if (r.right > right + 1) { hits.push(name(c) + ' ' + Math.round(r.width) + 'px'); if (hits.length >= 4) return }
+        else if (!['auto', 'scroll', 'hidden', 'clip'].includes(getComputedStyle(c).overflowX)) walk(c)
+        if (hits.length >= 4) return
+      }
+    }
+    walk(root)
+    return hits.length ? ' (' + hits.join(', ') + ')' : ''
+  }
+  for (const el of [document.documentElement, document.body]) if (el.scrollWidth > W + 1) out.push(el.tagName.toLowerCase() + ' scrolls sideways: ' + el.scrollWidth + ' > ' + W + past(document.body, W))
   for (const p of document.querySelectorAll('.modal:not([hidden]) .panel, .modal:not([hidden]) > form')) {
     if (!p.getClientRects().length) continue
     const r = p.getBoundingClientRect(), id = p.closest('[id]').id
     if (r.left < -1 || r.top < -1 || r.right > W + 1 || r.bottom > H + 1) out.push(id + ' reaches out of the window: ' + JSON.stringify([Math.round(r.left), Math.round(r.top), Math.round(r.right), Math.round(r.bottom)]) + ' in ' + W + 'x' + H)
-    if (p.scrollWidth > p.clientWidth + 1) out.push(id + ' scrolls sideways: ' + p.scrollWidth + ' > ' + p.clientWidth)
+    if (p.scrollWidth > p.clientWidth + 1) out.push(id + ' scrolls sideways: ' + p.scrollWidth + ' > ' + p.clientWidth + past(p, r.left + p.clientWidth))
+  }
+  // what floats over the page in sight (a bar, a panel; not the drawing's name tags) keeps its controls in the window
+  for (const f of document.querySelectorAll('body *')) {
+    if (getComputedStyle(f).position !== 'fixed' || f.closest('[aria-hidden="true"], .modal')) continue
+    const r = f.getBoundingClientRect()
+    if (r.width <= 1 || r.height <= 1 || r.bottom <= 0 || r.top >= H || r.right <= 0 || r.left >= W) continue
+    const cut = [...f.querySelectorAll('button, select, input, textarea, a[href], [tabindex]')]
+      .filter(c => c.getClientRects().length && c.checkVisibility({ visibilityProperty: true }) && (q => q.right > W + 1 || q.left < -1)(c.getBoundingClientRect()))
+    if (cut.length) out.push(name(f) + ' cuts off ' + cut.slice(0, 3).map(name).join(', '))
   }
   return out.join('\n')
 })()`
@@ -548,35 +760,53 @@ func TestNarrow(t *testing.T) {
 		}},
 	}
 	for _, pg := range pages {
-		ctx, closeTab := clockTab(t, browser, b.URL+"/t/"+pg.theme+"/?lang=en", 0)
-		do(t, ctx, 10*time.Second, chromedp.EmulateViewport(pg.w, pg.h))
-		p := &screens{t: t, ctx: ctx, lang: fmt.Sprintf("narrow-%s-%d", pg.theme, pg.w)}
-		waitUntil(t, 20*time.Second, pg.theme+": the page shows the team", func() bool { return p.is(pg.ready) })
-		for _, s := range pg.steps {
-			if s.setup != "" {
-				p.run(s.setup)
+		// the theme's narrow window, then 320 pixels: a phone, or a window of 1280 zoomed to 400% (WCAG 2.1's reflow)
+		for _, size := range [][2]int64{{pg.w, pg.h}, {320, 640}} {
+			ctx, closeTab := clockTab(t, browser, b.URL+"/t/"+pg.theme+"/?lang=en", 0)
+			do(t, ctx, 10*time.Second, chromedp.EmulateViewport(size[0], size[1]))
+			p := &screens{t: t, ctx: ctx, lang: fmt.Sprintf("narrow-%s-%d", pg.theme, size[0])}
+			waitUntil(t, 20*time.Second, pg.theme+": the page shows the team", func() bool { return p.is(pg.ready) })
+			for _, s := range pg.steps {
+				if s.setup != "" {
+					p.run(s.setup)
+				}
+				if s.ready != "" {
+					waitUntil(t, 10*time.Second, fmt.Sprintf("%s %d: %s", pg.theme, size[0], s.name), func() bool { return p.is(s.ready) })
+				}
+				check(p, s.name)
+				p.shot(strings.ReplaceAll(s.name, " ", "-"))
 			}
-			if s.ready != "" {
-				waitUntil(t, 10*time.Second, pg.theme+": "+s.name, func() bool { return p.is(s.ready) })
+			if pg.theme == "messenger" && size[0] == 320 { // one column: what is picked fills it, its close button leads back
+				p.run(`[...document.querySelectorAll('#people .row')].find(r => r.textContent.includes('alice')).click()`)
+				waitUntil(t, 10*time.Second, "messenger 320: alice's conversation fills the window, the lists away", func() bool {
+					return p.is(`!document.getElementById('chat').hidden && getComputedStyle(document.querySelector('.side')).display === 'none' && document.getElementById('chat').getBoundingClientRect().width > 300`)
+				})
+				if !p.is(`(c => !!c && c.getClientRects().length > 0)(document.querySelector('#chat .head .close'))`) {
+					t.Error("messenger 320: the conversation should show its close button, the way back to the lists")
+				}
+				p.run(`document.querySelector('#chat .head .close').click()`)
+				waitUntil(t, 10*time.Second, "messenger 320: the close button leads back to the lists", func() bool {
+					return p.is(`document.getElementById('chat').hidden && getComputedStyle(document.querySelector('.side')).display !== 'none'`)
+				})
 			}
-			check(p, s.name)
-			p.shot(strings.ReplaceAll(s.name, " ", "-"))
+			p.done()
+			closeTab()
 		}
-		p.done()
-		closeTab()
 	}
-	// the approval page on a phone
-	approve, closeApprove := clockTab(t, browser, b.URL+"/approve?lang=en", 0)
-	do(t, approve, 10*time.Second, chromedp.EmulateViewport(400, 760))
-	a := &screens{t: t, ctx: approve, lang: "narrow-approve-400"}
-	waitUntil(t, 20*time.Second, "the approval page lists the two asks", func() bool { return a.is(`document.querySelectorAll('#list .card').length === 2`) })
-	check(a, "page")
-	if bad := a.js(`[...document.querySelectorAll('#list .card, #list .card *')].filter(e => e.getBoundingClientRect().right > innerWidth + 1).map(e => e.tagName + '.' + e.className).slice(0, 5).join(', ')`); bad != "" {
-		t.Errorf("the approval page's cards reach out of a 400-pixel window: %s", bad)
+	// the approval page on phones
+	for _, w := range []int64{400, 320} {
+		approve, closeApprove := clockTab(t, browser, b.URL+"/approve?lang=en", 0)
+		do(t, approve, 10*time.Second, chromedp.EmulateViewport(w, 760))
+		a := &screens{t: t, ctx: approve, lang: fmt.Sprintf("narrow-approve-%d", w)}
+		waitUntil(t, 20*time.Second, "the approval page lists the two asks", func() bool { return a.is(`document.querySelectorAll('#list .card').length === 2`) })
+		check(a, "page")
+		if bad := a.js(`[...document.querySelectorAll('#list .card, #list .card *')].filter(e => e.getBoundingClientRect().right > innerWidth + 1).map(e => e.tagName + '.' + e.className).slice(0, 5).join(', ')`); bad != "" {
+			t.Errorf("the approval page's cards reach out of a %d-pixel window: %s", w, bad)
+		}
+		a.shot("page")
+		a.done()
+		closeApprove()
 	}
-	a.shot("page")
-	a.done()
-	closeApprove()
 }
 
 // axNode is what Chrome's accessibility tree, the one screen readers read, says of an element.
@@ -773,6 +1003,34 @@ func TestA11y(t *testing.T) {
 		t.Errorf("the task window should be a dialog named by its task: %+v", n)
 	}
 	named(p, "task window", `document.getElementById('taskwin')`)
+	// the team chat's mention picker: "@" lists the members, the box points at the one picked, the arrows move it, Esc
+	// closes the picker alone
+	box := `document.querySelector('#taskwin .tsay textarea')`
+	p.run(box + `.focus()`)
+	key(office, "@", false)
+	waitUntil(t, 5*time.Second, "@ opens the mention picker, the box pointing at its first member", func() bool {
+		return p.is(`(box => { const list = document.getElementById(box.getAttribute('aria-controls')), at = document.getElementById(box.getAttribute('aria-activedescendant'));` +
+			` return !!list && !list.hidden && box.getAttribute('aria-autocomplete') === 'list' && box.getAttribute('aria-haspopup') === 'listbox' &&` +
+			` !!at && list.contains(at) && at.getAttribute('role') === 'option' && at.getAttribute('aria-selected') === 'true' })(` + box + `)`)
+	}, func() string {
+		return p.js(`(box => JSON.stringify({ attrs: [...box.attributes].map(a => a.name + '=' + a.value), list: document.querySelector('#taskwin .tpick').outerHTML.slice(0, 400) }))(` + box + `)`)
+	})
+	if n := ax(t, office, `document.querySelector('#taskwin .tpick')`); n.Role != "listbox" || n.Name == "" {
+		t.Errorf("the mention picker should be a named listbox: %+v", n)
+	}
+	if n := ax(t, office, box); n.Role != "textbox" || n.Name == "" {
+		t.Errorf("the team chat's box should stay a named textbox: %+v", n)
+	}
+	picked := p.js(box + `.getAttribute('aria-activedescendant')`)
+	key(office, kb.ArrowDown, false)
+	if !p.is(fmt.Sprintf(`(box => box.getAttribute('aria-activedescendant') !== %q && document.getElementById(box.getAttribute('aria-activedescendant'))?.getAttribute('aria-selected') === 'true' && document.querySelectorAll('#taskwin .tpick [aria-selected=true]').length === 1)(`+box+`)`, picked)) {
+		t.Errorf("ArrowDown should move the picker's choice, and the box's aria-activedescendant with it: %s", p.js(`document.querySelector('#taskwin .tpick').outerHTML.slice(0, 400)`))
+	}
+	key(office, kb.Escape, false)
+	if !p.is(`document.querySelector('#taskwin .tpick').hidden && !` + box + `.hasAttribute('aria-activedescendant') && !document.getElementById('taskwin').hidden`) {
+		t.Error("Esc should close the mention picker alone, the box pointing at nothing")
+	}
+	p.run(`(b => { b.value = ''; b.dispatchEvent(new Event('input')) })(` + box + `)`)
 	for i := 0; i < 20 && !p.is(`document.activeElement.classList.contains('mrow')`); i++ {
 		key(office, kb.Tab, false)
 	}

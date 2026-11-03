@@ -303,6 +303,7 @@
   "task.openMember": "{name} 열기",
   "task.openMemberTitle": "{room}의 작업 {id}에서 이 직원의 세션",
   "task.chat": "팀 채팅",
+  "task.mentionList": "멘션할 수 있는 멤버",
   "task.you": "나",
   "task.chatEmpty": "아직 메시지가 없습니다. 멤버끼리 주고받은 메시지와 내가 보낸 메시지가 여기에 표시됩니다",
   "task.chatPlaceholder": "@{name} … 그 멤버에게만 보냅니다. @ 없이 쓰면 작업의 모든 멤버에게 보냅니다. Enter 보내기, Shift+Enter 줄바꿈",

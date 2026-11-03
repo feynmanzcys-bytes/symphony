@@ -149,7 +149,7 @@ Expand-Archive -LiteralPath (Join-Path $d $zip) -DestinationPath $dest -Force
 & (Join-Path $dest 'symphony.exe') -version   # "symphony v1.1.1 (windows/amd64)" と表示される
 ```
 
-そのフォルダをユーザーの `Path` に追加するのは、あとまで残る変更です。先にユーザーに確認してください。了承されたら下の行を実行して新しいシェルを開き、断られたらフルパスを使います。初回の実行で SmartScreen が警告することがあります。「詳細情報」、次に「実行」を選んでください。
+そのフォルダをユーザーの `Path` に追加するのは、あとまで残る変更です。先にユーザーに確認してください。了承されたら下の行を実行して新しいシェルを開き、断られたらフルパスを使います。`Expand-Archive` で展開したプログラムにはダウンロードの印が付かないので、SmartScreen には止められません。エクスプローラーの「すべて展開」で展開してダブルクリックした場合は止められることがあります。「詳細情報」、次に「実行」を選んでください。
 
 ```powershell
 [Environment]::SetEnvironmentVariable('Path', [Environment]::GetEnvironmentVariable('Path', 'User') + ";$dest", 'User')
@@ -394,7 +394,7 @@ SYMPHONY_TOKEN=<token> claude --name frontend-alice --permission-mode manual
 - **このマシンだけ**：bridge はこのマシンでだけ待ち受け、このマシンからの接続だけを受け付けます。ほかのホスト宛てのリクエスト（DNS リバインディング）や、ほかの Web サイトがあなたのブラウザ経由で送ってくる書き込みは拒否します。また API は、ほかのサイトやほかのポートから来たとブラウザが示すリクエストには、リンクであっても応答しません。ほかのサイトがそのページをフレームに埋め込むこともできません。ページは bridge 自身のファイルだけを読み込みます（Content Security Policy）。
 - **mod は bridge を確かめてから** token を送り、`symphony` プログラムも bridge を確かめてからページの鍵を示すので、bridge のアドレスで待ち受けているほかの何かが token やページの鍵を受け取ることはありません。
 - **防げないもの**：あなた自身のユーザーとして動くプログラムは、ほかのファイルと同じように、データフォルダにあるページの鍵や token を読めます。また、ブラウザはサイトの cookie をそのサイトのどのポートにも送ります。このマシンのほかのユーザーが `127.0.0.1` で動かしているサーバーは、あなたのブラウザがそれを開いたとき、または bridge が止まっていてオフィスがまだタブで開いているあいだにそのサーバーが bridge のポートを使ったときに、ページの鍵の cookie を受け取ります。共用のマシンでは、bridge を止める前にオフィスを閉じてください。鍵が漏れたおそれがあるときは、データフォルダの `key` ファイルを削除してください（次の起動で新しい鍵が作られます）。
-- プログラムには署名がありません。ブラウザでダウンロードした場合、macOS は開発元を検証できないとして実行を拒むことがあります。「システム設定 → プライバシーとセキュリティ」で「このまま開く」をクリックするか、`xattr -d com.apple.quarantine symphony` を一度実行してください。Windows でも SmartScreen が警告することがあります。「詳細情報」をクリックしてから「実行」を選んでください。リリースの `checksums.txt` には各アーカイブの SHA-256 が載っていて、各アーカイブには、どこでビルドされたかを示す GitHub の構成証明（attestation）が付いています。インストールのステップ 2 で、その両方を確認します。
+- プログラムには署名がありません。ブラウザでダウンロードした場合、macOS は開発元を検証できないとして実行を拒むことがあります。「システム設定 → プライバシーとセキュリティ」で「このまま開く」をクリックするか、`xattr -d com.apple.quarantine symphony` を一度実行してください。Windows では、エクスプローラーの「すべて展開」で展開したコピーをダブルクリックすると SmartScreen に止められることがあります。「詳細情報」をクリックしてから「実行」を選んでください（インストール手順の `Expand-Archive` はダウンロードの印を残しません）。リリースの `checksums.txt` には各アーカイブの SHA-256 が載っていて、各アーカイブには、どこでビルドされたかを示す GitHub の構成証明（attestation）が付いています。インストールのステップ 2 で、その両方を確認します。
 
 脆弱性の報告については [SECURITY.md](SECURITY.md) を見てください。
 
@@ -404,7 +404,7 @@ SYMPHONY_TOKEN=<token> claude --name frontend-alice --permission-mode manual
 | --- | --- | --- | --- |
 | Linux | bridge の中の疑似ターミナル | グラフィカルなターミナル（x-terminal-emulator、gnome-terminal、konsole、xterm）で `symphony attach` を実行 | エンドツーエンドテストまで実施 |
 | macOS | bridge の中の疑似ターミナル | Terminal.app で `symphony attach` を実行 | エンドツーエンドテストまで実施 |
-| Windows | bridge の中の疑似コンソール（ConPTY） | 新しいコンソールウィンドウで `symphony attach` を実行 | クロスコンパイルと単体テストのみ |
+| Windows | bridge の中の疑似コンソール（ConPTY） | 新しいコンソールウィンドウで `symphony attach` を実行 | 単体テストと tmux を使わないエンドツーエンドテスト。実際のセッションを Windows 11 で確認済み |
 
 「このフォルダを信頼する」には、どのプラットフォームでも bridge があなたの代わりに答えます。
 

@@ -303,6 +303,7 @@
   "task.openMember": "Abrir {name}",
   "task.openMemberTitle": "A sessão deste funcionário na tarefa {id}, na sala {room}",
   "task.chat": "Chat da equipe",
+  "task.mentionList": "Membros para mencionar",
   "task.you": "Você",
   "task.chatEmpty": "Nenhuma mensagem ainda: o que os membros mandam uns aos outros, e o que você manda a eles, aparece aqui",
   "task.chatPlaceholder": "@{name} … envia só para esse membro; sem @, para todos da tarefa. Enter envia, Shift+Enter quebra a linha",

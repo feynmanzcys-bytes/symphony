@@ -12,6 +12,8 @@
   --card: #ffffff; --field: #ffffff; --field-ro: #f0f2f5; --hl: #e9edef;
   --me-bg: var(--bubble-me); --me-ink: var(--ink); --me-accent: #126b56;
   --st-idle: #1f7a4f; --st-busy: #946200; --st-wait: #c62f2f; --st-off: #6b7a83;
+  /* a field's edge (3:1 on what it sits on), and with the focus the accent's (ui.css) */
+  --field-line: #728089; --focus-line: var(--accent); --focus-ring: none;
 }
 html[data-dark] {
   --paper: #111b21; --paper-2: #202c33; --ink: #e9edef; --muted: #9fb0b9; --muted-2: #b8c5cc; --line: #233138;
@@ -22,6 +24,7 @@ html[data-dark] {
   --card: #1a252c; --field: #2a3942; --field-ro: #202c33; --hl: #2a3942;
   --me-bg: var(--bubble-me); --me-ink: var(--ink); --me-accent: #7ff0a8;
   --st-idle: #25d366; --st-busy: #e9b949; --st-wait: #f15c6d; --st-off: #8696a0;
+  --field-line: #8696a0;
 }
 html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font: 14px/1.45 var(--sans); overflow: hidden; }
 body:lang(zh-CN) { font-family: var(--sans), "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC"; }
@@ -39,7 +42,8 @@ button.px.alert { background: var(--danger-strong); border-color: var(--danger-s
 button.px.icon { width: 32px; padding: 2px 0; text-align: center; }
 .panel, :is(#asks, .flow) .card, #taskwin .tlist, #find-list { border-radius: 10px; box-shadow: var(--shadow); border-color: var(--line); }
 .modal { background: rgba(17,27,33,.5); }
-:is(#asks, .flow .card) input[type=text], :is(#asks, .flow .card) button, #launch input:not([type=checkbox]), #launch select, #task :is(input:not([type=checkbox]), select, textarea), .chat .say textarea, #taskwin .tsay textarea { border-radius: 8px; border-color: var(--line); }
+:is(#asks, .flow .card) button { border-radius: 8px; border-color: var(--line); }
+:is(#asks, .flow .card) input[type=text], #launch input:not([type=checkbox]), #launch select, #task :is(input:not([type=checkbox]), select, textarea), .chat .say textarea, #taskwin .tsay textarea { border-radius: 8px; border-color: var(--field-line); }
 :is(#asks, .flow .card) button.allow, :is(#asks, .flow .card) button.submit { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 #task .lead-tag, #taskwin .badge.lead { background: var(--accent); color: var(--on-accent); }
 /* the conversation: bubbles with rounded corners, yours green on the right, the model's white on the left */
@@ -50,7 +54,7 @@ button.px.icon { width: 32px; padding: 2px 0; text-align: center; }
 .it.message.out { border-radius: 12px 12px 2px 12px; }
 .it.tool { border-radius: 6px; }
 .chat .meta span.task { background: color-mix(in srgb, var(--accent) 15%, var(--paper)); border-color: var(--accent); color: var(--ink); }
-.chat .meta span.task:hover { background: color-mix(in srgb, var(--accent) 30%, var(--paper)); }
+.chat .meta span.task:hover { background: color-mix(in srgb, var(--accent) 30%, var(--paper)); color: var(--ink); }
 .it.ask, .it.notice { background: var(--pane-2); border-radius: 10px; padding: 2px 10px; }
 .chat .flow { background: var(--pane); }
 .chat .head, .chat .dock { border-color: var(--line); background: var(--paper); }
@@ -68,6 +72,13 @@ button.px.icon { width: 32px; padding: 2px 0; text-align: center; }
 #chat .panel.chat { border-left: 1px solid var(--line); border-right: 1px solid var(--line); }
 #taskwin > .panel { box-sizing: border-box; display: flex; flex-direction: column; }
 #taskwin .close, #chat .head .close { display: none; } /* the sidebar is the way out */
+/* a narrow window (a phone, a page zoomed in): one column, the lists or what is picked in them, whose close button
+   leads back to the lists (.picked: messenger.js) */
+@media (max-width: 700px) {
+  .app { grid-template-columns: minmax(0, 1fr); }
+  .app.picked > .side, .app:not(.picked) > .center { display: none; }
+  #taskwin .close, #chat .head .close { display: inline-block; }
+}
 .chat .head { padding: 10px 16px; }
 .chat .who h2 { font-size: 16px; }
 
@@ -76,10 +87,10 @@ button.px.icon { width: 32px; padding: 2px 0; text-align: center; }
 .side-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 12px 14px 8px; }
 .side-head h1 { margin: 0; font-size: 18px; font-weight: 700; }
 .side-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-left: auto; }
-.side-actions select { font: inherit; font-size: 12px; color: var(--ink); background: var(--paper); border: 1px solid var(--line); border-radius: 8px; padding: 3px 4px; max-width: 110px; }
+.side-actions select { font: inherit; font-size: 12px; color: var(--ink); background: var(--paper); border: 1px solid var(--field-line); border-radius: 8px; padding: 3px 4px; max-width: 110px; }
 .prefs { display: flex; gap: 6px; }
 .find { padding: 0 14px 8px; }
-#find { width: 100%; box-sizing: border-box; font: inherit; font-size: 13px; color: var(--ink); background: var(--pane-2); border: 0; border-radius: 10px; padding: 7px 12px; }
+#find { width: 100%; box-sizing: border-box; font: inherit; font-size: 13px; color: var(--ink); background: var(--pane-2); border: 1px solid var(--field-line); border-radius: 10px; padding: 7px 12px; }
 #find:focus { outline: 2px solid var(--accent); }
 .note { margin: 0 14px 8px; padding: 8px 10px; border-radius: 8px; background: color-mix(in srgb, var(--danger) 10%, var(--paper)); border: 1px solid var(--danger); font-size: 12px; }
 .note[hidden] { display: none; }

@@ -149,7 +149,7 @@ Expand-Archive -LiteralPath (Join-Path $d $zip) -DestinationPath $dest -Force
 & (Join-Path $dest 'symphony.exe') -version   # "symphony v1.1.1 (windows/amd64)" 출력
 ```
 
-그 폴더를 사용자의 `Path`에 추가하는 것은 계속 남는 변경이므로, 먼저 사용자에게 물어보세요. 좋다고 하면 아래 줄을 실행하고 새 셸을 여세요. 싫다고 하면 전체 경로를 쓰세요. 처음 실행할 때 SmartScreen이 경고할 수 있습니다. "추가 정보"를 누른 뒤 "실행"을 누르세요.
+그 폴더를 사용자의 `Path`에 추가하는 것은 계속 남는 변경이므로, 먼저 사용자에게 물어보세요. 좋다고 하면 아래 줄을 실행하고 새 셸을 여세요. 싫다고 하면 전체 경로를 쓰세요. `Expand-Archive`로 푼 프로그램에는 다운로드 표시가 없어서 SmartScreen이 막지 않습니다. 파일 탐색기의 "압축 풀기"로 풀고 두 번 클릭해 실행하면 막힐 수 있습니다. "추가 정보"를 누른 뒤 "실행"을 누르세요.
 
 ```powershell
 [Environment]::SetEnvironmentVariable('Path', [Environment]::GetEnvironmentVariable('Path', 'User') + ";$dest", 'User')
@@ -394,7 +394,7 @@ SYMPHONY_TOKEN=<token> claude --name frontend-alice --permission-mode manual
 - **이 컴퓨터 전용**: bridge는 이 컴퓨터에서만 수신하고, 이 컴퓨터에서 온 연결만 받습니다. 다른 호스트를 향한 요청(DNS 리바인딩)과 다른 웹사이트가 여러분의 브라우저를 통해 보내는 쓰기 요청을 거부하며, 브라우저가 다른 사이트나 다른 포트에서 왔다고 알리는 요청에는 링크라 해도 API가 응답하지 않습니다. 다른 사이트는 이 페이지를 프레임 안에 넣을 수 없습니다. 페이지는 bridge 자신의 파일만 불러옵니다(Content Security Policy).
 - **mod는 bridge를 확인한 뒤에** token을 보내고, `symphony` 프로그램도 bridge를 확인한 뒤에 페이지 키를 보여 주므로, bridge 주소에서 대신 수신하고 있는 다른 무언가는 둘 중 어느 것도 받지 못합니다.
 - **막지 못하는 것**: 여러분 자신의 사용자 권한으로 실행되는 프로그램은 다른 파일과 마찬가지로 데이터 폴더의 페이지 키와 token을 읽을 수 있습니다. 또 브라우저는 한 사이트의 쿠키를 그 사이트의 모든 포트에 보냅니다. 이 컴퓨터의 다른 사용자가 `127.0.0.1`에서 돌리는 서버는 여러분의 브라우저가 그 서버를 열 때, 또는 bridge가 멈춰 있고 사무실이 아직 탭에 열려 있는 동안 그 서버가 bridge의 포트를 차지할 때 페이지 키 쿠키를 받게 됩니다. 다른 사람과 함께 쓰는 컴퓨터에서는 bridge를 멈추기 전에 사무실을 닫고, 키가 새어 나갔을 수 있다면 데이터 폴더의 `key` 파일을 지우세요(다음에 시작할 때 새 키가 만들어집니다).
-- 프로그램에는 서명이 없습니다. 브라우저로 내려받은 사본은 macOS가 개발자를 확인할 수 없다며 막을 수 있습니다. "시스템 설정 → 개인정보 보호 및 보안"에서 "그래도 열기"를 누르거나, `xattr -d com.apple.quarantine symphony`를 한 번 실행하세요. Windows에서도 SmartScreen이 경고할 수 있습니다. "추가 정보"를 누른 뒤 "실행"을 누르세요. 릴리스의 `checksums.txt`에는 모든 압축 파일의 SHA-256이 들어 있고, 모든 압축 파일에는 어디서 빌드됐는지에 대한 GitHub의 증명(attestation)이 붙어 있습니다. 설치 2단계에서 둘 다 검사합니다.
+- 프로그램에는 서명이 없습니다. 브라우저로 내려받은 사본은 macOS가 개발자를 확인할 수 없다며 막을 수 있습니다. "시스템 설정 → 개인정보 보호 및 보안"에서 "그래도 열기"를 누르거나, `xattr -d com.apple.quarantine symphony`를 한 번 실행하세요. Windows에서는 파일 탐색기의 "압축 풀기"로 푼 사본을 두 번 클릭하면 SmartScreen이 막을 수 있습니다. "추가 정보"를 누른 뒤 "실행"을 누르세요(설치 단계의 `Expand-Archive`는 다운로드 표시를 남기지 않습니다). 릴리스의 `checksums.txt`에는 모든 압축 파일의 SHA-256이 들어 있고, 모든 압축 파일에는 어디서 빌드됐는지에 대한 GitHub의 증명(attestation)이 붙어 있습니다. 설치 2단계에서 둘 다 검사합니다.
 
 취약점을 알리려면 [SECURITY.md](SECURITY.md)를 보세요.
 
@@ -404,7 +404,7 @@ SYMPHONY_TOKEN=<token> claude --name frontend-alice --permission-mode manual
 | --- | --- | --- | --- |
 | Linux | bridge 안의 의사 터미널 | 그래픽 터미널(x-terminal-emulator, gnome-terminal, konsole, xterm)에서 `symphony attach` 실행 | 엔드투엔드 테스트 전체 |
 | macOS | bridge 안의 의사 터미널 | Terminal.app에서 `symphony attach` 실행 | 엔드투엔드 테스트 전체 |
-| Windows | bridge 안의 의사 콘솔(ConPTY) | 새 콘솔 창에서 `symphony attach` 실행 | 크로스 컴파일과 단위 테스트만 |
+| Windows | bridge 안의 의사 콘솔(ConPTY) | 새 콘솔 창에서 `symphony attach` 실행 | 단위 테스트와 tmux가 필요 없는 엔드투엔드 테스트, 실제 세션은 Windows 11에서 확인 |
 
 "이 폴더 신뢰"는 모든 플랫폼에서 bridge가 대신 눌러 줍니다.
 

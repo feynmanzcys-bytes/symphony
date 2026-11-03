@@ -149,7 +149,7 @@ Expand-Archive -LiteralPath (Join-Path $d $zip) -DestinationPath $dest -Force
 & (Join-Path $dest 'symphony.exe') -version   # prints "symphony v1.1.1 (windows/amd64)"
 ```
 
-Adding that folder to the user's `Path` is a lasting change: ask the user first. With their yes, run the line below and open a new shell; with their no, use the full path. SmartScreen may warn on the first run: "More info", then "Run anyway".
+Adding that folder to the user's `Path` is a lasting change: ask the user first. With their yes, run the line below and open a new shell; with their no, use the full path. Unpacked with `Expand-Archive`, the program carries no mark of the download, so SmartScreen lets it run; a copy unpacked with Explorer's "Extract all" may be stopped when double-clicked: "More info", then "Run anyway".
 
 ```powershell
 [Environment]::SetEnvironmentVariable('Path', [Environment]::GetEnvironmentVariable('Path', 'User') + ";$dest", 'User')
@@ -394,7 +394,7 @@ The page can start sessions, which means running commands on this machine, so th
 - **This machine only**: the bridge listens on and accepts connections from this machine only. It refuses requests addressed to any other host (DNS rebinding) and writes that other websites send through your browser, and its API answers no request your browser says comes from another site or another port, not even a link. Other sites can't frame its pages. The pages load only the bridge's own files (a Content Security Policy).
 - **The mod checks the bridge** before it sends its token, and the `symphony` program before it shows the page key, so something else listening at the bridge's address gets neither.
 - **What it doesn't protect against**: programs running as your own user can read the page key and the tokens in the data folder, like any of your files. And browsers send a site's cookies to every port of it: a server another user of this machine runs on `127.0.0.1` gets the page key's cookie when your browser opens it, or when it takes the bridge's port while the bridge is stopped and the office is still open in a tab. On a machine you share, close the office before you stop the bridge, and if the key may have leaked, delete the `key` file in the data folder (the next start makes a new one).
-- The programs aren't signed. macOS may refuse a copy downloaded with a browser because it can't verify the developer: click "Open Anyway" under System Settings → Privacy & Security, or run `xattr -d com.apple.quarantine symphony` once. Windows SmartScreen may warn you too: click "More info", then "Run anyway". The release's `checksums.txt` holds the SHA-256 of every archive, and every archive carries GitHub's attestation of where it was built; step 2 of the install checks both.
+- The programs aren't signed. macOS may refuse a copy downloaded with a browser because it can't verify the developer: click "Open Anyway" under System Settings → Privacy & Security, or run `xattr -d com.apple.quarantine symphony` once. On Windows, SmartScreen may stop a copy unpacked with Explorer's "Extract all" when it's double-clicked: click "More info", then "Run anyway" (`Expand-Archive`, which the install uses, leaves no mark of the download on it). The release's `checksums.txt` holds the SHA-256 of every archive, and every archive carries GitHub's attestation of where it was built; step 2 of the install checks both.
 
 To report a vulnerability, see [SECURITY.md](SECURITY.md).
 
@@ -404,7 +404,7 @@ To report a vulnerability, see [SECURITY.md](SECURITY.md).
 | --- | --- | --- | --- |
 | Linux | A pseudo-terminal inside the bridge | A graphical terminal (x-terminal-emulator, gnome-terminal, konsole, xterm) running `symphony attach` | Full end-to-end tests |
 | macOS | A pseudo-terminal inside the bridge | Terminal.app running `symphony attach` | Full end-to-end tests |
-| Windows | A pseudo-console (ConPTY) inside the bridge | A new console window running `symphony attach` | Cross-compiled and unit-tested only |
+| Windows | A pseudo-console (ConPTY) inside the bridge | A new console window running `symphony attach` | Unit tests and the end-to-end tests that need no tmux; real sessions checked on Windows 11 |
 
 The bridge answers "trust this folder" for you on every platform.
 

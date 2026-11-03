@@ -52,7 +52,7 @@ const WINDOW = `
       <h3 data-i18n="task.chat"></h3>
       <div class="tlist"></div>
       <form class="tsay" autocomplete="off">
-        <div class="tbox"><textarea rows="1" data-i18n-aria-label="task.chat"></textarea><div class="tpick" hidden></div></div>
+        <div class="tbox"><textarea rows="1" data-i18n-aria-label="task.chat" aria-autocomplete="list" aria-haspopup="listbox" aria-controls="task-pick"></textarea><div class="tpick" id="task-pick" role="listbox" data-i18n-aria-label="task.mentionList" hidden></div></div>
         <button type="submit" class="px primary" data-i18n="chat.send"></button>
       </form>
       <div class="tstatus"></div>
@@ -322,7 +322,9 @@ export function createTaskUI(sym, {
     tBox.style.height = Math.min(tBox.scrollHeight + 4, 140) + 'px'
   }
   // The mention picker: an @ typed opens a list of the task's members over the input, narrowed by what follows it;
-  // arrows move, Enter or Tab (or a click) puts in "@name ", Esc, a space or no match closes it until the next @
+  // arrows move, Enter or Tab (or a click) puts in "@name ", Esc, a space or no match closes it until the next @. For
+  // screen readers the input names the list it fills in (aria-autocomplete, aria-controls) and the member picked
+  // (aria-activedescendant), as a combobox would: a textarea can't be one
   let pick = null // { at, q, sel }: where the @ being typed is, what follows it, the highlighted name
   let pickShut = -1 // the @ Esc closed the picker for
   function pickNames() {
@@ -330,7 +332,11 @@ export function createTaskUI(sym, {
     const q = pick ? lower(pick.q) : ''
     return (task?.members ?? []).filter(m => lower(m.name).startsWith(q))
   }
-  function closePick() { pick = null; tPick.hidden = true }
+  function closePick() { pick = null; tPick.hidden = true; tBox.removeAttribute('aria-activedescendant') }
+  function markPick() { // the highlighted member, for the eye and for screen readers
+    tPick.querySelectorAll('.hit').forEach((h, i) => { h.classList.toggle('on', i === pick.sel); h.setAttribute('aria-selected', String(i === pick.sel)) })
+    tBox.setAttribute('aria-activedescendant', 'task-pick-' + pick.sel)
+  }
   function updatePick() {
     const before = tBox.value.slice(0, tBox.selectionStart), hit = tBox.selectionStart === tBox.selectionEnd && /(?:^|\s)@([^\s@]*)$/.exec(before)
     if (!hit || tBox.disabled) { pickShut = -1; return closePick() }
@@ -342,10 +348,11 @@ export function createTaskUI(sym, {
     pick.sel = Math.max(0, Math.min(pick.sel, names.length - 1))
     tPick.innerHTML = names.map((m, i) => {
       const s = sym.sessionById(m.session), online = sym.isOnline(s)
-      return `<div class="hit${i === pick.sel ? ' on' : ''}" data-name="${esc(m.name)}">${dot(online ? s.state : 'ended')}<b>${esc(m.name)}</b>` +
+      return `<div class="hit${i === pick.sel ? ' on' : ''}" data-name="${esc(m.name)}" role="option" id="task-pick-${i}" aria-selected="${i === pick.sel}">${dot(online ? s.state : 'ended')}<b>${esc(m.name)}</b>` +
         `<small>${esc(!m.session ? t('task.memberStarting') : online ? statusText(sym, s) : t('task.memberEnded'))}</small></div>`
     }).join('')
     tPick.hidden = false
+    markPick()
   }
   function putPick(name) {
     const end = tBox.selectionStart, at = pick.at
@@ -366,7 +373,7 @@ export function createTaskUI(sym, {
       const names = pickNames()
       if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
         pick.sel = (pick.sel + (ev.key === 'ArrowDown' ? 1 : names.length - 1)) % names.length
-        tPick.querySelectorAll('.hit').forEach((h, i) => h.classList.toggle('on', i === pick.sel))
+        markPick()
       } else if ((ev.key === 'Enter' || ev.key === 'Tab') && names[pick.sel]) putPick(names[pick.sel].name)
       else if (ev.key === 'Escape') { pickShut = pick.at; closePick(); ev.stopPropagation() } // the picker only, not the window
       else return

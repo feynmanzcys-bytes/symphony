@@ -95,6 +95,9 @@ function avatarURL(name) {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><circle cx="16" cy="16" r="15" fill="hsl(${hue} 48% 46%)"/><ellipse cx="11" cy="14" rx="3" ry="3.4" fill="#fff"/><ellipse cx="21" cy="14" rx="3" ry="3.4" fill="#fff"/><circle cx="11.5" cy="14.5" r="1.5" fill="#111b21"/><circle cx="21.5" cy="14.5" r="1.5" fill="#111b21"/><path d="M11 22 Q16 26 21 22" stroke="#fff" stroke-width="1.6" fill="none" stroke-linecap="round"/></svg>`
   return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`
 }
+// what the middle column shows, for the narrow window's one column
+const app = document.querySelector('.app')
+const markPicked = () => app.classList.toggle('picked', !!(picked?.account || picked?.group))
 function showCenter() {
   const conv = !!picked?.account, group = !!picked?.group
   if (!conv) chat.el.hidden = true
@@ -207,6 +210,7 @@ function syncRows(box, items, empty) {
   if (!items.length) box.innerHTML = `<div class="empty">${esc(empty)}</div>`
 }
 function renderSide() {
+  markPicked()
   const q = lower(findEl.value.trim()), dark = document.documentElement.hasAttribute('data-dark')
   const rows = desks().map(acc => ({ acc, s: deskOf(acc), task: taskOf(acc) }))
     .filter(r => !q || [r.acc.name, r.s?.title, base(r.s?.cwd || r.acc.dir || '')].some(v => lower(v).includes(q)))

@@ -149,7 +149,7 @@ Expand-Archive -LiteralPath (Join-Path $d $zip) -DestinationPath $dest -Force
 & (Join-Path $dest 'symphony.exe') -version   # gibt "symphony v1.1.1 (windows/amd64)" aus
 ```
 
-Diesen Ordner zum `Path` des Benutzers hinzuzufügen, ist eine bleibende Änderung: Frag den Benutzer vorher. Sagt er ja, führ die Zeile unten aus und öffne eine neue Shell; sagt er nein, nimm den vollständigen Pfad. SmartScreen kann beim ersten Start warnen: „Weitere Informationen“, dann „Trotzdem ausführen“.
+Diesen Ordner zum `Path` des Benutzers hinzuzufügen, ist eine bleibende Änderung: Frag den Benutzer vorher. Sagt er ja, führ die Zeile unten aus und öffne eine neue Shell; sagt er nein, nimm den vollständigen Pfad. Mit `Expand-Archive` entpackt trägt das Programm keine Download-Markierung, und SmartScreen lässt es laufen; eine mit „Alle extrahieren“ im Explorer entpackte Kopie kann beim Doppelklick blockiert werden: „Weitere Informationen“, dann „Trotzdem ausführen“.
 
 ```powershell
 [Environment]::SetEnvironmentVariable('Path', [Environment]::GetEnvironmentVariable('Path', 'User') + ";$dest", 'User')
@@ -394,7 +394,7 @@ Die Seite kann Sitzungen starten, also Befehle auf diesem Rechner ausführen; de
 - **Nur dieser Rechner**: Die Bridge lauscht nur auf diesem Rechner und nimmt nur Verbindungen von ihm an. Sie lehnt Anfragen ab, die an einen anderen Host gerichtet sind (DNS-Rebinding), ebenso schreibende Anfragen, die andere Websites über deinen Browser schicken, und ihre API beantwortet keine Anfrage, die laut deinem Browser von einer anderen Website oder einem anderen Port kommt, nicht einmal einen Link. Andere Websites können ihre Seiten nicht einbetten. Die Seiten laden nur die eigenen Dateien der Bridge (eine Content Security Policy).
 - **Der Mod prüft die Bridge**, bevor er sein Token sendet, und das Programm `symphony`, bevor es den Seitenschlüssel vorzeigt, sodass etwas anderes, das unter der Adresse der Bridge lauscht, keins von beiden bekommt.
 - **Wovor es nicht schützt**: Programme, die unter deinem eigenen Benutzer laufen, können den Seitenschlüssel und die Tokens im Datenordner lesen, wie jede deiner Dateien. Und Browser schicken die Cookies einer Website an jeden ihrer Ports: Ein Server, den ein anderer Benutzer dieses Rechners auf `127.0.0.1` betreibt, bekommt das Cookie mit dem Seitenschlüssel, wenn dein Browser ihn öffnet oder wenn er den Port der Bridge übernimmt, während die Bridge gestoppt ist und das Büro noch in einem Tab offen ist. Auf einem Rechner, den du mit anderen teilst, schließ das Büro, bevor du die Bridge stoppst, und könnte der Schlüssel durchgesickert sein, lösch die Datei `key` im Datenordner (der nächste Start legt einen neuen an).
-- Die Programme sind nicht signiert. macOS lehnt eine mit dem Browser heruntergeladene Kopie womöglich ab, weil es den Entwickler nicht überprüfen kann: Klick unter Systemeinstellungen → Datenschutz & Sicherheit auf „Dennoch öffnen“ oder führe einmal `xattr -d com.apple.quarantine symphony` aus. Unter Windows kann SmartScreen ebenfalls warnen: Klick auf „Weitere Informationen“ und dann auf „Trotzdem ausführen“. Die `checksums.txt` im Release enthält die SHA-256-Prüfsumme jedes Archivs, und jedes Archiv trägt GitHubs Nachweis (Attestation), wo es gebaut wurde; Schritt 2 der Installation prüft beides.
+- Die Programme sind nicht signiert. macOS lehnt eine mit dem Browser heruntergeladene Kopie womöglich ab, weil es den Entwickler nicht überprüfen kann: Klick unter Systemeinstellungen → Datenschutz & Sicherheit auf „Dennoch öffnen“ oder führe einmal `xattr -d com.apple.quarantine symphony` aus. Unter Windows kann SmartScreen eine mit „Alle extrahieren“ im Explorer entpackte Kopie beim Doppelklick blockieren: Klick auf „Weitere Informationen“ und dann auf „Trotzdem ausführen“ (`Expand-Archive`, das die Installation nutzt, hinterlässt keine Download-Markierung). Die `checksums.txt` im Release enthält die SHA-256-Prüfsumme jedes Archivs, und jedes Archiv trägt GitHubs Nachweis (Attestation), wo es gebaut wurde; Schritt 2 der Installation prüft beides.
 
 Wie du eine Sicherheitslücke meldest, steht in [SECURITY.md](SECURITY.md).
 
@@ -404,7 +404,7 @@ Wie du eine Sicherheitslücke meldest, steht in [SECURITY.md](SECURITY.md).
 | --- | --- | --- | --- |
 | Linux | Ein Pseudoterminal innerhalb der Bridge | Ein grafisches Terminal (x-terminal-emulator, gnome-terminal, konsole, xterm) mit `symphony attach` | Vollständige End-to-End-Tests |
 | macOS | Ein Pseudoterminal innerhalb der Bridge | Terminal.app mit `symphony attach` | Vollständige End-to-End-Tests |
-| Windows | Eine Pseudokonsole (ConPTY) innerhalb der Bridge | Ein neues Konsolenfenster mit `symphony attach` | Nur Cross-Kompilierung und Unit-Tests |
+| Windows | Eine Pseudokonsole (ConPTY) innerhalb der Bridge | Ein neues Konsolenfenster mit `symphony attach` | Unit-Tests und die End-to-End-Tests ohne tmux; echte Sitzungen unter Windows 11 geprüft |
 
 Die Bridge bestätigt „trust this folder“ auf jeder Plattform für dich.
 

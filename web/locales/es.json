@@ -303,6 +303,7 @@
   "task.openMember": "Abrir {name}",
   "task.openMemberTitle": "La sesión de este empleado en la tarea {id}, en {room}",
   "task.chat": "Chat del equipo",
+  "task.mentionList": "Miembros para mencionar",
   "task.you": "Tú",
   "task.chatEmpty": "Aún no hay mensajes: aquí aparecen los que se envían los miembros entre sí y los que les envías tú",
   "task.chatPlaceholder": "@{name} … lo envía solo a ese miembro; sin @, a todos los de la tarea. Enter envía, Shift+Enter salto de línea",

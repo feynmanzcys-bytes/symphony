@@ -22,7 +22,7 @@
   #hud.anim { transition:transform .2s ease-out; }
   #hud.up { transform:translate(-50%, -100%); box-shadow:none; }
   #hud .bar { display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:8px 18px; }
-  #hud .group { display:flex; align-items:center; gap:6px; }
+  #hud .group { display:flex; flex-wrap:wrap; justify-content:center; align-items:center; gap:6px; } /* (a narrow window wraps them too) */
   #hud .logo { width:18px; height:16px; flex:none; image-rendering:pixelated; }
   #hud h1 { margin:0 0 0 2px; font-size:15px; font-weight:800; white-space:nowrap; }
   /* counts by state, as chips in the state colors; a click on one lights up those employees */
@@ -61,7 +61,7 @@
   #hud .find { position:relative; width:230px; }
   #find { width:100%; box-sizing:border-box; font:inherit; font-size:12px; color:#2b2a28; border:2px solid #2b2a28; padding:3px 26px;
     background:#fff var(--ico-find) no-repeat 7px center / 14px 14px; box-shadow:inset 2px 2px 0 rgba(0,0,0,.08); image-rendering:pixelated; }
-  #find:focus { outline:none; border-color:#f2b705; }
+  #find:focus { outline:none; box-shadow:inset 2px 2px 0 rgba(0,0,0,.08), 0 0 0 2px #f2b705, 0 0 0 4px #2b2a28; } /* a ring in the accent and ink: 3:1 */
   #hud .key { position:absolute; right:6px; top:50%; transform:translateY(-50%); pointer-events:none; font:11px/1.25 var(--mono);
     color:var(--muted); background:#f2efe8; border:1px solid #b9b3a8; border-bottom-width:2px; padding:0 4px; }
   #find:focus + .key, #find:not(:placeholder-shown) + .key { display:none; } /* the shortcut, while the box is idle */
