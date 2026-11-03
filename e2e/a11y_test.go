@@ -106,6 +106,8 @@ func a11yTeam(t *testing.T) (*testBridge, *bridge.Task, map[string]string) {
 	event("alice", "s-alice", map[string]any{"kind": "session.usage", "usage": map[string]any{"context": map[string]any{"tokens": 68000, "window": 200000, "percent": 34},
 		"rateLimits": []map[string]any{{"kind": "five_hour", "percentUsed": 12}, {"kind": "seven_day", "percentUsed": 81}}, "cost": map[string]any{"usd": 1.25}}})
 	event("alice", "s-alice", map[string]any{"kind": "agent.start", "agentId": "ag1", "agentType": "Explore", "description": "find the failing tests", "model": "claude-haiku-5-5"})
+	event("alice", "s-alice", map[string]any{"kind": "tool.start", "tool": "Grep", "summary": "FAIL", "toolUseId": "ts1", "agentId": "ag1"})
+	event("alice", "s-alice", map[string]any{"kind": "tool.end", "tool": "Grep", "summary": "FAIL", "toolUseId": "ts1", "agentId": "ag1", "durationMs": 300})
 	event("alice", "s-alice", map[string]any{"kind": "tool.start", "tool": "Bash", "summary": "make test", "toolUseId": "tu9"})
 	event("bob", "s-bob", map[string]any{"kind": "session.usage", "usage": map[string]any{"context": map[string]any{"tokens": 190000, "window": 200000, "percent": 95}, "cost": map[string]any{"usd": 0.4}}})
 	event("bob", "s-bob", map[string]any{"kind": "chat.stop", "turnId": "b1", "step": 0, "tokens": map[string]any{"input": 3000, "output": 400, "cacheRead": 0, "cacheWrite": 0, "model": "claude-sonnet-5-5"}})
@@ -1105,6 +1107,13 @@ func TestA11y(t *testing.T) {
 	if !p.is(`document.activeElement === window.__kept && window.__kept.isConnected`) {
 		t.Errorf("bob's roster button was drawn anew under the focus: %s", p.js(`document.activeElement.outerHTML.slice(0, 80)`))
 	}
+	said := false // (polled, not waited for: the checks after this run either way)
+	for end := time.Now().Add(5 * time.Second); !said && time.Now().Before(end); time.Sleep(100 * time.Millisecond) {
+		said = p.is(`(a => !!a && a.textContent.startsWith('bob · Working'))(document.getElementById('announce'))`)
+	}
+	if !said {
+		t.Errorf("the change of bob's state should be said, his button having the focus: %s", p.js(`document.getElementById('announce')?.textContent ?? 'no #announce'`))
+	}
 	p.run(`(f => { f.focus(); f.value = 'bob'; f.dispatchEvent(new Event('input')) })(document.getElementById('find')); window.__kept = document.getElementById(document.getElementById('find').getAttribute('aria-activedescendant'))`)
 	if n := ax(t, office, `window.__kept`); !strings.HasPrefix(n.Name, "bob ") || n.Role != "option" {
 		t.Errorf("the search's hit should be an option named by the name, then its line: %+v", n)
@@ -1120,6 +1129,12 @@ func TestA11y(t *testing.T) {
 	p.run(`(f => { f.value = ''; f.dispatchEvent(new Event('input')); f.blur() })(document.getElementById('find'))`)
 	p.run(fmt.Sprintf(`document.querySelector('#roster button[data-account=%q]').click()`, id("alice")))
 	waitUntil(t, 5*time.Second, "alice's window shows her Stop button", func() bool { return p.is(`!!document.querySelector('#chat .head .btns .stop')`) })
+	if n := ax(t, office, `document.querySelector('#chat .flow')`); n.Role != "region" || n.Name != "Conversation with alice" {
+		t.Errorf("the conversation should be a region named after the employee (the keyboard reaches it): %+v", n)
+	}
+	if !p.is(`[...document.querySelectorAll('#chat .flow .it.tool')].some(r => r.textContent.includes('subagent Grep'))`) {
+		t.Errorf("a subagent's tool call should read its badge apart from the tool: %s", p.js(`[...document.querySelectorAll('#chat .flow .it.tool')].map(r => r.textContent).join(' | ')`))
+	}
 	p.run(`document.querySelector('#chat .head .btns .stop').focus()`)
 	say("alice", "s-alice", map[string]any{"kind": "tool.end", "tool": "Bash", "summary": "make test", "toolUseId": "tu9", "durationMs": 1200})
 	say("alice", "s-alice", map[string]any{"kind": "turn.complete", "turnId": "a2"})
@@ -1167,6 +1182,11 @@ func TestA11y(t *testing.T) {
 		if th.name == "hq" {
 			if n := ax(t, ctx, `document.querySelector('#tabs [data-tab=approvals]')`); !regexp.MustCompile(`^Approvals \d+$`).MatchString(n.Name) {
 				t.Errorf("hq: the Approvals tab should read its count apart: %q", n.Name)
+			}
+		}
+		if th.name == "messenger" {
+			if n := ax(t, ctx, `document.getElementById('groups-count').parentElement`); n.Name != "Group chats 1" {
+				t.Errorf("messenger: the group chats' heading should read its count apart: %q", n.Name)
 			}
 		}
 		// a row or a tile opens with Enter

@@ -2,6 +2,17 @@
 
 What changed in each release of symphony. The program (the bridge) and the mod share one version number. A release's notes start with its section here: the release workflow stops before building when the section is missing. Releases before v1.0.0 came out before the repository was public; their notes are kept below.
 
+## v1.2.1 (2026-11-03)
+
+Update the program (`brew upgrade symphony`, `scoop update symphony`, or the archive) and, as before, the mod with `claude plugin update symphony-bridge@symphony` (only its version changed). On Windows with Scoop, `symphony -autostart on` works now: run it again if it failed.
+
+- **Starting at login with Scoop** (Windows): `symphony -autostart on` failed for every Scoop install ("The system cannot find the path specified."), as Scoop runs the program through a folder junction (`apps\symphony\current`). The login entry now names the program by that path, which `scoop update` points at the new version. `-autostart off` says to close the bridge's window only when one runs.
+- **The edges of controls**: text fields, selects and every focus indicator reach 3:1 against what they sit on in HQ, Coworkers, Mission Control and the approval page (the fields' edges were 1.2–1.5:1); the pixel office's focused fields keep their ink edge and get a ring in yellow and ink. Colors under the pointer and in animations keep their contrast too: HQ's primary buttons, the task chip in the employee window, Mission Control's alarm mark (it blinks hollow instead of fading).
+- **Narrow windows, down to 320 pixels** (a phone, or a page zoomed to 400%): Coworkers shows one column, the lists or the conversation, whose close button leads back; the office's bar, the task window's member rows, HQ's activity rows and figures and the asks' cards wrap; the launch dialog's buttons stay in sight; HQ's approval queue gets the cards' look (it had none).
+- **Screen readers** (checked with NVDA on Windows, twice): the employee window keeps the focus when the button it was on goes (Stop, once a turn ends); the roster and the search lists are no longer read again at every redraw, and the roster says when the employee whose button has the focus changes state; a hit's name and its line, a tab and its count, a subagent's badge and its tool are read apart; the conversation is a region named after the employee instead of sixty items read at once; the dark switches' tooltips match their state; the search boxes say that "/" reaches them; the team chat's mention picker is a listbox the input points at.
+- **The README** says when SmartScreen stops the program on Windows (a copy unpacked with Explorer, not one from `Expand-Archive`) and what was tested there.
+- The tests measure the colors hovered, in every frame of what keeps animating and at every control's focus, and lay every page out 320 pixels wide; one of them no longer writes a page key into the real `%AppData%\symphony` on Windows.
+
 ## v1.2.0 (2026-11-03)
 
 Update both parts, as before: the program, and the mod with `claude plugin update symphony-bridge@symphony`. On Linux and macOS, run `symphony -autostart on` again if symphony starts at login, so the unit or agent gets its new limits, and, from this version, the Claude Code, proxy and certificate variables of the shell you run it in. symphony can now also be installed and updated with Homebrew (macOS, Linux) or Scoop (Windows): the README says how.

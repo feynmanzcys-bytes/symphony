@@ -6,7 +6,7 @@ import { esc } from '/asks.js'
 import { connect } from '/symphony.js'
 import { GREEN, YELLOW, RED, GRAY, STATE_COLOR, STATE_MARK, GRAY_MARK, base, lower, dot, element, hash, build, buildText, statusText as statusOf, richText, setHTML, pointAt, deferWhilePressed, askKind } from '/ui/common.js'
 import { connectionBanner } from '/ui/banner.js'
-import { announceAsks } from '/ui/a11y.js'
+import { announce, announceAsks } from '/ui/a11y.js'
 import { createChat } from '/ui/chat.js'
 import { createLaunchDialog } from '/ui/launch.js'
 import { createTaskUI } from '/ui/task.js'
@@ -1877,14 +1877,21 @@ function renderRoster() {
   }).join('')
   setHTML(roster.querySelector('.desks'), desks)
   setHTML(roster.querySelector('.rooms'), rooms)
+  // the employee whose button has the focus: its button changes its words in place, which a screen reader doesn't read
+  // again by itself; a change of state is said (politely), not every tool call
+  const e = emps.get(document.activeElement?.dataset?.account), level = e && levelOf(e)
+  if (e && heard?.id === e.acc.id && heard.level !== level) announce(e.status ?? e.acc.name)
+  heard = e ? { id:e.acc.id, level } : null
 }
+const levelOf = e => !isOnline(e) ? 'off' : asking(e.acc.session) ? 'waiting' : ['thinking', 'tool'].includes(e.s.state) ? 'working' : e.s.state
+let heard = null // the employee whose roster button has the focus, and its state as last said
 roster.addEventListener('click', ev => {
   const b = ev.target.closest('button')
   if (!b || b.getAttribute('aria-disabled') === 'true') return
   if (b.dataset.account) onEmployeeClick(b.dataset.account)
   else { const r = smalls.find(x => String(x.k) === b.dataset.room); if (r) onRoomClick(r) }
 })
-roster.addEventListener('focusin', ev => { const e = emps.get(ev.target.dataset?.account); if (e) e.foundAt = performance.now() })
+roster.addEventListener('focusin', ev => { const e = emps.get(ev.target.dataset?.account); if (e) { e.foundAt = performance.now(); heard = { id:e.acc.id, level:levelOf(e) } } })
 
 // ================= data =================
 // the activity log: hidden until its HUD button opens it (the page remembers), the last 200 lines

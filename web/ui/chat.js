@@ -37,7 +37,7 @@ const MARKUP = `
       <div class="btns"></div>
     </div>
     <div class="termpane" hidden></div>
-    <div class="flow"></div>
+    <div class="flow" role="region"></div>
     <div class="dock">
       <div id="asks"></div>
       <form class="say" autocomplete="off" role="none">
@@ -237,7 +237,7 @@ export function createChat(sym, { askWho, onClose = () => {}, onTaskChip = () =>
   function itemEl(it, old) {
     const node = document.createElement('div')
     node.dataset.id = it.id
-    const sub = it.agentId ? `<span class="sub">${esc(t('common.subagent'))}</span>` : ''
+    const sub = it.agentId ? `<span class="sub">${esc(t('common.subagent'))}</span> ` : '' // (a space: read apart from what follows)
     switch (it.kind) {
       case 'user': {
         node.className = `it user ${it.status || ''}`
@@ -328,6 +328,8 @@ export function createChat(sym, { askWho, onClose = () => {}, onTaskChip = () =>
       const hadKey = had?.closest('.btns') ? had.dataset.key || had.textContent : null
       name = p.name
       head.querySelector('h2').textContent = p.name
+      const said = t('chat.flow', { name: p.name }) // the conversation's name: the keyboard reaches it (it scrolls), and a screen reader would read it whole
+      if (flow.getAttribute('aria-label') !== said) flow.setAttribute('aria-label', said)
       head.querySelector('.dot').style.background = STATE_MARK[p.state] ?? GRAY_MARK
       chat.setLine(p.line)
       const meta = (p.taskChip ? `<span class="task" data-task="${esc(p.taskChip.id)}" title="${esc(p.taskChip.title)}">${esc(p.taskChip.label)}</span>` : '') +

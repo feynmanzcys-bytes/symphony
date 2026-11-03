@@ -39,7 +39,7 @@ symphony는 두 부분으로 되어 있고, 둘 다 있어야 합니다.
 uname -sm                 # Linux/macOS: 아래에서 고를 압축 파일이 정해집니다 (x86_64 → amd64; arm64/aarch64 → arm64)
 claude --version          # Claude Code 2.1.x 필요 (2.1.316에서 테스트)
 git --version             # 협업 작업에만 필요. 없으면 보고에 적되 멈추지는 마세요
-symphony -version         # 이미 설치돼 있나? "symphony v1.1.1 (darwin/arm64)" 출력
+symphony -version         # 이미 설치돼 있나? "symphony v1.2.1 (darwin/arm64)" 출력
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:7788/api/state   # bridge가 실행 중인가? 401: symphony 1.x, 200: 그보다 오래된 버전, 000: 없음
 claude plugin list --json # mod가 이미 설치돼 있나? "id": "symphony-bridge@symphony"가 있는 항목을 찾으세요
 brew --version            # Homebrew가 있나요(macOS, Linux)? 있으면 2단계에서 그걸로 설치할 수 있음
@@ -136,7 +136,7 @@ cd "$d/src" && go build -o "$d/symphony" ./cmd/bridge   # 이제 프로그램은
 ```bash
 install -m 755 "$d/symphony" ~/.local/bin/symphony
 xattr -d com.apple.quarantine ~/.local/bin/symphony 2>/dev/null || true   # macOS: 바이너리에 서명이 없습니다
-symphony -version          # "symphony v1.1.1 (linux/amd64)" 출력: 버전과 플랫폼
+symphony -version          # "symphony v1.2.1 (linux/amd64)" 출력: 버전과 플랫폼
 ```
 
 이 폴더들 중 `PATH`에 있는 것이 하나도 없으면, 무엇이든 바꾸기 전에 사용자에게 물어보세요. 좋다고 하면 `~/.local/bin`을 만들어 셸의 rc 파일(`~/.zshrc` 또는 `~/.bashrc`)에 추가하고, 보고에 그렇게 적으세요. 싫다고 하면 사용자가 말하는 곳에 프로그램을 설치하고, `symphony`가 사용자의 Claude Code 세션의 `PATH`에 없는 동안에는 mod가 bridge를 스스로 시작할 수 없다고 알려 주세요(5단계의 로그인할 때 시작은 그래도 됩니다).
@@ -146,7 +146,7 @@ Windows에서는 전용 폴더에 압축을 푸세요(`$d`와 `$zip`은 2단계�
 ```powershell
 $dest = Join-Path $env:LOCALAPPDATA 'Programs\symphony'
 Expand-Archive -LiteralPath (Join-Path $d $zip) -DestinationPath $dest -Force
-& (Join-Path $dest 'symphony.exe') -version   # "symphony v1.1.1 (windows/amd64)" 출력
+& (Join-Path $dest 'symphony.exe') -version   # "symphony v1.2.1 (windows/amd64)" 출력
 ```
 
 그 폴더를 사용자의 `Path`에 추가하는 것은 계속 남는 변경이므로, 먼저 사용자에게 물어보세요. 좋다고 하면 아래 줄을 실행하고 새 셸을 여세요. 싫다고 하면 전체 경로를 쓰세요. `Expand-Archive`로 푼 프로그램에는 다운로드 표시가 없어서 SmartScreen이 막지 않습니다. 파일 탐색기의 "압축 풀기"로 풀고 두 번 클릭해 실행하면 막힐 수 있습니다. "추가 정보"를 누른 뒤 "실행"을 누르세요.

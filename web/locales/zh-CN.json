@@ -213,6 +213,7 @@
   "chat.noSession": "还没有会话",
   "chat.empty": "暂无内容",
   "chat.loadFailed": "对话加载失败：{reason}",
+  "chat.flow": "与 {name} 的对话",
   "chat.dropped": "没送到",
   "chat.terminal": "打开终端",
   "chat.terminalTitle": "打开一个连到该会话的终端窗口；关掉窗口不影响会话",

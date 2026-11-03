@@ -213,6 +213,7 @@
   "chat.noSession": "아직 세션이 없습니다",
   "chat.empty": "아직 없음",
   "chat.loadFailed": "채팅을 불러오지 못했습니다: {reason}",
+  "chat.flow": "{name}와(과)의 대화",
   "chat.dropped": "전달되지 않음",
   "chat.terminal": "터미널 열기",
   "chat.terminalTitle": "이 세션에 연결된 터미널 창을 엽니다. 창을 닫아도 세션은 계속됩니다",

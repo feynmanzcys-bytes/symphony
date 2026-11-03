@@ -39,7 +39,7 @@ symphony は 2 つの部分からなり、両方が必要です。
 uname -sm                 # Linux/macOS：下のアーカイブを選ぶ（x86_64 → amd64、arm64/aarch64 → arm64）
 claude --version          # Claude Code 2.1.x が必要（2.1.316 で動作確認済み）
 git --version             # チームでのタスクにだけ必要。なければ報告に書き、止まらない
-symphony -version         # インストール済み？ "symphony v1.1.1 (darwin/arm64)" と表示される
+symphony -version         # インストール済み？ "symphony v1.2.1 (darwin/arm64)" と表示される
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:7788/api/state   # bridge が動いている？ 401：symphony 1.x、200：それより古いもの、000：なし
 claude plugin list --json # mod がインストール済み？ "id": "symphony-bridge@symphony" のエントリーを探す
 brew --version            # Homebrew はある？（macOS、Linux）あればステップ 2 でそれを使ってインストールできる
@@ -136,7 +136,7 @@ cd "$d/src" && go build -o "$d/symphony" ./cmd/bridge   # これでプログラ�
 ```bash
 install -m 755 "$d/symphony" ~/.local/bin/symphony
 xattr -d com.apple.quarantine ~/.local/bin/symphony 2>/dev/null || true   # macOS：バイナリに署名がないため
-symphony -version          # "symphony v1.1.1 (linux/amd64)" と表示される：バージョンとプラットフォーム
+symphony -version          # "symphony v1.2.1 (linux/amd64)" と表示される：バージョンとプラットフォーム
 ```
 
 どのフォルダも `PATH` に含まれていなければ、何かを変更する前にユーザーに確認してください。了承されたら、`~/.local/bin` を作ってシェルの rc ファイル（`~/.zshrc` か `~/.bashrc`）に追加し、そのことを報告に書きます。断られたら、ユーザーが指定する場所にプログラムをインストールし、`symphony` が Claude Code セッションの `PATH` 上にないあいだは mod が bridge を自分で起動できないことを伝えてください（ステップ 5 のログイン時の起動は使えます）。
@@ -146,7 +146,7 @@ Windows では、専用のフォルダに展開します（`$d` と `$zip` は�
 ```powershell
 $dest = Join-Path $env:LOCALAPPDATA 'Programs\symphony'
 Expand-Archive -LiteralPath (Join-Path $d $zip) -DestinationPath $dest -Force
-& (Join-Path $dest 'symphony.exe') -version   # "symphony v1.1.1 (windows/amd64)" と表示される
+& (Join-Path $dest 'symphony.exe') -version   # "symphony v1.2.1 (windows/amd64)" と表示される
 ```
 
 そのフォルダをユーザーの `Path` に追加するのは、あとまで残る変更です。先にユーザーに確認してください。了承されたら下の行を実行して新しいシェルを開き、断られたらフルパスを使います。`Expand-Archive` で展開したプログラムにはダウンロードの印が付かないので、SmartScreen には止められません。エクスプローラーの「すべて展開」で展開してダブルクリックした場合は止められることがあります。「詳細情報」、次に「実行」を選んでください。

@@ -228,6 +228,8 @@ function renderSide() {
   const groups = snapshot.tasks.filter(k => !q || lower(k.id).includes(q) || lower(k.title).includes(q))
   const gc = document.getElementById('groups-count')
   gc.hidden = !snapshot.tasks.length; gc.textContent = snapshot.tasks.length
+  const heading = t('msgr.groups') + (snapshot.tasks.length ? ' ' + snapshot.tasks.length : '') // (said apart, as HQ's tabs)
+  if (gc.parentElement.getAttribute('aria-label') !== heading) gc.parentElement.setAttribute('aria-label', heading)
   syncRows(document.getElementById('groups'), groups.map(k => {
     const waiting = k.members.some(m => sym.asking(m.session)), st = k.status === 'failed' ? 'ended' : waiting ? 'waiting' : 'tool'
     const picked_ = picked?.group === k.id || picked?.task === k.id, line = k.title.split('\n')[0]

@@ -213,6 +213,7 @@
   "chat.noSession": "セッションはまだありません",
   "chat.empty": "まだありません",
   "chat.loadFailed": "チャットを読み込めませんでした：{reason}",
+  "chat.flow": "{name} との会話",
   "chat.dropped": "未配達",
   "chat.terminal": "ターミナルを開く",
   "chat.terminalTitle": "このセッションに接続したターミナルウィンドウを開きます。閉じてもセッションは続きます",

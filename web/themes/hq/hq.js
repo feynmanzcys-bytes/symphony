@@ -88,7 +88,12 @@ function renderKPIs() {
   ]
   setHTML(document.getElementById('kpis'), tiles.map(([k, v, to, hot]) =>
     `<div class="kpi click${hot ? ' hot' : ''}" data-tab="${to}" role="button" tabindex="0"><div class="lbl">${esc(t('hq.kpi.' + k))}</div><div class="val">${v}</div></div>`).join(''))
-  const count = (name, n, hot) => { const el = tabsEl.querySelector(`[data-tab=${name}] .count`); el.hidden = !n; if (el.textContent !== String(n)) el.textContent = n; el.classList.toggle('hot', !!hot) }
+  // (the tab's name says its count apart: a space before a count that was hidden stays collapsed in Edge's tree)
+  const count = (name, n, hot) => {
+    const tab = tabsEl.querySelector(`[data-tab=${name}]`), el = tab.querySelector('.count'), label = t('hq.tab.' + name) + (n ? ' ' + n : '')
+    el.hidden = !n; if (el.textContent !== String(n)) el.textContent = n; el.classList.toggle('hot', !!hot)
+    if (tab.getAttribute('aria-label') !== label) tab.setAttribute('aria-label', label)
+  }
   count('approvals', waiting, waiting > 0)
   count('projects', snapshot.tasks.length, false)
 }

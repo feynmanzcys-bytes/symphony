@@ -213,6 +213,7 @@
   "chat.noSession": "還沒有工作階段",
   "chat.empty": "尚無內容",
   "chat.loadFailed": "無法載入對話：{reason}",
+  "chat.flow": "與 {name} 的對話",
   "chat.dropped": "未送達",
   "chat.terminal": "開啟終端機",
   "chat.terminalTitle": "開啟一個連到此工作階段的終端機視窗；關掉視窗不影響工作階段",

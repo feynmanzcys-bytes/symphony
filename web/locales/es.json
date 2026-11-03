@@ -213,6 +213,7 @@
   "chat.noSession": "Aún no hay sesión",
   "chat.empty": "Nada todavía",
   "chat.loadFailed": "No se pudo cargar el chat: {reason}",
+  "chat.flow": "Conversación con {name}",
   "chat.dropped": "No entregado",
   "chat.terminal": "Abrir terminal",
   "chat.terminalTitle": "Abre una ventana de terminal conectada a esta sesión; cerrarla no cambia nada",
