@@ -45,9 +45,7 @@ func TestMotion(t *testing.T) {
 	bob := b.account("bob").ID
 	for _, th := range []struct{ name, ready, pre, row string }{ // the page ready, what to do first, bob's row that opens his window
 		{"office", `document.querySelectorAll('.emp-label').length >= 5`, ``, `document.querySelector('#roster button[data-account="` + bob + `"]')`},
-		{"hq", `document.querySelectorAll('#kpis .kpi').length === 7`, `document.querySelector('#tabs [data-tab=people]').click()`, `document.querySelector('#people tbody tr[data-account="` + bob + `"] [data-act=open]')`},
 		{"messenger", `document.querySelectorAll('#people .row').length === 5`, ``, `[...document.querySelectorAll('#people .row')].find(r => r.textContent.includes('bob'))`},
-		{"mission", `document.querySelectorAll('#wall .tile').length >= 7`, ``, `[...document.querySelectorAll('#wall .tile')].find(x => x.querySelector('.nm').textContent === 'bob')`},
 	} {
 		ctx, closeTab := clockTab(t, browser, b.URL+"/t/"+th.name+"/?lang=en", 0)
 		do(t, ctx, 10*time.Second, chromedp.EmulateViewport(1400, 860))
@@ -74,25 +72,29 @@ func TestMotion(t *testing.T) {
 			t.Fatalf("%s: the page doesn't see the system asking for less motion", th.name)
 		}
 		waitUntil(t, 5*time.Second, th.name+": asked for less motion, nothing moves by itself", func() bool { return still() && moving() == "" }, func() string { return moving() })
-		if !p.is(`(s => !!s && s.getAttribute('aria-pressed') === 'true' && s.getAttribute('aria-disabled') === 'true')(document.getElementById('still'))`) {
-			t.Errorf("%s: with the system asking for less motion, the switch should say it's on and can't be turned off", th.name)
+		if !p.is(`(s => !!s && s.checked && s.disabled)(document.getElementById('set-still'))`) {
+			t.Errorf("%s: with the system asking for less motion, the settings' switch should be on and held so", th.name)
 		}
 		lessMotion(t, ctx, false)
 		waitUntil(t, 5*time.Second, th.name+": asked for no less, it moves again", func() bool { return !still() && moving() != "" })
-		// the switch: on, remembered, off
-		if n := ax(t, ctx, `document.getElementById('still')`); n.Name == "" || !p.is(`(s => s.title === s.getAttribute('aria-label') && s.getAttribute('aria-pressed') === 'false')(document.getElementById('still'))`) {
-			t.Errorf("%s: the switch should be named, its title saying its name, and say it's off: %+v", th.name, n)
+		// the switch, in the settings: on, remembered, off
+		p.run(`document.querySelector('.open-settings').click()`)
+		if n := ax(t, ctx, `document.getElementById('set-still')`); n.Name != "Pause motion" || !p.is(`(s => !s.checked && !s.disabled)(document.getElementById('set-still'))`) {
+			t.Errorf("%s: the switch should be named and off: %+v", th.name, n)
 		}
-		p.run(`document.getElementById('still').click()`)
+		p.run(`document.getElementById('set-still').click(); document.querySelector('#settings .close').click()`)
 		waitUntil(t, 5*time.Second, th.name+": the switch stops what moves", func() bool {
-			return still() && moving() == "" && p.is(`document.getElementById('still').getAttribute('aria-pressed') === 'true'`)
+			return still() && moving() == "" && p.is(`document.getElementById('set-still').checked`)
 		}, func() string { return moving() })
 		do(t, ctx, 15*time.Second, chromedp.Reload())
 		show()
 		if !still() || moving() != "" {
 			t.Errorf("%s: the switch should be remembered after a reload: still %v, moving %q", th.name, still(), moving())
 		}
-		p.run(`document.getElementById('still').click()`)
+		if !p.is(`document.getElementById('set-still').checked`) {
+			t.Errorf("%s: after a reload the settings' switch should still be on", th.name)
+		}
+		p.run(`document.getElementById('set-still').click()`)
 		waitUntil(t, 5*time.Second, th.name+": the switch turned off, it moves again", func() bool { return !still() && moving() != "" })
 		p.done()
 		closeTab()
@@ -112,11 +114,11 @@ func TestMotion(t *testing.T) {
 	if a, z := frames(); a == z {
 		t.Fatal("the office's drawing should move to begin with (or the check below proves nothing)")
 	}
-	p.run(`document.getElementById('still').click()`)
+	p.run(`document.getElementById('set-still').click()`)
 	time.Sleep(500 * time.Millisecond)
 	if a, z := frames(); a != z {
 		t.Error("with the switch on, the office's drawing should stand still")
 	}
-	p.run(`document.getElementById('still').click()`)
+	p.run(`document.getElementById('set-still').click()`)
 	p.done()
 }

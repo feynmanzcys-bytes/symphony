@@ -1,8 +1,7 @@
 // Motion that goes on by itself (an animation that runs for good, the pixel office's people walking about) stops while
 // the system asks for less motion (prefers-reduced-motion) or the page's switch says so (WCAG 2.1 2.2.2): html then
-// has data-still, which the stylesheets (ui.css) and the office's drawing follow. The switch is remembered in this
-// browser (symphony.still), for every theme.
-import { t } from '/i18n.js'
+// has data-still, which the stylesheets (ui.css) and the office's drawing follow. The switch, "Pause motion" in the
+// settings (ui/settings.js), is remembered in this browser (symphony.still), for every theme.
 
 const STORE = 'symphony.still'
 const asked = matchMedia('(prefers-reduced-motion: reduce)')
@@ -21,21 +20,3 @@ function apply() {
 }
 asked.addEventListener('change', apply)
 apply()
-
-// stillSwitch(button): the switch that pauses what moves by itself, pressed while it's paused; named by its title (a
-// title that said what a click does would be read against its state); with the system asking for less motion, held on
-// and saying why
-export function stillSwitch(b) {
-  b.setAttribute('aria-label', t('motion.pause'))
-  const draw = () => {
-    b.textContent = motion.still ? '▶' : '⏸'
-    b.setAttribute('aria-pressed', String(motion.still))
-    if (motion.system) b.setAttribute('aria-disabled', 'true')
-    else b.removeAttribute('aria-disabled')
-    b.title = t(motion.system ? 'motion.system' : 'motion.pause')
-  }
-  b.addEventListener('click', () => { if (!motion.system) motion.set(!chosen) })
-  motion.on(draw)
-  draw()
-  return b
-}

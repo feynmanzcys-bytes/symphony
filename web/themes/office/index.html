@@ -19,7 +19,7 @@
   #hud { position:fixed; top:0; left:50%; z-index:3; box-sizing:border-box; width:max-content; max-width:calc(100vw - 24px);
     transform:translateX(-50%); background:#fffdf7; color:#2b2a28; border:2px solid #2b2a28; border-top:0;
     box-shadow:4px 4px 0 rgba(0,0,0,.35); padding:8px 14px 10px; }
-  #hud.anim { transition:transform .2s ease-out; }
+  #hud.anim { transition:transform var(--t-in) var(--ease-out); }
   #hud.up { transform:translate(-50%, -100%); box-shadow:none; }
   #hud .bar { display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:8px 18px; }
   #hud .group { display:flex; flex-wrap:wrap; justify-content:center; align-items:center; gap:6px; } /* (a narrow window wraps them too) */
@@ -34,17 +34,16 @@
   #hud .chip.on { background:#2b2a28; color:#fffdf7; box-shadow:none; transform:translate(2px, 2px); }
   #hud .chip.hot { background:var(--danger-strong); color:#fff; border-color:#7a1f1c; animation:nudge 1s steps(1) infinite; } /* asks wait for you */
   @keyframes nudge { 50% { background:#a62b27; } } /* (both reds keep the white text at 4.5:1) */
-  /* the pixel size: four steps from the standard drawing to the finest, each button a finer grid */
-  #hud .pixels .lbl { font-size:12px; color:#6f6b64; white-space:nowrap; }
-  #hud .steps { display:flex; border:2px solid #2b2a28; box-shadow:2px 2px 0 rgba(0,0,0,.3); }
-  #hud .steps button { width:24px; height:18px; padding:0; border:0; border-left:2px solid #2b2a28; cursor:pointer;
+  /* the pixel size (in the settings): four steps from the standard drawing to the finest, each button a finer grid */
+  .pixel-steps { display:inline-flex; justify-self:start; border:2px solid #2b2a28; box-shadow:2px 2px 0 rgba(0,0,0,.3); }
+  .pixel-steps button { width:32px; height:24px; padding:0; border:0; border-left:2px solid #2b2a28; cursor:pointer;
     background:#fffdf7 no-repeat center / 12px 12px; image-rendering:pixelated; }
-  #hud .steps button:first-child { border-left:0; }
-  #hud #still { padding:0 6px; height:22px; font-size:12px; line-height:1; } /* pauses what moves by itself (ui/motion.js) */
-  #hud .steps button:hover { background-color:#f2efe8; }
-  #hud .steps button.on { background-color:#f2b705; }
-  #hud select.lang, #hud select.theme { width:104px; font:inherit; font-size:12px; background:#fffdf7; color:#2b2a28; border:2px solid #2b2a28; padding:0 2px;
-    cursor:pointer; box-shadow:2px 2px 0 rgba(0,0,0,.3); }
+  .pixel-steps button:first-child { border-left:0; }
+  .pixel-steps button:hover { background-color:#f2efe8; }
+  .pixel-steps button.on { background-color:#f2b705; }
+  .pixel-steps button:focus-visible { outline:2px solid #2b2a28; outline-offset:-5px; }
+  /* the settings button: the gear, then its word */
+  .ico.gear { width:14px; height:14px; margin-right:5px; vertical-align:-2px; background-image:var(--ico-gear); }
   #hud .note { margin:8px auto 0; max-width:560px; padding:4px 8px; background:#fff3cf; border:2px solid #c9961a; color:#6b4a00; line-height:1.5; }
   /* the tab under the HUD hides it and brings it back; while the HUD is away it shows how many asks wait. It hangs from
      the HUD's right corner: in the middle it would cover the sign on the back wall once the HUD wraps to two lines */
@@ -138,6 +137,7 @@
   .msg .meta b { color:#2b2a28; }
   .msg .lost { color:var(--danger-ink); }
   .msg .txt { white-space:pre-wrap; overflow-wrap:anywhere; }
+  .msg .txt.md { white-space:normal; } /* (Markdown: ui/markdown.js, styled in ui.css) */
   .msg .txt pre { margin:3px 0; padding:4px 6px; background:#2b2a28; color:#f2efe8; font:11px/1.5 var(--mono); white-space:pre-wrap; }
   .msg .txt code { background:rgba(0,0,0,.08); padding:0 3px; font:11px var(--mono); }
   /* the roster: out of sight (screen readers read it) until a key brings the focus into it; then a panel below the HUD */
@@ -166,7 +166,6 @@
       <button class="px" id="new-emp" data-i18n="office.newEmployee" hidden></button>
       <button class="px" id="new-task" data-i18n="office.newTask" hidden></button>
     </div>
-    <div class="group prefs"></div>
   </div>
   <div class="note" id="launch-note" hidden></div>
   <button class="tab" id="hud-tab"><i class="ico"></i><b class="badge" hidden></b></button>

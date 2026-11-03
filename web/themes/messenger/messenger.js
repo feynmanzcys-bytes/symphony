@@ -3,18 +3,18 @@
 // (the shared employee window, or the task window with the team chat, embedded there); the right column the profile
 // and the computer: what runs now, its screen (a page-started session's terminal, live and small; a click shows it in
 // the conversation), what ran, and "Take over" (the session's terminal in a window).
-import { t, lang, errorText, applyI18n, langPicker } from '/i18n.js'
+import { t, lang, errorText, applyI18n } from '/i18n.js'
 import { esc } from '/asks.js'
 import { connect } from '/symphony.js'
 import { base, lower, hash, buildText, statusText as statusOf, setHTML, deferWhilePressed, askKind, askSummary } from '/ui/common.js'
 import { connectionBanner } from '/ui/banner.js'
-import { stillSwitch } from '/ui/motion.js'
 import { announceAsks } from '/ui/a11y.js'
 import { createChat } from '/ui/chat.js'
 import { createLaunchDialog } from '/ui/launch.js'
 import { createTaskUI } from '/ui/task.js'
 import { createTerminal } from '/ui/terminal.js'
-import { themePicker } from '/ui/themes.js'
+import { createSettings, settingsButton } from '/ui/settings.js'
+import { showError } from '/ui/errors.js'
 
 const sym = connect()
 let snapshot = sym.state
@@ -25,23 +25,29 @@ applyI18n()
 connectionBanner(sym)
 announceAsks(sym)
 
-// ---------- dark or light ----------
-const DARK_STORE = 'symphony.messenger.dark'
-stillSwitch(document.getElementById('still')) // pauses what moves by itself (ui/motion.js)
-const darkBtn = document.getElementById('dark')
-darkBtn.setAttribute('aria-label', t('msgr.dark')) // a switch: its name stays, aria-pressed says whether it's on
-darkBtn.title = t('msgr.dark') // (the same words: a title that said what a click does would be read as the switch's description, against its state)
-function setDark(on, remember = true) {
-  document.documentElement.toggleAttribute('data-dark', on)
-  darkBtn.textContent = on ? '☀' : '☾'
-  darkBtn.setAttribute('aria-pressed', String(on))
-  if (remember) try { localStorage.setItem(DARK_STORE, on ? '1' : '0') } catch {}
+// ---------- dark or light: as the system is (it follows it), or as picked in the settings ----------
+const DARK_STORE = 'symphony.messenger.dark' // '1' dark, '0' light, nothing: as the system is
+const systemDark = matchMedia('(prefers-color-scheme: dark)')
+const scheme = {
+  get() { try { const v = localStorage.getItem(DARK_STORE); return v === '1' ? 'dark' : v === '0' ? 'light' : 'system' } catch { return 'system' } },
+  set(v) { try { if (v === 'system') localStorage.removeItem(DARK_STORE); else localStorage.setItem(DARK_STORE, v === 'dark' ? '1' : '0') } catch {} applyScheme() },
 }
-setDark((() => { try { const v = localStorage.getItem(DARK_STORE); if (v !== null) return v === '1' } catch {} return matchMedia('(prefers-color-scheme: dark)').matches })(), false)
-darkBtn.onclick = () => { setDark(!document.documentElement.hasAttribute('data-dark')); render() }
-const prefs = document.querySelector('.side .prefs'), langSel = langPicker()
-prefs.appendChild(langSel)
-themePicker(sym).then(sel => prefs.insertBefore(sel, langSel))
+function applyScheme(redraw = true) {
+  const v = scheme.get(), dark = v === 'dark' || (v === 'system' && systemDark.matches)
+  if (document.documentElement.hasAttribute('data-dark') === dark) return
+  document.documentElement.toggleAttribute('data-dark', dark)
+  if (redraw) render() // (the faces' colors depend on it)
+}
+systemDark.addEventListener('change', () => applyScheme())
+applyScheme(false)
+// the settings: light or dark is Coworkers' own; the sidebar's button opens them
+const settings = createSettings(sym, { scheme })
+document.querySelector('.side-actions').append(settingsButton(settings, { cls: 'px', icon: gearIcon() }))
+function gearIcon() {
+  const tpl = document.createElement('template')
+  tpl.innerHTML = `<svg class="gear" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4Z M19.4 13.5a7.6 7.6 0 0 0 0-3l2-1.5-2-3.4-2.3 1a7.4 7.4 0 0 0-2.6-1.5L14.2 2.6h-4l-.3 2.5a7.4 7.4 0 0 0-2.6 1.5l-2.3-1-2 3.4 2 1.5a7.6 7.6 0 0 0 0 3l-2 1.5 2 3.4 2.3-1a7.4 7.4 0 0 0 2.6 1.5l.3 2.5h4l.3-2.5a7.4 7.4 0 0 0 2.6-1.5l2.3 1 2-3.4Z"/></svg>`
+  return tpl.content.firstElementChild
+}
 
 // ---------- figures ----------
 const online = s => sym.isOnline(s)
@@ -146,13 +152,13 @@ function showChat() {
   const member = task?.members.find(m => picked.sid ? m.session === picked.sid : m.account === picked.account)
   const busy = on && (s.state === 'thinking' || s.state === 'tool' || s.state === 'waiting')
   const buttons = []
-  if (busy) buttons.push({ key: 'stop', text: t('chat.stop'), cls: 'stop', onclick: async () => { const r = await sym.abort(s.id); if (!r.ok) alert(errorText(r.data)) }, title: t('chat.stopTitle') })
+  if (busy) buttons.push({ key: 'stop', text: t('chat.stop'), cls: 'stop', onclick: async () => { const r = await sym.abort(s.id); if (!r.ok) showError(errorText(r.data), { title: t('errlog.oops.stop') }) }, title: t('chat.stopTitle') })
   if (!picked.sid && task && member?.session) buttons.push({ key: 'to-task', text: t('task.openMember', { name: member.name }), cls: 'primary to-task', onclick: () => openCoworker(picked.account, member.session, task.id) })
   if (!on && !picked.sid && launchOpts?.enabled) buttons.push({ key: 'go-work', text: t('launch.go'), cls: 'primary go-work', onclick: () => launch.open(acc.id) })
   if (!on && !picked.sid && !task) buttons.push({ key: 'delete', text: t('card.delete'), cls: '', onclick: async () => {
     if (!confirm(t('card.deleteConfirm', { name: acc.name }))) return
     const r = await sym.deleteAccount(acc.id)
-    if (!r.ok) alert(t('card.deleteFailed', { reason: errorText(r.data) }))
+    if (!r.ok) showError(t('card.deleteFailed', { reason: errorText(r.data) }))
     picked = null; showCenter()
   } })
   chat.show({
@@ -172,6 +178,7 @@ const findEl = document.getElementById('find')
 findEl.setAttribute('aria-label', t('msgr.search'))
 findEl.addEventListener('input', renderSide)
 addEventListener('keydown', ev => {
+  if (!settings.hidden) return // (the settings have Esc to themselves, and "/" doesn't reach behind them)
   if (ev.key === 'Escape' && !tasks.dialogHidden) tasks.closeDialog()
   if (ev.key === 'Escape' && !launch.hidden) launch.close()
   if (ev.key !== '/' || ev.ctrlKey || ev.metaKey || ev.altKey || !launch.hidden || !tasks.dialogHidden) return
@@ -230,7 +237,7 @@ function renderSide() {
   const groups = snapshot.tasks.filter(k => !q || lower(k.id).includes(q) || lower(k.title).includes(q))
   const gc = document.getElementById('groups-count')
   gc.hidden = !snapshot.tasks.length; gc.textContent = snapshot.tasks.length
-  const heading = t('msgr.groups') + (snapshot.tasks.length ? ' ' + snapshot.tasks.length : '') // (said apart, as HQ's tabs)
+  const heading = t('msgr.groups') + (snapshot.tasks.length ? ' ' + snapshot.tasks.length : '') // (said apart: a space before a count shown later stays collapsed in Edge's tree)
   if (gc.parentElement.getAttribute('aria-label') !== heading) gc.parentElement.setAttribute('aria-label', heading)
   syncRows(document.getElementById('groups'), groups.map(k => {
     const waiting = k.members.some(m => sym.asking(m.session)), st = k.status === 'failed' ? 'ended' : waiting ? 'waiting' : 'tool'
@@ -318,7 +325,7 @@ profileEl.addEventListener('click', async ev => {
   if (ev.target.id === 'take-over') {
     const acc = sym.accountById(picked.account), s = picked.sid ? sym.sessionById(picked.sid) : sym.sessionOf(acc)
     const r = await sym.openTerminal(s.launch)
-    if (!r.ok) alert(errorText(r.data) + (r.data?.params?.command ? '\n' + r.data.params.command : ''))
+    if (!r.ok) showError(errorText(r.data) + (r.data?.params?.command ? '\n' + r.data.params.command : ''), { title: t('errlog.oops.terminal') })
     return
   }
   const link = ev.target.closest('[data-group]')

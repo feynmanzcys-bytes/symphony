@@ -1,7 +1,8 @@
 // The employee window (#chat), shared by every theme: who they are at the top (the name, the state dot and line, chips,
-// buttons: the theme says what), below it the session as a chat (the prompts, the model's thinking folded and its
-// answers as they stream, the tool calls, the messages between sessions, the asks and how they were settled), and the
-// dock at the bottom: the input, over which the pending asks' cards rise until they're handled. The log comes from the
+// buttons: the theme says what), below it the session as a chat (the prompts, the answers as they stream, the messages
+// between sessions; what the model does between two pieces of its answer, its thinking, the tool calls, the commands,
+// the asks once settled, folded into one line that unfolds: "the steps"), and the dock at the bottom: the input, over
+// which the pending asks' cards rise until they're handled. The log comes from the
 // bridge when the window shows a session; each change comes as a chat push. Hidden, the window lets the pushes go by
 // and fetches the log again when it shows; it fetches it again too after a resync (pushes may have been missed), and
 // keeps as many items as the bridge does.
@@ -19,13 +20,45 @@
 // (ui/terminal.js), interactive, with a button of its own beside the theme's "terminal" button (the one that opens a
 // window on this machine), or first; the button, or Ctrl+], brings the chat back, and so does another session.
 import { t, esc, errorText, richText, timeOf, STATE_MARK, GRAY_MARK, button, askKind } from '/ui/common.js'
-import { askCard, syncCards } from '/asks.js'
+import { askCard, syncCards, onAskFailure } from '/asks.js'
 import { createTerminal } from '/ui/terminal.js'
 import { dialog } from '/ui/a11y.js'
+import { motion } from '/ui/motion.js'
+import { pref, onPref, STEPS_OPEN } from '/ui/prefs.js'
+import { showError, onBackdrop } from '/ui/errors.js'
+import { markdown } from '/ui/markdown.js'
+
+onAskFailure(text => showError(text)) // a card's failed answer, over the page and into the error log
 
 const KEEP_ITEMS = 400 // the bridge's keepChat
 const TEXT_MAX = 64 << 10 // a streamed block keeps its last 64 KiB (the bridge's chatTextMax)
 const LIVE_MARKUP = 8192 // a streaming block up to this long is drawn with its markup on every piece
+// what the model wrote (its answers and thinking, its messages, the bridge's kickoff) is Markdown; a prompt typed by a
+// person keeps the little markup it had (code and bold), as typed
+const typed = it => it.kind === 'user' && it.origin !== 'task'
+const bodyHTML = it => typed(it) ? richText(it.text) : markdown(it.text)
+const bodyClass = it => typed(it) ? 'body' : 'body md'
+
+// ---------- the steps ----------
+// What the model does between two pieces of its answer, its thinking, the tools it calls, the commands that ran and the
+// asks once they're settled, folds into one line: "Thinking… 2m 38s" while it goes on (the time counts up), "Thought
+// for 2m 38s" once it's done; a click unfolds the steps. A pending ask stays out of the fold (its card is answered in its
+// line), and so do the prompts, the answer's text, the messages and the notices: each of those ends a fold. A fold
+// starts where the turn did when it follows a prompt or a message (the model's first words take a while too), else at
+// its first step; done, it ends where the answer's next piece starts, else at its last step's end. The time is the
+// model's: what the asks in it waited for you is left out, and while an ask waits after it, it doesn't count on. A step
+// that failed or was denied shows on the line. With motion paused the count goes by the minute.
+const foldable = it => it.kind === 'thinking' || it.kind === 'tool' || it.kind === 'command' || (it.kind === 'ask' && (it.status || 'pending') !== 'pending')
+const BUSY = new Set(['thinking', 'tool'])
+const OPENER_GAP = 120000 // a prompt whose first step came this much later waited for its turn: its fold starts at that step
+// a duration in this page's language: 38s, 2m 38s, 1h 5m; by the minute (2m) when it may change only once a minute
+export function duration(ms, minutes = false) {
+  const s = Math.max(1, Math.round(ms / 1000))
+  if (minutes) return s < 3600 ? t('chat.dur.m', { m: Math.floor(s / 60) }) : t('chat.dur.hm', { h: Math.floor(s / 3600), m: Math.floor(s / 60) % 60 })
+  if (s < 60) return t('chat.dur.s', { s })
+  if (s < 3600) return t('chat.dur.ms', { m: Math.floor(s / 60), s: s % 60 })
+  return t('chat.dur.hm', { h: Math.floor(s / 3600), m: Math.floor(s / 60) % 60 })
+}
 
 const MARKUP = `
 <div class="modal" id="chat" hidden>
@@ -70,7 +103,7 @@ export function createChat(sym, { askWho, onClose = () => {}, onTaskChip = () =>
   let inflight = null // the log's fetch on its way: { sid, again } (again: asked for once more meanwhile)
 
   el.querySelector('.close').onclick = () => chat.close()
-  el.addEventListener('click', ev => { if (ev.target === el) chat.close() })
+  onBackdrop(el, () => chat.close()) // (not a drag that selects text and lets go outside the window)
   head.querySelector('.meta').addEventListener('click', ev => { const c = ev.target.closest('[data-task]'); if (c) onTaskChip(c.dataset.task) })
 
   // sending: Enter sends, Shift+Enter makes a new line; the bridge queues it for the session's mod, and the chat shows
@@ -81,7 +114,7 @@ export function createChat(sym, { askWho, onClose = () => {}, onTaskChip = () =>
     if (!text || !session) return
     sayBox.value = ''
     const r = await sym.say(session, text)
-    if (!r.ok) { alert(errorText(r.data)); sayBox.value = text }
+    if (!r.ok) { showError(errorText(r.data), { title: t('errlog.oops.say') }); sayBox.value = text }
     sayBox.focus()
   })
   sayBox.addEventListener('keydown', ev => {
@@ -112,22 +145,136 @@ export function createChat(sym, { askWho, onClose = () => {}, onTaskChip = () =>
   }
   function render() {
     const atEnd = flow.scrollTop + flow.clientHeight >= flow.scrollHeight - 40, top = flow.scrollTop
-    const old = new Map([...flow.children].map(n => [n.dataset.id, n])) // what was unfolded stays so
+    // what was unfolded stays so: an item's own fold, and the steps by their first item
+    const old = new Map([...flow.querySelectorAll('.it[data-id], .steps[data-id]')].map(n => [n.dataset.id, n]))
     trim()
     flow.innerHTML = ''
     const list = [...items.values()].sort((a, b) => a.seq - b.seq)
     if (!list.length) flow.innerHTML = `<div class="empty">${esc(t('chat.empty'))}</div>`
-    for (const it of list) flow.appendChild(itemEl(it, old.get(it.id)))
+    let fold = null
+    for (const it of list) {
+      const node = itemEl(it, old.get(it.id))
+      if (!foldable(it)) { fold = null; flow.appendChild(node); continue }
+      if (!fold) fold = flow.appendChild(stepsEl(it.id, old.get('steps:' + it.id)))
+      fold.querySelector('.list').appendChild(node)
+    }
+    labelSteps()
+    ghost()
     if (inline) drawAsks()
     flow.scrollTop = atEnd ? flow.scrollHeight : top // it follows the end only if it was there
   }
-  // as many items as the bridge keeps of a session (keepChat): the oldest go
+  // as many items as the bridge keeps of a session (keepChat): the oldest go, and a fold they leave empty
   function trim() {
     if (items.size <= KEEP_ITEMS) return
     const list = [...items.values()].sort((a, b) => a.seq - b.seq)
     for (const it of list.slice(0, list.length - KEEP_ITEMS)) { items.delete(it.id); nodeOf(it.id)?.remove() }
+    for (const f of flow.querySelectorAll('.steps')) if (!f.querySelector('.it')) f.remove()
   }
   const nodeOf = id => flow.querySelector(`.it[data-id="${CSS.escape(String(id))}"]`)
+
+  // ---------- the steps (see foldable) ----------
+  // a fold for the steps from the item first: unfolded as it was (old), else as the settings say
+  function stepsEl(first, old) {
+    const f = document.createElement('div')
+    f.className = 'steps'
+    f.dataset.id = 'steps:' + first
+    const open = old ? !!old.querySelector(':scope > details')?.open : pref(STEPS_OPEN) === 'open'
+    f.innerHTML = `<details${open ? ' open' : ''}><summary><span class="lbl"></span><span class="bad" hidden></span></summary><div class="list"></div></details>`
+    return f
+  }
+  // the last thing in the flow: an item or a fold (not a card that waits for its line, nor the empty line)
+  const lastBlock = () => { for (let n = flow.lastElementChild; n; n = n.previousElementSibling) if (n.matches('.it, .steps')) return n; return null }
+  // a new item goes at the end: a step into the fold there (the one waiting for its first step too, or a new one),
+  // anything else after it, which ends that fold
+  function place(node, it) {
+    const last = lastBlock()
+    if (!foldable(it)) {
+      if (last?.matches('.steps.ghost')) last.remove()
+      flow.appendChild(node)
+      if (last?.matches('.steps:not(.ghost)')) labelSteps(last)
+      return
+    }
+    let fold = last?.matches('.steps:not(.ghost)') ? last : null
+    if (!fold) {
+      fold = stepsEl(it.id)
+      if (last?.matches('.steps.ghost')) last.replaceWith(fold) // (the line that waited: a fold now, with its first step)
+      else flow.appendChild(fold)
+    }
+    fold.querySelector('.list').appendChild(node)
+    labelSteps(fold)
+  }
+  // Right after a prompt or a message, while the session works and nothing came yet: a line that counts from it, with
+  // nothing to unfold yet; the first step makes it a fold (the answer's text takes it away).
+  function ghost() {
+    const last = lastBlock(), had = last?.matches('.steps.ghost') ? last : null
+    const before = had ? (() => { for (let n = had.previousElementSibling; n; n = n.previousElementSibling) if (n.matches('.it, .steps')) return n; return null })() : last
+    const want = busy() && !!before?.matches('.it.user:not(.queued):not(.dropped), .it.message')
+    if (!want) { had?.remove(); return }
+    let g = had
+    if (!g) {
+      g = flow.appendChild(document.createElement('div'))
+      g.className = 'steps ghost running'
+      g.innerHTML = `<div class="line"><span class="lbl"></span></div>`
+    }
+    labelSteps(g)
+  }
+  const itemOf = node => items.get(node?.matches('.steps') ? node.querySelector('.it')?.dataset.id : node?.dataset.id)
+  const endOf = it => Date.parse(it.time) + (it.kind === 'tool' && it.done ? it.ms || 0 : it.kind === 'thinking' && it.done ? (it.secs || 0) * 1000 : 0)
+  const busy = () => { const s = sym.sessionById(session); return sym.isOnline(s) && BUSY.has(s.state) }
+  // a fold's line: whether it goes on (the last thing in the flow, but for asks waiting for you, while the session
+  // works) and for how long; with no fold given, every fold's
+  function labelSteps(fold) {
+    if (!fold) { for (const f of flow.querySelectorAll('.steps')) labelSteps(f); return }
+    const steps = [...fold.querySelectorAll('.list > .it')].map(itemOf).filter(Boolean)
+    const prev = (() => { for (let n = fold.previousElementSibling; n; n = n.previousElementSibling) if (n.matches('.it, .steps')) return n; return null })()
+    const opener = prev?.matches('.it.user, .it.message') ? itemOf(prev) : null
+    if (!steps.length && !opener) return
+    // what comes next ends the work: not a prompt that waits for its turn; an ask waiting for you doesn't either, but
+    // the work stops counting while it waits
+    let next = null, asking = false
+    for (let n = fold.nextElementSibling; n && !next; n = n.nextElementSibling) {
+      if (n.matches('.it.ask.pending')) asking = true
+      else if (n.matches('.it, .steps') && !n.matches('.it.user.queued')) next = n
+    }
+    const first = steps.length ? Date.parse(steps[0].time) : NaN, from = opener ? Date.parse(opener.time) : first
+    const start = opener && first - from > OPENER_GAP ? first : from
+    const running = !next && !asking && busy()
+    let end = steps.length ? Math.max(...steps.map(endOf)) : start
+    if (next?.matches('.it.text')) end = Math.max(end, Date.parse(itemOf(next)?.time))
+    const waited = steps.filter(s => s.kind === 'ask').reduce((n, s) => n + (s.ms || 0), 0) // (your time, not the model's)
+    const took = Math.max(0, (running ? Date.now() : end) - start - waited)
+    // (with motion paused: no time in its first minute, then whole minutes)
+    const words = running && motion.still && took < 60000 ? t('chat.steps.runningName')
+      : t(running ? 'chat.steps.running' : 'chat.steps.done', { time: duration(took, running && motion.still) })
+    fold.classList.toggle('running', running)
+    const lbl = fold.querySelector('.lbl'), sum = fold.querySelector('summary')
+    if (lbl.textContent !== words) lbl.textContent = words
+    if (!sum) return // (the line that waits for its first step: nothing to unfold, nothing failed)
+    // while it counts up, a screen reader reads its name without the time (it would read the line again every second)
+    const name = running ? t('chat.steps.runningName') : null
+    if (sum.getAttribute('aria-label') !== name) name ? sum.setAttribute('aria-label', name) : sum.removeAttribute('aria-label')
+    // a step that failed, or was denied, shows on the line
+    const failed = steps.some(s => s.kind === 'tool' && s.status === 'error'), denied = steps.some(s => s.status === 'denied' || (s.kind === 'ask' && s.status === 'deny'))
+    const bad = sum.querySelector('.bad'), said = [failed && t('chat.tool.error'), denied && t('chat.tool.denied')].filter(Boolean).join(' · ')
+    bad.hidden = !said
+    if (bad.textContent !== said) bad.textContent = said
+  }
+  // the fold at the end counts up once a second while the window shows (with motion paused, its words change once a
+  // minute at most: they say whole minutes)
+  setInterval(() => {
+    if (el.hidden || !session) return
+    const last = lastBlock()
+    if (last?.matches('.steps.running') || (last?.matches('.steps') && busy())) labelSteps(last)
+  }, 1000)
+  // the session's state changed (show): the fold at the end may have finished, or one may wait for its first step
+  function stepsFollow() {
+    if (!session || el.hidden) return
+    ghost()
+    const last = lastBlock()
+    if (last?.matches('.steps')) labelSteps(last)
+  }
+  // what the settings say goes for every fold
+  onPref(STEPS_OPEN, v => { for (const d of flow.querySelectorAll('.steps > details')) d.open = v === 'open' })
   // closed (or hidden by the theme): the log goes, the pushes go by, and it is fetched again when the window shows
   function forget() {
     session = null
@@ -147,26 +294,40 @@ export function createChat(sym, { askWho, onClose = () => {}, onTaskChip = () =>
       const node = nodeOf(it.id), body = node?.querySelector('.body')
       if (body) grow(node, body, it, msg.delta.text)
     } else if (msg.item) {
-      const it = msg.item, old = nodeOf(it.id)
+      const it = msg.item, old = nodeOf(it.id), had = items.get(it.id)
       items.set(it.id, it)
-      const node = itemEl(it, old)
-      if (old) old.replaceWith(node)
-      else { flow.querySelector('.empty')?.remove(); flow.appendChild(node); trim() }
+      if (old && had && foldable(had) !== foldable(it)) render() // an ask settled: into the fold it goes, joining the steps around it
+      else {
+        const node = itemEl(it, old)
+        if (old) {
+          old.replaceWith(node)
+          const fold = node.closest('.steps')
+          if (fold) labelSteps(fold)
+        }
+        else { flow.querySelector(':scope > .empty')?.remove(); place(node, it); trim() }
+      }
     }
     if (nearEnd) flow.scrollTop = flow.scrollHeight
   })
   // pushes may have been missed (the stream was lost, or closed while the page was hidden): the log again
   sym.on('resync', () => { if (session) el.hidden ? forget() : load(session) })
-  // Streamed text: a short block is drawn again with its markup on every piece; a long one takes the piece as plain
-  // text, and a thinking block folded away nothing at all until it unfolds. The push that ends the block draws it whole.
+  // Streamed text: a short block is drawn again with its markup on every piece; a long one shows as plain text from then
+  // on, taking each piece as it comes; a block folded away (a thinking block, the steps) nothing at all until it
+  // unfolds. The push that ends the block draws it whole, with its markup.
   function grow(node, body, it, piece) {
-    if (node.querySelector('details:not([open])')) body.dataset.stale = '1'
-    else if (it.text.length <= LIVE_MARKUP) body.innerHTML = richText(it.text)
+    if (node.querySelector('details:not([open])') || node.parentElement.closest('details:not([open])')) body.dataset.stale = '1'
+    else if (it.text.length <= LIVE_MARKUP) body.innerHTML = bodyHTML(it)
+    else if (!body.classList.contains('raw')) { body.classList.add('raw'); body.textContent = it.text }
     else body.append(piece)
   }
   flow.addEventListener('toggle', ev => { // (toggle doesn't bubble: caught on its way down)
-    const body = ev.target.querySelector?.('.body'), it = items.get(ev.target.closest?.('.it')?.dataset.id)
-    if (ev.target.open && it && body?.dataset.stale) { delete body.dataset.stale; body.innerHTML = richText(it.text) }
+    if (!ev.target.open) return
+    // what streamed while it was folded away is drawn now, where it shows (a thinking block of the steps folded on its own
+    // still waits for its own unfolding)
+    for (const body of ev.target.querySelectorAll('.body[data-stale]')) {
+      const it = items.get(body.closest('.it')?.dataset.id)
+      if (it && !body.parentElement.closest('details:not([open])')) { delete body.dataset.stale; body.classList.remove('raw'); body.innerHTML = bodyHTML(it) }
+    }
   }, true)
 
   // ---------- the session's terminal, in the window ----------
@@ -247,7 +408,7 @@ export function createChat(sym, { askWho, onClose = () => {}, onTaskChip = () =>
           node.classList.add('kickoff')
           const open = old?.querySelector('details')?.open ? ' open' : '', peek = String(it.text ?? '').trim().split('\n')[0]
           node.innerHTML = `<details${open}><summary class="from"><b>${esc(t('chat.fromTask'))}</b><span class="peek">${esc(peek)}</span></summary>` +
-            `<div class="body">${richText(it.text)}</div></details>${why}${timeOf(it)}`
+            `<div class="${bodyClass(it)}">${bodyHTML(it)}</div></details>${why}${timeOf(it)}`
           break
         }
         // from the page
@@ -257,16 +418,17 @@ export function createChat(sym, { askWho, onClose = () => {}, onTaskChip = () =>
       case 'thinking': {
         node.className = `it thinking${it.done ? ' done' : ''}`
         const open = old?.querySelector('details')?.open ? ' open' : '' // stays unfolded while it streams
-        // without words (a model whose thinking is summarized) there is nothing to unfold: just that it thought, and how long
-        const label = !it.done ? t('chat.thinking') : it.text ? t('chat.thoughtRead', { s: it.secs || 0 }) : t('chat.thoughtFor', { s: it.secs || 0 })
+        // without words (a model whose thinking is summarized) there is nothing to unfold: just that it thought, and how
+        // long (it's a step of a fold, whose line says "Thought for …": this one says "Thinking · 12s")
+        const label = !it.done ? t('chat.thinking') : t('chat.thinking') + ' · ' + duration((it.secs || 0) * 1000)
         node.innerHTML = it.text || !it.done
-          ? `<details${open}><summary>${esc(label)}<span class="dots"></span></summary><div class="body">${richText(it.text)}</div></details>`
+          ? `<details${open}><summary>${esc(label)}<span class="dots"></span></summary><div class="${bodyClass(it)}">${bodyHTML(it)}</div></details>`
           : `<div class="bare">${esc(label)}</div>`
         break
       }
       case 'text':
         node.className = `it text${it.done ? ' done' : ''}`
-        node.innerHTML = `<div class="body">${richText(it.text)}</div>${it.done ? timeOf(it) : ''}`
+        node.innerHTML = `<div class="${bodyClass(it)}">${bodyHTML(it)}</div>${it.done ? timeOf(it) : ''}`
         break
       case 'tool': {
         node.className = `it tool ${it.status || ''}${it.done ? ' done' : ''}`
@@ -284,7 +446,7 @@ export function createChat(sym, { askWho, onClose = () => {}, onTaskChip = () =>
       case 'message': {
         const out = !!name && it.from === name // a task session sends as its member's name
         node.className = `it message${out ? ' out' : ''}`
-        node.innerHTML = `<div class="from">${esc(out ? t('chat.msgTo', { name: it.to || '?' }) : t('chat.msgFrom', { name: it.from || '?' }))}</div><div class="body">${richText(it.text)}</div>${timeOf(it)}`
+        node.innerHTML = `<div class="from">${esc(out ? t('chat.msgTo', { name: it.to || '?' }) : t('chat.msgFrom', { name: it.from || '?' }))}</div><div class="${bodyClass(it)}">${bodyHTML(it)}</div>${timeOf(it)}`
         break
       }
       case 'ask': {
@@ -382,6 +544,7 @@ export function createChat(sym, { askWho, onClose = () => {}, onTaskChip = () =>
       off.hidden = p.online
       if (off.textContent !== p.offText) off.textContent = p.offText
       el.hidden = false
+      stepsFollow()
       keepFocus(had, hadKey)
     },
     setLine(text) {

@@ -1,17 +1,19 @@
 // The pixel office: one floor of a big company's building, drawn on a canvas, with the sessions as employees at their
 // desks. The bridge's client (symphony.js) keeps the state; the employee window, the launch and task dialogs and the
 // task window are the shared pieces (ui/*.js), which this theme places, names and draws figures for.
-import { t, lang, errorText, fmtTime, applyI18n, langPicker } from '/i18n.js'
+import { t, lang, errorText, fmtTime, applyI18n } from '/i18n.js'
 import { esc } from '/asks.js'
 import { connect } from '/symphony.js'
-import { GREEN, YELLOW, RED, GRAY, STATE_COLOR, STATE_MARK, GRAY_MARK, base, lower, dot, element, hash, build, buildText, statusText as statusOf, richText, setHTML, pointAt, deferWhilePressed, askKind } from '/ui/common.js'
+import { GREEN, YELLOW, RED, GRAY, STATE_COLOR, STATE_MARK, GRAY_MARK, base, lower, dot, element, hash, build, buildText, statusText as statusOf, setHTML, pointAt, deferWhilePressed, askKind } from '/ui/common.js'
 import { connectionBanner } from '/ui/banner.js'
 import { announce, announceAsks } from '/ui/a11y.js'
-import { motion, stillSwitch } from '/ui/motion.js'
+import { motion } from '/ui/motion.js'
 import { createChat } from '/ui/chat.js'
 import { createLaunchDialog } from '/ui/launch.js'
 import { createTaskUI } from '/ui/task.js'
-import { themePicker } from '/ui/themes.js'
+import { createSettings, settingsButton } from '/ui/settings.js'
+import { showError } from '/ui/errors.js'
+import { markdown } from '/ui/markdown.js'
 
 // the bridge's client (symphony.js) keeps the state; snapshot is its latest, taken before anything else looks at it
 const sym = connect()
@@ -21,9 +23,6 @@ sym.on('snapshot', s => { snapshot = s })
 applyI18n()
 connectionBanner(sym)
 announceAsks(sym)
-const prefs = document.querySelector('#hud .prefs'), langSel = langPicker()
-prefs.appendChild(langSel)
-themePicker(sym).then(sel => prefs.insertBefore(sel, langSel))
 
 // ================= constants =================
 const T = 16 // one tile is 16 pixels
@@ -1726,6 +1725,7 @@ findList.addEventListener('mousedown', ev => { // mousedown, so the box keeps it
   pickFound(findHits().find(h => h.key === row.dataset.key))
 })
 addEventListener('keydown', ev => { // "/" jumps to the search box; Esc lets go of a state chip
+  if (!settings.hidden) return // (the settings have Esc to themselves, and "/" doesn't reach behind them)
   if (ev.key === 'Escape' && chipOn) { chipOn = null; renderStats() }
   if (ev.key === 'Escape' && !chat.hidden) { if (!chat.asking) closeChat() } // the member's first, then its task
   else if (ev.key === 'Escape' && !tasks.win.hidden) closeTaskWin()
@@ -1734,7 +1734,12 @@ addEventListener('keydown', ev => { // "/" jumps to the search box; Esc lets go 
   if (ev.key !== '/' || ev.ctrlKey || ev.metaKey || ev.altKey || !chat.hidden || !launch.hidden || !tasks.dialogHidden || !tasks.win.hidden) return
   if (/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName)) return
   ev.preventDefault()
-  if (hud.classList.contains('up')) setHud(false)
+  if (hud.classList.contains('up')) { // (a key's action shows at once: no slide)
+    hud.classList.remove('anim')
+    setHud(false)
+    hud.getBoundingClientRect()
+    requestAnimationFrame(() => hud.classList.add('anim'))
+  }
   findEl.focus()
 })
 
@@ -1795,11 +1800,11 @@ const DETAIL_STEPS = 4, DETAIL_STORE = 'symphony.pixels'
 let detail = (() => {
   try { const n = Number(localStorage.getItem(DETAIL_STORE)); return Number.isInteger(n) && n >= 0 && n < DETAIL_STEPS ? n : 0 } catch { return 0 }
 })()
+// (in the settings: a row of four buttons, each a finer grid)
 const pixelsEl = document.createElement('div')
-pixelsEl.className = 'group pixels'
-pixelsEl.title = t('pixels.title')
-pixelsEl.innerHTML = `<span class="lbl" id="pixels-label">${esc(t('pixels.label'))}</span><div class="steps" role="group" aria-labelledby="pixels-label">` +
-  Array.from({ length:DETAIL_STEPS }, (_, i) => `<button data-level="${i}" title="${esc(t('pixels.' + (i + 1)))}" aria-label="${esc(t('pixels.' + (i + 1)))}"></button>`).join('') + '</div>'
+pixelsEl.className = 'pixels pixel-steps'
+pixelsEl.setAttribute('role', 'group')
+pixelsEl.innerHTML = Array.from({ length:DETAIL_STEPS }, (_, i) => `<button type="button" data-level="${i}" title="${esc(t('pixels.' + (i + 1)))}" aria-label="${esc(t('pixels.' + (i + 1)))}"></button>`).join('')
 function setDetail(level) {
   detail = level
   try { localStorage.setItem(DETAIL_STORE, String(level)) } catch {}
@@ -2041,7 +2046,7 @@ function openAsks(session = null) {
 const msgsPanel = document.getElementById('msgs-panel')
 function msgHTML(m) {
   return `<div class="msg"><div class="meta">${fmtTime(m.time)} · <b>${esc(msgFrom(m))}</b> → <b>${esc(msgTo(m))}</b>
-    ${m.delivered ? '' : `<span class="lost">${esc(t('msg.undelivered'))}</span>`}</div><div class="txt">${richText(m.text)}</div></div>`
+    ${m.delivered ? '' : `<span class="lost">${esc(t('msg.undelivered'))}</span>`}</div><div class="txt md">${markdown(m.text)}</div></div>`
 }
 // The panel shows the log newest first and is kept up to date in place: a new message is one element put in, an
 // updated one (paired, delivered) is replaced, the rest stay (300 long messages make 600 KB of HTML; rebuilding
@@ -2140,14 +2145,14 @@ function showChat(id) {
   const busy = online && (s.state === 'thinking' || s.state === 'tool' || s.state === 'waiting')
   const buttons = []
   if (online && s.launch) buttons.push({ key:'terminal', text:t('chat.terminal'), cls:'terminal', onclick:() => openTerminal(s), title:t('chat.terminalTitle') })
-  if (busy) buttons.push({ key:'stop', text:t('chat.stop'), cls:'stop', onclick:() => post(`/api/abort/${s.id}`, {}), title:t('chat.stopTitle') })
+  if (busy) buttons.push({ key:'stop', text:t('chat.stop'), cls:'stop', onclick:() => post(`/api/abort/${s.id}`, {}, t('errlog.oops.stop')), title:t('chat.stopTitle') })
   if (away && member?.session) buttons.push({ key:'to-task', text:t('task.openMember', { name:member.name }), cls:'primary to-task', onclick:() => openMember(away, member),
     title:t('task.openMemberTitle', { id:away.id, room:taskRoom(away) }) })
   if (!online && !chatSid && launchOpts?.enabled) buttons.push({ key:'go-work', text:t('launch.go'), cls:(away ? '' : 'primary ') + 'go-work', onclick:() => openLaunch(acc.id) })
   if (!online && !chatSid && !away) buttons.push({ key:'delete', text:t('card.delete'), cls:'', onclick:async () => {
     if (!confirm(t('card.deleteConfirm', { name:acc.name }))) return
     const r = await sym.deleteAccount(acc.id)
-    if (!r.ok) alert(t('card.deleteFailed', { reason:errorText(r.data) }))
+    if (!r.ok) showError(t('card.deleteFailed', { reason:errorText(r.data) }))
     closeChat()
   } })
   chat.show({
@@ -2179,15 +2184,15 @@ function refreshChatLine() {
   chat.setLine(chatStateLine())
 }
 
-async function post(path, body) {
+async function post(path, body, title) {
   const r = await sym.post(path, body)
-  if (!r.ok) alert(errorText(r.data))
+  if (!r.ok) showError(errorText(r.data), { title })
   return r.ok
 }
 // the session's terminal: the bridge opens a window on this machine attached to it (closing it changes nothing)
 async function openTerminal(s) {
   const r = await sym.openTerminal(s.launch)
-  if (!r.ok) alert(errorText(r.data) + (r.data?.params?.command ? '\n' + r.data.params.command : ''))
+  if (!r.ok) showError(errorText(r.data) + (r.data?.params?.command ? '\n' + r.data.params.command : ''), { title: t('errlog.oops.terminal') })
 }
 
 // a click on a character, or else on a desk, is a click on that employee (on a task's member: the window of its task
@@ -2290,6 +2295,7 @@ document.documentElement.style.setProperty('--ico-find', pixelArt(7, 7, g => MAG
 }))))
 document.documentElement.style.setProperty('--ico-mail', pixelArt(9, 6, g => drawEnvelope(g, 0, 0)))
 const CHEVRON = ['...X...', '..XXX..', '.XX.XX.', 'XX...XX']
+const GEAR = ['...X.X...', '.X.XXX.X.', '..XXXXX..', '.XXX.XXX.', 'XXX.o.XXX', '.XXX.XXX.', '..XXXXX..', '.X.XXX.X.', '...X.X...']
 const chevron = rows => pixelArt(7, 4, g => rows.forEach((row, y) => [...row].forEach((c, x) => { if (c === 'X') rect(g, x, y, 1, 1, '#2b2a28') })))
 document.documentElement.style.setProperty('--ico-up', chevron(CHEVRON))
 document.documentElement.style.setProperty('--ico-down', chevron([...CHEVRON].reverse()))
@@ -2300,8 +2306,15 @@ pixelsEl.querySelectorAll('button').forEach((b, i) => { // each a finer grid
     for (let y = 0; y < 12; y++) for (let x = 0; x < 12; x++) rect(g, x, y, 1, 1, (((x / cell) | 0) + ((y / cell) | 0)) % 2 ? '#d6d1c6' : '#2b2a28')
   })
 })
-document.querySelector('#hud .prefs').prepend(pixelsEl)
-pixelsEl.after(stillSwitch(Object.assign(document.createElement('button'), { type:'button', className:'px', id:'still' })))
+// the settings: the pixel size is the office's own; the HUD's button opens them, marked while the error log has news
+const settings = createSettings(sym, { extra:[{ label:t('pixels.label'), el:pixelsEl, hint:t('pixels.title') }] })
+const gear = document.createElement('i')
+gear.className = 'ico gear'
+gear.setAttribute('aria-hidden', 'true')
+document.querySelector('#hud .btns').appendChild(settingsButton(settings, { cls:'px', icon:gear })).id = 'open-settings'
+document.documentElement.style.setProperty('--ico-gear', pixelArt(9, 9, g => GEAR.forEach((row, y) => [...row].forEach((c, x) => {
+  if (c !== '.') rect(g, x, y, 1, 1, c === 'X' ? '#2b2a28' : '#f2b705')
+}))))
 // It slides from now on, not when the page opens: the remembered position takes effect here, before the slide is
 // turned on. Without this, a browser that hadn't worked out the HUD's style yet would do so only in the next frame,
 // after the slide is on, and slide it up as the page opens.

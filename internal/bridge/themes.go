@@ -93,11 +93,16 @@ func (s *Server) themeIndex(w http.ResponseWriter, r *http.Request) {
 	s.serveFile(w, r, "themes/"+name+"/index.html")
 }
 
-// themeRoot serves GET /t/<name>/: that theme, remembered from now on.
+// themeRoot serves GET /t/<name>/: that theme, remembered from now on. A theme this bridge doesn't have (a link kept
+// from a version that had it: HQ and Mission Control went after v1.2.2) leads to / and the theme it serves.
 func (s *Server) themeRoot(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("theme")
 	if !s.hasTheme(name) {
-		http.NotFound(w, r)
+		to := "/"
+		if r.URL.RawQuery != "" {
+			to += "?" + r.URL.RawQuery
+		}
+		http.Redirect(w, r, to, http.StatusSeeOther)
 		return
 	}
 	setThemeCookie(w, name)

@@ -567,14 +567,16 @@ func TestScreens(t *testing.T) {
 
 	// ---------- pixel sizes and window sizes ----------
 	for level := 0; level < 4; level++ {
-		do(t, en, 10*time.Second, chromedp.Click(chromedp.CSS(fmt.Sprintf(`#hud .steps button[data-level="%d"]`, level))))
+		do(t, en, 10*time.Second, chromedp.Click(chromedp.CSS(`#open-settings`)), chromedp.Click(chromedp.CSS(fmt.Sprintf(`.pixel-steps button[data-level="%d"]`, level))),
+			chromedp.Click(chromedp.CSS(`#settings .close`)))
 		time.Sleep(1500 * time.Millisecond)
 		p.shot(fmt.Sprintf("office-pixels-%d", level+1))
 		if level > 0 {
 			p.clipRoom(roomT2, fmt.Sprintf("room-T2-pixels-%d", level+1))
 		}
 	}
-	do(t, en, 10*time.Second, chromedp.Click(chromedp.CSS(`#hud .steps button[data-level="0"]`)))
+	do(t, en, 10*time.Second, chromedp.Click(chromedp.CSS(`#open-settings`)), chromedp.Click(chromedp.CSS(`.pixel-steps button[data-level="0"]`)),
+		chromedp.Click(chromedp.CSS(`#settings .close`)))
 	for _, size := range [][2]int64{{800, 600}, {1000, 700}, {1920, 1080}} {
 		do(t, en, 10*time.Second, chromedp.EmulateViewport(size[0], size[1]))
 		time.Sleep(3 * time.Second) // the figures find their new places
@@ -870,7 +872,7 @@ func (s *screens) waitPlates(pairs ...any) {
 func (s *screens) check() {
 	s.t.Helper()
 	raw := s.js(`(() => {
-		const re = /\b(?:task|room|chat|launch|error|asks|log|office|search|pixels|common|msg|approve|hq|msgr|mc)\.[a-z][A-Za-z0-9]*(?:\.[A-Za-z0-9]+)*/g
+		const re = /\b(?:task|room|chat|launch|error|asks|log|office|search|pixels|common|msg|approve|msgr|settings|errlog)\.[a-z][A-Za-z0-9]*(?:\.[A-Za-z0-9]+)*/g
 		const text = document.body.innerText + '\n' + [...document.querySelectorAll('[title], [placeholder]')].map(e => (e.title || '') + ' ' + (e.placeholder || '')).join('\n')
 		return [...new Set(text.match(re) || [])].join(', ')
 	})()`)

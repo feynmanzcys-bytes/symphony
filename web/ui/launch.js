@@ -9,6 +9,7 @@
 //   launch.el
 import { t, lang, esc, errorText, base, fill, browse, showEnd } from '/ui/common.js'
 import { dialog } from '/ui/a11y.js'
+import { putErrorBox, showError, onBackdrop } from '/ui/errors.js'
 
 const MARKUP = `
 <div class="modal" id="launch" hidden>
@@ -54,10 +55,13 @@ export function createLaunchDialog(sym, { options = () => sym.launchOptions(true
   // why the page can't start sessions: the mod's problem, or no launcher at all
   const offReason = () => opts?.mod ? errorText(opts.mod) : t('error.launch_disabled')
 
+  // the status line: what goes on, or an error in a box (a failed start is in the error log already: the bridge keeps
+  // it, so the page doesn't report it again)
   function setStatus(text, err) {
     const el = form.querySelector('.status')
-    el.textContent = text
     el.className = 'status' + (err ? ' err' : '')
+    if (err) putErrorBox(el, text, { report: false })
+    else el.textContent = text
   }
   function request() {
     const r = { dir: field('dir').value.trim(), model: field('model').value, effort: field('effort').value,
@@ -99,7 +103,7 @@ export function createLaunchDialog(sym, { options = () => sym.launchOptions(true
     preview()
   }
   form.querySelector('.cancel').onclick = () => launch.close()
-  dlg.addEventListener('click', ev => { if (ev.target === dlg) launch.close() })
+  onBackdrop(dlg, () => launch.close()) // (not a drag that selects text and lets go outside the dialog)
   form.addEventListener('submit', async ev => {
     ev.preventDefault()
     const r = request()
@@ -122,7 +126,7 @@ export function createLaunchDialog(sym, { options = () => sym.launchOptions(true
     get hidden() { return dlg.hidden },
     async open(accountId) {
       opts = await options()
-      if (!opts?.enabled) return alert(opts ? offReason() : t('error.unreachable'))
+      if (!opts?.enabled) return showError(opts ? offReason() : t('error.unreachable'), { title: t('errlog.oops.launchOff') })
       const acc = accountId ? sym.accountById(accountId) : null
       account = acc ? acc.id : null
       const last = acc?.last || {}

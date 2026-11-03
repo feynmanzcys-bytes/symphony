@@ -9,6 +9,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"io/fs"
 	"log"
 	"net"
@@ -135,6 +136,9 @@ func main() {
 		pages = os.DirFS(*webDir)
 	}
 
+	// the log goes where it went (the terminal, bridge.log, the journal) and its last lines into the error log's report
+	tail := bridge.NewLogTail(200)
+	log.SetOutput(io.MultiWriter(log.Writer(), tail))
 	hub := bridge.NewHub()
 	hub.Warn = func(line string) { log.Print(line) }
 	if err := hub.Open(*dataDir); err != nil {
@@ -146,6 +150,7 @@ func main() {
 	}
 	srv := bridge.NewServer(hub, pages)
 	srv.Key = key
+	srv.Version, srv.LogTail = buildVersion(), tail
 	var terms *bridge.Terms // the sessions' terminals, when the bridge can start sessions
 	if l := launcher(*modDir, *claude, base); l != nil {
 		l.AttachHint = attachHint(net.JoinHostPort(host, port), *dataDir)

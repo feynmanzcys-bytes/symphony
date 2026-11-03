@@ -426,9 +426,7 @@ func (u *taskUndo) run(hub *Hub, terms *Terms, task string) {
 			left = append(left, "deleting advisor "+id+": "+err.Error())
 		}
 	}
-	if hub.Warn != nil {
-		for _, l := range left {
-			hub.Warn(i18n.T("log.task_undo_failed", "task", task, "reason", l))
-		}
+	for _, l := range left {
+		hub.warn("log.task_undo_failed", "task", task, "reason", l)
 	}
 }

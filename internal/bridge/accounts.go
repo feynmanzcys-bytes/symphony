@@ -15,8 +15,6 @@ import (
 	"sync"
 	"time"
 	"unicode"
-
-	"github.com/feynmanzcys-bytes/symphony/internal/i18n"
 )
 
 // Account is one identity in the office: a name, a token and a fixed seat, used by one desk session at a time (and
@@ -119,9 +117,7 @@ func loadLog[T any](h *Hub, path string) ([]*T, error) {
 		if os.Rename(path, aside) != nil {
 			return nil, &DamagedFile{Path: path, Err: err}
 		}
-		if h.Warn != nil {
-			h.Warn(i18n.T("log.data_set_aside", "file", path, "reason", err.Error(), "aside", aside))
-		}
+		h.warn("log.data_set_aside", "file", path, "reason", err.Error(), "aside", aside)
 		return nil, nil
 	}
 	return withoutNil(list), nil
@@ -170,7 +166,7 @@ func saveAccounts(path string, list []*Account) error {
 // ---------- accounts on the Hub ----------
 
 // Open sets the data folder and reads the accounts (accounts.json), the message log (messages.json), the ledger
-// (ledger.json) and the tasks (tasks.json; tasks the previous bridge left running are ended now). The bridge has to
+// (ledger.json), the error log (errors.json) and the tasks (tasks.json; tasks the previous bridge left running are ended now). The bridge has to
 // hold the folder's lock first (LockData): another bridge's running tasks would look left over.
 func (h *Hub) Open(dir string) error {
 	for _, s := range []*saver{&h.msgSave, &h.taskSave, &h.ledgerSave} {
@@ -186,6 +182,9 @@ func (h *Hub) Open(dir string) error {
 	}
 	ledger, err := loadLog[LedgerRow](h, filepath.Join(dir, "ledger.json"))
 	if err != nil {
+		return err
+	}
+	if err := h.openFaults(dir); err != nil {
 		return err
 	}
 	h.mu.Lock()
@@ -220,9 +219,7 @@ func (h *Hub) saveLocked() error {
 // warnWrite tells the log that a data file couldn't be written (the disk is full, the folder read-only ...): the
 // office goes on, but what changed is in memory only until a write gets through.
 func (h *Hub) warnWrite(path string, err error) {
-	if h.Warn != nil {
-		h.Warn(i18n.T("log.save_failed", "file", path, "reason", err.Error()))
-	}
+	h.warn("log.save_failed", "file", path, "reason", err.Error())
 }
 
 // saver writes a file (the message log, the tasks) in the background: the hub's lock is held while it is encoded,
@@ -345,7 +342,7 @@ func (s *saver) wait() error {
 // error says which of them couldn't be written.
 func (h *Hub) Flush() error {
 	h.taskJobs.wait()
-	return errors.Join(h.msgSave.wait(), h.taskSave.wait(), h.ledgerSave.wait())
+	return errors.Join(h.msgSave.wait(), h.taskSave.wait(), h.ledgerSave.wait(), h.faults.save.wait())
 }
 
 // CreateAccount creates an account in the lowest free seat. Names are unique (sessions message each other by name).

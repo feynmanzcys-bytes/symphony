@@ -26,17 +26,15 @@ import (
 	"github.com/chromedp/chromedp"
 )
 
-// TestPerfThemes (no tokens) measures the three DOM themes, HQ (/t/hq/), Coworkers (/t/messenger/) and Mission Control
-// (/t/mission/), under the made-up load of TestPerf and TestPerfTasks: claude is a script that sits there, and the test
-// reports every session in and streams for it the way the mod would. For each theme, in a tab of its own:
+// TestPerfThemes (no tokens) measures the DOM theme, Coworkers (/t/messenger/), under the made-up load of TestPerf and
+// TestPerfTasks: claude is a script that sits there, and the test reports every session in and streams for it the way
+// the mod would. In a tab of its own:
 //   - one busy session with its employee window open, opened from the theme's own list: TestPerf's 12 turns of 40
 //     pieces of thinking and text (1.2 KiB each) and a tool call each, posted as fast as they go;
-//   - then the team: 33 employees with a desk session each, 15 of them streaming, 8 tasks with 36 members streaming and
+//   - then the team: 31 employees with a desk session each, 15 of them streaming, 8 tasks with 36 members streaming and
 //     messaging their teammates (TestPerfTasks's streamer), the usage figures every 2 s, two asks waiting all along and
-//     an alarm that comes and goes every 3 s. The theme's heaviest views are measured one after the other: HQ's overview
-//     (the KPI strip, the charts) twice, its timeline and its roster; Coworkers' group chat of a task at its 300 messages
-//     twice, and a coworker's conversation with her profile and computer; Mission Control's whole wall and ticker twice,
-//     with the sound switch on;
+//     one that comes and goes every 3 s. The theme's heaviest views are measured one after the other: a task's group
+//     chat at its 300 messages twice, and a coworker's conversation with her profile and computer;
 //   - the stream cut and back (a resync) while it all streams.
 //
 // Each window records the gaps between frames (a probe of the test's own asks for every frame), the page's long tasks,
@@ -59,9 +57,7 @@ func TestPerfThemes(t *testing.T) {
 	requireBrowser(t)
 	l := newThemeLoad(t)
 	browser := newBrowser(t) // (after the bridge: it signs in to the bridges already started)
-	t.Run("hq", func(t *testing.T) { perfHQ(t, l, browser) })
 	t.Run("messenger", func(t *testing.T) { perfMessenger(t, l, browser) })
-	t.Run("mission", func(t *testing.T) { perfMission(t, l, browser) })
 }
 
 // What fails a window while updates flow.
@@ -133,7 +129,7 @@ func newThemeLoad(t *testing.T) *themeLoad {
 	for i := 0; i < 30; i++ {
 		l.emps = append(l.emps, hire(fmt.Sprintf("e%02d", i), fmt.Sprintf("d%02d", i), i))
 	}
-	for i, theme := range []string{"hq", "messenger", "mission"} {
+	for i, theme := range []string{"messenger"} {
 		l.busy[theme] = hire("busy-"+theme, "busy-"+theme, i)
 	}
 	for _, e := range l.emps[:15] {
@@ -805,35 +801,6 @@ func (p *themePage) done(ld *themeStreams, theme string, lost int64, base, a, b,
 	p.finish(theme)
 }
 
-// ---------- HQ ----------
-
-func perfHQ(t *testing.T, l *themeLoad, browser context.Context) {
-	p := openTheme(t, browser, l.b.URL+"/t/hq/?lang=en", "hq")
-	defer p.close()
-	waitUntil(t, 20*time.Second, "HQ shows the KPI strip with the headcount", func() bool {
-		return p.is(fmt.Sprintf(`document.querySelectorAll('#kpis .kpi').length === 7 && document.querySelector('#kpis .kpi .val').textContent === '%d'`, len(l.emps)+len(l.busy)))
-	})
-	base := p.mem()
-	// the busy session's window over the overview, opened from its row in the roster
-	row := fmt.Sprintf(`#people tbody tr[data-account=%q]`, l.busy["hq"].id)
-	p.run(`document.querySelector('#tabs [data-tab=people]').click()`)
-	waitUntil(t, 10*time.Second, "the roster lists the busy employee", func() bool { return p.is(`!!document.querySelector('` + row + `')`) })
-	p.busyWindow(l, "hq", `document.querySelector('`+row+`').click(); document.querySelector('#tabs [data-tab=overview]').click()`)
-	p.run(`document.querySelector('#chat .close').click()`)
-
-	ld := l.start()
-	defer ld.halt()
-	// the overview: the KPI strip, who waits, the activity a minute (a sparkline), today's cost by employee and the
-	// tokens by model (bars), the last things that happened
-	a, b, r, lost := p.heaviest(l, ld, "hq", "overview", `document.querySelector('#tabs [data-tab=overview]').click()`,
-		`document.querySelectorAll('#ov-cost .bar').length > 0 && document.querySelectorAll('#ov-tokens .bar').length > 0 && !!document.querySelector('#ov-spark svg') && document.querySelectorAll('#ov-recent .row').length === 8 && document.querySelectorAll('#ov-waiting .row').length >= 2`)
-	// the timeline: the activity log's newest 300 lines
-	p.view("hq", "timeline", `document.querySelector('#tabs [data-tab=activity]').click()`, `document.querySelectorAll('#act-list .row').length === 300`)
-	// the roster: every employee's row, its figures moving with every tool call
-	p.view("hq", "roster", `document.querySelector('#tabs [data-tab=people]').click()`, fmt.Sprintf(`document.querySelectorAll('#people tbody tr').length === %d`, len(l.emps)+len(l.busy)))
-	p.done(ld, "hq", lost, base, a, b, r)
-}
-
 // ---------- Coworkers ----------
 
 func perfMessenger(t *testing.T, l *themeLoad, browser context.Context) {
@@ -858,34 +825,4 @@ func perfMessenger(t *testing.T, l *themeLoad, browser context.Context) {
 	p.view("messenger", "conversation", fmt.Sprintf(`document.querySelector('#people .row[data-account=%q]').click()`, e.id),
 		fmt.Sprintf(`!document.getElementById('chat').hidden && document.querySelector('#chat h2').textContent === %q && document.querySelectorAll('#chat .flow .it').length > 5 && !document.getElementById('profile').hidden && !!document.querySelector('#profile .computer .recent')`, e.name))
 	p.done(ld, "messenger", lost, base, a, b, r)
-}
-
-// ---------- Mission Control ----------
-
-func perfMission(t *testing.T, l *themeLoad, browser context.Context) {
-	p := openTheme(t, browser, l.b.URL+"/t/mission/?lang=en", "mission")
-	defer p.close()
-	tiles := len(l.emps) + len(l.busy) + len(l.members)
-	ready := fmt.Sprintf(`document.querySelectorAll('#wall .tile').length === %d && document.querySelectorAll('#wall .tile.member').length === %d && document.querySelectorAll('#ticker .item').length === 40`, tiles, len(l.members))
-	waitUntil(t, 20*time.Second, "the wall shows every session online and every account", func() bool { return p.is(ready) })
-	// the sound on, with a real click (a browser lets a page play sound only once it was clicked): the page keeps its
-	// stream while hidden, and the bell rings when the alarms go up
-	do(t, p.ctx, 10*time.Second, chromedp.Click(chromedp.CSS(`#sound`)))
-	waitUntil(t, 5*time.Second, "the sound switch is on", func() bool { return p.is(`localStorage.getItem('symphony.mission.sound') === '1'`) })
-	if eventually(3*time.Second, func() bool { return !p.is(`document.getElementById('sound').classList.contains('blocked')`) }) {
-		t.Log("PERF mission: the sound switch is on and the browser lets the page play (the bell rings when the alarms go up)")
-	} else {
-		t.Log("PERF mission: the sound switch is on but this browser keeps the sound blocked (the stream stays while hidden all the same)")
-	}
-	base := p.mem()
-	// the busy session's window over the wall, opened from its tile
-	p.busyWindow(l, "mission", fmt.Sprintf(`document.querySelector('#wall .tile[data-key=%q]').click()`, l.busy["mission"].id))
-	p.run(`document.querySelector('#chat .close').click()`)
-
-	ld := l.start()
-	defer ld.halt()
-	// the wall: a tile for every session online and every account, the gauges and the sparklines moving; the ticker
-	a, b, r, lost := p.heaviest(l, ld, "mission", "wall", "", ready)
-	t.Logf("PERF mission: the bell rang %.0f times (two tones each) for %d alarms", p.num(`window.__tp.tones`)/2, ld.alarms.Load())
-	p.done(ld, "mission", lost, base, a, b, r)
 }

@@ -15,6 +15,8 @@
 //   tasks.dialog, tasks.win         the elements
 import { t, lang, esc, errorText, base, lower, dot, fill, browse, showEnd, statusText, richText, TASK_MARK, GRAY_MARK, button, deferWhilePressed, setHTML, pointAt } from '/ui/common.js'
 import { dialog as asDialog } from '/ui/a11y.js'
+import { putErrorBox, setText, showError, onBackdrop } from '/ui/errors.js'
+import { markdown } from '/ui/markdown.js'
 
 const MAX_MEMBERS = 5 // the bridge's cap (taskMaxMembers)
 
@@ -76,6 +78,14 @@ function mount(markup) {
 export const fromYou = m => m.origin === 'page' && !m.fromName
 export const msgFrom = m => m.fromName || (fromYou(m) ? t('task.you') : '?')
 
+// why a task failed: its first failure in this page's language, then the bridge's own words when they say more (every
+// failure of its cleanup, one a line, git's among them)
+function failedWhy(task) {
+  const said = t('task.failedWhy', { reason: errorText({ code: task.errorCode, params: task.errorParams, error: task.error }) })
+  const all = String(task.error || '').trim()
+  return all && !said.includes(all) ? said + '\n\n' + all : said
+}
+
 export function createTaskUI(sym, {
   options = () => sym.launchOptions(true),
   roomLabel = task => task.id,
@@ -99,11 +109,13 @@ export function createTaskUI(sym, {
   const offReason = () => opts?.mod ? errorText(opts.mod) : t('error.launch_disabled')
 
   // ---------- the dialog ----------
+  // the status line: what goes on, or an error in a box (a failed start is in the error log already: the bridge keeps
+  // it, so the page doesn't report it again)
   function setStatus(text, err) {
     const el = form.querySelector('.status')
-    el.textContent = text
     el.className = 'status' + (err ? ' err' : '')
-    if (err) el.scrollIntoView({ block: 'nearest' })
+    if (err) { putErrorBox(el, text, { report: false }); el.scrollIntoView({ block: 'nearest' }) }
+    else el.textContent = text
   }
   // the rows an error is about, outlined in red: advisors without a name or a folder (code 'incomplete'), with a name
   // that's taken or too long, or in a folder that's missing, and the member the error names
@@ -174,7 +186,7 @@ export function createTaskUI(sym, {
   form.elements.permissionMode.onchange = () => warn(true)
   form.addEventListener('input', ev => { ev.target.classList.remove('bad'); if (!ev.target.closest('.adv')?.querySelector('input.bad')) ev.target.closest('.adv')?.classList.remove('bad') })
   form.querySelector('.cancel').onclick = () => tasks.closeDialog()
-  dialog.addEventListener('click', ev => { if (ev.target === dialog) tasks.closeDialog() })
+  onBackdrop(dialog, () => tasks.closeDialog()) // (not a drag that selects text and lets go outside the dialog)
   form.addEventListener('submit', async ev => {
     ev.preventDefault()
     const title = form.elements.desc.value.trim()
@@ -211,7 +223,7 @@ export function createTaskUI(sym, {
   let chatFor = null // the task the input's draft and status line belong to
   let chatStick = false // you just sent: follow the list down when it comes back, wherever it was scrolled
   win.querySelector('.close').onclick = () => tasks.closeWindow()
-  win.addEventListener('click', ev => { if (ev.target === win) tasks.closeWindow() })
+  onBackdrop(win, () => tasks.closeWindow())
 
   // (not while a pointer is down: a member's row replaced under a press would lose its click)
   const render = deferWhilePressed(() => {
@@ -224,15 +236,17 @@ export function createTaskUI(sym, {
     if (!task && shown.task?.status && shown.task.status !== 'failed') task = windowData = { ...shown.task, status: 'ended' }
     if (!task) return tasks.closeWindow()
     shown.task = task
-    win.querySelector('h2').textContent = `${task.id} · ${roomLabel(task)}`
+    // (each written only when it changed: what is selected in it stays through the redraws, every snapshot)
+    setText(win.querySelector('h2'), `${task.id} · ${roomLabel(task)}`)
     const st = win.querySelector('.top .status')
-    st.textContent = t('task.status.' + task.status)
+    setText(st, t('task.status.' + task.status))
     st.style.setProperty('--c', TASK_MARK[task.status] ?? GRAY_MARK)
-    win.querySelector('.desc').textContent = task.title
+    setText(win.querySelector('.desc'), task.title)
     win.querySelector('.mode').hidden = !!task.leader
+    // a failed task: why, all of it (the bridge lists every failure of the cleanup, and its error log has it already)
     const err = win.querySelector('.err')
     err.hidden = task.status !== 'failed'
-    err.textContent = err.hidden ? '' : t('task.failedWhy', { reason: errorText({ code: task.errorCode, params: task.errorParams, error: task.error }) })
+    putErrorBox(err, err.hidden ? '' : failedWhy(task), { report: false })
     // the members: state, name, lead and advisor tags, where it works, its model; a click opens its window
     const rows = task.members.map((m, i) => {
       const s = sym.sessionById(m.session), online = sym.isOnline(s), state = !online ? 'ended' : sym.asking(m.session) ? 'waiting' : s.state
@@ -255,11 +269,11 @@ export function createTaskUI(sym, {
       if (task.status === 'running') btns.appendChild(button(t('task.end'), 'alert end', async () => {
         if (!confirm(t('task.endConfirm', { id: task.id }))) return
         const r = await sym.tasks.end(task.id)
-        if (!r.ok) alert(errorText(r.data))
+        if (!r.ok) showError(errorText(r.data), { title: t('errlog.oops.endTask') })
       }))
       if (task.status === 'failed') btns.appendChild(button(t('task.dismiss'), 'dismiss', async () => {
         const r = await sym.tasks.forget(task.id)
-        if (!r.ok) alert(errorText(r.data))
+        if (!r.ok) showError(errorText(r.data), { title: t('errlog.oops.dismissTask') })
         else tasks.closeWindow()
       }, t('task.dismissTitle')))
     }
@@ -270,6 +284,8 @@ export function createTaskUI(sym, {
 
   // The task chat: the messages between the task's members and yours to them, oldest first, each with its sender's
   // figure. "@bob-T1 …" goes to that member only, anything else to every member online; the bridge sends them on.
+  // the members a message names go before its words, in its first paragraph when it has one (a member's is Markdown)
+  const withMentions = (to, body) => to && body.startsWith('<p>') ? '<p>' + to + body.slice(3) : to + body
   function msgHTML(task, m) {
     const me = fromYou(m), who = me ? null : task.members.find(x => (x.session && x.session === m.from) || x.name === m.fromName)
     const names = m.toNames?.length ? m.toNames : m.toName ? [m.toName] : [] // one or several members, or everyone
@@ -277,7 +293,7 @@ export function createTaskUI(sym, {
     const to = names.length ? `<b class="to">${names.map(n => missed.includes(n) ? `<s title="${esc(t('task.missed', { name: n }))}">@${esc(n)}</s>` : '@' + esc(n)).join(' ')}</b> ` : ''
     return `<div class="tmsg${me ? ' me' : ''}"><span class="av" style="background-image:${esc(me ? youAvatar() : memberAvatar(who))}"></span>` +
       `<div class="bub"><div class="hd"><b>${esc(msgFrom(m))}</b></div>` +
-      `<div class="body">${to}${richText(m.text)}</div><time>${esc(new Date(m.time).toLocaleTimeString(lang))}</time></div></div>`
+      `<div class="body${me ? '' : ' md'}">${withMentions(to, me ? richText(m.text) : markdown(m.text))}</div><time>${esc(new Date(m.time).toLocaleTimeString(lang))}</time></div></div>`
   }
   // redrawn when the message log or the members' figures change; says whether the list should be scrolled to its end
   // what of a message the chat shows, so a message elsewhere in the office (another task's, between desks) changes
@@ -431,7 +447,7 @@ export function createTaskUI(sym, {
     // the dialog, from a room ({ k, name }: a hint of where to seat the task) or not: the employees not in a running task, with a folder to work in, can be picked
     async openDialog({ room } = {}) {
       opts = await options()
-      if (!opts?.enabled) return alert(opts ? offReason() : t('error.unreachable'))
+      if (!opts?.enabled) return showError(opts ? offReason() : t('error.unreachable'), { title: t('errlog.oops.launchOff') })
       dialogFor = room ? { k: room.k, name: room.name } : null
       form.querySelector('.title').textContent = room ? t('task.titleNew', { room: room.name }) : t('task.titleNewHud')
       form.elements.desc.value = ''

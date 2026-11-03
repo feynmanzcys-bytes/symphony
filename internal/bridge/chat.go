@@ -48,7 +48,7 @@ type ChatItem struct {
 	Ask     string    `json:"ask,omitempty"`    // ask: its id; kind: permission|question in Status until settled
 	AskKind string    `json:"askKind,omitempty"`
 	Secs    int       `json:"secs,omitempty"` // thinking: how long it took, once done
-	Ms      int       `json:"ms,omitempty"`   // tool: how long it took
+	Ms      int       `json:"ms,omitempty"`   // tool: how long it took; ask: how long it waited to be settled
 	Time    time.Time `json:"time"`
 	key     string    // streamed blocks: turn/step/block; tools: the tool_use id; asks: the ask id
 }
@@ -288,6 +288,7 @@ func (h *Hub) chatSettledLocked(a *Ask) {
 		return
 	}
 	it.Done = true
+	it.Ms = int(h.now().Sub(it.Time) / time.Millisecond) // (the page leaves it out of how long the model worked)
 	switch {
 	case a.Status == AskCancelled:
 		it.Status = "cancelled"

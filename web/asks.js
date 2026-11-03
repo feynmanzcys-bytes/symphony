@@ -6,7 +6,7 @@
 // elicitation) can't be answered here: its card shows what the server asks and says to answer it in the session's
 // terminal, with a button that opens it when the page offers one (opts.onTerminal); the terminal's answer takes it away.
 //
-// A card's buttons are off while its answer is on its way (back on if it failed, which an alert says). A question
+// A card's buttons are off while its answer is on its way (back on if it failed, which onAskFailure's handler says). A question
 // can't be answered with nothing: every question needs a pick or words of its own. A permission whose input the bridge
 // cut (inputTruncated) says so as a warning and can't be allowed before the whole input was shown ("Show all"); a
 // bridge that can't show it (an older one) says that, and Allow is on again. Deny always works.
@@ -16,6 +16,11 @@ import { request } from '/symphony.js'
 
 export const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]))
 
+// how a failure is shown: alert() where nothing else is set (the approval page); the themes show it over the page and
+// write it to the error log (ui/errors.js)
+let showFailure = text => alert(text)
+export function onAskFailure(fn) { showFailure = fn }
+
 // the answer, with the card's buttons off meanwhile; says whether the bridge took it
 async function answer(el, id, body) {
   const buttons = [...el.querySelectorAll('button')], was = buttons.map(b => b.disabled)
@@ -23,7 +28,7 @@ async function answer(el, id, body) {
   const r = await request('POST', `/api/answer/${id}`, body)
   if (r.ok) return true // the card goes with the next snapshot
   buttons.forEach((b, i) => { b.disabled = was[i] })
-  alert(t('asks.submitFailed', { reason: errorText(r.data) }))
+  showFailure(t('asks.submitFailed', { reason: errorText(r.data) }))
   return false
 }
 
@@ -119,7 +124,7 @@ export function askCard(a, who, opts = {}) {
           more.remove()
         } else {
           more.disabled = false
-          return alert(t('asks.showAllFailed', { reason: errorText(r.data) }))
+          return showFailure(t('asks.showAllFailed', { reason: errorText(r.data) }))
         }
         allow.disabled = false
         allow.title = ''

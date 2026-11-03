@@ -21,6 +21,13 @@
      focus, its edge and the ring around it, 3:1 too: here the ink edge stays and a ring in the accent and ink goes
      round it; a theme whose accent reaches 3:1 turns the edge to it and draws no ring */
   --field-line: var(--ink); --focus-line: var(--ink); --focus-ring: 0 0 0 2px var(--accent), 0 0 0 4px var(--ink);
+  /* motion: a strong ease-out for what comes in or answers a press, a strong ease-in-out for what moves across, a
+     drawer's curve (Emil Kowalski's); what comes in takes 200 ms, what goes 140 */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1); --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1); --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+  --t-in: .2s; --t-out: .14s;
+  /* thinking, amber: its words, its pill, its edge; once done, quieter (a theme's dark scheme sets its own) */
+  --think-ink: #9c4f00; --think-bg: #fff6e5; --think-line: #e0a24a; --think-ink-done: #7d5a00; --think-bg-done: #fbf5e8; --think-line-done: #ead9b5;
+  --think-body: #6b4a00;
 }
 /* motion paused (ui/motion.js: the system asks for less motion, or the page's switch): nothing moves or blinks by
    itself (WCAG 2.1 2.2.2), transitions are instant; a theme gives what only an animation said a still form */
@@ -34,6 +41,19 @@ button.px:disabled { opacity:.5; cursor:default; }
 /* popups */
 .modal { position:fixed; inset:0; z-index:10; background:rgba(0,0,0,.45); display:flex; align-items:center; justify-content:center; }
 .modal[hidden] { display:none; }
+/* a dialog opened now and then (the settings, an error): it comes in from a little smaller as the backdrop darkens and
+   goes faster than it came; a window opened many times a day (an employee's, a task's) doesn't move at all */
+.modal.pop { transition:background-color var(--t-in) var(--ease-out), display var(--t-out) allow-discrete; }
+.modal.pop > .panel { transition:opacity var(--t-in) var(--ease-out), transform var(--t-in) var(--ease-out); }
+.modal.pop[hidden] { display:none; background-color:transparent; transition-duration:var(--t-out); }
+.modal.pop[hidden] > .panel { opacity:0; transform:scale(.98); transition-duration:var(--t-out); }
+@starting-style {
+  .modal.pop:not([hidden]) { background-color:transparent; }
+  .modal.pop:not([hidden]) > .panel { opacity:0; transform:scale(.96); }
+}
+/* a press answers at once: the pixel button sinks into its shadow */
+button.px { transition:transform .1s var(--ease-out), box-shadow .1s var(--ease-out); }
+button.px:active:not(:disabled) { transform:translate(1px, 1px); box-shadow:1px 1px 0 rgba(0,0,0,.3); }
 .panel { width:min(560px, calc(100vw - 32px)); max-height:calc(100vh - 32px); overflow:auto; background:var(--paper); color:var(--ink);
   border:2px solid var(--ink); box-shadow:4px 4px 0 rgba(0,0,0,.35); padding:14px 16px; box-sizing:border-box; }
 .panel h2 { margin:0 0 10px; font-size:15px; }
@@ -61,6 +81,30 @@ button.close:hover { color:var(--ink); }
 .chat .flow .empty.err { color:var(--danger-ink); } /* the log couldn't be fetched */
 .it { flex:none; max-width:min(82%, 820px); font-size:13px; line-height:1.5; } /* flex:none: the column never squeezes a row (an overflow:hidden row would shrink to nothing) */
 .it .body { white-space:pre-wrap; overflow-wrap:anywhere; }
+/* Markdown (ui/markdown.js), in a bubble, the message log or the team chat: blocks with the room a chat gives them, in
+   the colors of what they sit on (a border, a header's tint, a rule take the text's own color, faded), so they read on a
+   card, a purple message or a dark bubble alike; a block still streaming past 8 KiB is plain text (raw) */
+.md { white-space:normal; }
+.it .body.raw { white-space:pre-wrap; }
+.md > :first-child { margin-top:0; } .md > :last-child { margin-bottom:0; }
+.md p { margin:0 0 .55em; }
+.md :is(h3, h4, h5, h6) { margin:.9em 0 .35em; line-height:1.3; font-weight:700; }
+.md h3 { font-size:1.2em; } .md h4 { font-size:1.08em; } .md :is(h5, h6) { font-size:1em; }
+.md :is(ul, ol) { margin:.25em 0 .55em; padding-left:1.6em; }
+.md li { margin:.12em 0; }
+.md li > :is(ul, ol) { margin:.12em 0 .2em; }
+.md li > p { margin:.2em 0; }
+.md li.task { list-style:none; }
+.md li.task > input { margin:0 .35em 0 -1.35em; vertical-align:-1px; accent-color:currentColor; }
+.md blockquote { margin:.4em 0 .55em; padding:.05em 0 .05em .8em; border-left:3px solid color-mix(in srgb, currentColor 35%, transparent); }
+.md hr { margin:.8em 0; border:0; border-top:1px solid color-mix(in srgb, currentColor 25%, transparent); }
+.md .table { max-width:100%; overflow-x:auto; margin:.35em 0 .6em; }
+.md table { border-collapse:collapse; font-size:.95em; line-height:1.4; }
+.md :is(th, td) { padding:3px 9px; border:1px solid color-mix(in srgb, currentColor 25%, transparent); text-align:left; vertical-align:top; }
+.md th { font-weight:700; background:rgba(127,127,127,.12); }
+.md a { color:inherit; text-decoration:underline; text-underline-offset:2px; }
+.md a:focus-visible { outline:2px solid currentColor; outline-offset:1px; }
+.md pre code { background:none; padding:0; font:inherit; }
 .it .body pre { background:var(--ink); color:var(--paper-2); padding:6px 8px; margin:4px 0; font:12px/1.5 var(--mono); overflow:auto; white-space:pre; }
 .it .body code { background:rgba(0,0,0,.08); padding:0 3px; font:12px var(--mono); }
 .it.user { align-self:flex-end; background:var(--me-bg); color:var(--me-ink); padding:6px 10px; border:2px solid var(--me-bg); box-shadow:2px 2px 0 rgba(0,0,0,.3); }
@@ -82,13 +126,40 @@ button.close:hover { color:var(--ink); }
 .it.text { align-self:flex-start; background:var(--card); color:var(--ink); padding:6px 10px; border:2px solid var(--ink); box-shadow:2px 2px 0 rgba(0,0,0,.2); }
 /* thinking: folded by default, orange "thinking…" with three dots in turn while it goes on */
 .it.thinking { align-self:flex-start; }
-.it.thinking summary, .it.thinking .bare { display:inline-block; padding:1px 10px; border:1px dashed #e0a24a; background:#fff6e5; }
-.it.thinking summary { cursor:pointer; color:#9c4f00; font-weight:700; font-size:12px; list-style:none; }
+.it.thinking summary, .it.thinking .bare { display:inline-block; padding:1px 10px; border:1px dashed var(--think-line); background:var(--think-bg); }
+.it.thinking summary { cursor:pointer; color:var(--think-ink); font-weight:700; font-size:12px; list-style:none; }
 .it.thinking summary::-webkit-details-marker { display:none; }
 .it.thinking:not(.done) summary .dots::after { content:'·'; display:inline-block; width:1.4em; text-align:left; animation:dots 1.2s steps(1) infinite; }
 @keyframes dots { 33% { content:'··'; } 66% { content:'···'; } }
-.it.thinking.done summary, .it.thinking .bare { color:#7d5a00; font-weight:400; font-size:12px; border-style:solid; border-color:#ead9b5; background:#fbf5e8; }
-.it.thinking .body { margin-top:4px; padding:6px 10px; background:#fff6e5; border:1px dashed #e0a24a; color:#6b4a00; font-size:12px; max-height:320px; overflow:auto; }
+.it.thinking.done summary, .it.thinking .bare { color:var(--think-ink-done); font-weight:400; font-size:12px; border-style:solid; border-color:var(--think-line-done); background:var(--think-bg-done); }
+.it.thinking .body { margin-top:4px; padding:6px 10px; background:var(--think-bg); border:1px dashed var(--think-line); color:var(--think-body); font-size:12px; max-height:320px; overflow:auto; }
+/* the steps between two pieces of the answer (chat.js): one line, "Thought for 2m 38s", that unfolds into them; while
+   they go on it's amber like a thought and counts up */
+.steps { flex:none; align-self:stretch; min-width:0; font-size:12px; }
+.steps > details > summary { display:inline-flex; align-items:center; gap:6px; max-width:100%; box-sizing:border-box; cursor:pointer; list-style:none;
+  padding:1px 10px; color:var(--muted-2); background:var(--pane-2); border:1px solid var(--line); }
+.steps > details > summary::-webkit-details-marker { display:none; }
+.steps > details > summary::before { content:''; flex:none; border-style:solid; border-width:4px 0 4px 6px; border-color:transparent transparent transparent currentColor;
+  transition:transform .15s var(--ease-out); }
+.steps > details[open] > summary::before { transform:rotate(90deg); }
+.steps > details > summary:hover { color:var(--ink); }
+.steps.running > details > summary, .steps.ghost > .line { color:var(--think-ink); background:var(--think-bg); border:1px dashed var(--think-line); font-weight:700; }
+.steps.ghost > .line { display:inline-block; padding:1px 10px; }
+/* a step that failed or was denied, on the folded line: red words after a red mark */
+.steps .bad { color:var(--danger-ink); font-weight:700; }
+.steps .bad::before { content:''; display:inline-block; width:7px; height:7px; margin-right:5px; vertical-align:0; background:var(--st-wait); }
+.steps .bad[hidden] { display:none; }
+.steps .list { display:flex; flex-direction:column; gap:6px; margin:6px 0 2px 5px; padding-left:12px; border-left:2px solid var(--line); }
+.steps .list:empty { display:none; }
+.steps .list > .it { align-self:flex-start; } /* (a settled ask's line too: in the fold it's a step like the others) */
+.steps .it.thinking .dots { display:none; } /* (the fold's own line says it goes on: one count, one set of dots) */
+/* unfolding grows the steps open (where the browser animates a fold's content) */
+@supports selector(::details-content) {
+  .steps > details { interpolate-size:allow-keywords; }
+  .steps > details::details-content { block-size:0; overflow-y:clip; opacity:0;
+    transition:block-size var(--t-in) var(--ease-out), opacity var(--t-in) var(--ease-out), content-visibility var(--t-in) allow-discrete; }
+  .steps > details[open]::details-content { block-size:auto; opacity:1; }
+}
 .it.tool { align-self:flex-start; font:12px/1.5 var(--mono); color:var(--tool-ink); padding:1px 8px; border-left:3px solid #b9b3a8; background:var(--pane-2); max-width:min(90%, 900px); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .it.tool.ok { border-color:var(--ok); } .it.tool.error { border-color:var(--danger); } .it.tool.denied { border-color:var(--danger); color:var(--danger-ink); }
 .it.tool:not(.done) { border-color:var(--accent); }
@@ -116,8 +187,8 @@ button.close:hover { color:var(--ink); }
 /* the dock: the input; while asks wait, their cards rise over it from the bottom and must be handled first.
    They hang from a fixed line, so a new card goes in below and never moves the one being clicked. */
 .chat .dock { border-top:2px solid var(--ink); background:var(--paper); padding:8px 12px; }
-.chat .dock.asking { position:absolute; left:0; right:0; top:42%; bottom:0; overflow:auto; box-shadow:0 -4px 0 rgba(0,0,0,.2); animation:rise .2s ease-out; }
-@keyframes rise { from { transform:translateY(30%); opacity:.4; } }
+.chat .dock.asking { position:absolute; left:0; right:0; top:42%; bottom:0; overflow:auto; box-shadow:0 -4px 0 rgba(0,0,0,.2); animation:rise var(--t-in) var(--ease-out); }
+@keyframes rise { from { transform:translateY(12%); opacity:0; } } /* (the cards come up out of the input, not from nowhere) */
 .chat .dock.asking .say, .chat .dock.asking .offline { display:none; }
 .chat .say { display:flex; gap:8px; align-items:flex-end; }
 .chat .say textarea { flex:1; resize:none; font:inherit; color:var(--ink); background:var(--field); border:2px solid var(--field-line); padding:5px 8px; box-sizing:border-box; }
@@ -127,8 +198,8 @@ button.close:hover { color:var(--ink); }
 .chat .say[hidden] { display:none; }
 .chat .offline { color:var(--muted); font-size:12px; padding:4px 0; }
 .chat .offline[hidden] { display:none; }
-/* pending cards (built by asks.js): in the window's dock (#asks), in its flow (createChat's asks: 'inline') and in HQ's
-   approval queue (#queue) */
+/* pending cards (built by asks.js): in the window's dock (#asks), in its flow (createChat's asks: 'inline') and in
+   /approve's queue (#queue) */
 :is(#asks, .flow, #queue) .card { border:2px solid var(--ink); padding:10px 12px; margin-bottom:10px; background:var(--card); color:var(--ink); }
 :is(#asks, .flow .card, #queue) .who { display:flex; gap:8px; align-items:baseline; margin-bottom:6px; }
 :is(#asks, .flow .card, #queue) .who .name { font-weight:700; }
@@ -173,6 +244,7 @@ button.close:hover { color:var(--ink); }
 #launch pre { margin:10px 0 0; padding:6px 8px; background:var(--ink); color:var(--paper-2); font:12px/1.5 var(--mono); white-space:pre-wrap; overflow-wrap:anywhere; }
 :is(#launch, #task) .status { margin-top:8px; font-size:12px; white-space:pre-wrap; }
 :is(#launch, #task) .status.err { color:var(--danger-ink); }
+:is(#launch, #task) .status .errbox { margin-top:2px; }
 /* under the permission select while bypassPermissions is picked: what it lets the session do */
 :is(#launch, #task) .warn { margin-top:4px; font-size:12px; font-weight:700; color:var(--danger-ink); }
 #launch .grid .warn { grid-column:1 / -1; }
@@ -224,7 +296,7 @@ button.close:hover { color:var(--ink); }
 #taskwin .top .status { font-size:12px; line-height:1.6; padding:0 8px 0 6px; border:2px solid var(--ink); border-left:6px solid var(--c, var(--st-off)); white-space:nowrap; }
 #taskwin .desc { margin-top:8px; padding:6px 10px; background:var(--pane); border:1px solid var(--line); white-space:pre-wrap; overflow-wrap:anywhere; max-height:30vh; overflow:auto; }
 #taskwin .mode { margin-top:6px; font-size:12px; color:var(--muted-2); }
-#taskwin .err { margin-top:8px; padding:4px 8px; border:2px solid var(--danger); background:var(--danger-bg); color:var(--danger-ink); font-size:12px; white-space:pre-wrap; overflow-wrap:anywhere; }
+#taskwin .err { margin-top:8px; }
 #taskwin .mode[hidden], #taskwin .err[hidden] { display:none; }
 #taskwin .members { margin-top:10px; border-top:2px solid var(--ink); }
 #taskwin .mrow { display:flex; flex-wrap:wrap; align-items:center; gap:4px 8px; padding:5px 6px; border-bottom:1px dashed var(--line); cursor:pointer; font-size:13px; }
@@ -254,6 +326,7 @@ button.close:hover { color:var(--ink); }
 #taskwin .tmsg.me time { color:var(--me-muted); }
 #taskwin .tmsg.me time { text-align:right; }
 #taskwin .tmsg .body { white-space:pre-wrap; overflow-wrap:anywhere; }
+#taskwin .tmsg .body.md { white-space:normal; }
 #taskwin .tmsg .body .to { color:#fff3c4; }
 #taskwin .tmsg.me .body .to { color:var(--me-accent); }
 #taskwin .tmsg .body .to s { color:var(--me-muted); } /* a mentioned member that was offline and didn't get it (only yours name them) */
@@ -316,3 +389,85 @@ button.close:hover { color:var(--ink); }
 /* over the terminal, an MCP server's form is answered in it: its card stays out of the way */
 .panel.chat.term-on #asks .card[data-kind=elicitation] { display:none; }
 .chat .btns button.termview.on { background:var(--ink); color:var(--paper); }
+/* an error (ui/errors.js): its whole text, however long (it scrolls), then that the error log has it */
+.errbox { border:2px solid var(--danger); background:var(--danger-bg); color:var(--danger-ink); padding:6px 8px; font-size:12px; text-align:left; }
+.errbox .msg { white-space:pre-wrap; overflow-wrap:anywhere; max-height:40vh; overflow:auto; }
+.errbox .hint { margin-top:6px; padding-top:5px; border-top:1px dashed color-mix(in srgb, currentColor 30%, transparent); color:var(--muted-2); font-size:11px; }
+#oops { z-index:30; }
+#oops .panel { width:min(560px, calc(100vw - 32px)); }
+#oops .errbox .msg { max-height:50vh; }
+/* the settings (ui/settings.js): sections one under another, each row a label and its control; the top stays */
+#settings { z-index:25; }
+#settings .panel { width:min(640px, calc(100vw - 32px)); max-height:min(88vh, 920px); padding:0; display:flex; flex-direction:column; overflow:hidden; }
+#settings .top { flex:none; display:flex; align-items:center; gap:8px; padding:10px 12px 8px 16px; border-bottom:2px solid var(--ink); }
+#settings .top h2 { margin:0; flex:1; font-size:16px; }
+#settings .top .close { font-size:14px; }
+#settings .body { overflow:auto; padding:2px 16px 16px; overscroll-behavior:contain; }
+#settings section { padding:12px 0 10px; border-bottom:1px dashed var(--line); }
+#settings section:last-child { border-bottom:0; }
+#settings h3 { margin:0 0 8px; font-size:13px; }
+#settings [hidden] { display:none !important; }
+#settings h2:focus { outline:none; } /* (the dialog's name, focused as it opens so it's read: no control to show a ring on) */
+#settings .row { display:grid; grid-template-columns:minmax(112px, 30%) minmax(0, 1fr); align-items:center; gap:4px 12px; margin:8px 0; }
+#settings .row > label, #settings .row > .label { font-size:12px; color:var(--muted-2); }
+#settings .row .hint { grid-column:2; font-size:11px; color:var(--muted-2); }
+#settings .row.check { grid-template-columns:minmax(112px, 30%) auto minmax(0, 1fr); }
+#settings .row.check > input { grid-column:1; justify-self:end; }
+#settings .row.check > label { grid-column:2 / -1; font-size:13px; color:var(--ink); cursor:pointer; }
+#settings .row.check > .hint { grid-column:2 / -1; }
+#settings select { font:inherit; font-size:13px; color:var(--ink); background:var(--field); border:2px solid var(--field-line); padding:2px 4px; max-width:100%; }
+#settings select:focus-visible { outline:none; border-color:var(--focus-line); box-shadow:var(--focus-ring); }
+#settings input[type=checkbox] { width:16px; height:16px; margin:0; accent-color:var(--ink); cursor:pointer; }
+#settings input[type=checkbox]:focus-visible { outline:2px solid var(--focus-line); outline-offset:2px; }
+#settings input[type=checkbox]:disabled, #settings input[type=checkbox]:disabled + label { cursor:default; }
+/* light or dark: three buttons in a row, the picked one filled */
+#settings .seg { display:inline-flex; justify-self:start; border:2px solid var(--field-line); }
+#settings .seg input { position:absolute; opacity:0; width:1px; height:1px; margin:0; }
+#settings .seg label { padding:2px 12px; font-size:12px; cursor:pointer; color:var(--ink); background:var(--field); border-left:2px solid var(--field-line); }
+#settings .seg label:first-of-type { border-left:0; }
+#settings .seg input:checked + label { background:var(--ink); color:var(--paper); }
+#settings .seg input:focus-visible + label { position:relative; z-index:1; outline:2px solid var(--focus-line); outline-offset:2px; }
+#settings .errlog .what { margin:0 0 8px; font-size:12px; color:var(--muted-2); max-width:60ch; }
+#settings .errlog .acts { display:flex; flex-wrap:wrap; align-items:center; gap:8px 12px; }
+#settings .errlog .acts .report { padding:4px 14px; }
+#settings .errlog .acts .issues { font-size:12px; color:var(--ink); text-underline-offset:2px; }
+#settings .errlog .acts .clear { margin-left:auto; font-size:12px; }
+#settings .errlog .saved { margin:8px 0 0; font-size:12px; font-weight:700; color:var(--ink); }
+#settings .errlog .saved:empty { display:none; }
+#settings .errlog .state { margin:10px 0 4px; font-size:12px; color:var(--muted-2); }
+#settings .errlog .state.err { color:var(--danger-ink); }
+#settings .errlog .recorded > summary { display:inline-block; font-size:12px; color:var(--ink); cursor:pointer; text-decoration:underline; text-underline-offset:2px; }
+#settings .errlog .recorded[open] > summary { margin-bottom:6px; }
+#settings .entries { display:flex; flex-direction:column; border:2px solid var(--line); background:var(--card); }
+#settings .entries:empty { display:none; }
+#settings .entry + .entry { border-top:1px dashed var(--line); }
+#settings .entry summary { display:flex; gap:8px; align-items:baseline; padding:4px 8px; cursor:pointer; list-style:none; font-size:12px; }
+#settings .entry summary::-webkit-details-marker { display:none; }
+#settings .entry summary::before { content:''; flex:none; align-self:center; border-style:solid; border-width:4px 0 4px 6px; border-color:transparent transparent transparent currentColor;
+  transition:transform .15s var(--ease-out); } /* (unfolds, as the steps do) */
+#settings .entry[open] summary::before { transform:rotate(90deg); }
+#settings .entry summary:hover { background:var(--hl); }
+#settings .entry time { flex:none; color:var(--muted-2); font:11px var(--mono); }
+#settings .entry .src { flex:none; font-size:11px; color:var(--muted-2); }
+#settings .entry .src::after { content:' ·'; }
+#settings .entry .txt { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--ink); }
+#settings .entry .n { flex:none; font:700 11px var(--mono); color:var(--danger-ink); }
+#settings .entry pre { margin:0; padding:6px 8px 8px; font:11px/1.5 var(--mono); white-space:pre-wrap; overflow-wrap:anywhere; max-height:260px; overflow:auto;
+  color:var(--ink); background:var(--pane); border-top:1px solid var(--line); user-select:text; }
+#settings .more { margin:6px 8px; font-size:11px; color:var(--muted-2); }
+#settings .about dl { display:grid; grid-template-columns:minmax(112px, 30%) minmax(0, 1fr); gap:4px 12px; margin:0; font-size:12px; }
+#settings .about dt { color:var(--muted-2); }
+#settings .about dd { margin:0; overflow-wrap:anywhere; font:11.5px/1.6 var(--mono); }
+#settings .about p { margin:10px 0 0; font-size:12px; }
+#settings .about a { color:var(--ink); text-underline-offset:2px; }
+@media (max-width: 520px) {
+  #settings .row, #settings .about dl { grid-template-columns:minmax(0, 1fr); }
+  #settings .row .hint { grid-column:1; }
+  #settings .row.check { grid-template-columns:auto minmax(0, 1fr); column-gap:8px; } /* the box beside its words */
+  #settings .row.check > input { grid-column:1; justify-self:start; }
+  #settings .row.check > label, #settings .row.check > .hint { grid-column:2; }
+}
+/* the theme's button that opens them: a mark while the error log has news */
+.open-settings { position:relative; }
+.open-settings .news { position:absolute; top:-5px; right:-5px; width:8px; height:8px; background:var(--danger-strong); border:2px solid var(--paper); }
+.open-settings .news[hidden] { display:none; }

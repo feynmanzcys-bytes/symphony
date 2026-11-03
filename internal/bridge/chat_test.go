@@ -163,13 +163,20 @@ func TestChatFollowsAsksAndMessages(t *testing.T) {
 	bb, _ := as(t, srv, base, "bob")
 	a.ok("POST", "/api/event", Event{Session: "sa", Kind: "session.start"})
 	bb.ok("POST", "/api/event", Event{Session: "sb", Kind: "session.start"})
+	clock := time.Now()
+	srv.Hub.mu.Lock()
+	srv.Hub.now = func() time.Time { return clock }
+	srv.Hub.mu.Unlock()
 	id := a.ok("POST", "/api/ask", AskRequest{Session: "sa", Kind: "permission", Tool: "Bash", Input: map[string]any{"command": "rm -rf build"}})["id"].(string)
 	if items := srv.Hub.Chat("sa"); len(items) != 1 || items[0].Kind != ChatAsk || items[0].Status != "pending" || items[0].Summary != "rm -rf build" || items[0].Ask != id {
 		t.Fatalf("a pending ask should be in the chat: %+v", items)
 	}
+	srv.Hub.mu.Lock()
+	clock = clock.Add(42 * time.Second) // the person took a while
+	srv.Hub.mu.Unlock()
 	client{t: t, base: base}.ok("POST", "/api/answer/"+id, map[string]any{"decision": "deny", "reason": "not now"})
-	if items := srv.Hub.Chat("sa"); items[0].Status != "deny" || items[0].Text != "not now" || !items[0].Done {
-		t.Fatalf("the settled ask: %+v", items[0])
+	if items := srv.Hub.Chat("sa"); items[0].Status != "deny" || items[0].Text != "not now" || !items[0].Done || items[0].Ms != 42000 {
+		t.Fatalf("the settled ask, with how long it waited: %+v", items[0])
 	}
 	a.ok("POST", "/api/event", Event{Session: "sa", Kind: "message.send", To: "bob", Text: "hello bob", Delivered: true})
 	bb.ok("POST", "/api/event", Event{Session: "sb", Kind: "message.receive", Origin: map[string]any{"kind": "peer"},

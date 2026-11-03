@@ -31,8 +31,8 @@ import (
 // for you, two idle ones wandering, a running task of three in a small meeting room, the others off duty or at work.
 // It writes docs/office.png (the pixel office), docs/social-preview.png (the same at 1280x640, for GitHub's social
 // preview), docs/approve.png (an employee window with a permission card and a question card over its input),
-// docs/coworkers.png (the Coworkers theme with a conversation open), docs/mission.png (Mission Control, one alarm) and
-// docs/hq.png (the HQ console's overview), all at 1400x860 CSS pixels unless named otherwise. It writes into the
+// and docs/coworkers.png (the Coworkers theme with a conversation open), all at 1400x860 CSS pixels unless named
+// otherwise. It writes into the
 // repository, so it runs only with SYMPHONY_E2E=1 and SYMPHONY_E2E_DOCS=1. It fails on a page error, a key a catalog
 // lacks, a raw key on screen, or the test's temporary folder showing anywhere: the folders on screen read like a
 // user's (the task's must exist for git, so they are temporary, but they are named like projects and kept off screen).
@@ -59,8 +59,7 @@ func TestDocsScreens(t *testing.T) {
 	if raw, err := os.ReadFile(filepath.Join(repo, "mods", "symphony-bridge", ".claude-plugin", "plugin.json")); err != nil || json.Unmarshal(raw, &plugin) != nil {
 		t.Fatalf("reading the mod's version: %v", err)
 	}
-	const engine = "2.1.316"        // the Claude Code version the mod is tested with (CLAUDE.md, ci.yml)
-	const hqAfter = 4 * time.Minute // the HQ console's shot comes this long after the first activity
+	const engine = "2.1.316" // the Claude Code version the mod is tested with (CLAUDE.md, ci.yml)
 
 	// the task's folder: a real repository (the members get worktrees in it), named like a project
 	work := t.TempDir()
@@ -353,10 +352,6 @@ func TestDocsScreens(t *testing.T) {
 		do(t, ctx, 10*time.Second, light, chromedp.EmulateViewport(1400, 860))
 		return &screens{t: t, ctx: ctx, lang: "en"}, cancel
 	}
-	// the Mission Control tab first: its sparklines take the tokens of the last minute from the pushes it sees
-	mission, _ := open("/t/mission/?lang=en")
-	missionSince := time.Now()
-
 	office, _ := open("/t/office/?lang=en") // (not /: that serves the theme last picked, a cookie)
 	waitUntil(t, 20*time.Second, "the office shows the team and the rooms' nameplates", func() bool {
 		return office.is(`document.querySelectorAll('.emp-label').length >= 8 && document.querySelectorAll('.room-plate.click').length >= 4`)
@@ -529,52 +524,4 @@ func TestDocsScreens(t *testing.T) {
 	office.run(`document.activeElement?.blur()`)
 	shot(office, "approve.png", 1400, 860)
 	office.done()
-
-	// the subagent may run the migration, and dave may push: one alarm is left, carol's question
-	for _, a := range b.Hub.Snapshot().Asks {
-		if a.Kind == "permission" {
-			if err := b.Hub.Settle(a.ID, "", bridge.AskDone, map[string]any{"decision": "allow"}); err != nil {
-				t.Fatal(err)
-			}
-		}
-	}
-	event("carol", "s-carol", map[string]any{"kind": "tool.start", "agentId": "c-ag1", "tool": "Bash", "summary": "psql -d shop_dev -f db/migrations/0042_order_status.sql", "toolUseId": "c-t4"})
-	event("dave", "s-dave", map[string]any{"kind": "tool.start", "tool": "Bash", "summary": "git push origin docs/orders-api", "toolUseId": "d-t3"})
-	event("dave", "s-dave", map[string]any{"kind": "tool.end", "tool": "Bash", "summary": "git push origin docs/orders-api", "toolUseId": "d-t3", "durationMs": 2100})
-	addWorker(&worker{sid: "s-dave", token: tokens["dave"], model: models["s-dave"], turn: "d1", step: 1, cost: 0.21, context: 17,
-		tools: [][2]string{{"Read", "content/api/index.md"}, {"Edit", "content/api/index.md"}, {"Bash", "npm run build"}, {"Grep", "orders"}}})
-	office.run(`document.querySelector('#chat .close').click()`)
-	// from now on the task's members message each other now and then (not before: a bubble would hang over the office)
-	mu.Lock()
-	for _, c := range [][3]string{
-		{"grace", "heidi", "The retry queue is on my branch: call enqueueRetry(event) when a delivery fails."},
-		{"heidi", "grace", "Keys are kept for 24 hours now, and the store tests pass on my branch."},
-		{"judy", "grace", "The backoff looks right. Cap it at 5 attempts, so a dead endpoint doesn't retry all night."},
-		{"grace", "judy", "Capped at 5 and committed. Thanks!"},
-	} {
-		chatter = append(chatter, note{member[c[0]], member[c[1]], tokens[c[0]], tokens[c[1]], c[2]})
-	}
-	mu.Unlock()
-
-	// ---------- mission.png: Mission Control, one alarm ----------
-	waitUntil(t, 90*time.Second, "Mission Control has a minute of tokens and one alarm", func() bool {
-		return mission.is(`document.querySelectorAll('#wall .tile').length === 12 && document.querySelectorAll('#wall .tile.waiting').length === 1 && document.querySelector('#stat-alarms b').textContent === '1' && document.querySelectorAll('#ticker .item').length >= 10`) &&
-			mission.is(`[...document.querySelectorAll('#wall .tile:not(.off) .spark .lbl')].filter(l => !/^0 /.test(l.textContent)).length >= 5`)
-	}, func() string { return mission.js(`document.getElementById('wall').innerText`) })
-	time.Sleep(time.Until(missionSince.Add(70 * time.Second))) // a full minute of the pushes on the sparklines
-	// the room at night, as the README says (the browser's scheme is light)
-	mission.run(`document.documentElement.hasAttribute('data-dark') || document.getElementById('dark').click()`)
-	shot(mission, "mission.png", 1400, 860)
-	mission.done()
-
-	// ---------- hq.png: the HQ console's overview ----------
-	// its sparkline counts the activity per minute over half an hour: a few minutes of it, rather than one spike
-	time.Sleep(time.Until(started.Add(hqAfter)))
-	hq, _ := open("/t/hq/?lang=en")
-	waitUntil(t, 20*time.Second, "HQ's overview shows the figures and the charts", func() bool {
-		return hq.is(`document.querySelectorAll('#kpis .kpi').length === 7 && document.querySelector('#kpis .kpi .val').textContent === '9' && document.querySelector('#ov-waiting .row') !== null &&
-			document.querySelectorAll('#ov-cost .bar').length >= 6 && document.querySelectorAll('#ov-tokens .bar').length === 4 && document.querySelector('#ov-spark svg') !== null && document.querySelectorAll('#ov-recent .row').length === 8 && !document.documentElement.hasAttribute('data-dark')`)
-	}, func() string { return hq.js(`document.querySelector('main').innerText`) })
-	shot(hq, "hq.png", 1400, 860)
-	hq.done()
 }

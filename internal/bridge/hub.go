@@ -17,8 +17,6 @@ import (
 	"time"
 	"unicode"
 	"unicode/utf8"
-
-	"github.com/feynmanzcys-bytes/symphony/internal/i18n"
 )
 
 // session states
@@ -284,6 +282,8 @@ type Snapshot struct {
 	MessageTail string `json:"messageTail,omitempty"`
 	// Ledger is today's rows: what each account's sessions cost today (/api/ledger has every day kept)
 	Ledger []*LedgerRow `json:"ledger"`
+	// Faults says how much the error log keeps and when the newest one happened (/api/errors has them)
+	Faults FaultSummary `json:"faults"`
 }
 
 // Push is one message for the subscribers: an event or a snapshot, encoded once for all of them when it is made, under
@@ -301,9 +301,9 @@ type Push struct {
 func (h *Hub) pushLocked(v any) *Push {
 	data, err := json.Marshal(v)
 	if err != nil {
-		if now := h.now(); h.Warn != nil && now.Sub(h.warned) >= time.Minute {
+		if now := h.now(); now.Sub(h.warned) >= time.Minute {
 			h.warned = now
-			h.Warn(i18n.T("log.push_failed", "reason", err.Error()))
+			h.warn("log.push_failed", "reason", err.Error())
 		}
 		return nil
 	}
@@ -349,6 +349,8 @@ type Hub struct {
 	terms *Terms
 	// reserved are the accounts a start from the page is being made for (reserveDesk)
 	reserved map[string]bool
+	// faults is the error log (faults.go), with a lock of its own: it is written to with the hub's lock held and without
+	faults faultLog
 }
 
 func NewHub() *Hub {
@@ -362,6 +364,7 @@ func NewHub() *Hub {
 		subs:     map[chan *Push]struct{}{},
 		now:      time.Now,
 		started:  time.Now(),
+		faults:   faultLog{home: homeDir()},
 	}
 }
 
@@ -408,9 +411,9 @@ func (h *Hub) deliverLocked(p *Push) {
 				}
 			}
 			close(ch)
-			if now := h.now(); h.Warn != nil && now.Sub(h.behind) >= time.Minute {
+			if now := h.now(); now.Sub(h.behind) >= time.Minute {
 				h.behind = now
-				h.Warn(i18n.T("log.page_behind"))
+				h.warn("log.page_behind")
 			}
 		}
 	}
@@ -454,7 +457,7 @@ func (h *Hub) Snapshot() Snapshot {
 
 // snapshotLocked builds a snapshot; a full one carries the message log, the others leave it null.
 func (h *Hub) snapshotLocked(full bool) Snapshot {
-	snap := Snapshot{Type: "snapshot", Protocol: Protocol, Started: h.started, Accounts: []AccountView{}, Sessions: []*Session{}, Asks: []*Ask{}, Launches: []*Launch{}, Tasks: h.tasksLocked(), Ledger: h.ledgerTodayLocked()}
+	snap := Snapshot{Type: "snapshot", Protocol: Protocol, Started: h.started, Accounts: []AccountView{}, Sessions: []*Session{}, Asks: []*Ask{}, Launches: []*Launch{}, Tasks: h.tasksLocked(), Ledger: h.ledgerTodayLocked(), Faults: h.faultSummary()}
 	for _, a := range h.accounts {
 		v := AccountView{ID: a.ID, Name: a.Name, Seat: a.Seat, Advisor: a.Advisor, Last: a.Last, Dir: a.Dir}
 		if s := h.onlineLocked(a.ID); s != nil {
@@ -892,6 +895,7 @@ func (h *Hub) detailsLocked(s *Session, ev Event, target *Agent) {
 		s.LastError = strings.TrimSpace(ev.Text + " " + ev.Details)
 		h.chatNoticeDetailLocked(s.ID, "error", s.LastError)
 		h.noteLocked(s, "error", s.LastError)
+		h.fault(Fault{Source: "session", Code: "turn_error", Text: s.LastError, Name: h.nameLocked(s), Task: s.Task, Detail: engineOf(s)})
 	}
 }
 
@@ -987,6 +991,7 @@ func (h *Hub) exitedLocked(s *Session, exitErr error, screen string) {
 		}
 		h.chatNoticeDetailLocked(s.ID, "exited", detail)
 		h.noteLocked(s, "error", exitErr.Error())
+		h.fault(Fault{Source: "session", Code: "exited", Text: detail, Name: h.nameLocked(s), Task: s.Task, Detail: engineOf(s)})
 	}
 	h.offDutyLocked(s, "exited")
 }
@@ -1626,6 +1631,7 @@ func (h *Hub) failLaunchLocked(l *Launch, why *Error) {
 	if l.Status == LaunchStarting {
 		l.Status, l.Error, l.ErrorCode, l.ErrorParams = LaunchFailed, why.Text, why.Code, why.Params
 		h.noteLocked(nil, "launchFailed", strings.TrimSpace(l.Name+" "+why.Text))
+		h.fault(Fault{Source: "launch", Code: why.Code, Text: why.Text, Name: l.Name, Task: l.Task, Detail: "folder: " + l.Dir})
 		h.broadcastLocked(map[string]any{"type": "launch", "id": id})
 		// a session that never reported in won't: its process goes (stuck at a prompt, it would hold the desk or keep
 		// the task running for nothing, out of sight); the error keeps the last lines of its screen

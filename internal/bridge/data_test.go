@@ -205,6 +205,7 @@ func TestAccountsWriteFailure(t *testing.T) {
 	if err := hub.Open(dir); err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = hub.Flush() }) // the error log is written in the background (before the folder goes)
 	srv := NewServer(hub, testWeb)
 	srv.Key = testKey
 	ts := httptest.NewServer(srv)

@@ -610,9 +610,23 @@ func TestThemes(t *testing.T) {
 	if resp, body := get("/t/zen/zen.css", ""); body != "body{}" || !strings.HasPrefix(resp.Header.Get("content-type"), "text/css") {
 		t.Fatalf("/t/zen/zen.css: %q %s", body, resp.Header.Get("content-type"))
 	}
-	for _, path := range []string{"/t/nope/", "/t/bad/", "/t/wrong/", "/t/zen/nope.css", "/t/zen/..%2Foffice%2Findex.html", "/t/zen/..%2F..%2Fasks.js"} {
+	for _, path := range []string{"/t/zen/nope.css", "/t/zen/..%2Foffice%2Findex.html", "/t/zen/..%2F..%2Fasks.js", "/t/nope/x.css"} {
 		if resp, _ := get(path, ""); resp.StatusCode != http.StatusNotFound {
 			t.Errorf("%s: want 404, got %d", path, resp.StatusCode)
+		}
+	}
+	// a theme the bridge doesn't have (gone since, a link kept): / and the theme it serves, the query kept
+	stay := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	for path, to := range map[string]string{"/t/nope/": "/", "/t/bad/": "/", "/t/wrong/": "/", "/t/hq/?lang=ja": "/?lang=ja"} {
+		req, _ := http.NewRequest("GET", base+path, nil)
+		req.Header.Set(keyHeader, testKey)
+		resp, err := stay.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusSeeOther || resp.Header.Get("Location") != to {
+			t.Errorf("%s: want 303 to %s, got %d %q", path, to, resp.StatusCode, resp.Header.Get("Location"))
 		}
 	}
 	resp, body := get("/api/themes", "zen")

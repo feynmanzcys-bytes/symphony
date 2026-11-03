@@ -712,13 +712,16 @@ func (h *Hub) finishTask(id string) {
 	unlock := h.gitLocks.lock(trees)
 	fails := tidyTask(t)
 	unlock()
-	// the page shows the first; the log has them all
+	// the page shows the first; the log has them all, the error log too (once, all of them: the task failed)
 	var texts []string
 	for _, e := range fails {
 		texts = append(texts, e.Text)
 		if h.Warn != nil {
 			h.Warn(i18n.T("log.task_end_failed", "task", id, "reason", e.Text))
 		}
+	}
+	if len(fails) > 0 {
+		h.fault(Fault{Source: "task", Code: fails[0].Code, Text: strings.Join(texts, "\n"), Task: id})
 	}
 
 	h.mu.Lock()
@@ -947,9 +950,7 @@ func (h *Hub) openTasksLocked(dir string) error {
 		if os.Rename(path, aside) != nil {
 			return &DamagedFile{Path: path, Err: errors.New("empty")}
 		}
-		if h.Warn != nil {
-			h.Warn(i18n.T("log.data_set_aside", "file", path, "reason", "empty", "aside", aside))
-		}
+		h.warn("log.data_set_aside", "file", path, "reason", "empty", "aside", aside)
 	case err == nil:
 		if err := json.Unmarshal(data, &f); err != nil {
 			return &DamagedFile{Path: path, Err: err}

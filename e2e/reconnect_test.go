@@ -39,13 +39,13 @@ func TestReconnect(t *testing.T) {
 	tool("u1", "Read")
 
 	browser := newBrowser(t)
-	hq, _ := clockTab(t, browser, b.URL+"/t/hq/?lang=en#people", 0) // (it records the page's errors)
+	pg, _ := clockTab(t, browser, b.URL+"/t/messenger/?lang=en", 0) // (it records the page's errors)
 	js := func(expr string) string {
 		t.Helper()
-		return get(t, hq, 10*time.Second, chromedp.Evaluate[string](expr, chromedp.EvalAwaitPromise))
+		return get(t, pg, 10*time.Second, chromedp.Evaluate[string](expr, chromedp.EvalAwaitPromise))
 	}
 	is := func(expr string) bool { t.Helper(); return js(`String(!!(`+expr+`))`) == "true" }
-	row := fmt.Sprintf(`#people tbody tr[data-account=%q]`, alice.ID)
+	row := fmt.Sprintf(`#people .row[data-account=%q]`, alice.ID)
 	waitUntil(t, 20*time.Second, "the roster lists alice", func() bool { return is(`document.querySelector('` + row + `')`) })
 
 	// ---------- the message log, kept as the bridge keeps it ----------
@@ -88,7 +88,7 @@ func TestReconnect(t *testing.T) {
 	}
 
 	// ---------- the bridge unreachable, then back ----------
-	do(t, hq, 10*time.Second, chromedp.Click(chromedp.CSS(row+` button[data-act=open]`)))
+	do(t, pg, 10*time.Second, chromedp.Click(chromedp.CSS(row)))
 	waitUntil(t, 10*time.Second, "alice's window shows her first tool call", func() bool {
 		return is(`!document.getElementById('chat').hidden && document.querySelectorAll('#chat .flow .it.tool').length === 1`)
 	})
@@ -105,7 +105,7 @@ func TestReconnect(t *testing.T) {
 	waitUntil(t, 30*time.Second, "the banner goes, and the window fetches the log again with the call it missed", func() bool {
 		return is(`document.getElementById('conn').hidden && document.querySelectorAll('#chat .flow .it.tool').length === 2`)
 	})
-	do(t, hq, 10*time.Second, chromedp.Click(chromedp.CSS(`#chat .close`)))
+	js(`document.querySelector('#chat .close').click(); ''`) // (Coworkers shows the window's close button only in one column)
 
 	// ---------- hidden for a while: no stream, and caught up when shown ----------
 	js(`Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' }); document.dispatchEvent(new Event('visibilitychange')); ''`)
@@ -122,23 +122,23 @@ func TestReconnect(t *testing.T) {
 
 	// ---------- a row redrawn under a press still takes the click ----------
 	var box struct{ X, Y float64 }
-	if err := json.Unmarshal([]byte(js(`(r => JSON.stringify({ X: r.left + r.width / 2, Y: r.top + r.height / 2 }))(document.querySelector('`+row+` button[data-act=open]').getBoundingClientRect())`)), &box); err != nil {
+	if err := json.Unmarshal([]byte(js(`(r => JSON.stringify({ X: r.left + r.width / 2, Y: r.top + r.height / 2 }))(document.querySelector('`+row+`').getBoundingClientRect())`)), &box); err != nil {
 		t.Fatal(err)
 	}
-	do(t, hq, 10*time.Second, chromedp.MouseEvent(chromedp.MouseMoved, box.X, box.Y), chromedp.MouseEvent(chromedp.MousePressed, box.X, box.Y, chromedp.ButtonLeft, chromedp.ClickCount(1)))
+	do(t, pg, 10*time.Second, chromedp.MouseEvent(chromedp.MouseMoved, box.X, box.Y), chromedp.MouseEvent(chromedp.MousePressed, box.X, box.Y, chromedp.ButtonLeft, chromedp.ClickCount(1)))
 	for i, name := range []string{"Edit", "Write"} { // the row's state changes twice while it is held
 		event(map[string]any{"kind": "tool.start", "tool": name, "toolUseId": fmt.Sprintf("p%d", i), "summary": name})
 		time.Sleep(80 * time.Millisecond) // (the press stays well under the page's 500 ms hold)
 	}
-	do(t, hq, 10*time.Second, chromedp.MouseEvent(chromedp.MouseReleased, box.X, box.Y, chromedp.ButtonLeft, chromedp.ClickCount(1)))
+	do(t, pg, 10*time.Second, chromedp.MouseEvent(chromedp.MouseReleased, box.X, box.Y, chromedp.ButtonLeft, chromedp.ClickCount(1)))
 	waitUntil(t, 10*time.Second, "the press opened alice's window, and the roster caught up after it", func() bool {
 		return is(`!document.getElementById('chat').hidden && document.querySelector('#chat h2').textContent === 'alice' && document.querySelector('` + row + `').textContent.includes('Write')`)
 	})
-	if missing := get(t, hq, 5*time.Second, chromedp.Evaluate[[]string](`window.__i18nMissing || []`)); len(missing) > 0 {
+	if missing := get(t, pg, 5*time.Second, chromedp.Evaluate[[]string](`window.__i18nMissing || []`)); len(missing) > 0 {
 		t.Fatalf("keys the catalog lacks: %v", missing)
 	}
 	// (a call that got no answer is no error of the page's)
-	if errs := get(t, hq, 5*time.Second, chromedp.Evaluate[[]string](`window.__errors`)); len(errs) > 0 {
+	if errs := get(t, pg, 5*time.Second, chromedp.Evaluate[[]string](`window.__errors`)); len(errs) > 0 {
 		t.Fatalf("the page threw: %v", errs)
 	}
 }
@@ -156,13 +156,13 @@ func TestPageKeyChanged(t *testing.T) {
 	}
 	b.post(t, alice.Token, "/api/event", map[string]any{"session": "s-alice", "kind": "session.start", "cwd": "/work/alice"})
 	browser := newBrowser(t)
-	tab, _ := clockTab(t, browser, b.URL+"/t/hq/?lang=en#people", 0)
+	tab, _ := clockTab(t, browser, b.URL+"/t/messenger/?lang=en", 0)
 	js := func(expr string) string {
 		t.Helper()
 		return get(t, tab, 10*time.Second, chromedp.Evaluate[string](expr, chromedp.EvalAwaitPromise))
 	}
 	is := func(expr string) bool { t.Helper(); return js(`String(!!(`+expr+`))`) == "true" }
-	waitUntil(t, 20*time.Second, "the roster lists alice", func() bool { return is(`document.querySelector('#people tbody tr')`) })
+	waitUntil(t, 20*time.Second, "the roster lists alice", func() bool { return is(`document.querySelector('#people .row[data-account]')`) })
 	banner := `(e => e && !e.hidden && e.textContent)(document.getElementById('conn')) || ''`
 
 	key := b.rekey(t)

@@ -25,6 +25,9 @@ html[data-dark] {
   --me-bg: var(--bubble-me); --me-ink: var(--ink); --me-accent: #7ff0a8;
   --st-idle: #25d366; --st-busy: #e9b949; --st-wait: #f15c6d; --st-off: #8696a0;
   --field-line: #8696a0;
+  /* thinking, amber on the dark (ui.css) */
+  --think-ink: #f0b860; --think-bg: #2b2416; --think-line: #8a6420; --think-ink-done: #d9b46a; --think-bg-done: #221d14; --think-line-done: #5c4a2a;
+  --think-body: #e8cf9a;
 }
 html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font: 14px/1.45 var(--sans); overflow: hidden; }
 body:lang(zh-CN) { font-family: var(--sans), "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC"; }
@@ -37,6 +40,7 @@ body:lang(ko) { font-family: var(--sans), "Apple SD Gothic Neo", "Malgun Gothic"
 /* the shared pieces, in the app's flat style */
 button.px { border-radius: 8px; box-shadow: none; border-color: var(--line); background: var(--paper); font-size: 13px; }
 button.px:hover { background: var(--pane-2); }
+button.px:active:not(:disabled) { transform: scale(.97); box-shadow: none; } /* a press answers at once (ui.css: the transition) */
 button.px.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 button.px.alert { background: var(--danger-strong); border-color: var(--danger-strong); }
 button.px.icon { width: 32px; padding: 2px 0; text-align: center; }
@@ -84,11 +88,14 @@ button.px.icon { width: 32px; padding: 2px 0; text-align: center; }
 
 /* the sidebar */
 .side { display: flex; flex-direction: column; min-height: 0; background: var(--side); border-right: 1px solid var(--line); }
-.side-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 12px 14px 8px; }
+.side-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px 14px 8px; }
+.side-head h1 { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .side-head h1 { margin: 0; font-size: 18px; font-weight: 700; }
 .side-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-left: auto; }
-.side-actions select { font: inherit; font-size: 12px; color: var(--ink); background: var(--paper); border: 1px solid var(--field-line); border-radius: 8px; padding: 3px 4px; max-width: 110px; }
-.prefs { display: flex; gap: 6px; }
+/* the settings: a gear, as a messaging app has it (its name, "Settings", is read and shows on hover) */
+.side-actions .open-settings { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 32px; padding: 0; }
+.side-actions .open-settings svg { flex: none; }
+.side-actions .open-settings .words { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .find { padding: 0 14px 8px; }
 #find { width: 100%; box-sizing: border-box; font: inherit; font-size: 13px; color: var(--ink); background: var(--pane-2); border: 1px solid var(--field-line); border-radius: 10px; padding: 7px 12px; }
 #find:focus { outline: 2px solid var(--accent); }
@@ -180,3 +187,20 @@ button.px.icon { width: 32px; padding: 2px 0; text-align: center; }
 .profile .link:hover { text-decoration: underline; }
 .profile .tag { display: inline-block; font-size: 11px; line-height: 18px; padding: 0 7px; border-radius: 9px; background: var(--pane-2); color: var(--muted-2); margin: 0 4px 4px 0; }
 .dot { width: 8px; height: 8px; border-radius: 50%; }
+
+/* the settings, the error boxes and the steps, in the app's flat style */
+#settings .panel { border-radius: 12px; }
+#settings .top { border-bottom: 1px solid var(--line); }
+#settings section { border-bottom: 1px solid var(--line); }
+#settings select { border: 1px solid var(--field-line); border-radius: 8px; padding: 4px 6px; }
+#settings .seg { border: 0; gap: 0; }
+#settings .seg label { border: 1px solid var(--field-line); border-left-width: 0; }
+#settings .seg label:first-of-type { border-left-width: 1px; border-radius: 8px 0 0 8px; }
+#settings .seg label:last-of-type { border-radius: 0 8px 8px 0; }
+#settings .seg input:checked + label { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+#settings input[type=checkbox] { accent-color: var(--accent); }
+#settings .entries { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+#settings .errlog .acts .issues { color: var(--accent); }
+.open-settings .news { border-radius: 50%; border-color: var(--side); }
+.errbox { border-width: 1px; border-radius: 8px; }
+.steps > details > summary { border-radius: 10px; }

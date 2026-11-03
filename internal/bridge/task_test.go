@@ -32,6 +32,7 @@ func newTaskEnv(t *testing.T, dataDir string) *taskEnv {
 		if err := hub.Open(dataDir); err != nil {
 			t.Fatal(err)
 		}
+		t.Cleanup(func() { _ = hub.Flush() }) // what is written in the background (the error log too), before the folder goes
 	}
 	e.srv = NewServer(hub, testWeb)
 	e.srv.Key = testKey

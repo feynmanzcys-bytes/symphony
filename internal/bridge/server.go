@@ -40,6 +40,9 @@ type Server struct {
 	// Shutdown stops the bridge, its sessions with it (POST /api/shutdown, which symphony -stop sends); the program
 	// sets it, and without it the endpoint answers 501
 	Shutdown func()
+	// Version is the program's (symphony -version), for the error log's report; LogTail the last lines of its log
+	Version string
+	LogTail *LogTail
 
 	web    fs.FS
 	mux    *http.ServeMux
@@ -74,6 +77,10 @@ func NewServer(hub *Hub, web fs.FS) *Server {
 		writeJSON(w, 200, map[string]any{"items": hub.Activity()})
 	})
 	s.mux.HandleFunc("POST /api/shutdown", s.shutdown)
+	s.mux.HandleFunc("GET /api/errors", s.faultsAPI)
+	s.mux.HandleFunc("POST /api/errors", s.reportFault)
+	s.mux.HandleFunc("DELETE /api/errors", s.clearFaults)
+	s.mux.HandleFunc("GET /api/diagnostics", s.diagnostics)
 	s.mux.HandleFunc("GET /api/ledger", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, 200, map[string]any{"rows": hub.Ledger()}) })
 
 	// called by the mod, with the account's token (modEndpoint in key.go lists these)
@@ -166,6 +173,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		if !s.keyOK(r) {
 			s.refuse(w, r)
+			return
+		}
+		if watched(r) { // a failure the page is answered with goes into the error log too (faults.go)
+			fw := &faultWriter{ResponseWriter: w, r: r}
+			s.mux.ServeHTTP(fw, r)
+			fw.keep(s.Hub)
 			return
 		}
 	}

@@ -13,6 +13,8 @@
 //   sym.on('chat', fn)         a chat item or a piece of streamed text, fn(msg) (msg.session, msg.item or msg.delta)
 //   sym.on('usage', fn)        a session's usage figures, fn(sessionId, usage); the state's session is updated first
 //   sym.on('ask' | 'settled' | 'launch' | 'task', fn)   the bridge's own notices; a snapshot follows each
+//   sym.on('fault', fn)        the error log kept something (fn(msg): msg.fault, and msg.faults, the summary the state
+//                              keeps as state.faults: how many, and when the newest happened) or was emptied
 //   sym.on('change', fn)       once after any of the above that changed the state (snapshot, message, messages, usage)
 //   sym.on('protocol', fn)     once, when the bridge's protocol isn't this client's, fn(bridge, page): the page says so and goes on
 //   sym.on('connection', fn)   the stream came up (fn(true)) or was lost (fn(false)); it reconnects by itself
@@ -28,6 +30,11 @@
 // snapshot. The calls answer { ok, status, data }, data being the bridge's JSON ({ error, code, params } when !ok; the
 // page turns a code into text with errorText() from i18n.js); a call that gets no answer in 15 seconds, or none at
 // all, answers status 0 with the code 'unreachable'.
+//
+// The page's own errors (a script that throws, a promise nobody caught, what the content security policy blocks) go
+// into the bridge's error log (POST /api/errors) as they happen, a few a minute at most; reportError(kind, text,
+// detail) puts in one the page noticed itself (kind 'ui': an error it showed, once per page). The settings make a
+// report file of the log.
 
 export const PROTOCOL = 2 // the protocol this client speaks; the bridge's snapshot says its own
 
@@ -53,6 +60,31 @@ export async function request(method, path, body, { timeout = TIMEOUT } = {}) {
   } finally { clearTimeout(timer) }
 }
 
+// ---------- the page's own errors, into the bridge's error log ----------
+const REPORTS_PER_MINUTE = 10, REPORT_AGAIN = 30000 // a page reports this many a minute at most, the same one this rarely
+const reported = new Map() // what was reported -> when
+let reports = []
+export function reportError(kind, text, detail = '') {
+  text = String(text ?? '').trim()
+  if (!text) return
+  const now = Date.now(), key = kind + '\n' + text
+  // an error shown again (a window drawn anew) is the same one: once per page; a script's, every 30 s at most
+  if (reported.has(key) && (kind === 'ui' || now - reported.get(key) < REPORT_AGAIN)) return
+  reports = reports.filter(t => now - t < 60000)
+  if (reports.length >= REPORTS_PER_MINUTE) return
+  reports.push(now)
+  reported.set(key, now)
+  if (reported.size > 200) reported.delete(reported.keys().next().value)
+  const page = location.pathname + location.search.replace(/([?&])key=[^&]*/g, '$1key=…')
+  request('POST', '/api/errors', { kind, text: text.slice(0, 4000), detail: String(detail ?? '').slice(0, 6000), theme: document.documentElement.dataset.theme || '', page })
+}
+addEventListener('error', e => {
+  if (!(e instanceof ErrorEvent)) return // (a resource that didn't load: its own request says why)
+  reportError('js', e.message || String(e.error), [e.filename && `${e.filename}:${e.lineno}:${e.colno}`, e.error?.stack].filter(Boolean).join('\n'))
+})
+addEventListener('unhandledrejection', e => reportError('rejection', e.reason?.message ?? String(e.reason), e.reason?.stack || ''))
+addEventListener('securitypolicyviolation', e => reportError('csp', `${e.violatedDirective} ${e.blockedURI || ''}`.trim(), e.sourceFile ? `${e.sourceFile}:${e.lineNumber}` : ''))
+
 export function connect({ stream = true } = {}) {
   const listeners = new Map()
   const on = (type, fn) => { (listeners.get(type) ?? listeners.set(type, []).get(type)).push(fn); return () => off(type, fn) }
@@ -60,7 +92,7 @@ export function connect({ stream = true } = {}) {
   const emit = (type, ...args) => { for (const fn of listeners.get(type) ?? []) fn(...args) }
 
   const sym = {
-    state: { protocol: 0, accounts: [], sessions: [], asks: [], messages: [], launches: [], tasks: [], ledger: [] },
+    state: { protocol: 0, accounts: [], sessions: [], asks: [], messages: [], launches: [], tasks: [], ledger: [], faults: { count: 0, last: null } },
     first: true,
     messagesVersion: 0, // goes up whenever the message log changes; panels redraw only then
     on, off,
@@ -92,6 +124,11 @@ export function connect({ stream = true } = {}) {
     fetchLedger: async () => { const r = await get('/api/ledger'); return r.ok ? r.data?.rows ?? [] : null },
     openTerminal: launchId => post(`/api/terminal/${launchId}/open`),
     themes: () => get('/api/themes'),
+    // the error log: what it keeps, what a report says besides (the bridge, its log's last lines), emptied
+    errors: () => get('/api/errors'),
+    diagnostics: () => get('/api/diagnostics', { timeout: 60000 }), // (whether it can start sessions: claude plugin list)
+    clearErrors: () => call('DELETE', '/api/errors'),
+    reportError,
     tasks: {
       create: body => post('/api/tasks', body, { timeout: 0 }), // git readies every member's worktree first
       end: id => post(`/api/tasks/${id}/end`, {}),
@@ -170,6 +207,7 @@ export function connect({ stream = true } = {}) {
     const messages = full ? snap.messages : sym.state.messages
     sym.state = snap
     for (const k of ['accounts', 'sessions', 'asks', 'launches', 'tasks', 'ledger']) if (!Array.isArray(snap[k])) snap[k] = []
+    if (!snap.faults) snap.faults = { count: 0, last: null } // (a bridge before the error log)
     snap.messages = messages
     if (full) takeMessages(messages)
     else if (snap.messageTail && !messages.some(m => m.id === snap.messageTail)) catchUpMessages()
@@ -195,6 +233,13 @@ export function connect({ stream = true } = {}) {
       case 'chat': return emit('chat', msg)
       case 'usage': return applyUsage(msg)
       case 'ask': case 'settled': case 'launch': case 'task': return emit(msg.type, msg)
+      case 'fault': { // (a summary older than the one the page has, a push overtaken by a snapshot, changes nothing; one
+        // that says the log was emptied always does)
+        const had = sym.state.faults, f = msg.faults
+        if (f && (!f.count || !had?.last || !f.last || Date.parse(f.last) >= Date.parse(had.last))) sym.state.faults = f
+        emit('fault', msg)
+        return emit('change')
+      }
     }
   }
   sym.take = take // a theme or a test may feed messages by hand (made-up activity)

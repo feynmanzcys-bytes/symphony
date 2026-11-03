@@ -193,9 +193,9 @@ func TestMessenger(t *testing.T) {
 		t.Fatalf("the search should leave bob:\n%s", p.js(`[...document.querySelectorAll('#people .row')].map(r => r.dataset.account + ' ' + r.querySelector('.nm').textContent).join('\n')`))
 	}
 	p.run(`const f = document.getElementById('find'); f.value = ''; f.dispatchEvent(new Event('input'))`)
-	p.run(`document.getElementById('dark').click(); [...document.querySelectorAll('#people .row')].find(r => r.textContent.includes('alice')).click()`)
+	p.run(`document.getElementById('set-scheme-dark').click(); [...document.querySelectorAll('#people .row')].find(r => r.textContent.includes('alice')).click()`)
 	if !p.is(`document.documentElement.hasAttribute('data-dark')`) {
-		t.Fatal("the switch should turn dark mode on")
+		t.Fatal("the settings should turn dark mode on")
 	}
 	p.shot("dark")
 	p.check()

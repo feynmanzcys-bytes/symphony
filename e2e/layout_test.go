@@ -167,14 +167,17 @@ func TestLayout(t *testing.T) {
 		var d drawing
 		data := get(t, office, 5*time.Second, chromedp.Evaluate[string](`JSON.stringify({ detail:Number(document.getElementById('office').dataset.detail),
 			office:document.getElementById('office').dataset.office, rooms:document.querySelectorAll('.room-plate').length,
-			on:[...document.querySelectorAll('#hud .steps button')].findIndex(b => b.getAttribute('aria-pressed') === 'true') })`))
+			on:[...document.querySelectorAll('.pixel-steps button')].findIndex(b => b.getAttribute('aria-pressed') === 'true') })`))
 		if err := json.Unmarshal([]byte(data), &d); err != nil {
 			t.Fatal(err)
 		}
 		return d
 	}
+	// the pixel size is in the settings: opened from the HUD, a step picked, closed again
 	step := func(level int) {
-		do(t, office, 10*time.Second, chromedp.Click(chromedp.CSS(fmt.Sprintf(`#hud .steps button[data-level="%d"]`, level))))
+		do(t, office, 10*time.Second, chromedp.Click(chromedp.CSS(`#open-settings`)),
+			chromedp.Click(chromedp.CSS(fmt.Sprintf(`.pixel-steps button[data-level="%d"]`, level))),
+			chromedp.Click(chromedp.CSS(`#settings .close`)))
 	}
 	base := drawn()
 	if base.Detail != 1 || base.On != 0 {

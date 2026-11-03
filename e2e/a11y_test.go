@@ -11,7 +11,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 	"testing"
@@ -527,8 +526,7 @@ func audit(t *testing.T, p *screens, label string, v contrastView, seen map[stri
 }
 
 // TestContrast measures the colors of every theme in each of its schemes the way WCAG 2.1 AA asks (no tokens): with
-// the made-up office of a11yTeam, it opens the pixel office, HQ and Coworkers light and dark, Mission Control dark and
-// light, and the approval page, and in each the views that show text: the page, the employee window (a chat with every
+// the made-up office of a11yTeam, it opens the pixel office, Coworkers light and dark, and the approval page, and in each the views that show text: the page, the employee window (a chat with every
 // kind of item, the asks' cards, an employee off duty), the task window and a member's window, the launch and task
 // dialogs, the search list and the logs. Every piece of text must reach 4.5:1 against what it sits on (3:1 when large)
 // and every mark in a state color 3:1 (contrastJS). It fails naming each that falls short, with its colors.
@@ -552,6 +550,19 @@ func TestContrast(t *testing.T) {
 		{"launch dialog, bypass", `(s => { s.value = 'bypassPermissions'; s.dispatchEvent(new Event('change', { bubbles:true })) })(document.querySelector('#launch [name=permissionMode]'))`, `!document.querySelector('#launch .warn').hidden`, `#launch`, `document.querySelector('#launch .cancel').click()`},
 		{"task dialog", `document.getElementById('new-task').click()`, `!document.getElementById('task').hidden && document.querySelectorAll('#task .mem').length >= 4`, `#task`, ``},
 		{"task dialog, advisor", `document.querySelector('#task .add-adv').click(); [...document.querySelectorAll('#task .mem input')].find(i => !i.disabled)?.click()`, `!!document.querySelector('#task .adv')`, `#task`, `document.querySelector('#task .cancel').click()`},
+		// the settings, an entry of the error log unfolded (a page's error the test reports), the report taken (its
+		// download a no-op)
+		{"settings", `import('/symphony.js').then(m => m.reportError('ui', 'a made-up error, for the colors', 'detail line')); document.querySelector('.open-settings').click()`,
+			`!document.getElementById('settings').hidden && !!document.querySelector('#settings .entry') && !!document.querySelector('#settings .about dd')`, `#settings`, ``},
+		{"settings, entry", `HTMLAnchorElement.prototype.click = () => {}; document.querySelector('#settings .recorded').open = true; document.querySelector('#settings .entry').open = true; document.querySelector('#settings .errlog .report').click()`,
+			`!!document.querySelector('#settings .entry[open] pre') && document.querySelector('#settings .errlog .saved').textContent !== ''`, `#settings`, `document.querySelector('#settings .close').click()`},
+		{"error", `import('/ui/errors.js').then(m => m.showError('first line\nsecond line: what went wrong'))`, `(o => !!o && !o.hidden)(document.getElementById('oops'))`, `#oops`,
+			`document.querySelector('#oops .actions button').click()`},
+	}
+	// the steps between answers, unfolded as the settings can have them (so the tool rows in them are measured)
+	steps := func(open string) contrastView {
+		return contrastView{"steps", `localStorage.setItem('symphony.steps', 'open'); ` + open, `!document.getElementById('chat').hidden && document.querySelectorAll('#chat .steps > details[open]').length >= 2 && document.querySelector('#chat .steps .it.tool').checkVisibility()`,
+			`#chat`, `localStorage.removeItem('symphony.steps')`}
 	}
 
 	// ---------- the pixel office ----------
@@ -573,52 +584,32 @@ func TestContrast(t *testing.T) {
 		{"search", `(f => { f.focus(); f.value = 'a'; f.dispatchEvent(new Event('input')) })(document.getElementById('find'))`, `!document.getElementById('find-list').hidden`, `#hud`,
 			`(f => { f.value = ''; f.dispatchEvent(new Event('input')); f.blur() })(document.getElementById('find'))`},
 		{"chat", label("alice"), `!document.getElementById('chat').hidden && document.querySelectorAll('#chat .flow .it').length >= 8`, `#chat`, closeAll},
+		withTeardown(steps(label("alice")), closeAll),
 		{"asks", label("carol"), `document.querySelectorAll('#chat #asks .card').length === 2`, `#chat`, closeAll},
 		{"off duty", label("erin"), `!document.getElementById('chat').hidden && !document.querySelector('#chat .offline').hidden`, `#chat`, closeAll},
 		{"task window", `document.querySelector('.room-plate[data-task]').click()`, `!document.getElementById('taskwin').hidden && document.querySelectorAll('#taskwin .tmsg').length >= 3`, `#taskwin`, ``},
 		{"member", `document.querySelector('#taskwin .mrow').click()`, `!document.getElementById('chat').hidden`, `#taskwin`, closeAll},
 	}, dialogs...))
 
-	// ---------- HQ, Coworkers, Mission Control: light and dark ----------
+	// ---------- Coworkers: light and dark (picked in its settings) ----------
 	scheme := func(p *screens, dark bool) bool {
-		if !p.is(`!!document.getElementById('dark')`) {
+		if !p.is(`!!document.getElementById('set-scheme-dark')`) {
 			return false
 		}
-		if p.is(`document.documentElement.hasAttribute('data-dark')`) != dark {
-			p.run(`document.getElementById('dark').click()`)
-		}
+		p.run(fmt.Sprintf(`document.getElementById(%q).click()`, map[bool]string{false: "set-scheme-light", true: "set-scheme-dark"}[dark]))
 		return p.is(`document.documentElement.hasAttribute('data-dark')`) == dark
 	}
 	themes := []struct {
 		name, ready string
 		views       []contrastView
 	}{
-		{"hq", `document.querySelectorAll('#kpis .kpi').length === 7`, append([]contrastView{
-			{"overview", `document.querySelector('#tabs [data-tab=overview]').click()`, `!!document.querySelector('#ov-recent .row')`, `body`, ``},
-			{"people", `document.querySelector('#tabs [data-tab=people]').click()`, `document.querySelectorAll('#people tbody tr').length === 5`, `body`, ``},
-			{"approvals", `document.querySelector('#tabs [data-tab=approvals]').click()`, `document.querySelectorAll('#queue .card').length === 2`, `body`, ``},
-			{"projects", `document.querySelector('#tabs [data-tab=projects]').click()`, `document.querySelectorAll('.board .task').length === 1`, `body`, ``},
-			{"activity", `document.querySelector('#tabs [data-tab=activity]').click()`, `document.querySelectorAll('#act-list .row').length > 3`, `body`, ``},
-			{"search", `(f => { f.focus(); f.value = 'a'; f.dispatchEvent(new Event('input')) })(document.getElementById('find'))`, `!document.getElementById('find-list').hidden`, `.top`,
-				`(f => { f.value = ''; f.dispatchEvent(new Event('input')); f.blur() })(document.getElementById('find'))`},
-			{"chat", `document.querySelector('#tabs [data-tab=people]').click(); document.querySelector('#people tbody tr[data-account="` + id("alice") + `"] [data-act=open]').click()`, `!document.getElementById('chat').hidden && document.querySelectorAll('#chat .flow .it').length >= 8`, `#chat`, closeAll},
-			{"asks", `document.querySelector('#people tbody tr[data-account="` + id("carol") + `"] [data-act=open]').click()`, `document.querySelectorAll('#chat #asks .card').length === 2`, `#chat`, closeAll},
-			{"task window", `document.querySelector('#tabs [data-tab=projects]').click(); document.querySelector('.board .task').click()`, `!document.getElementById('taskwin').hidden && document.querySelectorAll('#taskwin .tmsg').length >= 3`, `#taskwin`, ``},
-			{"member", `document.querySelector('#taskwin .mrow').click()`, `!document.getElementById('chat').hidden`, `#chat`, closeAll},
-		}, dialogs...)},
 		{"messenger", `document.querySelectorAll('#people .row').length === 5`, append([]contrastView{
 			{"sidebar", ``, ``, `body`, ``},
 			{"chat", `[...document.querySelectorAll('#people .row')].find(r => r.textContent.includes('alice')).click()`, `!document.getElementById('chat').hidden && document.querySelectorAll('#chat .flow .it').length >= 8 && !document.getElementById('profile').hidden`, `body`, ``},
+			withTeardown(steps(`[...document.querySelectorAll('#people .row')].find(r => r.textContent.includes('bob')).click(); [...document.querySelectorAll('#people .row')].find(r => r.textContent.includes('alice')).click()`), ``),
 			{"asks", `[...document.querySelectorAll('#people .row')].find(r => r.textContent.includes('carol')).click()`, `document.querySelectorAll('#chat .flow .it.ask.carded .card').length === 2`, `body`, ``},
 			{"off duty", `[...document.querySelectorAll('#people .row')].find(r => r.textContent.includes('erin')).click()`, `!document.getElementById('chat').hidden && !document.querySelector('#chat .offline').hidden`, `body`, ``},
 			{"group", `document.querySelector('#groups .row').click()`, `!document.getElementById('taskwin').hidden && document.querySelectorAll('#taskwin .tmsg').length >= 3`, `body`, ``},
-		}, dialogs...)},
-		{"mission", `document.querySelectorAll('#wall .tile').length >= 7`, append([]contrastView{
-			{"wall", ``, `document.querySelectorAll('#ticker .item').length > 3`, `body`, ``},
-			{"chat", `[...document.querySelectorAll('#wall .tile')].find(x => x.querySelector('.nm').textContent === 'alice').click()`, `!document.getElementById('chat').hidden && document.querySelectorAll('#chat .flow .it').length >= 8`, `#chat`, closeAll},
-			{"asks", `document.getElementById('stat-alarms').click()`, `document.querySelectorAll('#chat #asks .card').length === 2`, `#chat`, closeAll},
-			{"off duty", `[...document.querySelectorAll('#wall .tile')].find(x => x.querySelector('.nm').textContent === 'erin').click()`, `!document.getElementById('chat').hidden && !document.querySelector('#chat .offline').hidden`, `#chat`, closeAll},
-			{"member", `document.querySelector('#wall .tile.member').click()`, `!document.getElementById('taskwin').hidden && !document.getElementById('chat').hidden && document.querySelectorAll('#taskwin .tmsg').length >= 3`, `body`, closeAll},
 		}, dialogs...)},
 	}
 	for _, th := range themes {
@@ -636,7 +627,7 @@ func TestContrast(t *testing.T) {
 			}
 			run(q, th.name+" "+name, th.views)
 		}
-		scheme(q, false) // (the switch is remembered for the next tab)
+		q.run(`document.getElementById('set-scheme-system').click()`) // (the pick is remembered for the next tab)
 		q.done()
 		closeTab()
 	}
@@ -736,17 +727,7 @@ func TestNarrow(t *testing.T) {
 			{"launch", closeAll + `; document.getElementById('new-emp').click()`, `!document.getElementById('launch').hidden`},
 			{"task dialog", closeAll + `; document.getElementById('new-task').click()`, `!document.getElementById('task').hidden`},
 			{"logs", closeAll + `; document.getElementById('open-log').click(); document.getElementById('open-msgs').click()`, `!document.getElementById('msgs-panel').hidden`},
-		}},
-		{"hq", 800, 600, `document.querySelectorAll('#kpis .kpi').length === 7`, []step{
-			{"overview", ``, ``},
-			{"people", `document.querySelector('#tabs [data-tab=people]').click()`, `document.querySelectorAll('#people tbody tr').length === 5`},
-			{"approvals", `document.querySelector('#tabs [data-tab=approvals]').click()`, `document.querySelectorAll('#queue .card').length === 2`},
-			{"projects", `document.querySelector('#tabs [data-tab=projects]').click()`, `document.querySelectorAll('.board .task').length === 1`},
-			{"activity", `document.querySelector('#tabs [data-tab=activity]').click()`, `document.querySelectorAll('#act-list .row').length > 3`},
-			{"chat", `document.querySelector('#tabs [data-tab=people]').click(); document.querySelector('#people tbody tr [data-act=open]').click()`, `!document.getElementById('chat').hidden`},
-			{"task window", closeAll + `; document.querySelector('#tabs [data-tab=projects]').click(); document.querySelector('.board .task').click()`, `!document.getElementById('taskwin').hidden`},
-			{"member", `document.querySelector('#taskwin .mrow').click()`, `!document.getElementById('chat').hidden`},
-			{"task dialog", closeAll + `; document.getElementById('new-task').click()`, `!document.getElementById('task').hidden`},
+			{"settings", `document.querySelector('#log .close').click(); document.querySelector('#msgs-panel .close').click(); document.getElementById('open-settings').click()`, `!document.getElementById('settings').hidden && !!document.querySelector('#settings .about dd')`},
 		}},
 		{"messenger", 800, 600, `document.querySelectorAll('#people .row').length === 5`, []step{
 			{"sidebar", ``, ``},
@@ -754,12 +735,7 @@ func TestNarrow(t *testing.T) {
 			{"asks", `[...document.querySelectorAll('#people .row')].find(r => r.textContent.includes('carol')).click()`, `document.querySelectorAll('#chat .flow .it.ask.carded .card').length === 2`},
 			{"group", `document.querySelector('#groups .row').click()`, `!document.getElementById('taskwin').hidden`},
 			{"launch", `document.getElementById('new-emp').click()`, `!document.getElementById('launch').hidden`},
-		}},
-		{"mission", 800, 600, `document.querySelectorAll('#wall .tile').length >= 7`, []step{
-			{"wall", ``, ``},
-			{"chat", `document.getElementById('stat-alarms').click()`, `document.querySelectorAll('#chat #asks .card').length === 2`},
-			{"member", closeAll + `; document.querySelector('#wall .tile.member').click()`, `!document.getElementById('chat').hidden && !document.getElementById('taskwin').hidden`},
-			{"task dialog", closeAll + `; document.getElementById('new-task').click()`, `!document.getElementById('task').hidden`},
+			{"settings", `document.querySelector('#launch .cancel').click(); document.querySelector('.open-settings').click()`, `!document.getElementById('settings').hidden && !!document.querySelector('#settings .about dd')`},
 		}},
 	}
 	for _, pg := range pages {
@@ -784,9 +760,6 @@ func TestNarrow(t *testing.T) {
 				}
 				if !p.is(`(a => !a || !a.getClientRects().length || (r => (q => r.bottom <= q.bottom + 1 && r.top >= q.top - 1)(a.closest('.panel').getBoundingClientRect()))(a.getBoundingClientRect()))(document.querySelector('#launch:not([hidden]) .actions'))`) {
 					t.Errorf("%s %d %s: the launch dialog's buttons are out of sight", pg.theme, size[0], s.name)
-				}
-				if pg.theme == "hq" { // (the shot shows the tab's own part, not only the figures above it)
-					p.run(`document.querySelector('section[data-tab]:not([hidden])')?.scrollIntoView({ block: 'start' })`)
 				}
 				p.shot(strings.ReplaceAll(s.name, " ", "-"))
 			}
@@ -894,8 +867,8 @@ func unnamed(t *testing.T, ctx context.Context, expr string) []string {
 // box; Esc leaves a window whose asks wait alone; the roster (out of sight until it has the focus) reaches every
 // employee and room, the task window's members open their windows docked beside it (a region), and closing each puts
 // the focus back where it was; the launch dialog's fields are named by their labels; a new ask is announced; the
-// connection banner is a polite status. HQ, Coworkers and Mission Control: their switches say whether they're on, their
-// rows and tiles open with Enter, Coworkers lays its windows out as regions. Every control on every view has a name.
+// connection banner is a polite status. Coworkers: its switches say whether they're on, its rows open with Enter,
+// and it lays its windows out as regions. Every control on every view has a name.
 func TestA11y(t *testing.T) {
 	b, task, tokens := a11yTeam(t)
 	browser := newBrowser(t)
@@ -1154,36 +1127,41 @@ func TestA11y(t *testing.T) {
 	})
 	p.done()
 
-	// ---------- HQ, Coworkers, Mission Control ----------
+	// ---------- Coworkers ----------
 	for _, th := range []struct{ name, ready, row, opened string }{
-		{"hq", `document.querySelectorAll('#kpis .kpi').length === 7`, `document.querySelector('#kpis .kpi[data-tab=people]')`, `!document.querySelector('section[data-tab=people]').hidden`},
 		{"messenger", `document.querySelectorAll('#people .row').length === 5`, `[...document.querySelectorAll('#people .row')].find(r => r.textContent.includes('alice'))`, `!document.getElementById('chat').hidden`},
-		{"mission", `document.querySelectorAll('#wall .tile').length >= 7`, `[...document.querySelectorAll('#wall .tile')].find(x => x.querySelector('.nm').textContent === 'alice')`, `!document.getElementById('chat').hidden`},
 	} {
 		ctx, closeTab := clockTab(t, browser, b.URL+"/t/"+th.name+"/?lang=en", 0)
 		do(t, ctx, 10*time.Second, chromedp.EmulateViewport(1400, 860))
 		q := &screens{t: t, ctx: ctx, lang: "a11y-" + th.name}
 		waitUntil(t, 20*time.Second, th.name+": the page shows the team", func() bool { return q.is(th.ready) })
 		named(q, "page", `document.body`)
-		// the dark switch says whether it's on
-		was := q.is(`document.getElementById('dark').getAttribute('aria-pressed') === 'true'`)
-		q.run(`document.getElementById('dark').click()`)
-		if q.is(`document.getElementById('dark').getAttribute('aria-pressed') === 'true'`) == was || ax(t, ctx, `document.getElementById('dark')`).Name == "" {
-			t.Errorf("%s: the dark switch should be named and say whether it's on", th.name)
+		// the gear: named, it opens the settings, a dialog named by its heading, where Tab stays, the colors a named group
+		// of named choices, and Esc goes back to the gear
+		if n := ax(t, ctx, `document.querySelector('.open-settings')`); !strings.HasPrefix(n.Name, "Settings") { // (and says when the error log has news)
+			t.Errorf("%s: the settings' gear should be named Settings: %+v", th.name, n)
 		}
-		titled := func(when string) { // on and off alike
-			if !q.is(`(d => d.title === d.getAttribute('aria-label'))(document.getElementById('dark'))`) {
-				t.Errorf("%s: the dark switch's title (%s) should say what its name says, not what a click does (read as its description): %s", th.name, when, q.js(`document.getElementById('dark').title`))
+		q.run(`document.querySelector('.open-settings').focus()`)
+		key(ctx, kb.Enter, false)
+		waitUntil(t, 5*time.Second, th.name+": the settings open, the focus in them", func() bool { return focusIn(q, "#settings") })
+		if n := ax(t, ctx, `document.getElementById('settings')`); n.Role != "dialog" || n.Name != "Settings" {
+			t.Errorf("%s: the settings should be a dialog named Settings: %+v", th.name, n)
+		}
+		if n := ax(t, ctx, `document.querySelector('#settings .scheme')`); n.Role != "radiogroup" || n.Name != "Colors" {
+			t.Errorf("%s: light or dark should be a group named Colors: %+v", th.name, n)
+		}
+		for i := 0; i < 40; i++ {
+			key(ctx, kb.Tab, false)
+			if !focusIn(q, "#settings") {
+				t.Errorf("%s: Tab left the settings at its %d. press", th.name, i+1)
+				break
 			}
 		}
-		titled("switched")
-		q.run(`document.getElementById('dark').click()`)
-		titled("switched back")
-		if th.name == "hq" {
-			if n := ax(t, ctx, `document.querySelector('#tabs [data-tab=approvals]')`); !regexp.MustCompile(`^Approvals \d+$`).MatchString(n.Name) {
-				t.Errorf("hq: the Approvals tab should read its count apart: %q", n.Name)
-			}
-		}
+		named(q, "settings", `document.getElementById('settings')`)
+		key(ctx, kb.Escape, false)
+		waitUntil(t, 5*time.Second, th.name+": Esc closes the settings, back on the gear", func() bool {
+			return q.is(`document.getElementById('settings').hidden && document.activeElement === document.querySelector('.open-settings')`)
+		})
 		if th.name == "messenger" {
 			if n := ax(t, ctx, `document.getElementById('groups-count').parentElement`); n.Name != "Group chats 1" {
 				t.Errorf("messenger: the group chats' heading should read its count apart: %q", n.Name)
@@ -1193,19 +1171,10 @@ func TestA11y(t *testing.T) {
 		q.run(th.row + `.focus()`)
 		key(ctx, kb.Enter, false)
 		waitUntil(t, 5*time.Second, th.name+": Enter on "+th.row+" opens it", func() bool { return q.is(th.opened) })
-		if th.name != "hq" {
-			want := map[string]string{"messenger": "region", "mission": "dialog"}[th.name]
-			if n := ax(t, ctx, `document.getElementById('chat')`); n.Role != want {
-				t.Errorf("%s: the employee window should be a %s: %+v", th.name, want, n)
-			}
-			named(q, "chat", `document.getElementById('chat')`)
+		if n := ax(t, ctx, `document.getElementById('chat')`); n.Role != "region" {
+			t.Errorf("%s: the employee window should be a region: %+v", th.name, n)
 		}
-		if th.name == "mission" { // Esc closes it, the focus back on the tile
-			key(ctx, kb.Escape, false)
-			if !q.is(`document.getElementById('chat').hidden && document.activeElement.classList.contains('tile')`) {
-				t.Errorf("mission: Esc should close the window and put the focus back on its tile: %s", q.js(`document.activeElement.outerHTML.slice(0, 80)`))
-			}
-		}
+		named(q, "chat", `document.getElementById('chat')`)
 		q.done()
 		closeTab()
 	}
@@ -1220,4 +1189,12 @@ func TestA11y(t *testing.T) {
 	}
 	a.done()
 	closeApprove()
+}
+
+// withTeardown gives a view another way out (the views of a theme close their windows their own way).
+func withTeardown(v contrastView, out string) contrastView {
+	if out != "" {
+		v.after = strings.TrimSpace(v.after + "; " + out)
+	}
+	return v
 }
