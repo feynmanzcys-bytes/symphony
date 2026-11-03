@@ -2,6 +2,13 @@
 
 What changed in each release of symphony. The program (the bridge) and the mod share one version number. A release's notes start with its section here: the release workflow stops before building when the section is missing. Releases before v1.0.0 came out before the repository was public; their notes are kept below.
 
+## v1.2.2 (2026-11-03)
+
+Update the program (`brew upgrade symphony`, `scoop update symphony`, or the archive) and, as before, the mod with `claude plugin update symphony-bridge@symphony` (only its version changed).
+
+- **Motion that stops when asked** (WCAG 2.1 2.2.2): what moved or blinked by itself for good (the pixel office's people walking about, Coworkers' faces, Mission Control's ticker and alarms, the pending chip, the thinking dots) stands still while your system asks for less motion (`prefers-reduced-motion`: "Animation effects" off on Windows, "Reduce motion" on macOS) or while the page's new switch says so: "Pause motion" (⏸/▶), beside each theme's dark switch and after the office's pixel sizes, remembered in the browser. The pixel office then keeps idle employees at their desks and places everyone instead of walking them there; Mission Control's ticker stands and wraps into a few rows.
+- The tests' browser asks for no less motion whatever the machine's, so a machine set to less motion runs the page tests as before; a new test checks the switch and the system's setting in every theme.
+
 ## v1.2.1 (2026-11-03)
 
 Update the program (`brew upgrade symphony`, `scoop update symphony`, or the archive) and, as before, the mod with `claude plugin update symphony-bridge@symphony` (only its version changed). On Windows with Scoop, `symphony -autostart on` works now: run it again if it failed.
