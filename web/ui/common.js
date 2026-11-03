@@ -74,6 +74,9 @@ export function build(session) {
 }
 export const MODEL_NAME = ['Haiku', 'Sonnet', 'Opus', 'Fable']
 export const EFFORT_NAME = ['low', 'medium', 'high', 'xhigh', 'max']
+// the model and the effort, as the session reported them ("claude-opus-5-5 · max"); buildText adds what the pixel office
+// draws from them (the figure's size and arms)
+export const modelText = s => s?.model ? s.model + (s.effort ? ' · ' + s.effort : '') : ''
 export function buildText(s) {
   if (!s?.model) return ''
   const b = build(s)

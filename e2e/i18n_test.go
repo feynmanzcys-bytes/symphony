@@ -82,7 +82,7 @@ func TestI18n(t *testing.T) {
 	if lang := get(t, odd, 10*time.Second, chromedp.Evaluate[string](`document.documentElement.lang`)); lang != "en" {
 		t.Fatalf("?lang=xx should fall back to English, got %q", lang)
 	}
-	waitUntil(t, 10*time.Second, "the English page labels the message log button", func() bool { // once the catalogs are loaded
+	waitUntil(t, 10*time.Second, "the English page labels the message log button (in the settings)", func() bool { // once the catalogs are loaded
 		return strings.TrimSpace(get(t, odd, 10*time.Second, chromedp.Evaluate[string](`document.getElementById('open-msgs').textContent`))) == "Message log"
 	})
 }
@@ -110,10 +110,12 @@ func checkOffice(t *testing.T, b *testBridge, browser context.Context, lang stri
 	}
 	read()
 	screenshot(t, office, "i18n-"+lang+"-asks.png")
-	// the window closes; the message log and the activity log open from the HUD
+	// the window closes; the message log and the activity log open from the settings, which close
 	do(t, office, 10*time.Second, chromedp.Click(chromedp.CSS(`#chat .close`)), chromedp.WaitNotVisible(chromedp.CSS(`#chat`)),
-		chromedp.Click(chromedp.CSS(`#open-msgs`)), chromedp.WaitVisible(chromedp.CSS(`#msgs-panel`)),
-		chromedp.Click(chromedp.CSS(`#open-log`)), chromedp.WaitVisible(chromedp.CSS(`#log`)))
+		chromedp.Click(chromedp.CSS(`#open-settings`)), chromedp.Click(chromedp.CSS(`#open-msgs`)), chromedp.WaitVisible(chromedp.CSS(`#msgs-panel`)),
+		chromedp.WaitNotVisible(chromedp.CSS(`#settings`)),
+		chromedp.Click(chromedp.CSS(`#open-settings`)), chromedp.Click(chromedp.CSS(`#open-log`)), chromedp.WaitVisible(chromedp.CSS(`#log`)),
+		chromedp.WaitNotVisible(chromedp.CSS(`#settings`)))
 	read()
 	do(t, office, 10*time.Second, chromedp.Click(chromedp.CSS(`#msgs-panel .close`)), chromedp.Click(chromedp.CSS(`#log .close`)))
 	for _, name := range []string{"bob", "carol"} { // an online employee's window (with the chat) and an offline one's

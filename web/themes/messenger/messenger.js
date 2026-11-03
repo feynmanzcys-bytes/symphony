@@ -6,7 +6,7 @@
 import { t, lang, errorText, applyI18n } from '/i18n.js'
 import { esc } from '/asks.js'
 import { connect } from '/symphony.js'
-import { base, lower, hash, buildText, statusText as statusOf, setHTML, deferWhilePressed, askKind, askSummary } from '/ui/common.js'
+import { base, lower, hash, modelText, statusText as statusOf, setHTML, deferWhilePressed, askKind, askSummary } from '/ui/common.js'
 import { connectionBanner } from '/ui/banner.js'
 import { announceAsks } from '/ui/a11y.js'
 import { createChat } from '/ui/chat.js'
@@ -165,7 +165,7 @@ function showChat() {
     name: picked.sid ? member?.name || s?.title || acc.name : acc.name,
     state: stateOf(s), line: statusText(on ? s : null),
     taskChip: task ? { id: task.id, title: task.title, label: `${task.id} · ${task.title.split('\n')[0].slice(0, 40)}` } : null,
-    chips: [['model', on ? buildText(s) : ''], ['dir', s?.cwd || (picked.sid ? member?.worktree : acc.last?.dir || acc.dir)]],
+    chips: [['model', on ? modelText(s) : ''], ['dir', s?.cwd || (picked.sid ? member?.worktree : acc.last?.dir || acc.dir)]],
     buttons, buttonsKey: `${picked.account}|${picked.sid}|${on}|${busy}|${!!launchOpts?.enabled}|${task?.id}|${member?.session}`,
     terminal: on && s.launch ? s.launch : null, // its terminal in the conversation, as the computer's screen shows it small
     session: picked.sid || s?.id || null, online: on,
@@ -307,7 +307,7 @@ function renderProfile() {
     (recent.length ? `<div class="recent">${recent.map(a => `<div><time>${esc(fmtTime(a.time))}</time>${esc(a.text)}</div>`).join('')}</div>` : '') +
     (on && s.launch ? `<button class="px" id="take-over" title="${esc(t('chat.terminalTitle'))}">${esc(t('msgr.profile.takeOver'))}</button>` : '') + `</div>` +
     `<h3>${esc(t('msgr.profile.about'))}</h3><dl>` +
-    row('model', on ? esc(buildText(s)) : esc(acc.last?.model || '')) + row('folder', esc(s?.cwd || acc.last?.dir || acc.dir || '')) +
+    row('model', on ? esc(modelText(s)) : esc(acc.last?.model || '')) + row('folder', esc(s?.cwd || acc.last?.dir || acc.dir || '')) +
     row('repo', s?.repo ? esc(s.repo.name || base(s.repo.root)) : '') + row('engine', s?.engine ? esc(s.engine.version + (s.mod ? ' · ' + t('msgr.profile.modVersion', { version: s.mod }) : '')) : '') +
     row('session', esc(s?.title || '')) + row('login', esc(s?.login || '')) + `</dl>` +
     (on ? `<h3>${esc(t('msgr.profile.figures'))}</h3><dl>` +

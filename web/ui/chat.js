@@ -10,7 +10,8 @@
 //   const chat = createChat(sym, { askWho, onClose, onTaskChip, asks })
 //   asks: 'overlay' (the cards rise over the input from the dock) or 'inline' (each card sits in the flow, under its own
 //   line, and the input stays usable for a message that doesn't answer it: Coworkers)
-//   chat.show({ name, state, line, chips, taskChip, buttons, session, online, offText, terminal })   draw it for a session (again on every change)
+//   chat.show({ name, state, line, chips, taskChip, buttons, session, online, offText, terminal, avatar })   draw it for a session (again on every change)
+//     avatar: a CSS url() of the employee's picture before its name (the pixel office's figure), or none
 //   chat.setLine(text)      the status line alone (it follows what the employee does, every frame)
 //   chat.close()            hide it (onClose is told)
 //   chat.el                 the modal, for a theme that docks it beside another window
@@ -64,8 +65,8 @@ const MARKUP = `
 <div class="modal" id="chat" hidden>
   <div class="panel chat">
     <div class="head">
-      <button type="button" class="close">✕</button>
-      <div class="who"><span class="dot" aria-hidden="true"></span><h2></h2><span class="state"></span></div>
+      <button type="button" class="close"></button>
+      <div class="who"><i class="av" aria-hidden="true" hidden></i><span class="dot" aria-hidden="true"></span><h2></h2><span class="state"></span></div>
       <div class="meta"></div>
       <div class="btns"></div>
     </div>
@@ -99,7 +100,7 @@ export function createChat(sym, { askWho, onClose = () => {}, onTaskChip = () =>
   let session = null // the session whose log the flow shows and pushes keep up (null while it is closed)
   let name = '' // who the window is for: the account's name, a member's name (bob-T7) for a task session
   const items = new Map() // item id -> item, of session
-  const shown = { meta: '', btns: '', asks: '' }
+  const shown = { meta: '', btns: '', asks: '', avatar: '' }
   let inflight = null // the log's fetch on its way: { sid, again } (again: asked for once more meanwhile)
 
   el.querySelector('.close').onclick = () => chat.close()
@@ -490,13 +491,19 @@ export function createChat(sym, { askWho, onClose = () => {}, onTaskChip = () =>
       const hadKey = had?.closest('.btns') ? had.dataset.key || had.textContent : null
       name = p.name
       head.querySelector('h2').textContent = p.name
+      if ((p.avatar || '') !== shown.avatar) {
+        const av = head.querySelector('.who .av')
+        shown.avatar = p.avatar || ''
+        av.style.backgroundImage = shown.avatar
+        av.hidden = !shown.avatar
+      }
       const said = t('chat.flow', { name: p.name }) // the conversation's name: the keyboard reaches it (it scrolls), and a screen reader would read it whole
       if (flow.getAttribute('aria-label') !== said) flow.setAttribute('aria-label', said)
       head.querySelector('.dot').style.background = STATE_MARK[p.state] ?? GRAY_MARK
       chat.setLine(p.line)
       const meta = (p.taskChip ? `<span class="task" data-task="${esc(p.taskChip.id)}" title="${esc(p.taskChip.title)}">${esc(p.taskChip.label)}</span>` : '') +
         (p.chips || []).filter(c => c[1] !== undefined && c[1] !== '' && c[1] !== null)
-          .map(([k, v]) => `<span title="${esc(v)}"><b>${esc(t('card.' + k))}</b>${esc(v)}</span>`).join('')
+          .map(([k, v, tip]) => `<span title="${esc(tip || v)}"><b>${esc(t('card.' + k))}</b>${esc(v)}</span>`).join('')
       if (meta !== shown.meta) { shown.meta = meta; head.querySelector('.meta').innerHTML = meta }
       // the terminal: offered while the theme names the launch; another launch or session brings the chat back
       if ((p.terminal || null) !== termFor || (p.session || null) !== session) {

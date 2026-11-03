@@ -4,7 +4,7 @@
 import { t, lang, errorText, fmtTime, applyI18n } from '/i18n.js'
 import { esc } from '/asks.js'
 import { connect } from '/symphony.js'
-import { GREEN, YELLOW, RED, GRAY, STATE_COLOR, STATE_MARK, GRAY_MARK, base, lower, dot, element, hash, build, buildText, statusText as statusOf, setHTML, pointAt, deferWhilePressed, askKind } from '/ui/common.js'
+import { GREEN, YELLOW, RED, GRAY, STATE_COLOR, STATE_MARK, GRAY_MARK, base, lower, dot, element, hash, build, buildText, modelText, statusText as statusOf, setHTML, pointAt, deferWhilePressed, askKind } from '/ui/common.js'
 import { connectionBanner } from '/ui/banner.js'
 import { announce, announceAsks } from '/ui/a11y.js'
 import { motion } from '/ui/motion.js'
@@ -977,7 +977,6 @@ function updateEmployee(e, acc, walkIn, task) {
     e.inside = true
   } // off duty: the planner walks it out
   const state = online ? e.s.state : 'ended'
-  e.label.style.borderLeftColor = STATE_MARK[state] ?? GRAY_MARK
   e.label.classList.toggle('off', !online)
   e.label.dataset.state = state
   const status = task && !online ? t('task.inRoom', { room:taskRoom(task), id:task.id }) : statusText(online ? e.s : null)
@@ -990,11 +989,11 @@ function setLabel(x, name, state, status) {
   const sig = `${name}|${state}|${status}`
   if (sig === x.labelSig) return
   x.labelSig = sig
-  if (!x.label.firstChild) x.label.innerHTML = '<div class="nm"></div><div class="st"><span class="dot"></span><span class="tx"></span></div>'
-  x.label.querySelector('.nm').textContent = name
-  x.label.querySelector('.st .dot').style.background = STATE_MARK[state] ?? GRAY_MARK
-  x.label.querySelector('.st .tx').textContent = status
-  x.sized = false
+  if (!x.label.firstChild) x.label.innerHTML = '<div class="nm"><i class="lamp"></i><span class="tx"></span></div><div class="st"></div>'
+  x.label.querySelector('.nm .tx').textContent = name
+  x.label.style.setProperty('--c', STATE_MARK[state] ?? GRAY_MARK) // (the lamp: the state's color)
+  x.label.querySelector('.st').textContent = status
+  x.sized = false // (measured again: the status shows whole, or not at all)
 }
 
 function dropEmployee(e) { e.label.remove(); e.bubble?.remove(); emps.delete(e.acc.id) }
@@ -1057,7 +1056,6 @@ function syncFigures(walkIn) {
 // a member's tag: the member's name (bob-T7) and its task session's state; a pending ask in its desk session turns it red too
 function labelFigure(f) {
   const online = isOnline(f), state = !online ? 'ended' : asking(f.acc.session) ? 'waiting' : f.s.state
-  f.label.style.borderLeftColor = STATE_MARK[state] ?? GRAY_MARK
   f.label.classList.toggle('off', !online)
   setData(f.label, 'state', state); setData(f.label, 'account', f.acc.id); setData(f.label, 'task', f.task.id); setData(f.label, 'session', f.s.id)
   const status = statusText(online ? f.s : null)
@@ -1584,7 +1582,13 @@ function placeLabels(now) {
     if (el.classList.contains('tight') !== (tight && !e.member)) { el.classList.toggle('tight', tight && !e.member); e.sized = false }
   }
   for (const e of tagged) {
-    if (!e.sized) { e.lw = e.label.offsetWidth; e.lh = e.label.offsetHeight; e.sized = true }
+    if (!e.sized) {
+      // a status cut short ("Workin…") reads as broken: one that doesn't fit whole goes, the lamp says the state
+      const el = e.label, st = el.querySelector('.st')
+      el.classList.remove('clip')
+      if (st && st.scrollWidth > st.clientWidth + 1) el.classList.add('clip')
+      e.lw = el.offsetWidth; e.lh = el.offsetHeight; e.sized = true
+    }
     if (e.bubble && !e.bubbleSized) { e.bubW = e.bubble.offsetWidth; e.bubH = e.bubble.offsetHeight; e.bubbleSized = true }
   }
   for (const e of tagged) {
@@ -1761,7 +1765,7 @@ const renderStats = deferWhilePressed(() => {
   setHTML(el, CHIPS.map(([group, state, key]) => { // (the same chips stay the elements they were: a click pressed on one lands)
     const hot = group === 'waiting' && snapshot.asks.length > 0
     return `<button class="chip${hot ? ' hot' : ''}${chipOn === group ? ' on' : ''}" data-group="${group}" style="--c:${STATE_MARK[state]}"${hot ? '' : ` aria-pressed="${chipOn === group}"`} ` +
-      `title="${esc(hot ? t('asks.title', { n:snapshot.asks.length }) : t('stats.focusTitle'))}">${numbered(key, n[group])}</button>`
+      `title="${esc(hot ? t('asks.title', { n:snapshot.asks.length }) : t('stats.focusTitle'))}"><i class="lamp" aria-hidden="true"></i>${numbered(key, n[group])}</button>`
   }).join(''))
 })
 document.getElementById('stats').addEventListener('click', ev => {
@@ -1903,7 +1907,7 @@ roster.addEventListener('click', ev => {
 roster.addEventListener('focusin', ev => { const e = emps.get(ev.target.dataset?.account); if (e) { e.foundAt = performance.now(); heard = { id:e.acc.id, level:levelOf(e) } } })
 
 // ================= data =================
-// the activity log: hidden until its HUD button opens it (the page remembers), the last 200 lines
+// the activity log: hidden until its button in the settings opens it (the page remembers), the last 200 lines
 const logEl = document.getElementById('log'), logLines = logEl.querySelector('.lines'), LOG_STORE = 'symphony.log'
 logLines.dataset.empty = t('log.empty')
 for (const b of document.querySelectorAll('#log .close, #msgs-panel .close')) b.setAttribute('aria-label', t('common.close'))
@@ -1953,8 +1957,7 @@ sym.fetchActivity().then(items => {
   if (logEl.hidden) logStale = true
   else { drawLog(); logLines.scrollTop = logLines.scrollHeight }
 })
-document.getElementById('open-log').onclick = () => setLog(logEl.hidden)
-logEl.querySelector('.close').onclick = () => setLog(false)
+logEl.querySelector('.close').onclick = () => { leavePanel(logEl); setLog(false) }
 setLog((() => { try { return localStorage.getItem(LOG_STORE) === 'open' } catch { return false } })())
 
 // whoever is a session in the building: a task session's member figure, or the employee of a desk session
@@ -2071,8 +2074,17 @@ function renderMessages() {
   }
   if (!list.length) box.insertAdjacentHTML('beforeend', `<div class="msg none">${esc(t('msg.none'))}</div>`)
 }
-document.getElementById('open-msgs').onclick = () => { renderMessages(); msgsPanel.hidden = false }
-msgsPanel.querySelector('.close').onclick = () => { msgsPanel.hidden = true }
+msgsPanel.querySelector('.close').onclick = () => { leavePanel(msgsPanel); msgsPanel.hidden = true }
+// The two logs open from the settings (their buttons there): the panel shows, and the focus goes to its heading, so its
+// name is read; closing it with the focus inside takes the focus back to the settings' button
+function enterPanel(panel) {
+  const h = panel.querySelector('h2')
+  h.tabIndex = -1
+  h.focus({ preventScroll:true })
+}
+function leavePanel(panel) { if (panel.contains(document.activeElement)) document.getElementById('open-settings')?.focus({ preventScroll:true }) }
+const openMessages = () => { renderMessages(); msgsPanel.hidden = false; enterPanel(msgsPanel) }
+const openLog = () => { setLog(true); enterPanel(logEl) }
 
 // ================= the employee window =================
 // The window itself is shared (ui/chat.js): who they are at the top, the session as a chat below, the input at the
@@ -2157,10 +2169,11 @@ function showChat(id) {
   } })
   chat.show({
     name:chatSid ? member?.name || s?.title || acc.name : acc.name,
+    avatar:chatSid ? memberAvatar(member ?? { session:chatSid, account:acc.id, name:acc.name }) : deskAvatar(acc, s, online),
     state:online ? s.state : 'ended',
     line:chatStateLine(),
     taskChip:task ? { id:task.id, title:task.title, label:t('task.chip', { id:task.id, room:taskRoom(task) }) } : null,
-    chips:[['seat', chatSid ? '' : t('card.seatNo', { n:acc.seat + 1 })], ['model', online ? buildText(s) : ''], ['session', s?.title],
+    chips:[['seat', chatSid ? '' : t('card.seatNo', { n:acc.seat + 1 })], ['model', online ? modelText(s) : '', online ? buildText(s) : ''], ['session', s?.title],
       ['dir', s?.cwd || (chatSid ? member?.worktree : acc.last?.dir || acc.dir)], ['subagents', online ? s.agentsTotal || Object.keys(s.agents || {}).length || '' : ''], ['tools', online ? s.tools : ''],
       ['login', s?.login]],
     buttons, buttonsKey:`${id}|${chatSid}|${online}|${busy}|${online && !!s.launch}|${!!launchOpts?.enabled}|${away?.id}|${member?.session}`,
@@ -2248,6 +2261,11 @@ function avatar(key, draw, w = 24, h = 12) {
   if (!a) { const was = hair; hair = 0; a = pixelArt(w, h, draw); hair = was; avatars.set(key, a) }
   return a
 }
+// an employee at its desk, as it looks there: in its colors while a session is on, gray off duty
+function deskAvatar(acc, s, online) {
+  const b = build(online ? s : acc.last), look = online ? lookOf(acc) : GRAY_LOOK
+  return avatar(`desk|${b.size}|${b.muscle}|${Object.values(look).join()}`, g => drawPerson(g, 12, 10, b, { eyes:'open', legs:true }, look))
+}
 // a member as it looks in the office: its look, its size from the model, its arms from the effort, an advisor's visitor badge
 function memberAvatar(m) {
   const s = m && sessionById(m.session), b = build(s?.model ? s : m)
@@ -2287,7 +2305,7 @@ for (const [key, text] of [['work', t('room.work')], ['meeting', t('room.meeting
 }
 rooms.sign = {}
 // the HUD's pixel art, drawn with the office's own helpers: the logo from the sign, a magnifier, an envelope
-drawMark(document.querySelector('#hud .logo').getContext('2d'), 0, 0, '#2b2a28', YELLOW)
+drawMark(document.querySelector('#hud .logo').getContext('2d'), 0, 0, '#fffdf7', YELLOW) // (on the brand's ink plate)
 const pixelArt = (w, h, draw) => { const c = document.createElement('canvas'); c.width = w; c.height = h; draw(c.getContext('2d')); return `url(${c.toDataURL()})` }
 const MAGNIFIER = ['.XXX...', 'X.o.X..', 'X...X..', 'X...X..', '.XXX...', '....XX.', '.....XX']
 document.documentElement.style.setProperty('--ico-find', pixelArt(7, 7, g => MAGNIFIER.forEach((row, y) => [...row].forEach((c, x) => {
@@ -2295,7 +2313,17 @@ document.documentElement.style.setProperty('--ico-find', pixelArt(7, 7, g => MAG
 }))))
 document.documentElement.style.setProperty('--ico-mail', pixelArt(9, 6, g => drawEnvelope(g, 0, 0)))
 const CHEVRON = ['...X...', '..XXX..', '.XX.XX.', 'XX...XX']
-const GEAR = ['...X.X...', '.X.XXX.X.', '..XXXXX..', '.XXX.XXX.', 'XXX.o.XXX', '.XXX.XXX.', '..XXXXX..', '.X.XXX.X.', '...X.X...']
+// the keys' icons, drawn at twice their pixels: X ink, o paper, y gold
+const GEAR = ['.X.X.X.', 'XXXXXXX', '.XXyXX.', 'XXy.yXX', '.XXyXX.', 'XXXXXXX', '.X.X.X.']
+const PAGE = ['XXXXXX.', 'XooooXX', 'XoXXooX', 'XoooooX', 'XoXXXoX', 'XoooooX', 'XoXXooX', 'XXXXXXX']
+const HIRE = ['.XXX.....', '.XXX...y.', '.XXX..yyy', '.......y.', 'XXXXX....', 'XXXXX....', 'XXXXX....']
+const TEAM = ['.XX...XX.', '.XX...XX.', '.........', 'XXXX.XXXX', 'XXXX.XXXX', '.........', 'yyyyyyyyy']
+const sprite = rows => pixelArt(rows[0].length, rows.length, g => rows.forEach((row, y) => [...row].forEach((c, x) => {
+  if (c !== '.') rect(g, x, y, 1, 1, c === 'X' ? '#2b2a28' : c === 'y' ? '#d99a00' : '#fffdf7')
+})))
+document.documentElement.style.setProperty('--ico-log', sprite(PAGE))
+document.documentElement.style.setProperty('--ico-hire', sprite(HIRE))
+document.documentElement.style.setProperty('--ico-team', sprite(TEAM))
 const chevron = rows => pixelArt(7, 4, g => rows.forEach((row, y) => [...row].forEach((c, x) => { if (c === 'X') rect(g, x, y, 1, 1, '#2b2a28') })))
 document.documentElement.style.setProperty('--ico-up', chevron(CHEVRON))
 document.documentElement.style.setProperty('--ico-down', chevron([...CHEVRON].reverse()))
@@ -2306,15 +2334,15 @@ pixelsEl.querySelectorAll('button').forEach((b, i) => { // each a finer grid
     for (let y = 0; y < 12; y++) for (let x = 0; x < 12; x++) rect(g, x, y, 1, 1, (((x / cell) | 0) + ((y / cell) | 0)) % 2 ? '#d6d1c6' : '#2b2a28')
   })
 })
-// the settings: the pixel size is the office's own; the HUD's button opens them, marked while the error log has news
-const settings = createSettings(sym, { extra:[{ label:t('pixels.label'), el:pixelsEl, hint:t('pixels.title') }] })
-const gear = document.createElement('i')
-gear.className = 'ico gear'
-gear.setAttribute('aria-hidden', 'true')
-document.querySelector('#hud .btns').appendChild(settingsButton(settings, { cls:'px', icon:gear })).id = 'open-settings'
-document.documentElement.style.setProperty('--ico-gear', pixelArt(9, 9, g => GEAR.forEach((row, y) => [...row].forEach((c, x) => {
-  if (c !== '.') rect(g, x, y, 1, 1, c === 'X' ? '#2b2a28' : '#f2b705')
-}))))
+// the settings: the pixel size and the two logs are the office's own; the HUD's button opens them, marked while the
+// error log has news
+const icon = cls => { const i = document.createElement('i'); i.className = 'ico ' + cls; i.setAttribute('aria-hidden', 'true'); return i }
+const settings = createSettings(sym, {
+  extra:[{ label:t('pixels.label'), el:pixelsEl, hint:t('pixels.title') }],
+  records:[{ id:'open-msgs', label:t('office.messages'), icon:icon('mail'), open:openMessages }, { id:'open-log', label:t('office.log'), icon:icon('log'), open:openLog }],
+})
+document.querySelector('#hud .btns').appendChild(settingsButton(settings, { cls:'px hk', icon:icon('gear') })).id = 'open-settings'
+document.documentElement.style.setProperty('--ico-gear', sprite(GEAR))
 // It slides from now on, not when the page opens: the remembered position takes effect here, before the slide is
 // turned on. Without this, a browser that hadn't worked out the HUD's style yet would do so only in the next frame,
 // after the slide is on, and slide it up as the page opens.

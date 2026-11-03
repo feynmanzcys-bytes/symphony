@@ -335,9 +335,8 @@ const contrastJS = `((root, pass) => {
     }
     // the marks in the state colors: [selector, the property with the color, what it sits on: its parent's background
     // ('parent') or its own (a band of its border: 'self')]
-    const MARKS = [['.dot', 'backgroundColor', 'parent'], ['#hud .chip:not(.hot)', 'borderLeftColor', 'self'], ['#hud .chip.hot', 'backgroundColor', 'parent'],
-      ['.emp-label', 'borderLeftColor', 'self'], ['.room-plate i', 'backgroundColor', 'parent'], ['#taskwin .top .status', 'borderLeftColor', 'self'],
-      ['.chips .chip i', 'backgroundColor', 'parent'], ['.board .col h2 i', 'backgroundColor', 'parent'], ['.tile .st i', 'backgroundColor', 'parent']]
+    const MARKS = [['.dot', 'backgroundColor', 'parent'], ['#hud .chip:not(.hot) .lamp', 'backgroundColor', 'parent'], ['#hud .chip.hot', 'backgroundColor', 'parent'],
+      ['.emp-label .lamp', 'backgroundColor', 'parent'], ['.room-plate i', 'backgroundColor', 'parent'], ['#taskwin .top .status .lamp', 'backgroundColor', 'parent']]
     function mark(el, prop, against) {
       if (!shown(el) || el.closest(EXEMPT)) return
       const c = parse(cs(el)[prop])

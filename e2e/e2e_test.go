@@ -314,7 +314,7 @@ func TestOffice(t *testing.T) {
 	}, dumpAB, func() string { data, _ := json.Marshal(b.Hub.Snapshot().Messages); return string(data) })
 	var record string
 	waitUntil(t, 20*time.Second, "the office's message log shows the message", func() bool {
-		do(t, office, 5*time.Second, chromedp.Click(chromedp.CSS(`#open-msgs`)))
+		get(t, office, 5*time.Second, chromedp.Evaluate[bool](`(document.getElementById('open-msgs').click(), true)`)) // (its button is in the settings)
 		record = get(t, office, 5*time.Second, chromedp.Text(chromedp.CSS(`#msgs-panel`)))
 		return strings.Contains(strings.ToLower(record), "meeting at 8 tonight") && strings.Contains(record, nameA)
 	}, func() string { return record })

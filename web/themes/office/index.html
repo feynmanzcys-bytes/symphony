@@ -18,21 +18,32 @@
      up out of the way and back down */
   #hud { position:fixed; top:0; left:50%; z-index:3; box-sizing:border-box; width:max-content; max-width:calc(100vw - 24px);
     transform:translateX(-50%); background:#fffdf7; color:#2b2a28; border:2px solid #2b2a28; border-top:0;
-    box-shadow:4px 4px 0 rgba(0,0,0,.35); padding:8px 14px 10px; }
+    box-shadow:inset 0 -3px 0 #ebe4d4, 4px 4px 0 rgba(0,0,0,.35); padding:7px 10px 10px; }
   #hud.anim { transition:transform var(--t-in) var(--ease-out); }
   #hud.up { transform:translate(-50%, -100%); box-shadow:none; }
-  #hud .bar { display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:8px 18px; }
+  #hud .bar { display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:7px 10px; }
   #hud .group { display:flex; flex-wrap:wrap; justify-content:center; align-items:center; gap:6px; } /* (a narrow window wraps them too) */
+  /* the brand: a plate in the office's ink, the mark in paper and gold, as the sign on the back wall */
+  #hud .brand { display:flex; align-items:center; gap:7px; height:28px; box-sizing:border-box; padding:0 11px 0 9px; background:#2b2a28; color:#fffdf7;
+    box-shadow:inset 0 -3px 0 #141312; }
   #hud .logo { width:18px; height:16px; flex:none; image-rendering:pixelated; }
-  #hud h1 { margin:0 0 0 2px; font-size:15px; font-weight:800; white-space:nowrap; }
-  /* counts by state, as chips in the state colors; a click on one lights up those employees */
-  #hud .stats { display:flex; gap:6px; flex-wrap:wrap; color:#6f6b64; }
-  #hud .chip { font:inherit; white-space:nowrap; font-size:12px; line-height:1.6; cursor:pointer; background:#fff; color:#2b2a28; border:2px solid #2b2a28;
-    border-left:6px solid var(--c); padding:0 8px 0 6px; box-shadow:2px 2px 0 rgba(0,0,0,.25); }
-  #hud .chip b { font-size:13px; }
-  #hud .chip:hover { background:#f2efe8; }
-  #hud .chip.on { background:#2b2a28; color:#fffdf7; box-shadow:none; transform:translate(2px, 2px); }
-  #hud .chip.hot { background:var(--danger-strong); color:#fff; border-color:#7a1f1c; animation:nudge 1s steps(1) infinite; } /* asks wait for you */
+  #hud h1 { margin:0; font-size:13px; font-weight:800; letter-spacing:.04em; white-space:nowrap; }
+  /* the keys (ui.css's buttons): one height, an icon and a word; the panel casts the shadow, not each key */
+  #hud button.hk { display:inline-flex; align-items:center; gap:6px; height:28px; box-sizing:border-box; padding:0 10px 2px; font-size:12px; font-weight:600; white-space:nowrap; }
+  #hud .hk .ico { margin:0; }
+  /* counts by state: one control of segments, each a lamp in the state's color, the word and the count; a click on one
+     lights up those employees */
+  #hud .stats { display:flex; flex-wrap:wrap; align-items:stretch; color:#6f6b64; }
+  #hud .stats:has(.chip) { border:2px solid #2b2a28; background:#fffdf7; box-shadow:inset 0 -3px 0 #e3dccd; }
+  #hud .chip { display:inline-flex; align-items:center; gap:6px; height:24px; padding:0 9px 1px; font:inherit; font-size:12px; white-space:nowrap; cursor:pointer;
+    color:#2b2a28; background:transparent; border:0; border-left:2px solid #2b2a28; }
+  #hud .chip:first-child { border-left:0; }
+  #hud .chip .lamp { flex:none; width:8px; height:8px; background:var(--c); box-shadow:inset -2px -2px 0 rgba(0,0,0,.22); }
+  #hud .chip b { font-size:12.5px; font-variant-numeric:tabular-nums; }
+  #hud .chip:hover { background:#fff6d8; }
+  #hud .chip.on { background:#2b2a28; color:#fffdf7; }
+  #hud .chip.hot { background:var(--danger-strong); color:#fff; animation:nudge 1s steps(1) infinite; } /* asks wait for you */
+  #hud .chip.hot .lamp { background:#fff; box-shadow:none; }
   @keyframes nudge { 50% { background:#a62b27; } } /* (both reds keep the white text at 4.5:1) */
   /* the pixel size (in the settings): four steps from the standard drawing to the finest, each button a finer grid */
   .pixel-steps { display:inline-flex; justify-self:start; border:2px solid #2b2a28; box-shadow:2px 2px 0 rgba(0,0,0,.3); }
@@ -47,19 +58,22 @@
   #hud .note { margin:8px auto 0; max-width:560px; padding:4px 8px; background:#fff3cf; border:2px solid #c9961a; color:#6b4a00; line-height:1.5; }
   /* the tab under the HUD hides it and brings it back; while the HUD is away it shows how many asks wait. It hangs from
      the HUD's right corner: in the middle it would cover the sign on the back wall once the HUD wraps to two lines */
-  #hud .tab { position:absolute; top:100%; right:14px; display:flex; align-items:center; gap:5px; height:18px;
-    padding:0 12px; font:inherit; color:#2b2a28; background:#fffdf7; border:2px solid #2b2a28; border-top:0;
-    box-shadow:4px 4px 0 rgba(0,0,0,.35); cursor:pointer; }
-  #hud .tab:hover { background:#f2b705; }
+  #hud .tab { position:absolute; top:100%; right:14px; display:flex; align-items:center; gap:5px; height:20px;
+    padding:0 12px 2px; font:inherit; color:#2b2a28; background:#fffdf7; border:2px solid #2b2a28; border-top:0;
+    box-shadow:inset 0 -3px 0 #ebe4d4, 4px 4px 0 rgba(0,0,0,.35); cursor:pointer; }
+  #hud .tab:hover { background:#fff6d8; }
   #hud .tab .ico { margin:0; width:14px; height:8px; background-image:var(--ico-up); }
   #hud.up .tab .ico { background-image:var(--ico-down); }
   #hud .tab .badge { font:700 11px/14px var(--mono); color:#fff; background:var(--danger-strong); padding:0 4px; }
   #hud .tab .badge[hidden], #hud:not(.up) .tab .badge { display:none; }
   .ico { display:inline-block; vertical-align:-1px; margin-right:6px; background:no-repeat center / contain; image-rendering:pixelated; }
   .ico.mail { width:18px; height:12px; background-image:var(--ico-mail); }
+  .ico.log { width:14px; height:16px; background-image:var(--ico-log); }
+  .ico.hire { width:18px; height:14px; background-image:var(--ico-hire); }
+  .ico.team { width:18px; height:14px; background-image:var(--ico-team); }
   /* the search box, beside the title: matches show in a list below it, the rest of the office dims */
   #hud .find { position:relative; width:230px; }
-  #find { width:100%; box-sizing:border-box; font:inherit; font-size:12px; color:#2b2a28; border:2px solid #2b2a28; padding:3px 26px;
+  #find { width:100%; height:28px; box-sizing:border-box; font:inherit; font-size:12px; color:#2b2a28; border:2px solid #2b2a28; padding:3px 26px;
     background:#fff var(--ico-find) no-repeat 7px center / 14px 14px; box-shadow:inset 2px 2px 0 rgba(0,0,0,.08); image-rendering:pixelated; }
   #find:focus { outline:none; box-shadow:inset 2px 2px 0 rgba(0,0,0,.08), 0 0 0 2px #f2b705, 0 0 0 4px #2b2a28; } /* a ring in the accent and ink: 3:1 */
   #hud .key { position:absolute; right:6px; top:50%; transform:translateY(-50%); pointer-events:none; font:11px/1.25 var(--mono);
@@ -84,23 +98,29 @@
   .logpanel .lines:empty::before { content:attr(data-empty); color:var(--muted); }
   /* name tags above the characters */
   .emp-label { position:absolute; transform:translate(-50%, -100%); pointer-events:auto; cursor:pointer; background:#fffdf7; color:#2b2a28;
-    border:2px solid #2b2a28; border-left-width:5px; padding:0 6px; font-size:11px; line-height:1.35; white-space:nowrap; text-align:center;
-    box-shadow:2px 2px 0 rgba(0,0,0,.3); }
+    border:2px solid #2b2a28; padding:1px 7px 2px; font-size:11px; line-height:1.35; white-space:nowrap; text-align:center;
+    box-shadow:inset 0 -2px 0 #ebe4d4, 2px 2px 0 rgba(0,0,0,.3); }
+  /* the name, after a lamp in the state's color (as the meeting rooms' plates have); below it the status, when it fits */
+  .emp-label .nm { display:flex; align-items:center; justify-content:center; gap:5px; }
+  .emp-label .nm .tx { overflow:hidden; text-overflow:ellipsis; }
+  .emp-label .lamp { flex:none; width:7px; height:7px; background:var(--c); box-shadow:inset -1px -1px 0 rgba(0,0,0,.25); }
+  .emp-label.clip .st { display:none; }
   .emp-label { box-sizing:border-box; } /* no wider than a desk (set in placeLabels); longer text ends in … and shows in full on hover */
-  .emp-label .nm, .emp-label .st { overflow:hidden; text-overflow:ellipsis; }
+  .emp-label .st { overflow:hidden; text-overflow:clip; }
   .emp-label .nm { font-weight:700; font-size:12px; }
   .emp-label .st { color:#6f6b64; }
   /* off duty: grayed, in colors that stay readable (on the canvas, an opacity would leave it to the floor below) */
-  .emp-label.off { background:#efebe3; color:#4a4742; border-color:#a8a299; }
+  .emp-label.off { background:#efebe3; color:#4a4742; border-color:#a8a299; box-shadow:2px 2px 0 rgba(0,0,0,.2); }
   .emp-label.off .st { color:#5a5650; }
   .emp-label.away .st { display:none; } /* away from the desk: the name only, so a sofa full of people stays readable */
-  .emp-label.tight .st { display:none; } /* too narrow a desk for the status to read: the name, and the color bar says the state */
+  .emp-label.tight .st { display:none; } /* too narrow a desk for the status to read: the name, and the lamp says the state */
   .emp-label.dim { opacity:.25; }
   .emp-label.match { outline:2px solid #f2b705; outline-offset:1px; }
   .emp-label.found { animation:found .4s steps(1) 8; }
   @keyframes found { 50% { background:#ffe27a; } } /* (light enough for the tag's gray status to read) */
   html[data-still] .emp-label.found { background:#ffe27a; } /* motion paused: lit, not flashing */
-  .room-label { position:absolute; background:rgba(43,42,40,.82); color:#fffdf7; padding:0 6px; font-size:11px; line-height:1.6; letter-spacing:1px; white-space:nowrap; }
+  .room-label { position:absolute; background:#2b2a28; color:#f3e6bf; border:2px solid #9a7b3c; padding:0 7px; font-size:11px; font-weight:700; line-height:1.45;
+    letter-spacing:1px; white-space:nowrap; box-shadow:2px 2px 0 rgba(0,0,0,.3); }
   /* the small meeting rooms' nameplates, beside their doors, with a light: green while the room is free, yellow while a
      task runs in it, red while one of its members waits for you or the task failed */
   .room-plate { position:absolute; transform:translateY(-50%); pointer-events:auto; cursor:default; box-sizing:border-box; background:#2b2a28; color:#f3e6bf;
@@ -132,7 +152,7 @@
   .side .close { position:absolute; right:8px; top:4px; }
   .side dl { margin:0; display:grid; grid-template-columns:auto 1fr; gap:2px 10px; font-size:12px; }
   .side dt { color:var(--muted); } .side dd { margin:0; word-break:break-all; }
-  .msg { border-bottom:1px dashed #d6d1c6; padding:5px 0; font-size:12px; }
+  .msg { border-bottom:2px solid #edeae2; padding:5px 0; font-size:12px; }
   .msg .meta { color:var(--muted); font-size:11px; }
   .msg .meta b { color:#2b2a28; }
   .msg .lost { color:var(--danger-ink); }
@@ -157,14 +177,12 @@
 <div id="labels"></div>
 <div id="hud">
   <div class="bar">
-    <div class="group"><canvas class="logo" width="9" height="8" aria-hidden="true"></canvas><h1 data-i18n="office.title"></h1></div>
+    <div class="brand"><canvas class="logo" width="9" height="8" aria-hidden="true"></canvas><h1 data-i18n="office.title"></h1></div>
     <div class="find"><input id="find" type="search" autocomplete="off" spellcheck="false" aria-keyshortcuts="/" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="find-list" data-i18n-placeholder="search.placeholder" data-i18n-title="search.title"><kbd class="key" aria-hidden="true">/</kbd><div id="find-list" role="listbox" hidden></div></div>
     <div class="stats" id="stats" data-i18n="office.nobody"></div>
     <div class="group btns">
-      <button class="px" id="open-msgs"><i class="ico mail"></i><span data-i18n="office.messages"></span></button>
-      <button class="px" id="open-log" data-i18n="office.log"></button>
-      <button class="px" id="new-emp" data-i18n="office.newEmployee" hidden></button>
-      <button class="px" id="new-task" data-i18n="office.newTask" hidden></button>
+      <button class="px hk" id="new-emp" hidden><i class="ico hire" aria-hidden="true"></i><span data-i18n="office.newEmployee"></span></button>
+      <button class="px hk" id="new-task" hidden><i class="ico team" aria-hidden="true"></i><span data-i18n="office.newTask"></span></button>
     </div>
   </div>
   <div class="note" id="launch-note" hidden></div>
@@ -177,9 +195,9 @@
   <h3 id="roster-desks" data-i18n="office.rosterDesks"></h3><ul class="desks" aria-labelledby="roster-desks"></ul>
   <h3 id="roster-rooms" data-i18n="office.rosterRooms"></h3><ul class="rooms" aria-labelledby="roster-rooms"></ul>
 </nav>
-<div class="logpanel" id="log" role="region" aria-labelledby="log-title" hidden><button type="button" class="close">✕</button><h2 id="log-title" data-i18n="office.log"></h2><div class="lines"></div></div>
+<div class="logpanel" id="log" role="region" aria-labelledby="log-title" hidden><button type="button" class="close"></button><h2 id="log-title" data-i18n="office.log"></h2><div class="lines"></div></div>
 
-<div class="side" id="msgs-panel" role="region" aria-labelledby="msgs-title" hidden><button type="button" class="close">✕</button><h2 id="msgs-title" data-i18n="office.messages"></h2><div class="msgs"></div></div>
+<div class="side" id="msgs-panel" role="region" aria-labelledby="msgs-title" hidden><button type="button" class="close"></button><h2 id="msgs-title" data-i18n="office.messages"></h2><div class="msgs"></div></div>
 
 <script type="module" src="/t/office/office.js"></script>
 </body>

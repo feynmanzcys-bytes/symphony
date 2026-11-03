@@ -4,7 +4,7 @@
 :root {
   --paper: #ffffff; --paper-2: #f0f2f5; --ink: #111b21; --muted: #54656f; --muted-2: #3b4a54; --line: #e9edef;
   --pane: #f7f8fa; --pane-2: #e9edef; --accent: #157a63; --ok: #1f8a70; --danger: #d63b3b; --danger-dark: #8f1f1f;
-  --purple: #5b4fc4; --purple-dark: #3f348f; --purple-light: #cdc6f3;
+  --purple: #5b4fc4;
   --bg: #e5e9ec; --side: #ffffff; --bubble-me: #d9fdd3; --shadow: 0 1px 1px rgba(17,27,33,.06);
   --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
   /* the text on the accent; red as text, under white text, as a box; the marks of the states (ui.css) */
@@ -14,11 +14,20 @@
   --st-idle: #1f7a4f; --st-busy: #946200; --st-wait: #c62f2f; --st-off: #6b7a83;
   /* a field's edge (3:1 on what it sits on), and with the focus the accent's (ui.css) */
   --field-line: #728089; --focus-line: var(--accent); --focus-ring: none;
+  /* what ui.css draws in the pixel office's way, drawn smooth here: the scrollbars, a selection, the caret, the close
+     cross, the drop-downs' arrow and the checkboxes' tick */
+  --scroll-thumb: #b5c0c6; --sel-bg: #c7ebe0; --sel-ink: #111b21; --caret: var(--accent);
+  /* the small labels (ui.css: --chip) and the messages between sessions: lavender bubbles, the names in purple ink */
+  --chip: var(--pane-2);
+  --msg-bg: #ebe7fb; --msg-out-bg: #ddd6f7; --msg-ink: var(--ink); --msg-to: #4b3fb0; --msg-muted: #5a5378;
+  --ico-close: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 14'%3E%3Cpath d='M3.5 3.5l7 7M10.5 3.5l-7 7' stroke='%23000' stroke-width='1.8' stroke-linecap='round'/%3E%3C/svg%3E");
+  --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%2354656f' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  --check-mark: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 6.3l2.3 2.3 4.7-5' fill='none' stroke='%23fff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
 html[data-dark] {
   --paper: #111b21; --paper-2: #202c33; --ink: #e9edef; --muted: #9fb0b9; --muted-2: #b8c5cc; --line: #233138;
   --pane: #0b141a; --pane-2: #2a3942; --accent: #25d366; --ok: #25d366; --danger: #f15c6d; --danger-dark: #ff8a95;
-  --purple: #5b4fc4; --purple-dark: #8f84ec; --purple-light: #4a3fa8; --purple-light-ink: #f0edff;
+  --purple: #5b4fc4;
   --bg: #0b141a; --side: #111b21; --bubble-me: #005c4b; --shadow: 0 1px 2px rgba(0,0,0,.4); --tool-ink: #b8c5cc;
   --on-accent: #111b21; --danger-ink: #ff8a95; --danger-strong: #c42f2f; --danger-bg: #3a1d22;
   --card: #1a252c; --field: #2a3942; --field-ro: #202c33; --hl: #2a3942;
@@ -28,6 +37,10 @@ html[data-dark] {
   /* thinking, amber on the dark (ui.css) */
   --think-ink: #f0b860; --think-bg: #2b2416; --think-line: #8a6420; --think-ink-done: #d9b46a; --think-bg-done: #221d14; --think-line-done: #5c4a2a;
   --think-body: #e8cf9a;
+  --scroll-thumb: #3b4a54; --sel-bg: #1d5c4c; --sel-ink: #e9edef;
+  --msg-bg: #2a2650; --msg-out-bg: #352f66; --msg-to: #b9b0ff; --msg-muted: #b3abd9;
+  --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%239fb0b9' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  --check-mark: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 6.3l2.3 2.3 4.7-5' fill='none' stroke='%23111b21' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
 html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font: 14px/1.45 var(--sans); overflow: hidden; }
 body:lang(zh-CN) { font-family: var(--sans), "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC"; }
@@ -57,14 +70,16 @@ button.px.icon { width: 32px; padding: 2px 0; text-align: center; }
 .it.message { border: 0; border-radius: 12px 12px 12px 2px; box-shadow: var(--shadow); }
 .it.message.out { border-radius: 12px 12px 2px 12px; }
 .it.tool { border-radius: 6px; }
-.chat .meta span.task { background: color-mix(in srgb, var(--accent) 15%, var(--paper)); border-color: var(--accent); color: var(--ink); }
+.chat .meta span { border-radius: 999px; padding: 1px 9px; }
+.chat .meta span.task { background: color-mix(in srgb, var(--accent) 15%, var(--paper)); box-shadow: inset 0 0 0 1px var(--accent); color: var(--ink); }
 .chat .meta span.task:hover { background: color-mix(in srgb, var(--accent) 30%, var(--paper)); color: var(--ink); }
 .it.ask, .it.notice { background: var(--pane-2); border-radius: 10px; padding: 2px 10px; }
 .chat .flow { background: var(--pane); }
 .chat .head, .chat .dock { border-color: var(--line); background: var(--paper); }
 .chat .dock.asking { box-shadow: 0 -2px 12px rgba(0,0,0,.15); }
 #taskwin .top .status, #taskwin .members, #taskwin .tlist, #taskwin .mrow { border-color: var(--line); }
-#taskwin .top .status { border-left-color: var(--c, var(--st-off)); } /* (the band says the task's state) */
+#taskwin .top .status { border-radius: 999px; padding: 1px 10px; }
+#taskwin .top .status .lamp { border-radius: 50%; }
 #taskwin .mrow.open { box-shadow: inset 4px 0 0 var(--accent); }
 #taskwin .tmsg .bub { border: 0; border-radius: 12px; box-shadow: var(--shadow); }
 #taskwin .tmsg .av { border-radius: 50%; width: 32px; height: 32px; background-size: cover; }
@@ -198,9 +213,34 @@ button.px.icon { width: 32px; padding: 2px 0; text-align: center; }
 #settings .seg label:first-of-type { border-left-width: 1px; border-radius: 8px 0 0 8px; }
 #settings .seg label:last-of-type { border-radius: 0 8px 8px 0; }
 #settings .seg input:checked + label { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
-#settings input[type=checkbox] { accent-color: var(--accent); }
+/* the checkboxes and radio buttons: a rounded box or a circle, filled with the accent when picked (ui.css draws them) */
+:is(#settings, #launch, #task) input[type=checkbox], :is(#asks, .flow .card) input:is([type=checkbox], [type=radio]) { border-width: 1.5px; background-size: 12px 12px; }
+:is(#settings, #launch, #task, #asks, .flow .card) input[type=checkbox] { border-radius: 4px; }
+:is(#settings, #launch, #task, #asks, .flow .card) input[type=checkbox]:checked { background-color: var(--accent); border-color: var(--accent); }
+:is(#asks, .flow .card) input[type=radio]:checked { background: var(--accent); border-color: var(--accent); }
+button.close { border-radius: 50%; }
 #settings .entries { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
 #settings .errlog .acts .issues { color: var(--accent); }
 .open-settings .news { border-radius: 50%; border-color: var(--side); }
 .errbox { border-width: 1px; border-radius: 8px; }
-.steps > details > summary { border-radius: 10px; }
+/* the shared pieces' labels, marks and rules (ui.css draws them square, in the pixel office's weight), in the app's
+   shapes: pills, round marks, hairlines, rounded blocks; and no pressed edge on its buttons */
+.steps > details > summary, .steps.running > details > summary, .steps.ghost > .line, .it.thinking summary, .it.thinking .bare { border-width: 1px; border-radius: 999px; padding: 2px 11px; }
+.it.thinking .body { border-width: 1px; border-radius: 10px; }
+.it.tool::before { border-radius: 50%; }
+.it .body pre, #taskwin .tmsg .body pre, :is(#asks, .flow .card) pre, #launch pre { border-radius: 8px; }
+:is(#launch, #task) .recent span { border-radius: 999px; padding: 1px 8px; }
+:is(#launch, #task) .recent span:hover { background: color-mix(in srgb, var(--accent) 22%, var(--paper)); }
+#task .adv .kind, #task .lead-tag, #taskwin .badge, #taskwin .chip { border-radius: 999px; padding: 0 8px; }
+#task .ord { border-radius: 50%; min-width: 18px; padding: 0; line-height: 18px; }
+#task .mem, #task .adv { border-width: 1px; border-radius: 10px; }
+#task .on { border-color: var(--accent); }
+#task .foot { border-top-width: 1px; }
+:is(#launch, #task) .panel > .title { border-bottom: 1px solid var(--line); }
+:is(#launch, #task) .browser { border-width: 1px; border-color: var(--field-line); border-radius: 8px; overflow: hidden; }
+#taskwin .desc { border-radius: 10px; }
+#taskwin .mrow { border-bottom-width: 1px; }
+.errbox .hint { border-top-width: 1px; }
+button.px.primary, button.px.alert, :is(#asks, .flow .card) :is(button, button.allow, button.submit) { box-shadow: none; }
+:is(#asks, .flow .card) button:hover:not(:disabled) { background: var(--pane-2); }
+:is(#asks, .flow .card) :is(button.allow, button.submit):hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 85%, #000); }

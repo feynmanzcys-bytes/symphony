@@ -6,9 +6,11 @@
 // to send by email or attach to an issue, and what the log holds can be looked at. And what this is: the versions,
 // where the data is.
 //
-//   const settings = createSettings(sym, { scheme, extra })
-//     scheme: { get() → 'system' | 'light' | 'dark', set(value) } for a theme with light and dark (Coworkers)
-//     extra:  [{ label, el, hint }] rows of the theme's own, under how the page looks (the office's pixel size)
+//   const settings = createSettings(sym, { scheme, extra, records })
+//     scheme:  { get() → 'system' | 'light' | 'dark', set(value) } for a theme with light and dark (Coworkers)
+//     extra:   [{ label, el, hint }] rows of the theme's own, under how the page looks (the office's pixel size)
+//     records: [{ id, label, icon, open() }] the theme's logs (the office's message and activity logs): a button each,
+//              which closes the settings and shows that log
 //   settings.open() · settings.close() · settings.hidden · settings.el
 //   settingsButton(sym, settings, { cls, icon }) → the theme's button: "Settings", marked while the error log has
 //     something newer than what was seen
@@ -26,7 +28,7 @@ const SHOW = 30 // entries of the error log the dialog lists (a report has them 
 const MARKUP = `
 <div class="modal pop" id="settings" hidden>
   <div class="panel settings">
-    <div class="top"><h2></h2><button type="button" class="close">✕</button></div>
+    <div class="top"><h2></h2><button type="button" class="close"></button></div>
     <div class="body">
       <section class="look" aria-labelledby="set-look"><h3 id="set-look"></h3>
         <div class="row"><label for="set-lang"></label><span class="ctl lang"></span></div>
@@ -38,6 +40,7 @@ const MARKUP = `
       <section class="talk" aria-labelledby="set-talk"><h3 id="set-talk"></h3>
         <div class="row check"><input type="checkbox" id="set-steps"><label for="set-steps"></label><small class="hint" id="set-steps-hint"></small></div>
       </section>
+      <section class="records" aria-labelledby="set-records" hidden><h3 id="set-records"></h3><div class="acts"></div></section>
       <section class="errlog" aria-labelledby="set-errlog"><h3 id="set-errlog"></h3>
         <p class="what"></p>
         <div class="acts"></div>
@@ -52,7 +55,7 @@ const MARKUP = `
   </div>
 </div>`
 
-export function createSettings(sym, { scheme = null, extra = [] } = {}) {
+export function createSettings(sym, { scheme = null, extra = [], records = [] } = {}) {
   const tpl = document.createElement('template')
   tpl.innerHTML = MARKUP.trim()
   const el = tpl.content.firstElementChild
@@ -117,6 +120,23 @@ export function createSettings(sym, { scheme = null, extra = [] } = {}) {
   steps.setAttribute('aria-describedby', 'set-steps-hint')
   steps.checked = pref(STEPS_OPEN) === 'open'
   steps.onchange = () => setPref(STEPS_OPEN, steps.checked ? 'open' : null)
+
+  // ---------- the theme's logs ----------
+  // Each shows beside the page, not in here: the settings close, and the focus goes to the log (its heading, so its name
+  // is read), which the theme does in open()
+  if (records.length) {
+    $('.records').hidden = false
+    $('#set-records').textContent = t('settings.records')
+    for (const r of records) {
+      const b = $('.records .acts').appendChild(document.createElement('button'))
+      b.type = 'button'
+      b.className = 'px'
+      b.id = r.id
+      if (r.icon) b.append(r.icon)
+      b.append(r.label)
+      b.onclick = () => { settings.close(); r.open() }
+    }
+  }
 
   // ---------- reporting a problem ----------
   $('#set-errlog').textContent = t('errlog.title')

@@ -44,8 +44,8 @@ const DIALOG = `
 const WINDOW = `
 <div class="modal" id="taskwin" hidden>
   <div class="panel">
-    <button type="button" class="close">✕</button>
-    <div class="top"><h2></h2><span class="status"></span><div class="actions"></div></div>
+    <button type="button" class="close"></button>
+    <div class="top"><h2></h2><span class="status"><i class="lamp" aria-hidden="true"></i><span class="tx"></span></span><div class="actions"></div></div>
     <div class="desc"></div>
     <div class="mode" data-i18n="task.flat" hidden></div>
     <div class="err" hidden></div>
@@ -140,7 +140,7 @@ export function createTaskUI(sym, {
     const row = document.createElement('div'), recent = opts?.recentDirs || []
     row.className = 'adv'
     row.innerHTML = `<div class="line"><b class="ord"></b><span class="kind">${esc(t('task.advisor'))}</span><span class="lead-tag">${esc(t('task.lead'))}</span>` +
-      `<input name="name" placeholder="${esc(t('task.advisorName'))}" aria-label="${esc(t('task.advisorName'))}"><button type="button" class="px rm" title="${esc(t('task.remove'))}" aria-label="${esc(t('task.remove'))}">✕</button></div>` +
+      `<input name="name" placeholder="${esc(t('task.advisorName'))}" aria-label="${esc(t('task.advisorName'))}"><button type="button" class="px rm" title="${esc(t('task.remove'))}" aria-label="${esc(t('task.remove'))}"></button></div>` +
       `<div class="row"><input name="dir" placeholder="${esc(t('launch.dirPlaceholder'))}" aria-label="${esc(t('launch.dir'))}"><button type="button" class="px browse">${esc(t('launch.browse'))}</button>` +
       `<select name="model" title="${esc(t('launch.model'))}" aria-label="${esc(t('launch.model'))}"></select><select name="effort" title="${esc(t('launch.effort'))}" aria-label="${esc(t('launch.effort'))}"></select></div>` +
       `<div class="browser" hidden><div class="cur"></div><ul></ul><button type="button" class="px pick">${esc(t('launch.pick'))}</button></div>` +
@@ -239,7 +239,7 @@ export function createTaskUI(sym, {
     // (each written only when it changed: what is selected in it stays through the redraws, every snapshot)
     setText(win.querySelector('h2'), `${task.id} · ${roomLabel(task)}`)
     const st = win.querySelector('.top .status')
-    setText(st, t('task.status.' + task.status))
+    setText(st.querySelector('.tx'), t('task.status.' + task.status))
     st.style.setProperty('--c', TASK_MARK[task.status] ?? GRAY_MARK)
     setText(win.querySelector('.desc'), task.title)
     win.querySelector('.mode').hidden = !!task.leader
