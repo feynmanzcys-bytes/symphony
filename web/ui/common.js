@@ -125,16 +125,50 @@ export async function browse(sym, box, path, fail, home) {
 
 // ---------- drawing what one clicks ----------
 // setHTML puts html into el only when it differs from what it put there last (says whether it did): a row or a tile
-// drawn again the same stays the element it was. What had the keyboard's focus in it has it again in the new html: the
-// element with the same data-* attributes, in a parent with the same ones (keyFor).
+// drawn again the same stays the element it was. While the keyboard's focus is in el, or with keep (a list an input
+// points into with aria-activedescendant), the elements stay where the new html has them again (morph): only what
+// changed in them changes, so a screen reader doesn't read the focused row anew at every redraw. What had the focus and
+// was drawn anew has it again: the element with the same data-* attributes, in a parent with the same ones (keyFor).
 const drawnHTML = new WeakMap()
-export function setHTML(el, html) {
+export function setHTML(el, html, keep = false) {
   if (drawnHTML.get(el) === html) return false
   drawnHTML.set(el, html)
   const focused = keyFor(el, document.activeElement)
-  el.innerHTML = html
-  if (focused) el.querySelector(focused)?.focus({ preventScroll: true })
+  if (focused || keep) morph(el, html)
+  else el.innerHTML = html
+  if (focused && !el.querySelector(focused)?.contains(document.activeElement)) el.querySelector(focused)?.focus({ preventScroll: true })
   return true
+}
+// pointAt says which option of its list an input points at for screen readers (aria-activedescendant), or none: set
+// only when it changes, as setting it again may read the option again
+export function pointAt(input, id) {
+  if (!id) return input.removeAttribute('aria-activedescendant')
+  if (input.getAttribute('aria-activedescendant') !== id) input.setAttribute('aria-activedescendant', id)
+}
+// morph makes el's children what html says, keeping each element that is drawn again in its place (the same tag and
+// data-* attributes, data-sig aside): its other attributes and its text are set to the new ones
+function morph(el, html) {
+  const tpl = document.createElement('template')
+  tpl.innerHTML = html
+  sync(el, tpl.content)
+}
+const dataKey = n => [...n.attributes].filter(a => a.name.startsWith('data-') && a.name !== 'data-sig').map(a => a.name + '=' + a.value).join(' ')
+function sync(into, from) {
+  const fresh = [...from.childNodes]
+  fresh.forEach((f, i) => {
+    const same = n => !!n && n.nodeType === f.nodeType && (f.nodeType !== 1 || (n.tagName === f.tagName && dataKey(n) === dataKey(f)))
+    let o = into.childNodes[i]
+    if (!same(o) && f.nodeType === 1 && dataKey(f)) { // drawn again further on: brought here
+      const later = [...into.childNodes].slice(i + 1).find(same)
+      if (later) o = into.insertBefore(later, o ?? null)
+    }
+    if (!same(o)) { if (o) into.replaceChild(f, o); else into.appendChild(f); return } // (moved out of the template)
+    if (f.nodeType !== 1) { if (o.nodeValue !== f.nodeValue) o.nodeValue = f.nodeValue; return }
+    for (const a of [...o.attributes]) if (!f.hasAttribute(a.name)) o.removeAttribute(a.name)
+    for (const a of [...f.attributes]) if (o.getAttribute(a.name) !== a.value) o.setAttribute(a.name, a.value)
+    sync(o, f)
+  })
+  while (into.childNodes.length > fresh.length) into.lastChild.remove()
 }
 // a selector for at inside el that finds it again once el is drawn anew: its tag and data-* attributes, and its
 // parents' up to el or up to one with an id (data-sig, which says how it was drawn, left out); null when at isn't in el

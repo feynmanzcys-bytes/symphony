@@ -10,7 +10,6 @@
   "mc.soundOff": "Sound off",
   "mc.soundBlocked": "Sound on, but the browser won't play it until you click the page",
   "mc.dark": "Dark: the room at night",
-  "mc.light": "Light: the room by day",
   "mc.noSessions": "No sessions",
   "mc.noActivity": "Nothing has happened yet",
   "mc.alarm": "Alarm: {what}",

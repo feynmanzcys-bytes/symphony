@@ -10,7 +10,6 @@
   "mc.soundOff": "音オフ",
   "mc.soundBlocked": "音オン。ただし、ページをクリックするまでブラウザは音を鳴らしません",
   "mc.dark": "ダーク：夜の管制室",
-  "mc.light": "ライト：昼の管制室",
   "mc.noSessions": "セッションなし",
   "mc.noActivity": "まだ何もありません",
   "mc.alarm": "アラーム：{what}",

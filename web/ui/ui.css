@@ -117,6 +117,8 @@ button.close:hover { color:var(--ink); }
 .chat .dock.asking .say, .chat .dock.asking .offline { display:none; }
 .chat .say { display:flex; gap:8px; align-items:flex-end; }
 .chat .say textarea { flex:1; resize:none; font:inherit; color:var(--ink); background:var(--field); border:2px solid var(--field-line); padding:5px 8px; box-sizing:border-box; }
+/* a narrow window wraps the hint in the box to three lines: the box has room for them */
+@media (max-width: 520px) { .chat .say textarea { min-height:calc(4.5em + 14px); } }
 .chat .say textarea:focus { outline:none; border-color:var(--focus-line); box-shadow:var(--focus-ring); }
 .chat .say[hidden] { display:none; }
 .chat .offline { color:var(--muted); font-size:12px; padding:4px 0; }
@@ -128,7 +130,7 @@ button.close:hover { color:var(--ink); }
 :is(#asks, .flow .card, #queue) .who .name { font-weight:700; }
 :is(#asks, .flow .card, #queue) .who .kind, :is(#asks, .flow .card, #queue) .meta { color:var(--muted); font-size:12px; }
 :is(#asks, .flow .card, #queue) .tool { font:700 13px var(--mono); }
-:is(#asks, .flow .card, #queue) pre { background:var(--paper-2); border:1px solid var(--line); padding:6px 8px; max-height:200px; overflow:auto; white-space:pre-wrap; word-break:break-all; font-size:12px; margin:6px 0; }
+:is(#asks, .flow .card, #queue) pre { background:var(--paper-2); border:1px solid var(--line); padding:6px 8px; max-height:200px; overflow:auto; white-space:pre-wrap; overflow-wrap:anywhere; font-size:12px; margin:6px 0; }
 :is(#asks, .flow .card, #queue) .row { display:flex; flex-wrap:wrap; gap:6px 8px; align-items:center; margin-top:6px; }
 :is(#asks, .flow .card, #queue) .row input { flex:1 1 10em; min-width:0; }
 :is(#asks, .flow .card, #queue) .row[hidden] { display:none; }
@@ -204,6 +206,8 @@ button.close:hover { color:var(--ink); }
 /* the status line and the buttons stay at the bottom of the dialog while the rest scrolls */
 #task .foot { position:sticky; bottom:-14px; z-index:1; margin:10px -16px -14px; padding:0 16px 14px; background:var(--paper); border-top:1px solid var(--line); }
 #task .foot .status:empty { display:none; }
+/* the launch dialog's buttons stay in sight at its bottom, as the task dialog's (a narrow window scrolls the fields) */
+#launch .actions { position:sticky; bottom:-14px; z-index:1; margin:12px -16px -14px; padding:8px 16px 14px; background:var(--paper); }
 #task .count { margin-right:auto; font-size:12px; color:var(--muted-2); }
 #task .count.over { color:var(--danger-ink); font-weight:700; }
 /* the task window: what the team is on, its members (a click opens one's window), the button to end it */
@@ -228,7 +232,7 @@ button.close:hover { color:var(--ink); }
 #taskwin .badge { flex:none; font-size:11px; padding:0 5px; white-space:nowrap; }
 #taskwin .badge.lead { background:var(--accent); }
 #taskwin .badge.adv { border:1px solid #b9b3a8; color:var(--muted-2); }
-#taskwin .where { flex:1; min-width:0; color:var(--muted-2); font:12px var(--mono); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+#taskwin .where { flex:1 1 12em; min-width:0; color:var(--muted-2); font:12px var(--mono); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 #taskwin .chip { flex:none; font-size:11px; padding:0 6px; border:1px solid var(--line); background:var(--pane); white-space:nowrap; }
 #taskwin .st { flex:none; color:var(--muted-2); font-size:12px; white-space:nowrap; max-width:220px; overflow:hidden; text-overflow:ellipsis; }
 /* the task chat: the members' messages to each other (purple, as everywhere on the page) and yours (dark, on the right) */

@@ -5,7 +5,7 @@
 import { t, lang, errorText, applyI18n, langPicker } from '/i18n.js'
 import { esc, syncCards } from '/asks.js'
 import { connect } from '/symphony.js'
-import { STATE_MARK, TASK_MARK, base, lower, dot, buildText, statusText as statusOf, setHTML, deferWhilePressed, askKind, askSummary } from '/ui/common.js'
+import { STATE_MARK, TASK_MARK, base, lower, dot, buildText, statusText as statusOf, setHTML, pointAt, deferWhilePressed, askKind, askSummary } from '/ui/common.js'
 import { connectionBanner } from '/ui/banner.js'
 import { announceAsks } from '/ui/a11y.js'
 import { createChat } from '/ui/chat.js'
@@ -26,10 +26,10 @@ announceAsks(sym)
 const DARK_STORE = 'symphony.hq.dark'
 const darkBtn = document.getElementById('dark')
 darkBtn.setAttribute('aria-label', t('hq.dark')) // a switch: its name stays, aria-pressed says whether it's on
+darkBtn.title = t('hq.dark') // (the same words: a title that said what a click does would be read as the switch's description, against its state)
 function setDark(on, remember = true) {
   document.documentElement.toggleAttribute('data-dark', on)
   darkBtn.textContent = on ? '☀' : '☾'
-  darkBtn.title = t(on ? 'hq.light' : 'hq.dark')
   darkBtn.setAttribute('aria-pressed', String(on))
   if (remember) try { localStorage.setItem(DARK_STORE, on ? '1' : '0') } catch {}
 }
@@ -325,10 +325,9 @@ function renderFind() {
   const hits = findHits()
   findSel = Math.max(0, Math.min(findSel, hits.length - 1))
   findList.hidden = !findEl.value.trim() || document.activeElement !== findEl
-  findList.innerHTML = hits.map((h, i) => `<div class="hit${i === findSel ? ' on' : ''}" data-key="${esc(h.key)}" role="option" id="find-hit-${i}" aria-selected="${i === findSel}">${dot(h.state)}<b>${esc(h.name)}</b><small>${esc(h.sub)}</small></div>`).join('') || `<div class="none" role="option" aria-disabled="true">${esc(t('search.none'))}</div>`
+  setHTML(findList, hits.map((h, i) => `<div class="hit${i === findSel ? ' on' : ''}" data-key="${esc(h.key)}" role="option" id="find-hit-${i}" aria-selected="${i === findSel}">${dot(h.state)}<b>${esc(h.name)}</b> <small>${esc(h.sub)}</small></div>`).join('') || `<div class="none" role="option" aria-disabled="true">${esc(t('search.none'))}</div>`, true) // (in place, as the office's)
   findEl.setAttribute('aria-expanded', String(!findList.hidden))
-  if (!findList.hidden && hits.length) findEl.setAttribute('aria-activedescendant', 'find-hit-' + findSel)
-  else findEl.removeAttribute('aria-activedescendant')
+  pointAt(findEl, !findList.hidden && hits.length ? 'find-hit-' + findSel : null)
   if (tab === 'people') renderPeople()
 }
 function pickFound(h) {

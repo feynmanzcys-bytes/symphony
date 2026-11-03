@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"testing"
@@ -774,6 +775,17 @@ func TestNarrow(t *testing.T) {
 					waitUntil(t, 10*time.Second, fmt.Sprintf("%s %d: %s", pg.theme, size[0], s.name), func() bool { return p.is(s.ready) })
 				}
 				check(p, s.name)
+				// a member's folder and branch keep room to be read (a line of their own when the row is narrow), and
+				// the launch dialog's buttons stay in sight however its fields scroll
+				if bad := p.js(`[...document.querySelectorAll('#taskwin:not([hidden]) .where')].filter(w => w.clientWidth < 80).map(w => w.textContent + ': ' + w.clientWidth + 'px').join(', ')`); bad != "" {
+					t.Errorf("%s %d %s: a member's folder and branch squeezed: %s", pg.theme, size[0], s.name, bad)
+				}
+				if !p.is(`(a => !a || !a.getClientRects().length || (r => (q => r.bottom <= q.bottom + 1 && r.top >= q.top - 1)(a.closest('.panel').getBoundingClientRect()))(a.getBoundingClientRect()))(document.querySelector('#launch:not([hidden]) .actions'))`) {
+					t.Errorf("%s %d %s: the launch dialog's buttons are out of sight", pg.theme, size[0], s.name)
+				}
+				if pg.theme == "hq" { // (the shot shows the tab's own part, not only the figures above it)
+					p.run(`document.querySelector('section[data-tab]:not([hidden])')?.scrollIntoView({ block: 'start' })`)
+				}
 				p.shot(strings.ReplaceAll(s.name, " ", "-"))
 			}
 			if pg.theme == "messenger" && size[0] == 320 { // one column: what is picked fills it, its close button leads back
@@ -1078,6 +1090,48 @@ func TestA11y(t *testing.T) {
 	named(p, "task dialog", `document.getElementById('task')`)
 	p.run(`document.querySelector('#task .cancel').click()`)
 
+	// redraws under the keyboard (a screen reader read the same row again at every one, and lost its place when a button
+	// went): the roster's button and the search's hit stay the elements they were as their words change, the name and
+	// the line of a hit are words apart, and the employee window keeps the focus when the button it was on goes
+	say := func(name, session string, body map[string]any) {
+		t.Helper()
+		body["session"] = session
+		b.post(t, tokens[name], "/api/event", body)
+	}
+	bobBtn := fmt.Sprintf(`document.querySelector('#roster button[data-account=%q]')`, id("bob"))
+	p.run(bobBtn + `.focus(); window.__kept = document.activeElement`)
+	say("bob", "s-bob", map[string]any{"kind": "tool.start", "tool": "Bash", "summary": "npm test", "toolUseId": "tb1"})
+	waitUntil(t, 5*time.Second, "bob's roster button says he works", func() bool { return p.is(bobBtn + `.textContent.includes('Bash')`) })
+	if !p.is(`document.activeElement === window.__kept && window.__kept.isConnected`) {
+		t.Errorf("bob's roster button was drawn anew under the focus: %s", p.js(`document.activeElement.outerHTML.slice(0, 80)`))
+	}
+	p.run(`(f => { f.focus(); f.value = 'bob'; f.dispatchEvent(new Event('input')) })(document.getElementById('find')); window.__kept = document.getElementById(document.getElementById('find').getAttribute('aria-activedescendant'))`)
+	if n := ax(t, office, `window.__kept`); !strings.HasPrefix(n.Name, "bob ") || n.Role != "option" {
+		t.Errorf("the search's hit should be an option named by the name, then its line: %+v", n)
+	}
+	say("bob", "s-bob", map[string]any{"kind": "tool.end", "tool": "Bash", "summary": "npm test", "toolUseId": "tb1", "durationMs": 900})
+	say("bob", "s-bob", map[string]any{"kind": "turn.complete", "turnId": "b2"})
+	waitUntil(t, 5*time.Second, "bob's hit says he idles", func() bool {
+		return p.is(`document.getElementById(document.getElementById('find').getAttribute('aria-activedescendant'))?.textContent.includes('Idle')`)
+	})
+	if !p.is(`document.getElementById(document.getElementById('find').getAttribute('aria-activedescendant')) === window.__kept`) {
+		t.Error("the search's hit was drawn anew while the box pointed at it")
+	}
+	p.run(`(f => { f.value = ''; f.dispatchEvent(new Event('input')); f.blur() })(document.getElementById('find'))`)
+	p.run(fmt.Sprintf(`document.querySelector('#roster button[data-account=%q]').click()`, id("alice")))
+	waitUntil(t, 5*time.Second, "alice's window shows her Stop button", func() bool { return p.is(`!!document.querySelector('#chat .head .btns .stop')`) })
+	p.run(`document.querySelector('#chat .head .btns .stop').focus()`)
+	say("alice", "s-alice", map[string]any{"kind": "tool.end", "tool": "Bash", "summary": "make test", "toolUseId": "tu9", "durationMs": 1200})
+	say("alice", "s-alice", map[string]any{"kind": "turn.complete", "turnId": "a2"})
+	waitUntil(t, 5*time.Second, "alice's turn ends, her Stop button goes", func() bool { return p.is(`!document.querySelector('#chat .head .btns .stop')`) })
+	if !p.is(`document.activeElement !== document.body && document.getElementById('chat').contains(document.activeElement)`) {
+		t.Errorf("the focus fell out of alice's window when her Stop button went: %s", p.js(`document.activeElement.outerHTML.slice(0, 80)`))
+	}
+	p.run(`document.querySelector('#chat .close').click()`)
+	if !p.is(`document.getElementById('find').getAttribute('aria-keyshortcuts') === '/'`) {
+		t.Error(`the search box should say "/" reaches it (aria-keyshortcuts)`)
+	}
+
 	// a new ask is said out loud
 	b.post(t, tokens["bob"], "/api/ask", map[string]any{"session": "s-bob", "kind": "permission", "tool": "Bash", "input": map[string]any{"command": "make release"}})
 	waitUntil(t, 10*time.Second, "the third ask is announced", func() bool {
@@ -1102,7 +1156,19 @@ func TestA11y(t *testing.T) {
 		if q.is(`document.getElementById('dark').getAttribute('aria-pressed') === 'true'`) == was || ax(t, ctx, `document.getElementById('dark')`).Name == "" {
 			t.Errorf("%s: the dark switch should be named and say whether it's on", th.name)
 		}
+		titled := func(when string) { // on and off alike
+			if !q.is(`(d => d.title === d.getAttribute('aria-label'))(document.getElementById('dark'))`) {
+				t.Errorf("%s: the dark switch's title (%s) should say what its name says, not what a click does (read as its description): %s", th.name, when, q.js(`document.getElementById('dark').title`))
+			}
+		}
+		titled("switched")
 		q.run(`document.getElementById('dark').click()`)
+		titled("switched back")
+		if th.name == "hq" {
+			if n := ax(t, ctx, `document.querySelector('#tabs [data-tab=approvals]')`); !regexp.MustCompile(`^Approvals \d+$`).MatchString(n.Name) {
+				t.Errorf("hq: the Approvals tab should read its count apart: %q", n.Name)
+			}
+		}
 		// a row or a tile opens with Enter
 		q.run(th.row + `.focus()`)
 		key(ctx, kb.Enter, false)

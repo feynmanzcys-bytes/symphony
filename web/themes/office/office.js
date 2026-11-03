@@ -4,7 +4,7 @@
 import { t, lang, errorText, fmtTime, applyI18n, langPicker } from '/i18n.js'
 import { esc } from '/asks.js'
 import { connect } from '/symphony.js'
-import { GREEN, YELLOW, RED, GRAY, STATE_COLOR, STATE_MARK, GRAY_MARK, base, lower, dot, element, hash, build, buildText, statusText as statusOf, richText, setHTML, deferWhilePressed, askKind } from '/ui/common.js'
+import { GREEN, YELLOW, RED, GRAY, STATE_COLOR, STATE_MARK, GRAY_MARK, base, lower, dot, element, hash, build, buildText, statusText as statusOf, richText, setHTML, pointAt, deferWhilePressed, askKind } from '/ui/common.js'
 import { connectionBanner } from '/ui/banner.js'
 import { announceAsks } from '/ui/a11y.js'
 import { createChat } from '/ui/chat.js'
@@ -1688,14 +1688,15 @@ function renderFind() {
   const hits = findHits()
   findSel = Math.max(0, Math.min(findSel, hits.length - 1))
   findList.hidden = !findQ || document.activeElement !== findEl
-  findList.innerHTML = hits.map((h, i) => `<div class="hit${i === findSel ? ' on' : ''}" data-key="${esc(h.key)}" role="option" id="find-hit-${i}" aria-selected="${i === findSel}">` +
-    (h.task ? `${dot(TASK_DOT[h.task.status])}<b>${esc(h.name)}</b><small>${esc(h.task.title)}</small></div>`
-      : `${dot(isOnline(h.e) ? h.e.s.state : 'ended')}<b>${esc(h.name)}</b><small>${esc(stateLine(h.e))}</small></div>`)).join('') ||
-    `<div class="none" role="option" aria-disabled="true">${esc(t('search.none'))}</div>`
+  // (drawn in place, setHTML's keep: the hit the box points at stays the element it was, so a screen reader doesn't
+  // read it again at every redraw; a space between the name and its line, so they aren't read as one word)
+  setHTML(findList, hits.map((h, i) => `<div class="hit${i === findSel ? ' on' : ''}" data-key="${esc(h.key)}" role="option" id="find-hit-${i}" aria-selected="${i === findSel}">` +
+    (h.task ? `${dot(TASK_DOT[h.task.status])}<b>${esc(h.name)}</b> <small>${esc(h.task.title)}</small></div>`
+      : `${dot(isOnline(h.e) ? h.e.s.state : 'ended')}<b>${esc(h.name)}</b> <small>${esc(stateLine(h.e))}</small></div>`)).join('') ||
+    `<div class="none" role="option" aria-disabled="true">${esc(t('search.none'))}</div>`, true)
   // for screen readers: the list open or not, and the hit the arrows are on
   findEl.setAttribute('aria-expanded', String(!findList.hidden))
-  if (!findList.hidden && hits.length) findEl.setAttribute('aria-activedescendant', 'find-hit-' + findSel)
-  else findEl.removeAttribute('aria-activedescendant')
+  pointAt(findEl, !findList.hidden && hits.length ? 'find-hit-' + findSel : null)
 }
 function pickFound(h) {
   findEl.value = ''; findSel = 0; findEl.blur(); renderFind()

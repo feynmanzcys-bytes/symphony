@@ -13,7 +13,7 @@
 //   tasks.render()                  draw the window again (on every snapshot and message)
 //   tasks.windowFor                 the task whose window is open, or null
 //   tasks.dialog, tasks.win         the elements
-import { t, lang, esc, errorText, base, lower, dot, fill, browse, showEnd, statusText, richText, TASK_MARK, GRAY_MARK, button, deferWhilePressed, setHTML } from '/ui/common.js'
+import { t, lang, esc, errorText, base, lower, dot, fill, browse, showEnd, statusText, richText, TASK_MARK, GRAY_MARK, button, deferWhilePressed, setHTML, pointAt } from '/ui/common.js'
 import { dialog as asDialog } from '/ui/a11y.js'
 
 const MAX_MEMBERS = 5 // the bridge's cap (taskMaxMembers)
@@ -51,7 +51,7 @@ const WINDOW = `
     <div class="tchat">
       <h3 data-i18n="task.chat"></h3>
       <div class="tlist"></div>
-      <form class="tsay" autocomplete="off">
+      <form class="tsay" autocomplete="off" role="none">
         <div class="tbox"><textarea rows="1" data-i18n-aria-label="task.chat" aria-autocomplete="list" aria-haspopup="listbox" aria-controls="task-pick"></textarea><div class="tpick" id="task-pick" role="listbox" data-i18n-aria-label="task.mentionList" hidden></div></div>
         <button type="submit" class="px primary" data-i18n="chat.send"></button>
       </form>
@@ -332,10 +332,10 @@ export function createTaskUI(sym, {
     const q = pick ? lower(pick.q) : ''
     return (task?.members ?? []).filter(m => lower(m.name).startsWith(q))
   }
-  function closePick() { pick = null; tPick.hidden = true; tBox.removeAttribute('aria-activedescendant') }
+  function closePick() { pick = null; tPick.hidden = true; pointAt(tBox, null) }
   function markPick() { // the highlighted member, for the eye and for screen readers
     tPick.querySelectorAll('.hit').forEach((h, i) => { h.classList.toggle('on', i === pick.sel); h.setAttribute('aria-selected', String(i === pick.sel)) })
-    tBox.setAttribute('aria-activedescendant', 'task-pick-' + pick.sel)
+    pointAt(tBox, 'task-pick-' + pick.sel)
   }
   function updatePick() {
     const before = tBox.value.slice(0, tBox.selectionStart), hit = tBox.selectionStart === tBox.selectionEnd && /(?:^|\s)@([^\s@]*)$/.exec(before)
@@ -346,11 +346,11 @@ export function createTaskUI(sym, {
     const names = pickNames()
     if (!names.length) return closePick()
     pick.sel = Math.max(0, Math.min(pick.sel, names.length - 1))
-    tPick.innerHTML = names.map((m, i) => {
+    setHTML(tPick, names.map((m, i) => { // (in place, and the name apart from its line: as the search boxes' lists)
       const s = sym.sessionById(m.session), online = sym.isOnline(s)
-      return `<div class="hit${i === pick.sel ? ' on' : ''}" data-name="${esc(m.name)}" role="option" id="task-pick-${i}" aria-selected="${i === pick.sel}">${dot(online ? s.state : 'ended')}<b>${esc(m.name)}</b>` +
+      return `<div class="hit${i === pick.sel ? ' on' : ''}" data-name="${esc(m.name)}" role="option" id="task-pick-${i}" aria-selected="${i === pick.sel}">${dot(online ? s.state : 'ended')}<b>${esc(m.name)}</b> ` +
         `<small>${esc(!m.session ? t('task.memberStarting') : online ? statusText(sym, s) : t('task.memberEnded'))}</small></div>`
-    }).join('')
+    }).join(''), true)
     tPick.hidden = false
     markPick()
   }

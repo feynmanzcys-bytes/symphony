@@ -10,7 +10,6 @@
   "mc.soundOff": "Ton aus",
   "mc.soundBlocked": "Ton an, aber der Browser spielt ihn erst ab, wenn du auf die Seite klickst",
   "mc.dark": "Dunkel: der Raum bei Nacht",
-  "mc.light": "Hell: der Raum bei Tag",
   "mc.noSessions": "Keine Sitzungen",
   "mc.noActivity": "Noch nichts passiert",
   "mc.alarm": "Alarm: {what}",

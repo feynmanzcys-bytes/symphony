@@ -10,7 +10,6 @@
   "mc.soundOff": "소리 꺼짐",
   "mc.soundBlocked": "소리 켜짐. 하지만 페이지를 클릭하기 전까지 브라우저가 소리를 내지 않습니다",
   "mc.dark": "다크: 밤의 관제실",
-  "mc.light": "라이트: 낮의 관제실",
   "mc.noSessions": "세션 없음",
   "mc.noActivity": "아직 활동이 없습니다",
   "mc.alarm": "알람: {what}",

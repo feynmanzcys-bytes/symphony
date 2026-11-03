@@ -10,7 +10,6 @@
   "mc.soundOff": "Son coupé",
   "mc.soundBlocked": "Son activé, mais le navigateur ne le jouera pas tant que vous n'aurez pas cliqué sur la page",
   "mc.dark": "Sombre : la salle de nuit",
-  "mc.light": "Clair : la salle de jour",
   "mc.noSessions": "Aucune session",
   "mc.noActivity": "Rien ne s'est encore passé",
   "mc.alarm": "Alarme : {what}",

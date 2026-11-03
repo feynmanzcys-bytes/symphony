@@ -40,7 +40,7 @@ const MARKUP = `
     <div class="flow"></div>
     <div class="dock">
       <div id="asks"></div>
-      <form class="say" autocomplete="off">
+      <form class="say" autocomplete="off" role="none">
         <textarea rows="2"></textarea>
         <button type="submit" class="px primary"></button>
       </form>
@@ -305,6 +305,17 @@ export function createChat(sym, { askWho, onClose = () => {}, onTaskChip = () =>
     return node
   }
 
+  // The focus a redraw took out of the window (the button it was on went: Stop once the turn ended; the input turned
+  // off as the session went off duty) goes back to the same button drawn anew, else to the window's next control, else
+  // its name: never to the page under the window, where a screen reader would land
+  function keepFocus(had, hadKey) {
+    if (!had || el.hidden || el.contains(document.activeElement)) return
+    const usable = x => !!x && !x.disabled && x.getClientRects().length > 0
+    const again = hadKey && [...head.querySelectorAll('.btns button')].find(b => (b.dataset.key || b.textContent) === hadKey)
+    const next = [again, sayBox, ...head.querySelectorAll('.btns button'), head.querySelector('.close')].find(usable)
+    ;(next ?? head.querySelector('h2'))?.focus({ preventScroll: true })
+  }
+
   const chat = {
     el, dock, sayBox,
     get hidden() { return el.hidden },
@@ -312,6 +323,9 @@ export function createChat(sym, { askWho, onClose = () => {}, onTaskChip = () =>
     get asking() { return asking },
     // the window for a session: the head as the theme describes it, the flow of that session, the dock
     show(p) {
+      // what has the focus in the window: put back after the redraw if the redraw took it away (keepFocus)
+      const had = el.contains(document.activeElement) ? document.activeElement : null
+      const hadKey = had?.closest('.btns') ? had.dataset.key || had.textContent : null
       name = p.name
       head.querySelector('h2').textContent = p.name
       head.querySelector('.dot').style.background = STATE_MARK[p.state] ?? GRAY_MARK
@@ -333,7 +347,8 @@ export function createChat(sym, { askWho, onClose = () => {}, onTaskChip = () =>
         btns.innerHTML = ''
         termBtn = termFor ? button('', 'termview', () => showTerminal(!termOn)) : null
         for (const b of p.buttons || []) {
-          btns.appendChild(button(b.text, b.cls, b.onclick, b.title))
+          const bt = btns.appendChild(button(b.text, b.cls, b.onclick, b.title))
+          if (b.key) bt.dataset.key = b.key
           if (b.key === 'terminal' && termBtn) btns.appendChild(termBtn) // beside the one that opens a window
         }
         if (termBtn && !termBtn.parentNode) btns.prepend(termBtn)
@@ -365,6 +380,7 @@ export function createChat(sym, { askWho, onClose = () => {}, onTaskChip = () =>
       off.hidden = p.online
       if (off.textContent !== p.offText) off.textContent = p.offText
       el.hidden = false
+      keepFocus(had, hadKey)
     },
     setLine(text) {
       const line = head.querySelector('.who .state')

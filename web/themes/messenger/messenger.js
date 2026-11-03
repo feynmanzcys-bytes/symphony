@@ -28,10 +28,10 @@ announceAsks(sym)
 const DARK_STORE = 'symphony.messenger.dark'
 const darkBtn = document.getElementById('dark')
 darkBtn.setAttribute('aria-label', t('msgr.dark')) // a switch: its name stays, aria-pressed says whether it's on
+darkBtn.title = t('msgr.dark') // (the same words: a title that said what a click does would be read as the switch's description, against its state)
 function setDark(on, remember = true) {
   document.documentElement.toggleAttribute('data-dark', on)
   darkBtn.textContent = on ? '☀' : '☾'
-  darkBtn.title = t(on ? 'msgr.light' : 'msgr.dark')
   darkBtn.setAttribute('aria-pressed', String(on))
   if (remember) try { localStorage.setItem(DARK_STORE, on ? '1' : '0') } catch {}
 }
