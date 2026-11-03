@@ -40,6 +40,7 @@
   "log.autostart_slow": "symphony はログイン時に自動で起動するようになりました（{where}）が、{url} はまだ応答しません",
   "log.autostart_off": "symphony はログイン時に起動しなくなり、起動していた bridge も停止しました",
   "log.autostart_off_window": "symphony はログイン時に起動しなくなりました。今すぐ止めるには bridge のウィンドウを閉じてください",
+  "log.autostart_off_quiet": "symphony はログイン時に起動しなくなりました",
   "log.autostart_none": "symphony はもともとログイン時に起動する設定になっていません",
   "log.env_file": "{file} から {names} を設定しました（-autostart on が保存した変数）",
   "log.env_file_failed": "{file} の変数を読めません（{reason}）。bridge はそれなしで続けます（symphony -autostart on をもう一度実行すると書き直します）",

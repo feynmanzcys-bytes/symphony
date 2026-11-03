@@ -538,6 +538,20 @@ func stableExe(exe string, look func(string) (string, error)) string {
 	return exe
 }
 
+// realExe is this program's path with its symbolic links followed, so stableExe can tell whether the symphony on PATH
+// leads here; as it is when they can't be followed. On Windows always as it is: Scoop runs the program through a folder
+// junction (apps\symphony\current), which EvalSymlinks fails on and which is the path to keep anyway, as an update
+// points it at the new version.
+func realExe(goos, exe string, eval func(string) (string, error)) string {
+	if goos == "windows" {
+		return exe
+	}
+	if real, err := eval(exe); err == nil {
+		return real
+	}
+	return exe
+}
+
 // setAutostart turns starting the bridge at login on or off. On, it also starts the bridge now, waits for it and
 // opens its office.
 func setAutostart(mode string, args []string, base, dataDir string, open bool) {
@@ -548,13 +562,10 @@ func setAutostart(mode string, args []string, base, dataDir string, open bool) {
 		key := loadKey(dataDir)
 		office := officeURL(base, key)
 		exe, err := os.Executable()
-		if err == nil {
-			exe, err = filepath.EvalSymlinks(exe)
-		}
 		if err != nil {
 			log.Fatal(i18n.T("log.autostart_failed", "reason", err.Error()))
 		}
-		exe = stableExe(exe, exec.LookPath)
+		exe = stableExe(realExe(runtime.GOOS, exe, filepath.EvalSymlinks), exec.LookPath)
 		// go run builds into a temporary folder that's gone afterwards
 		if strings.Contains(filepath.ToSlash(exe), "/go-build") {
 			log.Fatal(i18n.T("log.autostart_go_run"))
@@ -606,14 +617,22 @@ func setAutostart(mode string, args []string, base, dataDir string, open bool) {
 			log.Fatal(i18n.T("log.autostart_failed", "reason", err.Error()))
 		case where == "":
 			log.Print(i18n.T("log.autostart_none"))
-		case runtime.GOOS == "windows":
+		case runtime.GOOS == "windows" && bridgeRuns(base, dataDir):
 			log.Print(i18n.T("log.autostart_off_window"))
+		case runtime.GOOS == "windows": // (no bridge of this data folder runs there: no window to close)
+			log.Print(i18n.T("log.autostart_off_quiet"))
 		default:
 			log.Print(i18n.T("log.autostart_off"))
 		}
 	default:
 		log.Fatal(i18n.T("log.autostart_mode", "mode", mode))
 	}
+}
+
+// bridgeRuns says whether this data folder's bridge answers at base (its key read, never made).
+func bridgeRuns(base, dataDir string) bool {
+	key, err := bridge.ReadKey(dataDir)
+	return err == nil && bridgeAt(base, key) == ours
 }
 
 // openOffice shows the office in the default browser, signed in. Without a browser (no graphical session) the address

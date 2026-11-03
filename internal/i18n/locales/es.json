@@ -40,6 +40,7 @@
   "log.autostart_slow": "symphony se iniciará cada vez que inicies sesión ({where}), pero {url} aún no responde",
   "log.autostart_off": "symphony ya no se inicia al iniciar sesión, y el bridge que había iniciado se ha detenido",
   "log.autostart_off_window": "symphony ya no se inicia al iniciar sesión; cierra la ventana del bridge para detenerlo ahora",
+  "log.autostart_off_quiet": "symphony ya no se inicia al iniciar sesión",
   "log.autostart_none": "symphony no estaba configurado para iniciarse al iniciar sesión",
   "log.env_file": "se definieron {names} desde {file} (las variables que guardó -autostart on)",
   "log.env_file_failed": "no se pueden leer las variables de {file} ({reason}); el bridge sigue sin ellas (vuelva a ejecutar symphony -autostart on para escribirlas de nuevo)",

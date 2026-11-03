@@ -40,6 +40,7 @@
   "log.autostart_slow": "теперь symphony запускается при входе в систему ({where}), но {url} пока не отвечает",
   "log.autostart_off": "symphony больше не запускается при входе в систему, а запущенный им bridge остановлен",
   "log.autostart_off_window": "symphony больше не запускается при входе в систему; чтобы остановить bridge сейчас, закройте его окно",
+  "log.autostart_off_quiet": "symphony больше не запускается при входе в систему",
   "log.autostart_none": "symphony и не был настроен на запуск при входе в систему",
   "log.env_file": "заданы {names} из {file} (переменные, сохранённые -autostart on)",
   "log.env_file_failed": "не удаётся прочитать переменные в {file} ({reason}); bridge продолжает без них (запустите symphony -autostart on ещё раз, чтобы записать их заново)",

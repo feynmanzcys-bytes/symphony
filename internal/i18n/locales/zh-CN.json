@@ -40,6 +40,7 @@
   "log.autostart_slow": "symphony 以后登录就会自动启动（{where}），但 {url} 暂时还没有响应",
   "log.autostart_off": "symphony 不再随登录启动，它启动的 bridge 也已停止",
   "log.autostart_off_window": "symphony 不再随登录启动；要马上停掉 bridge，关掉它的窗口",
+  "log.autostart_off_quiet": "symphony 不再随登录启动",
   "log.autostart_none": "symphony 本来就没有设成随登录启动",
   "log.env_file": "已按 {file} 设置 {names}（-autostart on 保存的变量）",
   "log.env_file_failed": "读不了 {file} 里的变量（{reason}）；bridge 不带它们继续运行（再运行一次 symphony -autostart on 可以重新写出）",

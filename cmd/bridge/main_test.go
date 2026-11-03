@@ -556,9 +556,21 @@ func TestAutostartRefuses(t *testing.T) {
 	if err != nil {
 		t.Skip("needs the go command")
 	}
-	// were anything written anyway, it would land here, not in the real config; go keeps its own caches
+	// were anything written anyway, it would land here, not in the real config (the user config folder is
+	// XDG_CONFIG_HOME on Linux, HOME's on macOS and APPDATA on Windows, and -autostart on makes the data folder's key
+	// before it finds the address taken); go keeps its own caches
 	home := t.TempDir()
-	env := append(os.Environ(), "SYMPHONY_LANG=en", "HOME="+home, "XDG_CONFIG_HOME="+filepath.Join(home, ".config"))
+	real := bridge.DefaultDataDir()
+	_, err = os.Stat(real)
+	existed := err == nil
+	var env []string
+	for _, kv := range os.Environ() {
+		if !strings.HasPrefix(strings.ToUpper(kv), "SYMPHONY_DATA=") {
+			env = append(env, kv)
+		}
+	}
+	env = append(env, "SYMPHONY_LANG=en", "HOME="+home, "XDG_CONFIG_HOME="+filepath.Join(home, ".config"),
+		"APPDATA="+filepath.Join(home, "AppData", "Roaming"), "LOCALAPPDATA="+filepath.Join(home, "AppData", "Local"))
 	caches, err := exec.Command(gobin, "env", "GOCACHE", "GOMODCACHE", "GOPATH").Output()
 	if err != nil {
 		t.Fatal(err)
@@ -590,6 +602,10 @@ func TestAutostartRefuses(t *testing.T) {
 		if _, err := os.Stat(dir); err == nil {
 			t.Errorf("a refused -autostart wrote %s", dir)
 		}
+	}
+	// and the real data folder stays as it was: none where there was none
+	if _, err := os.Stat(real); err == nil && !existed {
+		t.Errorf("a refused -autostart made the real data folder %s", real)
 	}
 }
 
@@ -653,6 +669,29 @@ func exeSuffix() string {
 
 // TestStableExe: the login entry names the symphony PATH finds when it leads to this very program through a link (a
 // package manager's bin/ link into a folder per version, which an upgrade replaces), else the program's own path.
+// The login entry names the program as it runs on Windows (Scoop's apps\symphony\current junction, which EvalSymlinks
+// fails on and an update points at the new version), and elsewhere with its links followed, or as it is when they can't
+// be.
+func TestRealExe(t *testing.T) {
+	fails := func(string) (string, error) { return "", errors.New("The system cannot find the path specified.") }
+	cellar := func(string) (string, error) { return "/opt/homebrew/Cellar/symphony/1.2.0/bin/symphony", nil }
+	scoop := `C:\Users\u\scoop\apps\symphony\current\symphony.exe`
+	for _, c := range []struct {
+		goos, exe string
+		eval      func(string) (string, error)
+		want      string
+	}{
+		{"windows", scoop, fails, scoop},
+		{"windows", scoop, func(string) (string, error) { return `C:\Users\u\scoop\apps\symphony\1.2.0\symphony.exe`, nil }, scoop},
+		{"darwin", "/opt/homebrew/bin/symphony", cellar, "/opt/homebrew/Cellar/symphony/1.2.0/bin/symphony"},
+		{"linux", "/home/u/.local/bin/symphony", fails, "/home/u/.local/bin/symphony"},
+	} {
+		if got := realExe(c.goos, c.exe, c.eval); got != c.want {
+			t.Errorf("realExe(%s, %s) = %s, want %s", c.goos, c.exe, got, c.want)
+		}
+	}
+}
+
 func TestStableExe(t *testing.T) {
 	cellar := filepath.Join(t.TempDir(), "Cellar", "symphony", "1.2.0", "bin")
 	if err := os.MkdirAll(cellar, 0o755); err != nil {

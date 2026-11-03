@@ -40,6 +40,7 @@
   "log.autostart_slow": "symphony startet jetzt bei jeder Anmeldung ({where}), aber {url} antwortet noch nicht",
   "log.autostart_off": "symphony startet nicht mehr bei der Anmeldung, und die dabei gestartete Bridge ist beendet",
   "log.autostart_off_window": "symphony startet nicht mehr bei der Anmeldung; schließ das Fenster der Bridge, um sie jetzt zu beenden",
+  "log.autostart_off_quiet": "symphony startet nicht mehr bei der Anmeldung",
   "log.autostart_none": "symphony war nicht so eingestellt, dass es bei der Anmeldung startet",
   "log.env_file": "{names} aus {file} gesetzt (die Variablen, die -autostart on gespeichert hat)",
   "log.env_file_failed": "die Variablen in {file} lassen sich nicht lesen ({reason}); die Bridge läuft ohne sie weiter (symphony -autostart on erneut ausführen, um sie neu zu schreiben)",

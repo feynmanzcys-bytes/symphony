@@ -40,6 +40,7 @@
   "log.autostart_slow": "symphony now starts when you log in ({where}), but doesn't answer at {url} yet",
   "log.autostart_off": "symphony no longer starts when you log in, and the bridge it started has stopped",
   "log.autostart_off_window": "symphony no longer starts when you log in; close the bridge's window to stop it now",
+  "log.autostart_off_quiet": "symphony no longer starts when you log in",
   "log.autostart_none": "symphony wasn't set to start when you log in",
   "log.env_file": "set {names} from {file} (the variables -autostart on kept)",
   "log.env_file_failed": "can't read the variables in {file} ({reason}); the bridge goes on without them (run symphony -autostart on again to write them anew)",
