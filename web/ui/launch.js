@@ -1,8 +1,12 @@
-// The launch dialog (#launch), shared by every theme: starting a session from the page for a new employee (name,
-// folder, model, effort, permission mode) or an existing one ("Start work": the last folder and options filled in).
-// The bridge starts claude in that folder; the dialog follows the launch in the snapshot and closes once it's online.
-// Without a folder the employee works in its own: the one made for it before, else a new one in the bridge's default
-// folder (the settings), named after it and made a git repository; the field's placeholder and the preview say which.
+// The launch dialog (#launch), shared by every theme: starting a session from the page for a new employee (its name)
+// or an existing one ("Start work"). Where and how it works (the folder, the model, the effort, the permission mode,
+// the session, the office context) fold into Advanced settings, a line that says what the start will use: for a new
+// employee what the settings say (the bridge's: Settings → Employees), for one going back to work its last choices (the
+// settings' when it was never started from the page). Unfolded, each can be changed for this start, or all set back to
+// the settings'; a bypassPermissions warning shows folded too. The bridge starts claude in that folder; the dialog
+// follows the launch in the snapshot and closes once it's online. Without a folder the employee works in its own: the
+// one made for it before, else a new one in the bridge's default folder (the settings), named after it and made a git
+// repository; the folded line, the field's placeholder and the preview say which.
 //
 //   const launch = createLaunchDialog(sym, { options, onOnline, log })
 //   launch.open(accountId | null)    the dialog for an existing employee, or a new one
@@ -19,19 +23,26 @@ const MARKUP = `
     <h2 class="title"></h2>
     <label for="launch-name" data-i18n="launch.name"></label>
     <input id="launch-name" name="name" data-i18n-placeholder="launch.namePlaceholder" required>
-    <label for="launch-dir" data-i18n="launch.dir"></label>
-    <div class="row"><input id="launch-dir" name="dir"><button type="button" class="px browse" data-i18n="launch.browse"></button></div>
-    <div class="browser" hidden><div class="cur"></div><ul></ul><button type="button" class="px pick" data-i18n="launch.pick"></button></div>
-    <div class="recent"></div>
-    <div class="grid">
-      <div><label for="launch-model" data-i18n="launch.model"></label><select id="launch-model" name="model"></select></div>
-      <div><label for="launch-effort" data-i18n="launch.effort"></label><select id="launch-effort" name="effort"></select></div>
-      <div><label for="launch-mode" data-i18n="launch.permissionMode"></label><select id="launch-mode" name="permissionMode"></select></div>
-      <div><label for="launch-resume" data-i18n="launch.resume"></label><select id="launch-resume" name="resume"></select></div>
-      <div class="warn" data-i18n="launch.bypassWarning" hidden></div>
-    </div>
-    <label class="check context"><input type="checkbox" name="context"><span data-i18n="launch.context"></span></label>
-    <pre class="preview"></pre>
+    <details class="adv">
+      <summary><b data-i18n="launch.advanced"></b> <span class="digest"></span></summary>
+      <div class="advbody">
+        <div class="from"><span class="adv-note"></span><button type="button" class="px use" data-i18n="launch.useSettings" hidden></button></div>
+        <label for="launch-dir" data-i18n="launch.dir"></label>
+        <div class="row"><input id="launch-dir" name="dir"><button type="button" class="px browse" data-i18n="launch.browse"></button></div>
+        <div class="browser" hidden><div class="cur"></div><ul></ul><button type="button" class="px pick" data-i18n="launch.pick"></button></div>
+        <div class="recent"></div>
+        <div class="grid">
+          <div><label for="launch-model" data-i18n="launch.model"></label><select id="launch-model" name="model"></select></div>
+          <div><label for="launch-effort" data-i18n="launch.effort"></label><select id="launch-effort" name="effort"></select></div>
+          <div><label for="launch-mode" data-i18n="launch.permissionMode"></label><select id="launch-mode" name="permissionMode"></select></div>
+          <div><label for="launch-resume" data-i18n="launch.resume"></label><select id="launch-resume" name="resume"></select></div>
+          <div class="warn" id="launch-warn" data-i18n="launch.bypassWarning" hidden></div>
+        </div>
+        <label class="check context"><input type="checkbox" name="context"><span data-i18n="launch.context"></span></label>
+        <pre class="preview"></pre>
+      </div>
+    </details>
+    <div class="warn out" data-i18n="launch.bypassWarning" hidden></div>
     <div class="status"></div>
     <div class="actions"><button type="button" class="px cancel" data-i18n="common.cancel"></button><button type="submit" class="px primary go" data-i18n="launch.go"></button></div>
   </form>
@@ -50,9 +61,11 @@ export function createLaunchDialog(sym, { options = () => sym.launchOptions(true
   form.querySelector('.context').title = t('launch.contextTitle')
   dialog(dlg, form.querySelector('.title'))
   const field = name => form.elements[name]
+  const adv = form.querySelector('.adv')
   let opts = null
   let pending = null // the launch we're waiting to see online
   let account = null // the existing employee going back to work; null for a new one
+  let fromLast = false // the fields were filled in with that employee's last choices, not the settings'
 
   // why the page can't start sessions: the mod's problem, or no launcher at all
   const offReason = () => opts?.mod ? errorText(opts.mod) : t('error.launch_disabled')
@@ -62,8 +75,21 @@ export function createLaunchDialog(sym, { options = () => sym.launchOptions(true
   function setStatus(text, err) {
     const el = form.querySelector('.status')
     el.className = 'status' + (err ? ' err' : '')
-    if (err) putErrorBox(el, text, { report: false })
+    if (err) { putErrorBox(el, text, { report: false }); el.scrollIntoView({ block: 'nearest' }) }
     else el.textContent = text
+  }
+  // the settings' choices (what a new employee starts with: the bridge's settings), as the fields hold them
+  function settingsChoices() {
+    const d = opts?.defaults || {}
+    return { dir: '', model: d.model || '', effort: d.effort || '', permissionMode: d.permissionMode || '', resume: '', context: !!d.context }
+  }
+  function put(c) {
+    field('dir').value = c.dir
+    fill(field('model'), opts.models, c.model)
+    fill(field('effort'), opts.efforts, c.effort)
+    fill(field('permissionMode'), opts.permissionModes, c.permissionMode)
+    fill(field('resume'), opts.resumes, c.resume)
+    field('context').checked = !!c.context
   }
   function request() {
     const r = { dir: field('dir').value.trim(), model: field('model').value, effort: field('effort').value,
@@ -96,19 +122,51 @@ export function createLaunchDialog(sym, { options = () => sym.launchOptions(true
     if (r.resume === 'continue') args.push('--continue')
     const note = t(opts?.mod?.dev ? 'launch.previewNoteDev' : 'launch.previewNote')
     form.querySelector('.preview').textContent = `cd ${q(r.dir || own || '?')}\n${r.context ? 'SYMPHONY_CONTEXT=1 ' : ''}${args.join(' ')}\n# ${note}`
+    // the folded line (the whole folder on hover), and "Use the settings" while a field differs from them
+    const line = form.querySelector('.digest')
+    line.textContent = digest(r, own)
+    line.title = r.dir || own
+    const s = settingsChoices()
+    form.querySelector('.use').hidden = r.dir === s.dir && r.model === s.model && r.effort === s.effort &&
+      r.permissionMode === s.permissionMode && r.resume === s.resume && !!r.context === s.context
+  }
+  // what the start will use, in a line: the folder's name (or its own, made as it starts), the model, the effort and
+  // the permission mode picked (none: Claude Code's own settings), the last session continued, the office context
+  function digest(r, own) {
+    const parts = [r.dir ? base(r.dir) : t(own ? 'launch.ownDir' : 'launch.noDir')]
+    if (r.model) parts.push(opts?.models?.find(o => o.value === r.model)?.label || r.model)
+    if (r.effort) parts.push(r.effort)
+    if (r.permissionMode) parts.push(r.permissionMode)
+    if (!r.model && !r.effort && !r.permissionMode) parts.push(t('launch.engineOwn'))
+    if (r.resume === 'continue') parts.push(t('launch.continues'))
+    if (r.context) parts.push(t('launch.contextOn'))
+    return parts.join(' · ')
   }
 
   // bypassPermissions runs everything without asking: a red line under the select says what that means (picked, it
-  // scrolls into sight)
+  // scrolls into sight, and the select's description is it), and under the folded line while folded, so the settings
+  // or the last start can't pick it out of sight
   function warn(reveal) {
-    const el = form.querySelector('.warn')
-    el.hidden = field('permissionMode').value !== 'bypassPermissions'
-    if (reveal && !el.hidden) el.scrollIntoView({ block: 'nearest' })
+    const on = field('permissionMode').value === 'bypassPermissions', sel = field('permissionMode')
+    for (const el of form.querySelectorAll('.warn')) el.hidden = !on
+    if (on) sel.setAttribute('aria-describedby', 'launch-warn')
+    else sel.removeAttribute('aria-describedby')
+    if (reveal && on) form.querySelector(adv.open ? '.adv .warn' : '.warn.out').scrollIntoView({ block: 'nearest' })
   }
 
   form.addEventListener('input', preview)
   form.addEventListener('change', preview)
   field('permissionMode').addEventListener('change', () => warn(true))
+  adv.addEventListener('toggle', () => { if (adv.open) showEnd(field('dir')) })
+  // every field back to the settings' (the button goes: the focus it had to the first field, not out of the dialog)
+  form.querySelector('.use').onclick = ev => {
+    const had = document.activeElement === ev.currentTarget
+    put(settingsChoices())
+    form.querySelector('.browser').hidden = true
+    warn()
+    preview()
+    if (had) field('dir').focus()
+  }
   form.querySelector('.browse').onclick = () => browse(sym, form.querySelector('.browser'), field('dir').value.trim(), reason => setStatus(reason, true), opts?.home)
   form.querySelector('.pick').onclick = () => {
     field('dir').value = form.querySelector('.browser').dataset.path
@@ -126,6 +184,7 @@ export function createLaunchDialog(sym, { options = () => sym.launchOptions(true
     setStatus(t('launch.starting'))
     const res = await sym.launch(r)
     if (!res.ok) {
+      if (FIELD_ERROR.test(res.data?.code || '')) adv.open = true // what to change is in there
       setStatus(t('launch.failed', { reason: errorText(res.data) + (res.data?.fix ? '\n' + res.data.fix : '') }), true)
       form.querySelector('.go').disabled = false
       return
@@ -143,20 +202,18 @@ export function createLaunchDialog(sym, { options = () => sym.launchOptions(true
       if (!opts?.enabled) return showError(opts ? offReason() : t('error.unreachable'), { title: t('errlog.oops.launchOff') })
       const acc = accountId ? sym.accountById(accountId) : null
       account = acc ? acc.id : null
-      const last = acc?.last || {}
+      // an employee going back to work starts as it last did; a new one, or one never started from the page, as the
+      // settings say (a folder that one worked in stays: a new one gets a folder of its own)
+      const last = acc?.last
+      fromLast = !!last
       form.querySelector('.title').textContent = acc ? t('launch.titleExisting', { name: acc.name }) : t('launch.titleNew')
       field('name').value = acc ? acc.name : ''
       field('name').readOnly = !!acc
       const recent = opts.recentDirs || []
-      // a new employee gets a folder of its own unless one is picked; an old one goes back to where it worked
-      field('dir').value = acc ? last.dir || acc.dir || acc.home || '' : ''
-      // a new employee follows Claude Code's own settings (the empty choices leave the flags out); an old one works as it last did
-      fill(field('model'), opts.models, acc ? last.model : '')
-      fill(field('effort'), opts.efforts, acc ? last.effort : '')
-      fill(field('permissionMode'), opts.permissionModes, acc ? last.permissionMode : '')
-      field('context').checked = !!(acc && last.context)
+      put(last ? { dir: last.dir || acc.dir || acc.home || '', model: last.model || '', effort: last.effort || '', permissionMode: last.permissionMode || '', resume: '', context: !!last.context }
+        : { ...settingsChoices(), dir: acc ? acc.dir || acc.home || '' : '' })
+      form.querySelector('.adv-note').textContent = t(fromLast ? 'launch.fromLast' : 'launch.fromSettings')
       warn()
-      fill(field('resume'), opts.resumes, '')
       form.querySelector('.recent').innerHTML = recent.map(d => `<span role="button" tabindex="0" title="${esc(d)}">${esc(base(d))}</span>`).join('')
       form.querySelectorAll('.recent span').forEach((el, i) => el.onclick = () => { field('dir').value = recent[i]; showEnd(field('dir')); preview() })
       form.querySelector('.browser').hidden = true
@@ -164,9 +221,11 @@ export function createLaunchDialog(sym, { options = () => sym.launchOptions(true
       form.querySelector('.go').disabled = false
       pending = null
       preview()
+      // folded, unless it can't start without a folder picked (no default folder to make one in)
+      adv.open = !field('dir').value.trim() && !ownDir()
       onOpen()
       dlg.hidden = false
-      ;(acc ? field('dir') : field('name')).focus()
+      ;(acc ? form.querySelector('.go') : field('name')).focus() // (going back to work, Enter starts it)
       showEnd(field('dir'))
     },
     close() { dlg.hidden = true; pending = null },
@@ -189,6 +248,9 @@ export function createLaunchDialog(sym, { options = () => sym.launchOptions(true
   sym.on('snapshot', () => launch.watch())
   return launch
 }
+
+// the codes of a start refused for its folder or its options: the folded fields open
+const FIELD_ERROR = /^(launch_dir_|bot_home_|launch_bad_option$|cmd_unsafe_arg$)/
 
 // an employee's own folder's name, as the bridge makes it (slugOr in internal/bridge/git.go): letters, digits, -, _ and
 // . stay, every other run of characters becomes one -, a run of dots one dot, - and . go from the ends, a final .lock

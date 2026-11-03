@@ -340,7 +340,7 @@ func normalizeLaunch(req LaunchRequest) (LaunchRequest, error) {
 	}
 	if !validOption(launchModels, req.Model) || !validOption(launchEfforts, req.Effort) ||
 		!validOption(launchPermissionModes, req.PermissionMode) || !validOption(launchResumes, req.Resume) {
-		return req, newError("launch_bad_option", "unknown drop-down value")
+		return req, errBadOption
 	}
 	return req, nil
 }

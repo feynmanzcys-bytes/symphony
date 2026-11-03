@@ -239,6 +239,10 @@ button.close { border-radius: 50%; }
 #task .foot { border-top-width: 1px; }
 :is(#launch, #task) .panel > .title { border-bottom: 1px solid var(--line); }
 :is(#launch, #task) .browser { border-width: 1px; border-color: var(--field-line); border-radius: 8px; overflow: hidden; }
+#launch .adv { border-width: 1px; border-radius: 10px; }
+#launch .adv > summary { border-radius: 9px; }
+#launch .adv[open] > summary { border-radius: 9px 9px 0 0; }
+#launch .advbody { border-top-width: 1px; }
 #taskwin .desc { border-radius: 10px; }
 #taskwin .mrow { border-bottom-width: 1px; }
 .errbox .hint { border-top-width: 1px; }

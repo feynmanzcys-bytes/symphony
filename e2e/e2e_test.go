@@ -327,6 +327,8 @@ func TestOffice(t *testing.T) {
 		chromedp.Click(chromedp.CSS(`.seat-add`)),
 		chromedp.WaitVisible(chromedp.CSS(`#launch form`)),
 		chromedp.SetValue(chromedp.CSS(`#launch input[name=name]`), nameD),
+		chromedp.Click(chromedp.CSS(`#launch .adv > summary`)), // the folder and the options are in Advanced settings
+		chromedp.WaitVisible(chromedp.CSS(`#launch input[name=dir]`)),
 		chromedp.SetValue(chromedp.CSS(`#launch input[name=dir]`), dirD),
 		chromedp.SetValue(chromedp.CSS(`#launch select[name=model]`), model),
 		chromedp.SetValue(chromedp.CSS(`#launch select[name=permissionMode]`), "manual"),
@@ -407,6 +409,8 @@ func TestOffice(t *testing.T) {
 		t.Fatalf("putting an employee back to work should fill in the name: %q", name)
 	}
 	do(t, office, 10*time.Second,
+		chromedp.Click(chromedp.CSS(`#launch .adv > summary`)),
+		chromedp.WaitVisible(chromedp.CSS(`#launch input[name=dir]`)),
 		chromedp.SetValue(chromedp.CSS(`#launch input[name=dir]`), dirB), // B was started by hand, so there is no last folder to fill in
 		chromedp.SetValue(chromedp.CSS(`#launch select[name=model]`), model),
 		chromedp.SetValue(chromedp.CSS(`#launch select[name=permissionMode]`), "manual"),

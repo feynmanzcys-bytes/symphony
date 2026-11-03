@@ -1,7 +1,9 @@
 // The settings, shared by every theme: a dialog (#settings) that a button of the theme's opens, with what one sets
 // rarely. How the page looks: the language, the theme, light or dark where the theme has both, the theme's own settings
 // (the pixel office's pixel size), motion paused or not. The conversation: the steps between answers shown unfolded.
-// The employees: the bridge's default folder, where one started without a working folder gets a folder of its own.
+// The employees: what a new one starts with, the bridge's settings (the launch dialog's Advanced settings fill them
+// in): the default folder, where one started without a working folder gets a folder of its own, the model, the
+// thinking effort, the permission mode, and whether it hears who else is in the office.
 // Reporting a problem: what went wrong is in the error log already (the bridge writes it as it happens); one button
 // gives the report file (the errors, this bridge and this page, the bridge's last log lines; no key, no token, no chat)
 // to send by email or attach to an issue, and what the log holds can be looked at. And what this is: the versions,
@@ -15,7 +17,7 @@
 //   settings.open() · settings.close() · settings.hidden · settings.el
 //   settingsButton(sym, settings, { cls, icon }) → the theme's button: "Settings", marked while the error log has
 //     something newer than what was seen
-import { t, lang, esc, button, errorText } from '/ui/common.js'
+import { t, lang, esc, button, errorText, fill } from '/ui/common.js'
 import { langPicker, LANGS } from '/i18n.js'
 import { dialog } from '/ui/a11y.js'
 import { motion } from '/ui/motion.js'
@@ -42,11 +44,19 @@ const MARKUP = `
         <div class="row check"><input type="checkbox" id="set-steps"><label for="set-steps"></label><small class="hint" id="set-steps-hint"></small></div>
       </section>
       <section class="staff" aria-labelledby="set-staff"><h3 id="set-staff"></h3>
+        <p class="what"></p>
         <form class="row home" autocomplete="off"><label for="set-bot-home"></label>
           <span class="ctl path"><input id="set-bot-home" name="botHome" spellcheck="false"><button type="submit" class="px save"></button><button type="button" class="px reset"></button></span>
           <small class="hint" id="set-bot-home-hint"></small>
           <p class="said" role="status"></p>
         </form>
+        <div class="defaults">
+          <div class="row"><label for="set-model"></label><span class="ctl"><select id="set-model" name="model"></select></span></div>
+          <div class="row"><label for="set-effort"></label><span class="ctl"><select id="set-effort" name="effort"></select></span></div>
+          <div class="row mode"><label for="set-mode"></label><span class="ctl"><select id="set-mode" name="permissionMode"></select></span><small class="warn" id="set-mode-warn" hidden></small></div>
+          <div class="row check"><input type="checkbox" id="set-context"><label for="set-context"></label><small class="hint" id="set-context-hint"></small></div>
+          <p class="said" role="status"></p>
+        </div>
       </section>
       <section class="records" aria-labelledby="set-records" hidden><h3 id="set-records"></h3><div class="acts"></div></section>
       <section class="errlog" aria-labelledby="set-errlog"><h3 id="set-errlog"></h3>
@@ -130,10 +140,12 @@ export function createSettings(sym, { scheme = null, extra = [], records = [] } 
   steps.onchange = () => setPref(STEPS_OPEN, steps.checked ? 'open' : null)
 
   // ---------- the employees ----------
-  // The bridge's own setting, not this page's: where an employee started without a working folder gets a folder of its
-  // own. Read as the dialog opens (what was typed and not saved goes); saved with Enter or the button
+  // The bridge's own settings, not this page's: what an employee starts with. Read as the dialog opens. The default
+  // folder, where one started without a working folder gets a folder of its own, is saved with Enter or its button
+  // (what was typed and not saved goes); the drop-downs and the box save as they change
   $('#set-staff').textContent = t('settings.staff')
-  const home = $('.staff form'), homeIn = $('#set-bot-home'), said = $('.staff .said'), reset = $('.staff .reset')
+  $('.staff .what').textContent = t('settings.staffWhat')
+  const home = $('.staff form'), homeIn = $('#set-bot-home'), said = $('.staff form .said'), reset = $('.staff .reset')
   $('label[for=set-bot-home]').textContent = t('settings.botHome')
   $('#set-bot-home-hint').textContent = t('settings.botHomeHint')
   homeIn.setAttribute('aria-describedby', 'set-bot-home-hint')
@@ -148,7 +160,7 @@ export function createSettings(sym, { scheme = null, extra = [], records = [] } 
   }
   async function loadHome() {
     const r = await sym.settings()
-    if (r.ok) takeHome(r.data)
+    if (r.ok) { takeHome(r.data); takeDefaults(r.data) }
     else tell(t('settings.loadFailed', { reason: errorText(r.data) }), true)
   }
   async function saveHome(value) {
@@ -165,6 +177,41 @@ export function createSettings(sym, { scheme = null, extra = [], records = [] } 
     await saveHome('')
     if (had && reset.hidden) homeIn.focus()
   }
+  // the model, the effort and the permission mode ("Default": Claude Code's own settings), and the office context
+  const defs = $('.staff .defaults'), defSaid = defs.querySelector('.said'), ctxBox = $('#set-context'), modeWarn = $('#set-mode-warn')
+  const picks = { model: $('#set-model'), effort: $('#set-effort'), permissionMode: $('#set-mode') }
+  $('label[for=set-model]').textContent = t('launch.model')
+  $('label[for=set-effort]').textContent = t('launch.effort')
+  $('label[for=set-mode]').textContent = t('launch.permissionMode')
+  $('label[for=set-context]').textContent = t('launch.context')
+  $('#set-context-hint').textContent = t('launch.contextTitle')
+  ctxBox.setAttribute('aria-describedby', 'set-context-hint')
+  modeWarn.textContent = t('launch.bypassWarning')
+  const tellDefaults = (text, err) => { defSaid.classList.toggle('err', !!err); setText(defSaid, text) }
+  // bypassPermissions runs everything without asking: the red line under the select says what that means, and the
+  // select's description is it while it shows
+  function warnMode() {
+    modeWarn.hidden = picks.permissionMode.value !== 'bypassPermissions'
+    if (modeWarn.hidden) picks.permissionMode.removeAttribute('aria-describedby')
+    else picks.permissionMode.setAttribute('aria-describedby', 'set-mode-warn')
+  }
+  function takeDefaults(view) {
+    for (const [name, sel] of Object.entries(picks)) fill(sel, view[{ model: 'models', effort: 'efforts', permissionMode: 'permissionModes' }[name]], view[name] ?? '')
+    ctxBox.checked = !!view.context
+    warnMode()
+  }
+  // one change at a time as it's made (the bridge keeps the others'); refused or lost, the fields show the bridge's
+  // settings again
+  async function saveDefault(change) {
+    tellDefaults('')
+    const r = await sym.saveSettings(change)
+    if (r.ok) return tellDefaults(t('settings.saved'))
+    tellDefaults(t('settings.saveFailed', { reason: errorText(r.data) }), true)
+    const now = await sym.settings()
+    if (now.ok) takeDefaults(now.data)
+  }
+  for (const [name, sel] of Object.entries(picks)) sel.addEventListener('change', () => { if (name === 'permissionMode') warnMode(); saveDefault({ [name]: sel.value }) })
+  ctxBox.addEventListener('change', () => saveDefault({ context: ctxBox.checked }))
 
   // ---------- the theme's logs ----------
   // Each shows beside the page, not in here: the settings close, and the focus goes to the log (its heading, so its name
@@ -358,6 +405,7 @@ export function createSettings(sym, { scheme = null, extra = [], records = [] } 
       el.hidden = false
       saved.textContent = ''
       tell('')
+      tellDefaults('')
       draw()
       load()
       loadHome()

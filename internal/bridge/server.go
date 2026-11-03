@@ -524,6 +524,7 @@ func (s *Server) locale(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) launchOptions(w http.ResponseWriter, r *http.Request) {
 	home, _ := os.UserHomeDir()
+	settings := s.Hub.Settings()
 	trustHint, terminal := false, ""
 	var mod *ModStatus
 	if s.Launcher != nil {
@@ -541,31 +542,24 @@ func (s *Server) launchOptions(w http.ResponseWriter, r *http.Request) {
 		"permissionModes": launchPermissionModes,
 		"resumes":         launchResumes,
 		"home":            home,
-		"botHome":         s.Hub.Settings().BotHome, // where an employee started without a folder gets its own
+		"botHome":         settings.BotHome,        // where an employee started without a folder gets its own
+		"defaults":        settings.LaunchDefaults, // what a start begins with (the settings: model, effort, permissionMode, context)
 		"recentDirs":      s.Hub.recentDirs(8),
 	})
 }
 
 // settings answers the bridge's settings in effect (GET /api/settings), and changes them (POST, with the fields to
-// change: botHome "" goes back to the default).
+// change: botHome "" goes back to the default; model, effort and permissionMode "" are Claude Code's own).
 func (s *Server) settings(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet {
 		writeJSON(w, 200, s.Hub.Settings())
 		return
 	}
-	var req struct {
-		BotHome *string `json:"botHome"`
-	}
+	var req SettingsChange
 	if !decode(w, r, &req) {
 		return
 	}
-	s.Hub.mu.Lock()
-	next := s.Hub.settings
-	s.Hub.mu.Unlock()
-	if req.BotHome != nil {
-		next.BotHome = *req.BotHome
-	}
-	view, err := s.Hub.SetSettings(next)
+	view, err := s.Hub.ChangeSettings(req)
 	if err != nil {
 		writeErr(w, err)
 		return

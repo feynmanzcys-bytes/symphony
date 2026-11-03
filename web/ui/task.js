@@ -150,8 +150,9 @@ export function createTaskUI(sym, {
     row.querySelector('.browse').onclick = () => browse(sym, box, dir.value.trim(), reason => setStatus(reason, true), opts?.home)
     box.querySelector('.pick').onclick = () => { dir.value = box.dataset.path; box.hidden = true; showEnd(dir) }
     row.querySelectorAll('.recent span').forEach((el, i) => el.onclick = () => { dir.value = recent[i]; showEnd(dir) })
-    fill(row.querySelector('[name=model]'), opts?.models || [], '')
-    fill(row.querySelector('[name=effort]'), opts?.efforts || [], '')
+    // as the settings say a new employee starts (Claude Code's own when they say nothing)
+    fill(row.querySelector('[name=model]'), opts?.models || [], opts?.defaults?.model ?? '')
+    fill(row.querySelector('[name=effort]'), opts?.efforts || [], opts?.defaults?.effort ?? '')
     row.querySelector('.rm').onclick = () => { picks = picks.filter(x => x !== row); row.remove(); renderPicks() }
     form.querySelector('.advs').appendChild(row)
     picks.push(row)
@@ -452,7 +453,7 @@ export function createTaskUI(sym, {
       form.querySelector('.title').textContent = room ? t('task.titleNew', { room: room.name }) : t('task.titleNewHud')
       form.elements.desc.value = ''
       form.elements.leader.checked = true
-      fill(form.elements.permissionMode, opts.permissionModes, '') // Claude Code's own settings
+      fill(form.elements.permissionMode, opts.permissionModes, opts.defaults?.permissionMode ?? '') // the settings' (Claude Code's own when they say nothing)
       warn()
       // the employees: one in a running task, or without a folder to work in yet, can't be picked
       const busy = new Map()
@@ -469,9 +470,10 @@ export function createTaskUI(sym, {
           `${dot(s && s.state !== 'ended' ? s.state : 'ended', statusText(sym, s && s.state !== 'ended' ? s : null))}<span class="nm">${esc(acc.name)}</span><span class="lead-tag">${esc(t('task.lead'))}</span>` +
           `<small title="${esc(dir)}">${esc(inTask ? t('task.inTask', { id: inTask }) : dir ? base(dir) : t('task.noDir'))}</small></label>` +
           `<select name="model" title="${esc(t('launch.model'))}" aria-label="${esc(t('launch.model'))}"></select><select name="effort" title="${esc(t('launch.effort'))}" aria-label="${esc(t('launch.effort'))}"></select>`
-        // as it last worked, or Claude Code's own settings
-        fill(row.querySelector('[name=model]'), opts.models, acc.last ? acc.last.model : '')
-        fill(row.querySelector('[name=effort]'), opts.efforts, acc.last ? acc.last.effort : '')
+        // as it last worked, or, never started from the page, as the settings say
+        const from = acc.last || opts.defaults || {}
+        fill(row.querySelector('[name=model]'), opts.models, from.model ?? '')
+        fill(row.querySelector('[name=effort]'), opts.efforts, from.effort ?? '')
         row.querySelector('input').onchange = ev => { picks = picks.filter(x => x !== row); if (ev.target.checked) picks.push(row); renderPicks() }
         list.appendChild(row)
       }

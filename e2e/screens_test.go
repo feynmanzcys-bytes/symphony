@@ -528,7 +528,13 @@ func TestScreens(t *testing.T) {
 	if !p.is(`(f => f.elements.model.value === '' && f.elements.effort.value === '' && f.elements.permissionMode.value === '' && f.querySelector('.warn').hidden)(document.querySelector('#launch form'))`) {
 		t.Fatalf("a new employee should start on Claude Code's own settings, without the warning: %s", p.js(`(f => [f.elements.model.value, f.elements.effort.value, f.elements.permissionMode.value].join())(document.querySelector('#launch form'))`))
 	}
+	if !p.is(`!document.querySelector('#launch .adv').open && document.querySelector('#launch .digest').textContent === "own folder · Claude Code's own settings"`) {
+		t.Fatalf("the dialog should open folded, its line saying what the start will use: %s", p.js(`document.querySelector('#launch .digest').textContent`))
+	}
 	p.shot("launch-dialog")
+	p.check()
+	p.run(`document.querySelector('#launch .adv > summary').click()`)
+	p.shot("launch-dialog-advanced")
 	p.check()
 	p.bypass("#launch")
 	p.shot("launch-dialog-bypass")
@@ -839,10 +845,13 @@ func (s *screens) dialogOpen(room int) {
 	})
 }
 
-// bypass picks bypassPermissions in a dialog (#launch or #task) and checks that the warning shows under the select, in
-// sight (not under the task dialog's buttons).
+// bypass picks bypassPermissions in a dialog (#launch, its Advanced settings unfolded, or #task) and checks that the
+// warning shows under the select, in sight (not under the task dialog's buttons).
 func (s *screens) bypass(dialog string) {
 	s.t.Helper()
+	if dialog == "#launch" { // (the select is in Advanced settings)
+		s.run(`document.querySelector('#launch .adv').open = true`)
+	}
 	s.run(fmt.Sprintf(`(s => { s.value = 'bypassPermissions'; s.dispatchEvent(new Event('change', { bubbles:true })) })(document.querySelector('%s [name=permissionMode]'))`, dialog))
 	if !s.is(fmt.Sprintf(`(w => { if (w.hidden || w.textContent.length < 20) return false; const r = w.getBoundingClientRect(); return w.contains(document.elementFromPoint(r.left + 4, r.top + r.height / 2)) })(document.querySelector('%s .warn'))`, dialog)) {
 		s.t.Fatalf("%s: bypassPermissions should show the warning under the select", dialog)

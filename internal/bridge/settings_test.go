@@ -1,10 +1,12 @@
 package bridge
 
 import (
+	"encoding/json"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -60,6 +62,42 @@ func TestSettings(t *testing.T) {
 		t.Fatalf("the default isn't written down: %q", got)
 	}
 
+	// what a start begins with: Claude Code's own first; values of the launch dialog's drop-downs only, kept and read
+	// again by the next bridge, the folder untouched
+	if v := again.Settings(); v.LaunchDefaults != (LaunchDefaults{}) || len(v.Models) != len(launchModels) || len(v.PermissionModes) != len(launchPermissionModes) {
+		t.Fatalf("Claude Code's own, and the choices: %+v", v)
+	}
+	for name, bad := range map[string]Settings{"model": {Model: "gpt"}, "effort": {Effort: "huge"}, "permission mode": {PermissionMode: "yolo"}} {
+		if _, err := again.SetSettings(bad); err == nil || err.(*Error).Code != "launch_bad_option" {
+			t.Errorf("an unknown %s: %v", name, err)
+		}
+	}
+	if got := strings.TrimSpace(readFile(t, filepath.Join(data, "settings.json"))); got != "{}" {
+		t.Fatalf("nothing refused is written: %q", got)
+	}
+	want := Settings{BotHome: mine, Model: "opus", Effort: "high", PermissionMode: "manual", Context: true}
+	if v, err := again.SetSettings(want); err != nil || v.LaunchDefaults != want.launchDefaults() || v.BotHome != mine {
+		t.Fatalf("set: %+v %v", v, err)
+	}
+	fourth := NewHub()
+	fourth.BotHomeDefault = def
+	if err := fourth.Open(data); err != nil {
+		t.Fatal(err)
+	}
+	if v := fourth.Settings(); v.LaunchDefaults != want.launchDefaults() || v.BotHome != mine {
+		t.Fatalf("the next bridge reads them: %+v", v)
+	}
+	// a hand edit's choice the drop-downs don't offer is Claude Code's own; the rest stays
+	writeFile(t, filepath.Join(data, "settings.json"), `{"model": "gpt", "effort": "max", "permissionMode": "yolo", "context": true}`)
+	fifth := NewHub()
+	fifth.BotHomeDefault = def
+	if err := fifth.Open(data); err != nil {
+		t.Fatal(err)
+	}
+	if v := fifth.Settings(); v.LaunchDefaults != (LaunchDefaults{Effort: "max", Context: true}) || v.BotHome != def {
+		t.Fatalf("unknown choices dropped: %+v", v)
+	}
+
 	// damaged: set aside, and the defaults
 	writeFile(t, filepath.Join(data, "settings.json"), `{"botHome": `)
 	third := NewHub()
@@ -102,6 +140,62 @@ func TestSettingsAPI(t *testing.T) {
 	}
 	if st := (client{t: t, base: base, modOnly: true}).status("GET", "/api/settings", nil); st != http.StatusUnauthorized {
 		t.Fatalf("without the page key: %d", st)
+	}
+
+	// what a start begins with: Claude Code's own first, with the drop-downs' choices; each field changed alone
+	got := c.ok("GET", "/api/settings", nil)
+	if got["model"] != "" || got["effort"] != "" || got["permissionMode"] != "" || got["context"] != false || len(got["models"].([]any)) != len(launchModels) ||
+		len(got["efforts"].([]any)) != len(launchEfforts) || len(got["permissionModes"].([]any)) != len(launchPermissionModes) {
+		t.Fatalf("Claude Code's own, and the choices: %v", got)
+	}
+	if got := c.ok("POST", "/api/settings", map[string]any{"model": "opus"}); got["model"] != "opus" || got["effort"] != "" || got["botHome"] != def {
+		t.Fatalf("the model alone: %v", got)
+	}
+	if got := c.ok("POST", "/api/settings", map[string]any{"effort": "max", "permissionMode": "bypassPermissions", "context": true}); got["model"] != "opus" ||
+		got["effort"] != "max" || got["permissionMode"] != "bypassPermissions" || got["context"] != true {
+		t.Fatalf("the rest, the model kept: %v", got)
+	}
+	for _, bad := range []map[string]any{{"model": "gpt"}, {"effort": "huge"}, {"permissionMode": "yolo"}} {
+		if st, code := c.failure("POST", "/api/settings", bad); st != http.StatusBadRequest || code != "launch_bad_option" {
+			t.Errorf("%v: %d %q", bad, st, code)
+		}
+	}
+	if st, _ := c.failure("POST", "/api/settings", map[string]any{"context": "yes"}); st != http.StatusBadRequest {
+		t.Errorf("context must be true or false: %d", st)
+	}
+	opts := c.ok("GET", "/api/launch/options", nil)
+	if d, _ := json.Marshal(opts["defaults"]); string(d) != `{"context":true,"effort":"max","model":"opus","permissionMode":"bypassPermissions"}` {
+		t.Fatalf("the launch dialog's options carry them, the refused ones not taken: %s", d)
+	}
+	if got := c.ok("POST", "/api/settings", map[string]any{"model": "", "effort": "", "permissionMode": "", "context": false}); got["model"] != "" || got["context"] != false {
+		t.Fatalf("back to Claude Code's own: %v", got)
+	}
+
+	// changes at once (a page's drop-downs save as they change) each keep the others'
+	for round := 0; round < 20; round++ {
+		if _, err := srv.Hub.SetSettings(Settings{}); err != nil {
+			t.Fatal(err)
+		}
+		opus, high, plan, yes := "opus", "high", "plan", true
+		var wg sync.WaitGroup
+		errs := make(chan error, 4)
+		for _, ch := range []SettingsChange{{Model: &opus}, {Effort: &high}, {PermissionMode: &plan}, {Context: &yes}} {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				if _, err := srv.Hub.ChangeSettings(ch); err != nil {
+					errs <- err
+				}
+			}()
+		}
+		wg.Wait()
+		close(errs)
+		for err := range errs {
+			t.Fatal(err)
+		}
+		if v := srv.Hub.Settings(); v.LaunchDefaults != (LaunchDefaults{Model: "opus", Effort: "high", PermissionMode: "plan", Context: true}) {
+			t.Fatalf("round %d: a change lost: %+v", round, v.LaunchDefaults)
+		}
 	}
 }
 

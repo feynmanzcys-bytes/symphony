@@ -294,6 +294,27 @@ button.close:focus-visible { outline:2px solid var(--focus-line); outline-offset
 /* under the permission select while bypassPermissions is picked: what it lets the session do */
 :is(#launch, #task) .warn { margin-top:4px; font-size:12px; font-weight:700; color:var(--danger-ink); }
 #launch .grid .warn { grid-column:1 / -1; }
+/* the launch dialog's advanced settings: folded, a line that says what the start will use (the folder, the model and
+   the rest; its triangle turns as it unfolds, as the steps' does); unfolded, where the fields were filled in from, the
+   button that sets them back to the settings', the fields and the preview. The bypassPermissions warning shows under
+   the folded line too */
+#launch .adv { margin-top:14px; border:2px solid var(--line); background:var(--card); }
+#launch .adv > summary { display:block; padding:5px 8px; cursor:pointer; list-style:none; font-size:13px; color:var(--ink);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+#launch .adv > summary::-webkit-details-marker { display:none; }
+#launch .adv > summary::before { content:''; display:inline-block; margin-right:7px; vertical-align:1px; border-style:solid; border-width:4px 0 4px 6px;
+  border-color:transparent transparent transparent currentColor; transition:transform .15s var(--ease-out); }
+#launch .adv[open] > summary::before { transform:rotate(90deg); }
+#launch .adv > summary:hover { background:var(--hl); }
+#launch .adv > summary:focus-visible { outline:2px solid var(--focus-line); outline-offset:-2px; }
+#launch .adv > summary .digest { margin-left:4px; font-size:12px; color:var(--muted-2); }
+#launch .adv[open] > summary .digest { display:none; }
+#launch .advbody { padding:0 10px 10px; border-top:2px solid var(--line); }
+#launch .advbody .from { display:flex; flex-wrap:wrap; align-items:center; gap:4px 10px; margin-top:8px; font-size:12px; color:var(--muted-2); }
+#launch .advbody .from .adv-note { flex:1 1 220px; min-width:0; }
+#launch .advbody .from .use { flex:none; font-size:12px; }
+#launch .adv[open] + .warn.out { display:none; }
+#launch .warn.out { margin-top:6px; }
 /* the task dialog: the launch dialog's fields, the employees ticked in order and the advisors, numbered as the team */
 #task .panel { width:min(680px, calc(100vw - 32px)); }
 #task label { display:block; margin:8px 0 2px; font-size:12px; color:var(--muted-2); }
@@ -486,7 +507,12 @@ button.close:focus-visible { outline:2px solid var(--focus-line); outline-offset
 #settings .row.home input:focus { outline:none; border-color:var(--focus-line); box-shadow:var(--focus-ring); }
 #settings .row.home .said { grid-column:2; margin:0; font-size:12px; font-weight:700; color:var(--ink); overflow-wrap:anywhere; } /* (always there, empty too: a live region screen readers follow) */
 #settings .row.home .said.err { font-weight:400; color:var(--danger-ink); }
-#settings .errlog .what { margin:0 0 8px; font-size:12px; color:var(--muted-2); max-width:60ch; }
+/* what a new employee starts with: the drop-downs and the box save as they change, what that said under them (in line
+   with the controls); a red line under the permission mode while it is bypassPermissions */
+#settings .row.mode .warn { grid-column:2; font-size:12px; font-weight:700; color:var(--danger-ink); }
+#settings .defaults > .said { margin:0; padding-left:calc(max(112px, 30%) + 12px); font-size:12px; font-weight:700; color:var(--ink); overflow-wrap:anywhere; }
+#settings .defaults > .said.err { font-weight:400; color:var(--danger-ink); }
+#settings .what { margin:0 0 8px; font-size:12px; color:var(--muted-2); max-width:60ch; }
 #settings .records .acts { display:flex; flex-wrap:wrap; gap:8px; }
 #settings .records .acts button { display:inline-flex; align-items:center; gap:7px; padding:4px 12px; }
 #settings .records .acts .ico { margin:0; }
@@ -524,7 +550,8 @@ button.close:focus-visible { outline:2px solid var(--focus-line); outline-offset
 #settings .about a { color:var(--ink); text-underline-offset:2px; }
 @media (max-width: 520px) {
   #settings .row, #settings .about dl { grid-template-columns:minmax(0, 1fr); }
-  #settings .row .hint, #settings .row.home .said { grid-column:1; }
+  #settings .row .hint, #settings .row.home .said, #settings .row.mode .warn { grid-column:1; }
+  #settings .defaults > .said { padding-left:0; }
   #settings .row.check { grid-template-columns:auto minmax(0, 1fr); column-gap:8px; } /* the box beside its words */
   #settings .row.check > input { grid-column:1; justify-self:start; }
   #settings .row.check > label, #settings .row.check > .hint { grid-column:2; }

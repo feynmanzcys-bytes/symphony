@@ -18,12 +18,45 @@ type Settings struct {
 	// BotHome is where an employee started from the page without a working folder gets a folder of its own
 	// (botFolder); empty means Hub.BotHomeDefault
 	BotHome string `json:"botHome,omitempty"`
+	// Model, Effort, PermissionMode and Context are what a start from the page begins with (LaunchDefaults); empty
+	// leaves the flag out, so Claude Code's own settings apply
+	Model          string `json:"model,omitempty"`
+	Effort         string `json:"effort,omitempty"`
+	PermissionMode string `json:"permissionMode,omitempty"`
+	Context        bool   `json:"context,omitempty"`
 }
 
-// SettingsView is what GET /api/settings answers: the settings in effect, and the defaults to go back to.
+// LaunchDefaults are the settings' choices for a start from the page, which the pages fill in (the bridge takes what a
+// start asks for): the launch dialog's advanced settings for a new employee, and for one never started from the page
+// (one that was goes back to work as it last did); the task dialog's permission mode, its advisors' model and effort,
+// and those of its employees never started from the page. Each is one of the launch dialog's drop-down values; ""
+// leaves the flag out, so Claude Code's own settings apply. Context: the session hears who else is in the office
+// (SYMPHONY_CONTEXT=1).
+type LaunchDefaults struct {
+	Model          string `json:"model"`
+	Effort         string `json:"effort"`
+	PermissionMode string `json:"permissionMode"`
+	Context        bool   `json:"context"`
+}
+
+func (s Settings) launchDefaults() LaunchDefaults {
+	return LaunchDefaults{Model: s.Model, Effort: s.Effort, PermissionMode: s.PermissionMode, Context: s.Context}
+}
+
+// validChoices says whether the settings' drop-down values are ones the launch dialog offers.
+func (s Settings) validChoices() bool {
+	return validOption(launchModels, s.Model) && validOption(launchEfforts, s.Effort) && validOption(launchPermissionModes, s.PermissionMode)
+}
+
+// SettingsView is what GET /api/settings answers: the settings in effect, the default folder to go back to, and the
+// drop-downs' choices (as the launch dialog's options have them).
 type SettingsView struct {
 	BotHome        string `json:"botHome"`        // the one set, else the default
 	BotHomeDefault string `json:"botHomeDefault"` // where the employees' folders go when none is set
+	LaunchDefaults
+	Models          []Option `json:"models"`
+	Efforts         []Option `json:"efforts"`
+	PermissionModes []Option `json:"permissionModes"`
 }
 
 var (
@@ -61,6 +94,16 @@ func loadSettings(h *Hub, path string) (Settings, error) {
 		h.warn("log.data_set_aside", "file", path, "reason", err.Error(), "aside", aside)
 		return Settings{}, nil
 	}
+	// a choice the drop-downs don't offer (a hand edit, a newer bridge's) is Claude Code's own
+	if !validOption(launchModels, s.Model) {
+		s.Model = ""
+	}
+	if !validOption(launchEfforts, s.Effort) {
+		s.Effort = ""
+	}
+	if !validOption(launchPermissionModes, s.PermissionMode) {
+		s.PermissionMode = ""
+	}
 	return s, nil
 }
 
@@ -93,7 +136,8 @@ func (h *Hub) Settings() SettingsView {
 }
 
 func (h *Hub) settingsViewLocked() SettingsView {
-	return SettingsView{BotHome: h.botHomeLocked(), BotHomeDefault: h.BotHomeDefault}
+	return SettingsView{BotHome: h.botHomeLocked(), BotHomeDefault: h.BotHomeDefault, LaunchDefaults: h.settings.launchDefaults(),
+		Models: launchModels, Efforts: launchEfforts, PermissionModes: launchPermissionModes}
 }
 
 // botHomeLocked is the folder the employees' own folders go in: the one set, else the default.
@@ -104,14 +148,48 @@ func (h *Hub) botHomeLocked() string {
 	return h.BotHomeDefault
 }
 
+// SettingsChange names the settings to change (POST /api/settings): a field left out stays as it is.
+type SettingsChange struct {
+	BotHome        *string `json:"botHome"`
+	Model          *string `json:"model"`
+	Effort         *string `json:"effort"`
+	PermissionMode *string `json:"permissionMode"`
+	Context        *bool   `json:"context"`
+}
+
+// ChangeSettings changes the settings a change names, checked and kept as SetSettings does, in one go: two changes at
+// once (a page's drop-downs save as they change) each keep the other's.
+func (h *Hub) ChangeSettings(c SettingsChange) (SettingsView, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	next := h.settings
+	for _, f := range []struct{ to, from *string }{{&next.BotHome, c.BotHome}, {&next.Model, c.Model}, {&next.Effort, c.Effort}, {&next.PermissionMode, c.PermissionMode}} {
+		if f.from != nil {
+			*f.to = *f.from
+		}
+	}
+	if c.Context != nil {
+		next.Context = *c.Context
+	}
+	return h.setSettingsLocked(next)
+}
+
 // SetSettings checks new settings and keeps them (settings.json, written at once): BotHome an absolute folder, or empty
-// for the default. It answers the settings in effect.
+// for the default; the launch defaults values of the launch dialog's drop-downs (launch_bad_option). It answers the
+// settings in effect.
 func (h *Hub) SetSettings(s Settings) (SettingsView, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	return h.setSettingsLocked(s)
+}
+
+func (h *Hub) setSettingsLocked(s Settings) (SettingsView, error) {
 	home, err := checkBotHome(s.BotHome, h.dataDir)
 	if err != nil {
 		return SettingsView{}, err
+	}
+	if !s.validChoices() {
+		return SettingsView{}, errBadOption
 	}
 	s.BotHome = home
 	if h.dataDir != "" {

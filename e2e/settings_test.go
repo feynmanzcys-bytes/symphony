@@ -35,7 +35,13 @@ import (
 // picks its colors, remembered. The employees' default folder: the bridge's, shown in the settings; a relative one
 // refused; another saved (settings.json) and the default back with its button, the focus kept in the dialog; the page
 // names an employee's own folder as the bridge does; a new employee started without a folder gets one there, which the
-// launch dialog's placeholder and preview name, a new git repository bound to it.
+// launch dialog's placeholder and preview name, a new git repository bound to it. What a new employee starts with: the
+// model, the effort, the permission mode and the office context, Claude Code's own at first, each saved as it changes
+// (settings.json), a red line under bypassPermissions; the launch dialog folds them, with the folder, into Advanced
+// settings, a line saying what the start will use (and the bypassPermissions warning under it); unfolded, filled in as
+// the settings say, one changed for this start (the settings untouched) and all set back by "Use the settings"; the
+// start gets what the dialog says. An employee going back to work starts as it last did, and can take the settings';
+// the task dialog's permission mode, a new advisor's and an employee's never started from the page as the settings say.
 func TestSettings(t *testing.T) {
 	requireBrowser(t)
 	repo, _ := filepath.Abs("..")
@@ -355,5 +361,126 @@ func TestSettings(t *testing.T) {
 	}
 	b.post(t, kai.Token, "/api/event", map[string]any{"session": "s-k", "kind": "session.start", "cwd": own, "launch": started.ID})
 	waitUntil(t, 10*time.Second, "online, the dialog closes", func() bool { return s.is(`document.getElementById('launch').hidden`) })
+
+	// ---------- what a new employee starts with ----------
+	// the settings: the model, the effort, the permission mode and the office context, Claude Code's own at first, each
+	// saved as it changes (settings.json), the bypassPermissions warning under its select
+	s.run(`document.getElementById('open-settings').click()`)
+	waitUntil(t, 10*time.Second, "the settings show Claude Code's own for each", func() bool {
+		return s.is(`(f => f('set-model').options.length > 1 && f('set-model').value === '' && f('set-effort').value === '' && f('set-mode').value === '' && !f('set-context').checked && f('set-mode-warn').hidden)(id => document.getElementById(id))`)
+	})
+	for id, want := range map[string]string{"set-model": "Model (--model)", "set-effort": "Thinking effort (--effort)", "set-mode": "Permission mode (--permission-mode)", "set-context": "Tell it who else is in the office"} {
+		if n := ax(t, sctx, `document.getElementById('`+id+`')`); n.Name != want {
+			t.Errorf("%s should be named by its label: %+v", id, n)
+		}
+	}
+	pick := func(sel, value string) {
+		t.Helper()
+		s.run(fmt.Sprintf(`(s => { s.value = %q; s.dispatchEvent(new Event('change', { bubbles: true })) })(document.querySelector(%q))`, value, sel))
+	}
+	pick("#set-model", "opus")
+	waitUntil(t, 10*time.Second, "the model saved as it changes", func() bool {
+		return b.Hub.Settings().Model == "opus" && s.is(`document.querySelector('#settings .defaults .said').textContent === 'Saved.'`)
+	}, func() string { return s.js(`document.querySelector('#settings .defaults .said').textContent`) })
+	pick("#set-effort", "high")
+	pick("#set-mode", "bypassPermissions")
+	s.run(`document.getElementById('set-context').click()`)
+	want := bridge.LaunchDefaults{Model: "opus", Effort: "high", PermissionMode: "bypassPermissions", Context: true}
+	waitUntil(t, 10*time.Second, "each saved, the warning under the permission mode", func() bool {
+		return b.Hub.Settings().LaunchDefaults == want && s.is(`!document.getElementById('set-mode-warn').hidden && document.getElementById('set-mode-warn').getClientRects().length > 0 && document.getElementById('set-mode').getAttribute('aria-describedby') === 'set-mode-warn'`)
+	}, func() string { return fmt.Sprintf("%+v", b.Hub.Settings().LaunchDefaults) })
+	if data, err := os.ReadFile(filepath.Join(b.Data, "settings.json")); err != nil || !strings.Contains(string(data), `"permissionMode": "bypassPermissions"`) || !strings.Contains(string(data), "my bots") {
+		t.Errorf("settings.json should keep them, the folder too: %s %v", data, err)
+	}
+	s.shot("launch-defaults")
+	s.run(`document.querySelector('#settings .close').click()`)
+
+	// a new employee: Advanced settings folded, its line saying what the start will use (the settings'), the warning
+	// under it; unfolded, the fields as the settings say, one changed for this start and all set back by a button
+	s.run(`document.getElementById('new-emp').click()`)
+	waitUntil(t, 10*time.Second, "the launch dialog opens folded, filled in as the settings say", func() bool {
+		return s.is(`(f => !document.getElementById('launch').hidden && !f.querySelector('.adv').open && f.elements.model.value === 'opus' && f.elements.effort.value === 'high' && f.elements.permissionMode.value === 'bypassPermissions' && f.elements.context.checked && f.elements.dir.value === '' && f.querySelector('.use').hidden)(document.querySelector('#launch form'))`)
+	}, func() string { return s.js(`document.querySelector('#launch .digest').textContent`) })
+	if got := s.js(`document.querySelector('#launch .digest').textContent`); got != "own folder · Opus · high · bypassPermissions · knows who else is in the office" {
+		t.Errorf("the folded line should say what the start will use: %q", got)
+	}
+	if !s.is(`(w => { if (w.hidden) return false; const r = w.getBoundingClientRect(); return r.height > 0 && w.contains(document.elementFromPoint(r.left + 4, r.top + r.height / 2)) })(document.querySelector('#launch .warn.out'))`) {
+		t.Error("the bypassPermissions warning should show under the folded line")
+	}
+	s.shot("launch-folded")
+	s.run(`document.querySelector('#launch .adv > summary').click()`)
+	waitUntil(t, 5*time.Second, "unfolded: where the fields come from, the warning under the select, not under the line", func() bool {
+		return s.is(`document.querySelector('#launch .adv').open && document.querySelector('#launch .adv-note').textContent === 'Filled in from the settings (Settings → Employees). Changing them here doesn\'t change the settings.' && document.querySelector('#launch .adv .warn').getClientRects().length > 0 && !document.querySelector('#launch .warn.out').getClientRects().length`)
+	}, func() string { return s.js(`document.querySelector('#launch .adv-note').textContent`) })
+	pick("#launch [name=model]", "sonnet")
+	waitUntil(t, 5*time.Second, "one changed for this start: the button to set them back shows", func() bool {
+		return s.is(`!document.querySelector('#launch .use').hidden && document.querySelector('#launch .preview').textContent.includes('--model sonnet --effort high --permission-mode bypassPermissions')`)
+	}, func() string { return s.js(`document.querySelector('#launch .preview').textContent`) })
+	s.shot("launch-unfolded")
+	s.run(`document.querySelector('#launch .use').focus(); document.querySelector('#launch .use').click()`)
+	waitUntil(t, 5*time.Second, "set back to the settings', the button gone, the focus on the folder", func() bool {
+		return s.is(`(f => f.elements.model.value === 'opus' && f.querySelector('.use').hidden && document.activeElement === f.elements.dir)(document.querySelector('#launch form'))`)
+	})
+	if b.Hub.Settings().Model != "opus" {
+		t.Errorf("the dialog changes no setting: %+v", b.Hub.Settings())
+	}
+	// started with the effort changed for this start: the bridge gets what the dialog says
+	s.run(`(f => { f.value = 'Lee'; f.dispatchEvent(new Event('input', { bubbles: true })) })(document.querySelector('#launch [name=name]'))`)
+	pick("#launch [name=effort]", "max")
+	s.run(`document.querySelector('#launch form').requestSubmit()`)
+	var lee *bridge.Launch
+	waitUntil(t, 20*time.Second, "Lee starts", func() bool {
+		for _, l := range b.Hub.Snapshot().Launches {
+			if l.Name == "Lee" {
+				lee = l
+			}
+		}
+		return lee != nil
+	}, func() string { return s.js(`document.querySelector('#launch .status').textContent`) })
+	if lee.Model != "opus" || lee.Effort != "max" || !strings.Contains(lee.Command, "SYMPHONY_CONTEXT=1") || !strings.Contains(lee.Command, "--permission-mode bypassPermissions") {
+		t.Errorf("it should start as the dialog says: %+v", lee)
+	}
+	leeAcc := b.Hub.Account(lee.Account)
+	b.post(t, leeAcc.Token, "/api/event", map[string]any{"session": "s-l", "kind": "session.start", "cwd": lee.Dir, "launch": lee.ID})
+	waitUntil(t, 10*time.Second, "Lee online, the dialog closes", func() bool { return s.is(`document.getElementById('launch').hidden`) })
+
+	// the settings change: an employee going back to work starts as it last did, with a button to the settings'
+	if _, err := b.Hub.SetSettings(bridge.Settings{BotHome: mine, Model: "haiku", Effort: "low", PermissionMode: "plan"}); err != nil {
+		t.Fatal(err)
+	}
+	b.post(t, leeAcc.Token, "/api/event", map[string]any{"session": "s-l", "kind": "session.end", "reason": "exit"})
+	s.run(fmt.Sprintf(`document.querySelector('.emp-label:not(.member)[data-account=%q]').click()`, leeAcc.ID))
+	waitUntil(t, 10*time.Second, "Lee's window offers Start work", func() bool { return s.is(`!!document.querySelector('#chat .btns .go-work')`) })
+	s.run(`document.querySelector('#chat .btns .go-work').click()`)
+	waitUntil(t, 10*time.Second, "the dialog opens folded, as Lee last worked", func() bool {
+		return s.is(`(f => !document.getElementById('launch').hidden && !f.querySelector('.adv').open && f.elements.model.value === 'opus' && f.elements.effort.value === 'max' && f.elements.permissionMode.value === 'bypassPermissions' && f.elements.context.checked && document.activeElement === f.querySelector('.go'))(document.querySelector('#launch form'))`)
+	}, func() string { return s.js(`document.querySelector('#launch .digest').textContent`) })
+	s.run(`document.querySelector('#launch .adv > summary').click()`)
+	waitUntil(t, 5*time.Second, "it says so, and offers the settings'", func() bool {
+		return s.is(`document.querySelector('#launch .adv-note').textContent === 'Filled in as it last worked. Changing them here doesn\'t change the settings.' && !document.querySelector('#launch .use').hidden`)
+	})
+	s.run(`document.querySelector('#launch .use').click()`)
+	waitUntil(t, 5*time.Second, "the settings' taken: its own folder, Haiku, low, plan", func() bool {
+		return s.is(`(f => f.elements.dir.value === '' && f.elements.model.value === 'haiku' && f.elements.effort.value === 'low' && f.elements.permissionMode.value === 'plan' && !f.elements.context.checked && f.querySelector('.warn.out').hidden)(document.querySelector('#launch form'))`)
+	})
+	s.run(`document.querySelector('#launch .adv > summary').click()`)
+	if got := s.js(`document.querySelector('#launch .digest').textContent`); got != "own folder · Haiku · low · plan" {
+		t.Errorf("the folded line: %q", got)
+	}
+	s.run(`document.querySelector('#launch .cancel').click()`)
+
+	// the task dialog: its permission mode and a new advisor's model and effort as the settings say, and those of an
+	// employee never started from the page (alice); one that was keeps its last choices (Lee's, Kai Ro's Claude Code's own)
+	s.run(`document.querySelector('#chat .close').click(); document.getElementById('new-task').click()`)
+	waitUntil(t, 10*time.Second, "the task dialog opens", func() bool {
+		return s.is(`!document.getElementById('task').hidden && document.querySelectorAll('#task .mem').length === 3`)
+	})
+	s.run(`document.querySelector('#task .add-adv').click()`)
+	got := s.js(`(() => JSON.stringify(Object.fromEntries([...document.querySelectorAll('#task .mem, #task .adv')].map(r => [r.querySelector('.nm')?.textContent ?? 'advisor', r.querySelector('[name=model]').value + '/' + r.querySelector('[name=effort]').value]).concat([['mode', document.querySelector('#task [name=permissionMode]').value]]))))()`)
+	var choices map[string]string
+	if err := json.Unmarshal([]byte(got), &choices); err != nil || !maps.Equal(choices, map[string]string{"alice": "haiku/low", "Kai Ro": "/", "Lee": "opus/max", "advisor": "haiku/low", "mode": "plan"}) {
+		t.Errorf("the task dialog's choices: %s %v", got, err)
+	}
+	s.run(`document.querySelector('#task .cancel').click()`)
 	s.done()
 }

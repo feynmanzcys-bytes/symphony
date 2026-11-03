@@ -546,13 +546,19 @@ func TestContrast(t *testing.T) {
 	closeAll := `for (const s of ['#chat .close', '#taskwin .close', '#launch .cancel', '#task .cancel']) { const e = document.querySelector(s); if (e && e.closest('.modal, #chat, #taskwin') && !e.closest('[hidden]')) e.click() }`
 	dialogs := []contrastView{
 		{"launch dialog", `document.getElementById('new-emp').click()`, `!document.getElementById('launch').hidden && document.querySelectorAll('#launch select option').length > 1`, `#launch`, ``},
-		{"launch dialog, bypass", `(s => { s.value = 'bypassPermissions'; s.dispatchEvent(new Event('change', { bubbles:true })) })(document.querySelector('#launch [name=permissionMode]'))`, `!document.querySelector('#launch .warn').hidden`, `#launch`, `document.querySelector('#launch .cancel').click()`},
+		// folded, the bypassPermissions warning under its line; unfolded, the fields, the warning under the select
+		{"launch dialog, bypass", `(s => { s.value = 'bypassPermissions'; s.dispatchEvent(new Event('change', { bubbles:true })) })(document.querySelector('#launch [name=permissionMode]'))`, `!document.querySelector('#launch .warn.out').hidden && document.querySelector('#launch .warn.out').getClientRects().length > 0`, `#launch`, ``},
+		{"launch dialog, unfolded", `document.querySelector('#launch .adv').open = true`, `document.querySelector('#launch .adv .warn').getClientRects().length > 0 && !document.querySelector('#launch .use').hidden`, `#launch`, `document.querySelector('#launch .cancel').click()`},
 		{"task dialog", `document.getElementById('new-task').click()`, `!document.getElementById('task').hidden && document.querySelectorAll('#task .mem').length >= 4`, `#task`, ``},
 		{"task dialog, advisor", `document.querySelector('#task .add-adv').click(); [...document.querySelectorAll('#task .mem input')].find(i => !i.disabled)?.click()`, `!!document.querySelector('#task .adv')`, `#task`, `document.querySelector('#task .cancel').click()`},
 		// the settings, an entry of the error log unfolded (a page's error the test reports), the report taken (its
 		// download a no-op)
 		{"settings", `import('/symphony.js').then(m => m.reportError('ui', 'a made-up error, for the colors', 'detail line')); document.querySelector('.open-settings').click()`,
 			`!document.getElementById('settings').hidden && !!document.querySelector('#settings .entry') && !!document.querySelector('#settings .about dd')`, `#settings`, ``},
+		// what a new employee starts with: the red line under bypassPermissions and what saving said (set back after)
+		{"settings, bypass", `(s => { s.value = 'bypassPermissions'; s.dispatchEvent(new Event('change', { bubbles:true })) })(document.getElementById('set-mode'))`,
+			`document.getElementById('set-mode-warn').getClientRects().length > 0 && document.querySelector('#settings .defaults .said').textContent !== ''`, `#settings`,
+			`(s => { s.value = ''; s.dispatchEvent(new Event('change', { bubbles:true })) })(document.getElementById('set-mode'))`},
 		{"settings, entry", `HTMLAnchorElement.prototype.click = () => {}; document.querySelector('#settings .recorded').open = true; document.querySelector('#settings .entry').open = true; document.querySelector('#settings .errlog .report').click()`,
 			`!!document.querySelector('#settings .entry[open] pre') && document.querySelector('#settings .errlog .saved').textContent !== ''`, `#settings`, `document.querySelector('#settings .close').click()`},
 		{"error", `import('/ui/errors.js').then(m => m.showError('first line\nsecond line: what went wrong'))`, `(o => !!o && !o.hidden)(document.getElementById('oops'))`, `#oops`,
@@ -724,6 +730,7 @@ func TestNarrow(t *testing.T) {
 			{"task window", closeAll + `; document.querySelector('.room-plate[data-task]').click()`, `!document.getElementById('taskwin').hidden`},
 			{"member", `document.querySelector('#taskwin .mrow').click()`, `!document.getElementById('chat').hidden && document.getElementById('chat').classList.contains('stacked')`},
 			{"launch", closeAll + `; document.getElementById('new-emp').click()`, `!document.getElementById('launch').hidden`},
+			{"launch advanced", `document.querySelector('#launch .adv').open = true`, `document.querySelector('#launch .preview').getClientRects().length > 0`},
 			{"task dialog", closeAll + `; document.getElementById('new-task').click()`, `!document.getElementById('task').hidden`},
 			{"logs", closeAll + `; document.getElementById('open-log').click(); document.getElementById('open-msgs').click()`, `!document.getElementById('msgs-panel').hidden`},
 			{"settings", `document.querySelector('#log .close').click(); document.querySelector('#msgs-panel .close').click(); document.getElementById('open-settings').click()`, `!document.getElementById('settings').hidden && !!document.querySelector('#settings .about dd')`},
@@ -734,6 +741,7 @@ func TestNarrow(t *testing.T) {
 			{"asks", `[...document.querySelectorAll('#people .row')].find(r => r.textContent.includes('carol')).click()`, `document.querySelectorAll('#chat .flow .it.ask.carded .card').length === 2`},
 			{"group", `document.querySelector('#groups .row').click()`, `!document.getElementById('taskwin').hidden`},
 			{"launch", `document.getElementById('new-emp').click()`, `!document.getElementById('launch').hidden`},
+			{"launch advanced", `document.querySelector('#launch .adv').open = true`, `document.querySelector('#launch .preview').getClientRects().length > 0`},
 			{"settings", `document.querySelector('#launch .cancel').click(); document.querySelector('.open-settings').click()`, `!document.getElementById('settings').hidden && !!document.querySelector('#settings .about dd')`},
 		}},
 	}
@@ -1050,6 +1058,19 @@ func TestA11y(t *testing.T) {
 		t.Errorf("the name field should be named by its label: %+v", n)
 	}
 	named(p, "launch", `document.getElementById('launch')`)
+	// Advanced settings: the next stop, a disclosure named by what it is and what the start will use; Enter unfolds it
+	// and Tab goes on into its fields
+	key(office, kb.Tab, false)
+	if n := ax(t, office, `document.querySelector('#launch .adv > summary')`); !p.is(`document.activeElement === document.querySelector('#launch .adv > summary')`) ||
+		!strings.HasPrefix(n.Name, "Advanced settings own folder") {
+		t.Errorf("Tab from the name should reach Advanced settings, named with what the start will use: %+v, %s", n, p.js(`document.activeElement.outerHTML.slice(0, 80)`))
+	}
+	key(office, kb.Enter, false)
+	key(office, kb.Tab, false)
+	if n := ax(t, office, `document.activeElement`); !p.is(`document.querySelector('#launch .adv').open && document.activeElement === document.getElementById('launch-dir')`) || !strings.HasPrefix(n.Name, "Working folder") {
+		t.Errorf("Enter should unfold it, and Tab go on to the folder, named by its label: %+v, %s", n, p.js(`document.activeElement.outerHTML.slice(0, 80)`))
+	}
+	p.run(`document.getElementById('launch-name').focus()`)
 	key(office, kb.Tab, true)
 	if !focusIn(p, "#launch") {
 		t.Error("Shift+Tab from the first field should stay in the dialog")

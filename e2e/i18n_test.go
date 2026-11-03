@@ -142,7 +142,9 @@ func checkOffice(t *testing.T, b *testBridge, browser context.Context, lang stri
 	}
 	do(t, office, 10*time.Second, chromedp.Click(chromedp.CSS(`#chat .close`)),
 		chromedp.Click(chromedp.CSS(`#new-emp`)), chromedp.WaitVisible(chromedp.CSS(`#launch form`)))
-	read()
+	read() // folded: the line that says what the start will use
+	do(t, office, 10*time.Second, chromedp.Click(chromedp.CSS(`#launch .adv > summary`)), chromedp.WaitVisible(chromedp.CSS(`#launch .preview`)))
+	read() // unfolded: the fields
 	screenshot(t, office, "i18n-"+lang+"-launch.png")
 	checkTexts(t, lang, "office", texts)
 	if miss := get(t, office, 5*time.Second, chromedp.Evaluate[[]string](`window.__i18nMissing`)); len(miss) > 0 {
