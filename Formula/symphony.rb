@@ -1,32 +1,32 @@
-# Homebrew formula for symphony v1.2.0, written by .github/packages.sh; every release writes it again, so change the
+# Homebrew formula for symphony v1.2.1, written by .github/packages.sh; every release writes it again, so change the
 # script, not this file. This repository is the tap:
 #   brew tap feynmanzcys-bytes/symphony https://github.com/feynmanzcys-bytes/symphony
 #   brew install symphony
 class Symphony < Formula
   desc "Unofficial pixel-art office for a team of Claude Code sessions"
   homepage "https://github.com/feynmanzcys-bytes/symphony"
-  version "1.2.0"
+  version "1.2.1"
   license "MIT"
 
   on_macos do
     on_arm do
-      url "https://github.com/feynmanzcys-bytes/symphony/releases/download/v1.2.0/symphony_darwin_arm64.tar.gz"
-      sha256 "3e2d21837c791d69c51a7fb2f51a1e2037edc98f9410ef79c5035a012154efa3"
+      url "https://github.com/feynmanzcys-bytes/symphony/releases/download/v1.2.1/symphony_darwin_arm64.tar.gz"
+      sha256 "6759fda42ceb56271f89cad71b7479ac7d3eb43528501da666eebb36ed16702a"
     end
     on_intel do
-      url "https://github.com/feynmanzcys-bytes/symphony/releases/download/v1.2.0/symphony_darwin_amd64.tar.gz"
-      sha256 "c7e66c909e4e4a07b4dfe8940c1aab3a3db829177b52d08ebf3e6fffed3bd2a2"
+      url "https://github.com/feynmanzcys-bytes/symphony/releases/download/v1.2.1/symphony_darwin_amd64.tar.gz"
+      sha256 "cfd72e96022c79f22f85fb827648ea37e15691c2461acb94b4c5da0e7985bee4"
     end
   end
 
   on_linux do
     on_arm do
-      url "https://github.com/feynmanzcys-bytes/symphony/releases/download/v1.2.0/symphony_linux_arm64.tar.gz"
-      sha256 "3b55f5b43bd5589044e97237fd66c0555bfbdf99d57f28cd9fabaf4440942158"
+      url "https://github.com/feynmanzcys-bytes/symphony/releases/download/v1.2.1/symphony_linux_arm64.tar.gz"
+      sha256 "b545d04715878f621526d947dbd879b94d2347326268228a2c5a8308b889376d"
     end
     on_intel do
-      url "https://github.com/feynmanzcys-bytes/symphony/releases/download/v1.2.0/symphony_linux_amd64.tar.gz"
-      sha256 "817dfec98bba9df22c9d2abf50e8d67b0347f1b1e59a2e318e26ef788ead4b1e"
+      url "https://github.com/feynmanzcys-bytes/symphony/releases/download/v1.2.1/symphony_linux_amd64.tar.gz"
+      sha256 "ad4c3d1a18865c0d1d8b37a7bd88be2e1dd89d66f622b2d1c725ff2ae9403af7"
     end
   end
 
