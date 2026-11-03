@@ -56,6 +56,8 @@ func startBridge(t *testing.T, mod string) *testBridge {
 	if err := hub.Open(data); err != nil {
 		t.Fatal(err)
 	}
+	// last of all, before the data folder goes: what the hub still writes in the background (the error log too)
+	t.Cleanup(func() { _ = hub.Flush() })
 	srv := bridge.NewServer(hub, web.FS)
 	b := &testBridge{Hub: hub, Data: data, Key: srv.Key}
 	b.srv.Store(srv)
@@ -81,6 +83,9 @@ func startBridge(t *testing.T, mod string) *testBridge {
 	ts.Start()
 	t.Cleanup(ts.Close)
 	t.Cleanup(b.Launcher.Terms.KillAll)
+	// first: the hub stops as the bridge does before it ends its sessions, so the ones killed here aren't kept in the
+	// error log as sessions that crashed (written in the background as the folder is being removed)
+	t.Cleanup(hub.Stop)
 	// the events the hub pushes, for waitEvent; the hub lets a subscriber that falls behind go (as it does a page), so
 	// this one subscribes again (the snapshot that comes first carries no event)
 	done := make(chan struct{})
