@@ -1,6 +1,6 @@
 {
-    "##": "Scoop manifest for symphony v1.2.2, written by .github/packages.sh; every release writes it again, so change the script, not this file. This repository is the bucket: scoop bucket add symphony https://github.com/feynmanzcys-bytes/symphony",
-    "version": "1.2.2",
+    "##": "Scoop manifest for symphony v1.3.0, written by .github/packages.sh; every release writes it again, so change the script, not this file. This repository is the bucket: scoop bucket add symphony https://github.com/feynmanzcys-bytes/symphony",
+    "version": "1.3.0",
     "description": "Unofficial pixel-art office for a team of Claude Code sessions",
     "homepage": "https://github.com/feynmanzcys-bytes/symphony",
     "license": "MIT",
@@ -12,12 +12,12 @@
     ],
     "architecture": {
         "64bit": {
-            "url": "https://github.com/feynmanzcys-bytes/symphony/releases/download/v1.2.2/symphony_windows_amd64.zip",
-            "hash": "45bfabfd2b122c4060309d60353f1340b41f282cc9140cb3a97eb97812048a5b"
+            "url": "https://github.com/feynmanzcys-bytes/symphony/releases/download/v1.3.0/symphony_windows_amd64.zip",
+            "hash": "348189038d6fdccd9988789be46316f3707b7ea31e0899b21a8d1744f12f08fa"
         },
         "arm64": {
-            "url": "https://github.com/feynmanzcys-bytes/symphony/releases/download/v1.2.2/symphony_windows_arm64.zip",
-            "hash": "d8476f77af086a2e2bd32fbc17c2cfbf453572b16cf3e4befc80f30500f4c711"
+            "url": "https://github.com/feynmanzcys-bytes/symphony/releases/download/v1.3.0/symphony_windows_arm64.zip",
+            "hash": "262943bef8070ea0e82768b3ad934f0a6bdf83c42e2c401de25f0836649c507d"
         }
     },
     "bin": "symphony.exe",
