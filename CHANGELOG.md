@@ -2,6 +2,17 @@
 
 What changed in each release of symphony. The program (the bridge) and the mod share one version number. A release's notes start with its section here: the release workflow stops before building when the section is missing. Releases before v1.0.0 came out before the repository was public; their notes are kept below.
 
+## v1.3.0 (2026-11-03)
+
+Update the program (`brew upgrade symphony`, `scoop update symphony`, or the archive) and, as before, the mod with `claude plugin update symphony-bridge@symphony` (only its version changed). The HQ console and Mission Control are gone: a browser that had one of them picked opens the pixel office.
+
+- **Two themes, one look each**: the pixel office and Coworkers stay; the HQ console and Mission Control were taken out (their addresses lead to the office). In the pixel office everything that can be pressed is a key with a pressed edge, a label that only says something is a plate, rules are solid, the states are lamps (the bar's counts, the name tags, a tool call's outcome, a task's state), messages between sessions are lavender edged in purple, and the employee window shows the employee's figure by its name. Coworkers draws the same pieces as pills, round dots and hairlines. The drop-downs, checkboxes, radio buttons, close buttons, scrollbars and selections are drawn in each theme's style.
+- **Settings**: the office's bar and Coworkers' gear open them: the language, the theme, light or dark (Coworkers), the pixel size (the office), pausing motion, the steps unfolded, the office's message log and activity log (their buttons left the bar, which fits on one line again), reporting a problem, and the versions and folders.
+- **An error log to report from**: what goes wrong (the bridge's own failures, a start or a task that failed, a page's script error) is written to the error log as it happens (`errors.json` in the data folder, keys, tokens and passwords taken out). Settings → "I want to report a problem" gives a report file (the errors, the versions, the bridge's last log lines; no key, token or conversation) to send by email or attach to an issue. Errors show on the page instead of in the browser's alerts, and a long one can be selected (a failed task's error was drawn again at every update, and a selection ending outside the dialog closed it).
+- **The steps between answers fold into one line**: the thinking, the tool calls and the settled asks between two pieces of an answer read "Thinking… 2m 38s" while they go on and "Thought for 2m 38s" after (the time your asks waited for you left out); a click unfolds them, a step that failed shows in red on the line, and the settings can show them all unfolded.
+- **Markdown**: what the model writes (its answers and thinking, the messages between sessions, a task's kickoff) shows as Markdown: headings, lists, quotes, code, tables and links (http, https and mailto, in a new tab); raw HTML shows as text.
+- The employee window's model chip says the model and the effort (the office's figure size and arms are in its tooltip).
+
 ## v1.2.2 (2026-11-03)
 
 Update the program (`brew upgrade symphony`, `scoop update symphony`, or the archive) and, as before, the mod with `claude plugin update symphony-bridge@symphony` (only its version changed).
