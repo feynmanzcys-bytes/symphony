@@ -285,7 +285,7 @@ func (s *Server) prepareGit(t *Task, undo *taskUndo) (map[string]string, error) 
 				return nil, repoInUse(dir, other)
 			}
 			undo.inited = append(undo.inited, dir)
-			if err := gitInit(dir, t.ID); err != nil {
+			if err := gitInit(dir, "symphony: files before task "+t.ID); err != nil {
 				return nil, gitFailed(dir, err)
 			}
 			r.Inited = true

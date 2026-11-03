@@ -33,6 +33,7 @@
   "log.task_end_failed": "タスク {task} の終了中に問題が起きました：{reason}",
   "log.task_undo_failed": "タスク {task} は開始できず、作ったものの一部が残っています：{reason}",
   "log.save_failed": "{file} を書き込めません：{reason}。書き込みが成功するまで、変更はメモリ上にしかありません",
+  "log.bot_home_no_git": "PATH に git がないため、社員の新しいフォルダー {dir} を git リポジトリにできませんでした。git をインストールしてください（タスクにも必要です）",
   "log.unsaved": "ディスクに書き込めなかったデータを残したまま停止します：{reason}",
   "log.open_failed": "ブラウザを開けませんでした（{reason}）。{url} を自分で開いてください",
   "log.autostart_on": "symphony はログイン時に自動で起動するようになりました（{where}）。現在 {url} で動いています",

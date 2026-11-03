@@ -32,6 +32,9 @@ type Account struct {
 	// Dir is the folder the last desk session worked in, as the mod reported it (a session started in a terminal
 	// too), so an employee off duty still has a folder for a task
 	Dir string `json:"dir,omitempty"`
+	// Home is the folder made for it in the bot home when it was started from the page without a working folder
+	// (botFolder): a start without one goes back there
+	Home string `json:"home,omitempty"`
 }
 
 // AccountView is an account as the snapshot shows it: without the token.
@@ -43,6 +46,7 @@ type AccountView struct {
 	Session string         `json:"session,omitempty"` // the online desk session's id; empty when off duty
 	Last    *LaunchRequest `json:"last,omitempty"`
 	Dir     string         `json:"dir,omitempty"`
+	Home    string         `json:"home,omitempty"`
 }
 
 var (
@@ -166,8 +170,9 @@ func saveAccounts(path string, list []*Account) error {
 // ---------- accounts on the Hub ----------
 
 // Open sets the data folder and reads the accounts (accounts.json), the message log (messages.json), the ledger
-// (ledger.json), the error log (errors.json) and the tasks (tasks.json; tasks the previous bridge left running are ended now). The bridge has to
-// hold the folder's lock first (LockData): another bridge's running tasks would look left over.
+// (ledger.json), the error log (errors.json), the settings (settings.json) and the tasks (tasks.json; tasks the
+// previous bridge left running are ended now). The bridge has to hold the folder's lock first (LockData): another
+// bridge's running tasks would look left over.
 func (h *Hub) Open(dir string) error {
 	for _, s := range []*saver{&h.msgSave, &h.taskSave, &h.ledgerSave} {
 		s.warn = h.warnWrite
@@ -187,9 +192,14 @@ func (h *Hub) Open(dir string) error {
 	if err := h.openFaults(dir); err != nil {
 		return err
 	}
+	settings, err := loadSettings(h, filepath.Join(dir, "settings.json"))
+	if err != nil {
+		return err
+	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.dataDir = dir
+	h.settings = settings
 	for _, a := range list {
 		h.accounts[a.ID] = a
 	}

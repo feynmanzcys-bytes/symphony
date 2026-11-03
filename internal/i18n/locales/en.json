@@ -33,6 +33,7 @@
   "log.task_end_failed": "ending task {task}: {reason}",
   "log.task_undo_failed": "task {task} didn't start, and some of what it made stays: {reason}",
   "log.save_failed": "can't write {file}: {reason}; until a write succeeds, what changed is in memory only",
+  "log.bot_home_no_git": "git is not on PATH, so the employee's new folder {dir} isn't a git repository; install git (tasks need it too)",
   "log.unsaved": "stopping with data that couldn't be written to disk: {reason}",
   "log.open_failed": "couldn't open a browser ({reason}); open {url} yourself",
   "log.autostart_on": "symphony now starts when you log in ({where}); it's running at {url}",

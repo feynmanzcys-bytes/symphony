@@ -33,6 +33,7 @@
   "log.task_end_failed": "ao encerrar a tarefa {task}: {reason}",
   "log.task_undo_failed": "a tarefa {task} não iniciou, e parte do que ela criou continua lá: {reason}",
   "log.save_failed": "não foi possível gravar {file}: {reason}; até uma gravação dar certo, o que mudou só está na memória",
+  "log.bot_home_no_git": "o git não está no PATH, então a pasta nova do funcionário, {dir}, não é um repositório git; instale o git (as tarefas também precisam dele)",
   "log.unsaved": "parando com dados que não puderam ser gravados no disco: {reason}",
   "log.open_failed": "não foi possível abrir um navegador ({reason}); abra {url} você mesmo",
   "log.autostart_on": "o symphony agora inicia quando você entra no sistema ({where}); já está rodando em {url}",

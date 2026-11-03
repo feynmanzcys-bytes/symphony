@@ -480,6 +480,12 @@ button.close:focus-visible { outline:2px solid var(--focus-line); outline-offset
 #settings .seg label:first-of-type { border-left:0; }
 #settings .seg input:checked + label { background:var(--ink); color:var(--paper); }
 #settings .seg input:focus-visible + label { position:relative; z-index:1; outline:2px solid var(--focus-line); outline-offset:2px; }
+/* the employees' default folder: a path, its buttons, a hint and what saving said */
+#settings .row.home .path { display:flex; flex-wrap:wrap; gap:6px; align-items:center; min-width:0; }
+#settings .row.home input { flex:1 1 180px; min-width:0; box-sizing:border-box; font:12px var(--mono); color:var(--ink); background:var(--field); border:2px solid var(--field-line); padding:3px 6px; }
+#settings .row.home input:focus { outline:none; border-color:var(--focus-line); box-shadow:var(--focus-ring); }
+#settings .row.home .said { grid-column:2; margin:0; font-size:12px; font-weight:700; color:var(--ink); overflow-wrap:anywhere; } /* (always there, empty too: a live region screen readers follow) */
+#settings .row.home .said.err { font-weight:400; color:var(--danger-ink); }
 #settings .errlog .what { margin:0 0 8px; font-size:12px; color:var(--muted-2); max-width:60ch; }
 #settings .records .acts { display:flex; flex-wrap:wrap; gap:8px; }
 #settings .records .acts button { display:inline-flex; align-items:center; gap:7px; padding:4px 12px; }
@@ -518,7 +524,7 @@ button.close:focus-visible { outline:2px solid var(--focus-line); outline-offset
 #settings .about a { color:var(--ink); text-underline-offset:2px; }
 @media (max-width: 520px) {
   #settings .row, #settings .about dl { grid-template-columns:minmax(0, 1fr); }
-  #settings .row .hint { grid-column:1; }
+  #settings .row .hint, #settings .row.home .said { grid-column:1; }
   #settings .row.check { grid-template-columns:auto minmax(0, 1fr); column-gap:8px; } /* the box beside its words */
   #settings .row.check > input { grid-column:1; justify-self:start; }
   #settings .row.check > label, #settings .row.check > .hint { grid-column:2; }

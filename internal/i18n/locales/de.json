@@ -33,6 +33,7 @@
   "log.task_end_failed": "beim Beenden von Aufgabe {task}: {reason}",
   "log.task_undo_failed": "Aufgabe {task} ist nicht gestartet, und ein Teil dessen, was sie angelegt hat, bleibt: {reason}",
   "log.save_failed": "{file} lässt sich nicht schreiben: {reason}; bis ein Schreibvorgang gelingt, sind die Änderungen nur im Speicher",
+  "log.bot_home_no_git": "git ist nicht im PATH, daher ist der neue Ordner des Mitarbeiters, {dir}, kein git-Repository; installiere git (Aufgaben brauchen es auch)",
   "log.unsaved": "die Bridge wird beendet, obwohl sich Daten nicht auf die Festplatte schreiben ließen: {reason}",
   "log.open_failed": "Browser konnte nicht geöffnet werden ({reason}); öffne {url} selbst",
   "log.autostart_on": "symphony startet jetzt bei jeder Anmeldung ({where}); es läuft bereits unter {url}",

@@ -196,8 +196,9 @@ func gitPlain(dir string) (bool, error) {
 var initExcludes = []string{".env", ".env.*", "*.pem", "*.key", "*.p12", "*.pfx", "id_rsa*", "id_ecdsa*", "id_ed25519*",
 	".npmrc", ".netrc", ".pypirc", "node_modules/", ".DS_Store"}
 
-// gitInit makes a plain folder a repository, with everything in it but initExcludes in a first commit.
-func gitInit(dir, taskID string) error {
+// gitInit makes a plain folder a repository, with everything in it but initExcludes in a first commit (an empty one
+// for an empty folder), whose message is msg.
+func gitInit(dir, msg string) error {
 	if _, err := runGit(dir, "init", "-q"); err != nil {
 		return err
 	}
@@ -207,7 +208,7 @@ func gitInit(dir, taskID string) error {
 	if _, err := runGit(dir, "add", "-A"); err != nil {
 		return err
 	}
-	_, err := runGit(dir, append(gitCommitter, "commit", "-q", "--no-verify", "--allow-empty", "-m", "symphony: files before task "+taskID)...)
+	_, err := runGit(dir, append(gitCommitter, "commit", "-q", "--no-verify", "--allow-empty", "-m", msg)...)
 	return err
 }
 
@@ -435,7 +436,11 @@ func gitDeleteBranch(dir, branch string) error {
 // slug makes a name fit for a branch and a folder: Unicode letters, digits, -, _ and . stay, every other run of
 // characters becomes one -, and - and . go from the ends ("member" when nothing is left). As git refuses them in a
 // branch, a run of dots becomes one and a final ".lock" becomes "-lock".
-func slug(name string) string {
+func slug(name string) string { return slugOr(name, "member") }
+
+// slugOr is slug with another name for when nothing is left. (The launch dialog's preview of an employee's own folder,
+// folderName in web/ui/launch.js, does the same.)
+func slugOr(name, fallback string) string {
 	var b strings.Builder
 	dash := false
 	for _, r := range name {
@@ -456,7 +461,7 @@ func slug(name string) string {
 		s = strings.TrimSuffix(s, ".lock") + "-lock"
 	}
 	if s == "" {
-		return "member"
+		return fallback
 	}
 	return s
 }

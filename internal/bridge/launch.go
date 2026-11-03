@@ -43,8 +43,9 @@ func validOption(opts []Option, v string) bool {
 }
 
 // LaunchRequest is what the launch dialog submits. Account is the id of an existing account to put
-// back to work; without it a new account named Name is created. Lang is the page's language, which
-// the session's mod uses for its messages.
+// back to work; without it a new account named Name is created. Dir is the folder to start in; without
+// it the employee works in a folder of its own in the bot home (botFolder). Lang is the page's
+// language, which the session's mod uses for its messages.
 type LaunchRequest struct {
 	Account        string `json:"account,omitempty"`
 	Name           string `json:"name,omitempty"`
@@ -320,8 +321,9 @@ func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
-// normalizeLaunch checks a launch request: dir must be an existing absolute directory, and a new
-// account needs a name. An unsupported language is dropped.
+// normalizeLaunch checks a launch request: dir, when given, must be an existing absolute directory
+// (none: the employee's own folder, made once the account is known), and a new account needs a name.
+// An unsupported language is dropped.
 func normalizeLaunch(req LaunchRequest) (LaunchRequest, error) {
 	req.Account = strings.TrimSpace(req.Account)
 	req.Name = strings.TrimSpace(req.Name)
@@ -330,9 +332,11 @@ func normalizeLaunch(req LaunchRequest) (LaunchRequest, error) {
 	if req.Account == "" && !validName(req.Name) {
 		return req, ErrBadName
 	}
-	var err error
-	if req.Dir, err = normalizeDir(req.Dir); err != nil {
-		return req, err
+	if req.Dir != "" {
+		var err error
+		if req.Dir, err = normalizeDir(req.Dir); err != nil {
+			return req, err
+		}
 	}
 	if !validOption(launchModels, req.Model) || !validOption(launchEfforts, req.Effort) ||
 		!validOption(launchPermissionModes, req.PermissionMode) || !validOption(launchResumes, req.Resume) {

@@ -208,6 +208,7 @@ button.px.icon { width: 32px; padding: 2px 0; text-align: center; }
 #settings .top { border-bottom: 1px solid var(--line); }
 #settings section { border-bottom: 1px solid var(--line); }
 #settings select { border: 1px solid var(--field-line); border-radius: 8px; padding: 4px 6px; }
+#settings .row.home input { border: 1px solid var(--field-line); border-radius: 8px; padding: 5px 8px; }
 #settings .seg { border: 0; gap: 0; }
 #settings .seg label { border: 1px solid var(--field-line); border-left-width: 0; }
 #settings .seg label:first-of-type { border-left-width: 1px; border-radius: 8px 0 0 8px; }

@@ -351,6 +351,11 @@ type Hub struct {
 	reserved map[string]bool
 	// faults is the error log (faults.go), with a lock of its own: it is written to with the hub's lock held and without
 	faults faultLog
+	// settings are what the pages' settings set (settings.go, settings.json)
+	settings Settings
+	// BotHomeDefault is where the employees' own folders go unless the settings name another place (DefaultBotHome;
+	// the tests point it at a folder of their own)
+	BotHomeDefault string
 }
 
 func NewHub() *Hub {
@@ -365,6 +370,8 @@ func NewHub() *Hub {
 		now:      time.Now,
 		started:  time.Now(),
 		faults:   faultLog{home: homeDir()},
+
+		BotHomeDefault: DefaultBotHome(),
 	}
 }
 
@@ -459,7 +466,7 @@ func (h *Hub) Snapshot() Snapshot {
 func (h *Hub) snapshotLocked(full bool) Snapshot {
 	snap := Snapshot{Type: "snapshot", Protocol: Protocol, Started: h.started, Accounts: []AccountView{}, Sessions: []*Session{}, Asks: []*Ask{}, Launches: []*Launch{}, Tasks: h.tasksLocked(), Ledger: h.ledgerTodayLocked(), Faults: h.faultSummary()}
 	for _, a := range h.accounts {
-		v := AccountView{ID: a.ID, Name: a.Name, Seat: a.Seat, Advisor: a.Advisor, Last: a.Last, Dir: a.Dir}
+		v := AccountView{ID: a.ID, Name: a.Name, Seat: a.Seat, Advisor: a.Advisor, Last: a.Last, Dir: a.Dir, Home: a.Home}
 		if s := h.onlineLocked(a.ID); s != nil {
 			v.Session = s.ID
 		}

@@ -1,6 +1,7 @@
 // The settings, shared by every theme: a dialog (#settings) that a button of the theme's opens, with what one sets
 // rarely. How the page looks: the language, the theme, light or dark where the theme has both, the theme's own settings
 // (the pixel office's pixel size), motion paused or not. The conversation: the steps between answers shown unfolded.
+// The employees: the bridge's default folder, where one started without a working folder gets a folder of its own.
 // Reporting a problem: what went wrong is in the error log already (the bridge writes it as it happens); one button
 // gives the report file (the errors, this bridge and this page, the bridge's last log lines; no key, no token, no chat)
 // to send by email or attach to an issue, and what the log holds can be looked at. And what this is: the versions,
@@ -14,7 +15,7 @@
 //   settings.open() · settings.close() · settings.hidden · settings.el
 //   settingsButton(sym, settings, { cls, icon }) → the theme's button: "Settings", marked while the error log has
 //     something newer than what was seen
-import { t, lang, esc, button } from '/ui/common.js'
+import { t, lang, esc, button, errorText } from '/ui/common.js'
 import { langPicker, LANGS } from '/i18n.js'
 import { dialog } from '/ui/a11y.js'
 import { motion } from '/ui/motion.js'
@@ -39,6 +40,13 @@ const MARKUP = `
       </section>
       <section class="talk" aria-labelledby="set-talk"><h3 id="set-talk"></h3>
         <div class="row check"><input type="checkbox" id="set-steps"><label for="set-steps"></label><small class="hint" id="set-steps-hint"></small></div>
+      </section>
+      <section class="staff" aria-labelledby="set-staff"><h3 id="set-staff"></h3>
+        <form class="row home" autocomplete="off"><label for="set-bot-home"></label>
+          <span class="ctl path"><input id="set-bot-home" name="botHome" spellcheck="false"><button type="submit" class="px save"></button><button type="button" class="px reset"></button></span>
+          <small class="hint" id="set-bot-home-hint"></small>
+          <p class="said" role="status"></p>
+        </form>
       </section>
       <section class="records" aria-labelledby="set-records" hidden><h3 id="set-records"></h3><div class="acts"></div></section>
       <section class="errlog" aria-labelledby="set-errlog"><h3 id="set-errlog"></h3>
@@ -120,6 +128,43 @@ export function createSettings(sym, { scheme = null, extra = [], records = [] } 
   steps.setAttribute('aria-describedby', 'set-steps-hint')
   steps.checked = pref(STEPS_OPEN) === 'open'
   steps.onchange = () => setPref(STEPS_OPEN, steps.checked ? 'open' : null)
+
+  // ---------- the employees ----------
+  // The bridge's own setting, not this page's: where an employee started without a working folder gets a folder of its
+  // own. Read as the dialog opens (what was typed and not saved goes); saved with Enter or the button
+  $('#set-staff').textContent = t('settings.staff')
+  const home = $('.staff form'), homeIn = $('#set-bot-home'), said = $('.staff .said'), reset = $('.staff .reset')
+  $('label[for=set-bot-home]').textContent = t('settings.botHome')
+  $('#set-bot-home-hint').textContent = t('settings.botHomeHint')
+  homeIn.setAttribute('aria-describedby', 'set-bot-home-hint')
+  $('.staff .save').textContent = t('settings.save')
+  reset.textContent = t('settings.useDefault')
+  reset.hidden = true
+  const tell = (text, err) => { said.classList.toggle('err', !!err); setText(said, text) }
+  // the bridge's settings ({botHome, botHomeDefault}) in the field; "Use the default" only while another folder is set
+  function takeHome(view) {
+    homeIn.value = view.botHome
+    reset.hidden = !view.botHomeDefault || view.botHome === view.botHomeDefault
+  }
+  async function loadHome() {
+    const r = await sym.settings()
+    if (r.ok) takeHome(r.data)
+    else tell(t('settings.loadFailed', { reason: errorText(r.data) }), true)
+  }
+  async function saveHome(value) {
+    const r = await sym.saveSettings({ botHome: value })
+    if (!r.ok) return tell(t('settings.saveFailed', { reason: errorText(r.data) }), true)
+    takeHome(r.data)
+    tell(t('settings.saved'))
+  }
+  home.addEventListener('submit', ev => { ev.preventDefault(); saveHome(homeIn.value.trim()) })
+  homeIn.addEventListener('input', () => tell(''))
+  // (the button goes once the default is back: the focus goes to the field, not out of the dialog)
+  reset.onclick = async () => {
+    const had = document.activeElement === reset
+    await saveHome('')
+    if (had && reset.hidden) homeIn.focus()
+  }
 
   // ---------- the theme's logs ----------
   // Each shows beside the page, not in here: the settings close, and the focus goes to the log (its heading, so its name
@@ -312,8 +357,10 @@ export function createSettings(sym, { scheme = null, extra = [], records = [] } 
       const news = fresh()
       el.hidden = false
       saved.textContent = ''
+      tell('')
       draw()
       load()
+      loadHome()
       // opened for its news: the error log brought into sight (laid out first), where it counts as seen
       requestAnimationFrame(() => {
         if (news && !inSight()) $('.errlog').scrollIntoView({ block: 'nearest' })

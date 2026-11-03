@@ -6,7 +6,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
+	"os"
+	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -28,7 +32,10 @@ import (
 // (its selection survives the office's redraws), and a drag that selects in a dialog and lets go over the backdrop
 // leaves the dialog open (a click on the backdrop still closes it); a failure shown over the page (showError, instead
 // of alert) goes into the error log too. Coworkers: its gear opens the same dialog, where light, dark or as the system
-// picks its colors, remembered.
+// picks its colors, remembered. The employees' default folder: the bridge's, shown in the settings; a relative one
+// refused; another saved (settings.json) and the default back with its button, the focus kept in the dialog; the page
+// names an employee's own folder as the bridge does; a new employee started without a folder gets one there, which the
+// launch dialog's placeholder and preview name, a new git repository bound to it.
 func TestSettings(t *testing.T) {
 	requireBrowser(t)
 	repo, _ := filepath.Abs("..")
@@ -250,4 +257,103 @@ func TestSettings(t *testing.T) {
 		return m.is(`!document.documentElement.hasAttribute('data-dark') && localStorage.getItem('symphony.messenger.dark') === null`)
 	})
 	m.done()
+
+	// ---------- the employees' default folder ----------
+	// (in a tab of its own, last: opening the settings counts the error log as seen, which Coworkers' gear checks above)
+	sctx, _ := clockTab(t, browser, b.URL+"/t/office/?lang=en", 0)
+	do(t, sctx, 10*time.Second, chromedp.EmulateViewport(1400, 900))
+	s := &screens{t: t, ctx: sctx, lang: "settings-staff"}
+	waitUntil(t, 20*time.Second, "the office shows its Settings button", func() bool { return s.is(`!!document.getElementById('open-settings')`) })
+	def := b.Hub.Settings().BotHomeDefault
+	s.run(`document.getElementById('open-settings').click()`)
+	waitUntil(t, 10*time.Second, "the settings show the bridge's default folder, nothing to go back to", func() bool {
+		return s.is(fmt.Sprintf(`document.getElementById('set-bot-home').value === %q && document.querySelector('#settings .staff .reset').hidden`, def))
+	}, func() string { return s.js(`document.querySelector('#settings .staff').innerText`) })
+	if n := ax(t, sctx, `document.getElementById('set-bot-home')`); n.Name != "Default folder" {
+		t.Errorf("the field should be named by its label: %+v", n)
+	}
+	// a relative folder: refused, said in the status line
+	s.run(`(f => { f.value = 'relative/bots'; f.dispatchEvent(new Event('input')) })(document.getElementById('set-bot-home')); document.querySelector('#settings .staff form').requestSubmit()`)
+	waitUntil(t, 10*time.Second, "a relative folder is refused", func() bool {
+		return s.is(`(x => x.classList.contains('err') && x.textContent === 'Not saved: the folder must be an absolute path')(document.querySelector('#settings .staff .said'))`)
+	}, func() string { return s.js(`document.querySelector('#settings .staff .said').textContent`) })
+	// another folder: saved with Enter, in settings.json, with "Use the default" to go back
+	mine := filepath.Join(t.TempDir(), "my bots")
+	s.run(fmt.Sprintf(`(f => { f.value = %q; f.dispatchEvent(new Event('input')); f.focus() })(document.getElementById('set-bot-home'))`, mine))
+	key(sctx, kb.Enter)
+	waitUntil(t, 10*time.Second, "saved", func() bool {
+		return b.Hub.Settings().BotHome == mine && s.is(`document.querySelector('#settings .staff .said').textContent === 'Saved.' && !document.querySelector('#settings .staff .said').classList.contains('err') && !document.querySelector('#settings .staff .reset').hidden`)
+	}, func() string { return s.js(`document.querySelector('#settings .staff').innerText`) })
+	if data, err := os.ReadFile(filepath.Join(b.Data, "settings.json")); err != nil || !strings.Contains(string(data), "my bots") {
+		t.Errorf("settings.json should keep it: %s %v", data, err)
+	}
+	s.shot("bot-home")
+	s.run(`document.querySelector('#settings .staff .reset').focus()`)
+	key(sctx, kb.Enter)
+	waitUntil(t, 10*time.Second, "back to the default, the focus on the field", func() bool {
+		return b.Hub.Settings().BotHome == def && s.is(fmt.Sprintf(`document.getElementById('set-bot-home').value === %q && document.querySelector('#settings .staff .reset').hidden && document.activeElement === document.getElementById('set-bot-home')`, def))
+	})
+	// what was typed and not saved goes when the settings open again
+	s.run(`document.getElementById('set-bot-home').value = '/typed/not/saved'; document.querySelector('#settings .close').click()`)
+	s.run(`document.getElementById('open-settings').click()`)
+	waitUntil(t, 10*time.Second, "the field shows the bridge's folder again", func() bool {
+		return s.is(fmt.Sprintf(`document.getElementById('set-bot-home').value === %q && document.querySelector('#settings .staff .said').textContent === ''`, def))
+	})
+	s.run(`document.querySelector('#settings .close').click()`)
+
+	// the page names the employees' own folders as the bridge does (internal/bridge's TestBotFolderNames)
+	names := map[string]string{"Ann Lee": "Ann-Lee", "Ann/Lee": "Ann-Lee", "前端 小王": "前端-小王", "a..b": "a.b", "-x-": "x", "...": "employee",
+		"x.lock": "x-lock", "a-!b": "a--b", "é_1": "é_1"}
+	list, _ := json.Marshal(slices.Collect(maps.Keys(names)))
+	var named map[string]string
+	if err := json.Unmarshal([]byte(get(t, sctx, 10*time.Second, chromedp.Evaluate[string](fmt.Sprintf(`import('/ui/launch.js').then(m => JSON.stringify(Object.fromEntries(%s.map(n => [n, m.folderName(n)]))))`, list), chromedp.EvalAwaitPromise))), &named); err != nil {
+		t.Fatal(err)
+	}
+	for name, want := range names {
+		if named[name] != want {
+			t.Errorf("folderName(%q) = %q, the bridge names it %q", name, named[name], want)
+		}
+	}
+
+	// a new employee without a folder: the dialog says where it goes, and it works there, a new git repository
+	if _, err := b.Hub.SetSettings(bridge.Settings{BotHome: mine}); err != nil {
+		t.Fatal(err)
+	}
+	s.run(`document.getElementById('new-emp').click()`)
+	waitUntil(t, 10*time.Second, "the launch dialog opens, its folder empty", func() bool {
+		return s.is(`!document.getElementById('launch').hidden && document.querySelector('#launch [name=dir]').value === '' && !document.querySelector('#launch [name=dir]').required`)
+	})
+	s.run(`(f => { f.value = 'Kai Ro'; f.dispatchEvent(new Event('input', { bubbles: true })) })(document.querySelector('#launch [name=name]'))`)
+	own := filepath.Join(mine, "Kai-Ro")
+	waitUntil(t, 5*time.Second, "the placeholder and the preview name the folder it gets", func() bool {
+		return s.is(fmt.Sprintf(`document.querySelector('#launch [name=dir]').placeholder === %q && document.querySelector('#launch .preview').textContent.startsWith(%q)`,
+			"Leave empty for a new folder: "+own, "cd '"+own+"'\n"))
+	}, func() string {
+		return s.js(`document.querySelector('#launch [name=dir]').placeholder + ' | ' + document.querySelector('#launch .preview').textContent`)
+	})
+	s.shot("launch-own-folder")
+	s.run(`document.querySelector('#launch form').requestSubmit()`)
+	var started *bridge.Launch
+	waitUntil(t, 20*time.Second, "it starts", func() bool {
+		for _, l := range b.Hub.Snapshot().Launches {
+			if l.Name == "Kai Ro" {
+				started = l
+			}
+		}
+		return started != nil
+	}, func() string { return s.js(`document.querySelector('#launch .status').textContent`) })
+	if started.Dir != own {
+		t.Fatalf("it should start in %s: %s", own, started.Dir)
+	}
+	if out, err := exec.Command("git", "-C", own, "log", "--format=%s").CombinedOutput(); err != nil || strings.TrimSpace(string(out)) != "symphony: Kai Ro's folder" {
+		t.Errorf("its folder should be a new git repository: %s %v", out, err)
+	}
+	// online (as its mod would report it): the dialog closes, and "Start work" later fills in its folder
+	kai := b.Hub.Account(started.Account)
+	if kai.Home != own {
+		t.Errorf("the folder should be bound to it: %q", kai.Home)
+	}
+	b.post(t, kai.Token, "/api/event", map[string]any{"session": "s-k", "kind": "session.start", "cwd": own, "launch": started.ID})
+	waitUntil(t, 10*time.Second, "online, the dialog closes", func() bool { return s.is(`document.getElementById('launch').hidden`) })
+	s.done()
 }

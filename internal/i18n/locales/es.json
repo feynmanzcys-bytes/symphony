@@ -33,6 +33,7 @@
   "log.task_end_failed": "al terminar la tarea {task}: {reason}",
   "log.task_undo_failed": "la tarea {task} no arrancó, y queda parte de lo que creó: {reason}",
   "log.save_failed": "no se puede escribir {file}: {reason}; hasta que una escritura salga bien, lo que cambió solo está en memoria",
+  "log.bot_home_no_git": "git no está en el PATH, así que la carpeta nueva del empleado, {dir}, no es un repositorio git; instala git (las tareas también lo necesitan)",
   "log.unsaved": "se detiene con datos que no se pudieron escribir en el disco: {reason}",
   "log.open_failed": "no se pudo abrir un navegador ({reason}); abre {url} tú mismo",
   "log.autostart_on": "symphony se iniciará cada vez que inicies sesión ({where}); ya está en marcha en {url}",

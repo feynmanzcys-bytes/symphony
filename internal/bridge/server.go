@@ -99,6 +99,8 @@ func NewServer(hub *Hub, web fs.FS) *Server {
 	s.mux.HandleFunc("POST /api/accounts", s.createAccount)
 	s.mux.HandleFunc("DELETE /api/accounts/{id}", s.deleteAccount)
 	s.mux.HandleFunc("GET /api/launch/options", s.launchOptions)
+	s.mux.HandleFunc("GET /api/settings", s.settings)
+	s.mux.HandleFunc("POST /api/settings", s.settings)
 	s.mux.HandleFunc("GET /api/dirs", s.dirs)
 	s.mux.HandleFunc("POST /api/launch", s.launch)
 	// the employee window: the chat, and the session's terminal
@@ -217,6 +219,7 @@ var errStatus = map[string]int{
 	"task_running": http.StatusConflict, "task_unknown": http.StatusNotFound, "task_no_git": http.StatusPreconditionFailed,
 	"ask_not_mod_settled": http.StatusForbidden, "ask_not_page_answered": http.StatusForbidden, "task_git_failed": http.StatusInternalServerError, "pty_start_failed": http.StatusInternalServerError, "cmd_unsafe_arg": http.StatusBadRequest, "task_repo_in_use": http.StatusConflict,
 	"data_write_failed": http.StatusInternalServerError, "launch_still_running": http.StatusConflict,
+	"bot_home_failed": http.StatusInternalServerError,
 }
 
 func writeErr(w http.ResponseWriter, err error) {
@@ -538,8 +541,36 @@ func (s *Server) launchOptions(w http.ResponseWriter, r *http.Request) {
 		"permissionModes": launchPermissionModes,
 		"resumes":         launchResumes,
 		"home":            home,
+		"botHome":         s.Hub.Settings().BotHome, // where an employee started without a folder gets its own
 		"recentDirs":      s.Hub.recentDirs(8),
 	})
+}
+
+// settings answers the bridge's settings in effect (GET /api/settings), and changes them (POST, with the fields to
+// change: botHome "" goes back to the default).
+func (s *Server) settings(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet {
+		writeJSON(w, 200, s.Hub.Settings())
+		return
+	}
+	var req struct {
+		BotHome *string `json:"botHome"`
+	}
+	if !decode(w, r, &req) {
+		return
+	}
+	s.Hub.mu.Lock()
+	next := s.Hub.settings
+	s.Hub.mu.Unlock()
+	if req.BotHome != nil {
+		next.BotHome = *req.BotHome
+	}
+	view, err := s.Hub.SetSettings(next)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, 200, view)
 }
 
 func (s *Server) dirs(w http.ResponseWriter, r *http.Request) {
@@ -615,6 +646,22 @@ func (s *Server) launch(w http.ResponseWriter, r *http.Request) {
 	}
 	defer release()
 	req.Account, req.Name = acc.ID, acc.Name
+	// no folder given: the employee's own, in the bot home (made now the first time: a new git repository)
+	made := ""
+	if req.Dir == "" {
+		dir, fresh, err := s.Hub.botFolder(acc.ID)
+		if err != nil {
+			if created {
+				_ = s.Hub.DeleteAccount(acc.ID)
+			}
+			writeErr(w, err)
+			return
+		}
+		req.Dir = dir
+		if fresh {
+			made = dir
+		}
+	}
 
 	id := newID()
 	env := map[string]string{"SYMPHONY_BRIDGE": s.Launcher.BridgeURL, "SYMPHONY_LAUNCH": id, "SYMPHONY_TOKEN": acc.Token}
@@ -629,6 +676,9 @@ func (s *Server) launch(w http.ResponseWriter, r *http.Request) {
 	if err := s.Launcher.Start(l, req, env); err != nil {
 		if created {
 			_ = s.Hub.DeleteAccount(acc.ID)
+			if made != "" {
+				_ = os.RemoveAll(made) // made for the account just dropped, and nothing ran in it
+			}
 		}
 		if e := (*Error)(nil); errors.As(err, &e) {
 			writeErr(w, err) // a coded error keeps its status: 400 cmd_unsafe_arg, 500 pty_start_failed

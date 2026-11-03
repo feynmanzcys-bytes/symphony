@@ -63,7 +63,7 @@ func TestGitInit(t *testing.T) {
 	if in, err := gitInWorkTree(dir); in || err != nil {
 		t.Fatalf("a plain folder is not in a work tree: %v %v", in, err)
 	}
-	if err := gitInit(dir, "T3"); err != nil {
+	if err := gitInit(dir, "symphony: files before task T3"); err != nil {
 		t.Fatal(err)
 	}
 	if files := mustGit(t, dir, "ls-files"); files != "notes.txt\nsrc/main.go" {
@@ -86,7 +86,7 @@ func TestGitInit(t *testing.T) {
 
 	// an empty folder works too; a repository without a commit has no base
 	empty := t.TempDir()
-	if err := gitInit(empty, "T4"); err != nil {
+	if err := gitInit(empty, "symphony: files before task T4"); err != nil {
 		t.Fatalf("an empty folder should get an empty first commit: %v", err)
 	}
 	bare := t.TempDir()
@@ -106,7 +106,7 @@ func TestGitInitLeavesSecretsOut(t *testing.T) {
 	for _, name := range append([]string{"main.go", "sub/notes.txt"}, left...) {
 		writeFile(t, filepath.Join(dir, filepath.FromSlash(name)), "x")
 	}
-	if err := gitInit(dir, "T1"); err != nil {
+	if err := gitInit(dir, "symphony: files before task T1"); err != nil {
 		t.Fatal(err)
 	}
 	if files := mustGit(t, dir, "ls-files"); files != "main.go\nsub/notes.txt" {

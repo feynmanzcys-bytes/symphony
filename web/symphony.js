@@ -118,6 +118,9 @@ export function connect({ stream = true } = {}) {
     launch: req => post('/api/launch', req, { timeout: 60000 }), // the bridge checks the mod first (claude plugin list)
     dirs: path => get('/api/dirs?path=' + encodeURIComponent(path)),
     launchOptions,
+    // the bridge's own settings: {botHome, botHomeDefault}; saving takes the fields to change (botHome '' is the default)
+    settings: () => get('/api/settings'),
+    saveSettings: changes => post('/api/settings', changes),
     // null when the bridge didn't answer with the list
     fetchChat: async sid => { const r = await get(`/api/chat/${sid}`); return r.ok ? r.data?.items ?? [] : null },
     fetchActivity: async () => { const r = await get('/api/activity'); return r.ok ? r.data?.items ?? [] : null },

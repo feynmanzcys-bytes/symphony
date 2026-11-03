@@ -52,6 +52,8 @@ type testBridge struct {
 func startBridge(t *testing.T, mod string) *testBridge {
 	t.Helper()
 	hub := bridge.NewHub()
+	// employees started without a folder get theirs in a folder of the test's, never in the home folder
+	hub.BotHomeDefault = filepath.Join(t.TempDir(), "bots")
 	data := t.TempDir()
 	if err := hub.Open(data); err != nil {
 		t.Fatal(err)

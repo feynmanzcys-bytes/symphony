@@ -1,6 +1,8 @@
 // The launch dialog (#launch), shared by every theme: starting a session from the page for a new employee (name,
 // folder, model, effort, permission mode) or an existing one ("Start work": the last folder and options filled in).
 // The bridge starts claude in that folder; the dialog follows the launch in the snapshot and closes once it's online.
+// Without a folder the employee works in its own: the one made for it before, else a new one in the bridge's default
+// folder (the settings), named after it and made a git repository; the field's placeholder and the preview say which.
 //
 //   const launch = createLaunchDialog(sym, { options, onOnline, log })
 //   launch.open(accountId | null)    the dialog for an existing employee, or a new one
@@ -18,7 +20,7 @@ const MARKUP = `
     <label for="launch-name" data-i18n="launch.name"></label>
     <input id="launch-name" name="name" data-i18n-placeholder="launch.namePlaceholder" required>
     <label for="launch-dir" data-i18n="launch.dir"></label>
-    <div class="row"><input id="launch-dir" name="dir" data-i18n-placeholder="launch.dirPlaceholder" required><button type="button" class="px browse" data-i18n="launch.browse"></button></div>
+    <div class="row"><input id="launch-dir" name="dir"><button type="button" class="px browse" data-i18n="launch.browse"></button></div>
     <div class="browser" hidden><div class="cur"></div><ul></ul><button type="button" class="px pick" data-i18n="launch.pick"></button></div>
     <div class="recent"></div>
     <div class="grid">
@@ -71,17 +73,29 @@ export function createLaunchDialog(sym, { options = () => sym.launchOptions(true
     else r.name = field('name').value.trim()
     return r
   }
+  // the folder an employee started without one gets: the one made for it before, else a new one in the bridge's default
+  // folder named as the bridge names it (it adds -2, -3 when that's taken); '' when the bridge has no default folder
+  function ownDir() {
+    const acc = account ? sym.accountById(account) : null
+    if (acc?.home) return acc.home
+    const home = opts?.botHome
+    if (!home) return ''
+    const sep = home.includes('\\') && !home.includes('/') ? '\\' : '/'
+    return home.replace(/[\\/]+$/, '') + sep + folderName(acc ? acc.name : field('name').value.trim())
+  }
   // command preview: the same arguments the bridge builds (it adds the environment variables, and --plugin-dir in development mode)
   function preview() {
     const r = request()
     const q = s => /^[\w\-./=:@]+$/.test(s) ? s : `'${s.replace(/'/g, `'\\''`)}'`
+    const own = ownDir(), acc = account ? sym.accountById(account) : null
+    field('dir').placeholder = own ? t(acc?.home ? 'launch.dirOwn' : 'launch.dirAuto', { dir: own }) : t('launch.dirPlaceholder')
     const args = ['claude', '--name', q(field('name').value.trim() || '?')]
     if (r.model) args.push('--model', r.model)
     if (r.effort) args.push('--effort', r.effort)
     if (r.permissionMode) args.push('--permission-mode', r.permissionMode)
     if (r.resume === 'continue') args.push('--continue')
     const note = t(opts?.mod?.dev ? 'launch.previewNoteDev' : 'launch.previewNote')
-    form.querySelector('.preview').textContent = `cd ${q(r.dir || '?')}\n${r.context ? 'SYMPHONY_CONTEXT=1 ' : ''}${args.join(' ')}\n# ${note}`
+    form.querySelector('.preview').textContent = `cd ${q(r.dir || own || '?')}\n${r.context ? 'SYMPHONY_CONTEXT=1 ' : ''}${args.join(' ')}\n# ${note}`
   }
 
   // bypassPermissions runs everything without asking: a red line under the select says what that means (picked, it
@@ -134,7 +148,8 @@ export function createLaunchDialog(sym, { options = () => sym.launchOptions(true
       field('name').value = acc ? acc.name : ''
       field('name').readOnly = !!acc
       const recent = opts.recentDirs || []
-      field('dir').value = last.dir || acc?.dir || recent[0] || opts.home || ''
+      // a new employee gets a folder of its own unless one is picked; an old one goes back to where it worked
+      field('dir').value = acc ? last.dir || acc.dir || acc.home || '' : ''
       // a new employee follows Claude Code's own settings (the empty choices leave the flags out); an old one works as it last did
       fill(field('model'), opts.models, acc ? last.model : '')
       fill(field('effort'), opts.efforts, acc ? last.effort : '')
@@ -173,4 +188,13 @@ export function createLaunchDialog(sym, { options = () => sym.launchOptions(true
   }
   sym.on('snapshot', () => launch.watch())
   return launch
+}
+
+// an employee's own folder's name, as the bridge makes it (slugOr in internal/bridge/git.go): letters, digits, -, _ and
+// . stay, every other run of characters becomes one -, a run of dots one dot, - and . go from the ends, a final .lock
+// becomes -lock, and "employee" when nothing is left
+export function folderName(name) {
+  let s = String(name).replace(/[^\p{L}\p{Nd}_.-]+/gu, '-').replace(/\.{2,}/g, '.').replace(/^[-.]+|[-.]+$/g, '')
+  if (s.endsWith('.lock')) s = s.slice(0, -5) + '-lock'
+  return s || 'employee'
 }

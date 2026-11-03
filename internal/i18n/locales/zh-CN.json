@@ -33,6 +33,7 @@
   "log.task_end_failed": "结束任务 {task} 时出错：{reason}",
   "log.task_undo_failed": "任务 {task} 没启动起来，它弄出来的东西还有一部分留着：{reason}",
   "log.save_failed": "写不了 {file}：{reason}；在写成功之前，改动只存在内存里",
+  "log.bot_home_no_git": "PATH 里找不到 git，员工的新目录 {dir} 没能初始化成 git 仓库；请装上 git（任务也要用它）",
   "log.unsaved": "正在停止，还有数据没能写到磁盘上：{reason}",
   "log.open_failed": "打不开浏览器（{reason}），请自己打开 {url}",
   "log.autostart_on": "symphony 以后登录就会自动启动（{where}），现在已在 {url} 运行",

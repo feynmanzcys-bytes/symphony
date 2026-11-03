@@ -202,7 +202,7 @@ func (h *Hub) sessionTaskLocked(session, account string) string {
 // ---------- making a task (the steps that need the hub; the rest is in server_task.go) ----------
 
 // employee is an account and its folder: its online desk session's, else the last one started from the page, else
-// the last one a desk session reported.
+// the last one a desk session reported, else the one made for it (Account.Home).
 func (h *Hub) employee(id string) (*Account, string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -217,7 +217,10 @@ func (h *Hub) employee(id string) (*Account, string) {
 	if a.Last != nil && a.Last.Dir != "" {
 		return &cp, a.Last.Dir
 	}
-	return &cp, a.Dir
+	if a.Dir != "" {
+		return &cp, a.Dir
+	}
+	return &cp, a.Home
 }
 
 func (h *Hub) nameTaken(name string) bool {
