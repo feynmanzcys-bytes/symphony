@@ -3,6 +3,8 @@
   "common.theme": "主题",
   "common.cancel": "取消",
   "common.colon": "：",
+  "motion.pause": "暂停动画",
+  "motion.system": "动画已暂停：系统设置了减少动态效果",
   "common.subagent": "子代理",
   "common.close": "关闭",
   "common.asksPending": "等你审批或回答：{n}",

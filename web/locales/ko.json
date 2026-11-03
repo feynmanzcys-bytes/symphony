@@ -3,6 +3,8 @@
   "common.theme": "테마",
   "common.cancel": "취소",
   "common.colon": ": ",
+  "motion.pause": "움직임 멈추기",
+  "motion.system": "움직임이 멈춰 있습니다: 시스템이 동작 줄이기로 설정되어 있습니다",
   "common.subagent": "서브에이전트",
   "common.close": "닫기",
   "common.asksPending": "승인 또는 답변 대기: {n}",

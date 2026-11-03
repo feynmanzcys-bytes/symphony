@@ -40,6 +40,7 @@
   #hud .steps button { width:24px; height:18px; padding:0; border:0; border-left:2px solid #2b2a28; cursor:pointer;
     background:#fffdf7 no-repeat center / 12px 12px; image-rendering:pixelated; }
   #hud .steps button:first-child { border-left:0; }
+  #hud #still { padding:0 6px; height:22px; font-size:12px; line-height:1; } /* pauses what moves by itself (ui/motion.js) */
   #hud .steps button:hover { background-color:#f2efe8; }
   #hud .steps button.on { background-color:#f2b705; }
   #hud select.lang, #hud select.theme { width:104px; font:inherit; font-size:12px; background:#fffdf7; color:#2b2a28; border:2px solid #2b2a28; padding:0 2px;
@@ -99,6 +100,7 @@
   .emp-label.match { outline:2px solid #f2b705; outline-offset:1px; }
   .emp-label.found { animation:found .4s steps(1) 8; }
   @keyframes found { 50% { background:#ffe27a; } } /* (light enough for the tag's gray status to read) */
+  html[data-still] .emp-label.found { background:#ffe27a; } /* motion paused: lit, not flashing */
   .room-label { position:absolute; background:rgba(43,42,40,.82); color:#fffdf7; padding:0 6px; font-size:11px; line-height:1.6; letter-spacing:1px; white-space:nowrap; }
   /* the small meeting rooms' nameplates, beside their doors, with a light: green while the room is free, yellow while a
      task runs in it, red while one of its members waits for you or the task failed */

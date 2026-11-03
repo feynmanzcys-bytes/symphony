@@ -9,6 +9,7 @@ import { esc } from '/asks.js'
 import { connect } from '/symphony.js'
 import { STATE_MARK, GRAY_MARK, base, lower, buildText, statusText as statusOf, setHTML, deferWhilePressed, askKind, askSummary } from '/ui/common.js'
 import { connectionBanner } from '/ui/banner.js'
+import { stillSwitch } from '/ui/motion.js'
 import { announceAsks } from '/ui/a11y.js'
 import { createChat } from '/ui/chat.js'
 import { createLaunchDialog } from '/ui/launch.js'
@@ -26,6 +27,7 @@ announceAsks(sym)
 
 // ---------- the room at night or by day: the system's choice, or the switch's, remembered ----------
 const DARK_STORE = 'symphony.mission.dark'
+stillSwitch(document.getElementById('still')) // pauses what moves by itself (ui/motion.js)
 const darkBtn = document.getElementById('dark')
 darkBtn.setAttribute('aria-label', t('mc.dark')) // a switch: its name stays, aria-pressed says whether it's on
 darkBtn.title = t('mc.dark') // (the same words: a title that said what a click does would be read as the switch's description, against its state)

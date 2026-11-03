@@ -22,6 +22,10 @@
      round it; a theme whose accent reaches 3:1 turns the edge to it and draws no ring */
   --field-line: var(--ink); --focus-line: var(--ink); --focus-ring: 0 0 0 2px var(--accent), 0 0 0 4px var(--ink);
 }
+/* motion paused (ui/motion.js: the system asks for less motion, or the page's switch): nothing moves or blinks by
+   itself (WCAG 2.1 2.2.2), transitions are instant; a theme gives what only an animation said a still form */
+html[data-still] *, html[data-still] *::before, html[data-still] *::after { animation:none !important; transition-duration:0s !important; scroll-behavior:auto !important; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation:none !important; transition-duration:0s !important; } } /* (before the page's code says it) */
 .dot { display:inline-block; width:8px; height:8px; margin-right:4px; vertical-align:0; }
 button.px { background:var(--paper); color:var(--ink); border:2px solid var(--ink); padding:2px 10px; font:inherit; cursor:pointer; box-shadow:2px 2px 0 rgba(0,0,0,.3); }
 button.px.primary { background:var(--ink); color:var(--paper); }

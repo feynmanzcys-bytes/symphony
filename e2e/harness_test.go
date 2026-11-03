@@ -373,8 +373,9 @@ func newBrowser(t *testing.T) context.Context {
 		chromedp.ExecPath(path),
 		chromedp.Flag("headless", "new"),
 		chromedp.Flag("enable-unsafe-swiftshader", true),
-		// the pages as in a light system, whatever this machine's is: the themes follow prefers-color-scheme
-		chromedp.Flag("blink-settings", "preferredColorScheme=1"),
+		// the pages as in a light system that asks for no less motion, whatever this machine's is: the themes follow
+		// prefers-color-scheme and prefers-reduced-motion (TestMotion asks for less in its tabs)
+		chromedp.Flag("blink-settings", "preferredColorScheme=1,prefersReducedMotion=false"),
 		// English whatever the machine's language (a browser takes it from the system), so a page without ?lang= is English
 		chromedp.Flag("lang", "en-US"),
 		chromedp.Flag("accept-lang", "en-US"),

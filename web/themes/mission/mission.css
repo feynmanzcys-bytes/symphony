@@ -131,6 +131,9 @@ button.px.icon.blocked { opacity: .55; border-style: dashed; border-color: var(-
 .ticker .track { display: inline-block; padding-left: 100%; animation: ticker var(--dur, 40s) linear infinite; will-change: transform; }
 .ticker:hover .track { animation-play-state: paused; }
 .ticker .track.still { animation: none; padding-left: 18px; }
+/* motion paused (ui/motion.js): the lines stand still and wrap, a few rows that scroll */
+html[data-still] .ticker { height: auto; max-height: 92px; overflow-y: auto; white-space: normal; }
+html[data-still] .ticker .track { display: block; padding-left: 18px; }
 @keyframes ticker { to { transform: translateX(-100%); } }
 .ticker .item { margin-right: 48px; }
 .ticker .item time { color: var(--muted); margin-right: 8px; }

@@ -7,6 +7,7 @@ import { connect } from '/symphony.js'
 import { GREEN, YELLOW, RED, GRAY, STATE_COLOR, STATE_MARK, GRAY_MARK, base, lower, dot, element, hash, build, buildText, statusText as statusOf, richText, setHTML, pointAt, deferWhilePressed, askKind } from '/ui/common.js'
 import { connectionBanner } from '/ui/banner.js'
 import { announce, announceAsks } from '/ui/a11y.js'
+import { motion, stillSwitch } from '/ui/motion.js'
 import { createChat } from '/ui/chat.js'
 import { createLaunchDialog } from '/ui/launch.js'
 import { createTaskUI } from '/ui/task.js'
@@ -1102,6 +1103,7 @@ const summoned = e => !!e.summon && e.s?.id === e.summon.session && e.s.stateSin
 // where an idle employee is in its rhythm at `at` (ms since 1970): settling at its desk, wandering, or napping;
 // for a nap, also when it began
 function rhythm(e, at) {
+  if (motion.still) return { phase:'settle' } // motion paused: no wandering about, the desk it is
   const t = at - idleSince(e)
   if (t < SETTLE) return { phase:'settle' }
   if (t < FIRST_NAP) return { phase:'roam' }
@@ -1115,6 +1117,7 @@ function deskPastime(e, at) {
   const called = summoned(e), t = at - (called ? e.summon.at : idleSince(e))
   if (e.want?.act === 'nap' || (called && t > FIRST_NAP)) return 'sleep'
   if (called && t < 60000) return 'ready'
+  if (motion.still) return 'phone' // (motion paused: one pastime, not a change every half minute)
   return ['phone', 'game'][(hash(e.acc.id) + Math.floor(t / 30000)) % 2]
 }
 
@@ -1215,8 +1218,9 @@ function lifeTick(at, now, dt) {
   for (const [e, w] of plan) {
     e.want = w
     if (e.fresh) { place(e, w.spot, now); e.fresh = false }
-    else if (e.goal?.id !== w.spot.id) go(e, w.spot)
+    else if (e.goal?.id !== w.spot.id) { if (motion.still) place(e, w.spot, now); else go(e, w.spot) } // (motion paused: there at once)
     else e.goal = w.spot // the same spot, maybe rebuilt by a new layout
+    if (motion.still && (e.path.length || e.tag)) place(e, e.goal, now) // on the way as motion paused
   }
   playTag(plan, now, dt)
   for (const e of plan.keys()) e.moving = move(e, dt, now)
@@ -1378,7 +1382,7 @@ function frame(now) {
     if (online) agentsShown(e.s).forEach((a, i) => {
       const ax = e.desk.x + (i % 2 ? 35 : -13), ay = e.desk.y + 2 + Math.floor(i / 2) * 8
       const busy = a.state === 'tool' || a.state === 'thinking'
-      const bob = busy && Math.floor((now + i * 90) / 200) % 2 ? -1 : 0
+      const bob = busy && !motion.still && Math.floor((now + i * 90) / 200) % 2 ? -1 : 0
       const look = agentDone(a) ? GRAY_LOOK : lookOf(e.acc)
       items.push({ y:ay + 5, draw:() => drawMiniPerson(g, ax + 1, ay - 2 + bob, look) })
     })
@@ -1393,7 +1397,7 @@ function frame(now) {
   if (using.has('fb0') && using.has('fb1')) items.push({ y:foos.y + 13, draw:() => drawFoosBall(g, foos.x, foos.y, now) })
   if (using.has('print')) items.push({ y:printer.y + 21, draw:() => drawPaper(g, printer.x, printer.y, now) })
   items.push({ y:sofa.y + 24, draw:() => drawSofaBack(g, sofa) })
-  if (now - lift.at < 1600) items.push({ y:WALL_H - 1, draw:() => drawLift(g, door.x + (lift.no % 2 ? 3 : -25), WALL_H - 34, true) })
+  if (!motion.still && now - lift.at < 1600) items.push({ y:WALL_H - 1, draw:() => drawLift(g, door.x + (lift.no % 2 ? 3 : -25), WALL_H - 34, true) })
   for (const { pow } of tagGames.values()) {
     if (pow && now - pow.at < 500) items.push({ y:Infinity, draw:() => drawPow(g, Math.round(pow.x), Math.round(pow.y), (now - pow.at) / 500) })
   }
@@ -1402,7 +1406,7 @@ function frame(now) {
   // envelopes in flight: an arc from the sender's head to the recipient's
   for (let i = flights.length - 1; i >= 0; i--) {
     const f = flights[i]
-    f.t += dt / 1.6
+    f.t += motion.still ? 1 : dt / 1.6 // (motion paused: delivered at once)
     const p = Math.min(f.t, 1)
     const x = f.from.x + (f.to.x - f.from.x) * p, y = f.from.y + (f.to.y - f.from.y) * p - Math.sin(p * Math.PI) * 24
     drawEnvelope(g, Math.round(x) - 4, Math.round(y) - 3)
@@ -1435,11 +1439,11 @@ function frame(now) {
 // one employee in the building, as a depth-sorted item: its pose follows its state, where it is and what it does there
 function employeeItem(g, e, now, at) {
   const online = isOnline(e), st = online ? e.s.state : 'ended', w = e.want || {}, spot = e.goal
-  const t = now + e.phase, b = build(e.s)
+  const t = (motion.still ? 0 : now) + e.phase, b = build(e.s) // the poses' clock: it stands while motion is paused
   e.there = !e.moving && !e.tag && !!spot && !e.path.length
   e.atDesk = e.there && spot.id === 'desk'
   const act = e.there ? w.act : null, pastime = e.atDesk && st === 'idle' ? deskPastime(e, at) : null
-  const blink = now > e.blinkAt && now < e.blinkAt + 140
+  const blink = !motion.still && now > e.blinkAt && now < e.blinkAt + 140
   if (now > e.blinkAt + 140) e.blinkAt = now + 2500 + Math.random() * 4000
   const x = Math.round(e.x * D) / D // at a finer pixel size, people move by finer steps
   let y = Math.round(e.y * D) / D, face = e.there ? spot.face : e.facing, extra = null
@@ -2297,6 +2301,7 @@ pixelsEl.querySelectorAll('button').forEach((b, i) => { // each a finer grid
   })
 })
 document.querySelector('#hud .prefs').prepend(pixelsEl)
+pixelsEl.after(stillSwitch(Object.assign(document.createElement('button'), { type:'button', className:'px', id:'still' })))
 // It slides from now on, not when the page opens: the remembered position takes effect here, before the slide is
 // turned on. Without this, a browser that hadn't worked out the HUD's style yet would do so only in the next frame,
 // after the slide is on, and slide it up as the page opens.

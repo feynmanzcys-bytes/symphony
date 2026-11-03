@@ -3,6 +3,8 @@
   "common.theme": "Tema",
   "common.cancel": "Cancelar",
   "common.colon": ": ",
+  "motion.pause": "Pausar el movimiento",
+  "motion.system": "El movimiento está en pausa: el sistema pide menos movimiento",
   "common.subagent": "subagente",
   "common.close": "Cerrar",
   "common.asksPending": "Esperando tu aprobación o respuesta: {n}",

@@ -3,6 +3,8 @@
   "common.theme": "Theme",
   "common.cancel": "Cancel",
   "common.colon": ": ",
+  "motion.pause": "Pause motion",
+  "motion.system": "Motion is paused: the system asks for less of it",
   "common.subagent": "subagent",
   "common.close": "Close",
   "common.asksPending": "Waiting for your approval or answer: {n}",
