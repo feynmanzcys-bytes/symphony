@@ -86,7 +86,8 @@ func a11yTeam(t *testing.T) (*testBridge, *bridge.Task, map[string]string) {
 	event("alice", "s-alice", map[string]any{"kind": "turn.start", "text": "Run the test suite and fix what fails"})
 	event("alice", "s-alice", map[string]any{"kind": "chat.delta", "turnId": "a1", "step": 0, "blocks": []map[string]any{
 		{"i": 0, "kind": "thinking", "text": "The suite is in `make test`; let me run it first."},
-		{"i": 1, "kind": "text", "text": "I'll run the tests first:\n\n```\nmake test\n```\n\nThen I'll look at **each failure** in turn."}}})
+		{"i": 1, "kind": "text", "text": "I'll run the tests first:\n\n```sh\n$ make test -j4 $CI 2>&1 | tee out.log  # the whole suite\n```\n\nThen I'll look at **each failure** in turn, starting from the router:\n\n" +
+			"```go\n// the router's handler\nfunc route(p string) (int, error) {\n\tif len(p) > 64 {\n\t\treturn 0, nil\n\t}\n\treturn strconv.Atoi(p)\n}\n```\n\n```diff\n@@ -1,2 +1,2 @@\n-old line\n+new line\n```"}}})
 	event("alice", "s-alice", map[string]any{"kind": "chat.stop", "turnId": "a1", "step": 0, "tokens": map[string]any{"input": 12000, "output": 800, "cacheRead": 90000, "cacheWrite": 0, "model": "claude-opus-5-5"}})
 	for i, tool := range []struct {
 		name, summary string

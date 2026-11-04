@@ -4,10 +4,13 @@
 // elsewhere. Everything is escaped first, so raw HTML shows as text; a link goes out only to http, https or mailto, in a
 // new tab, without the page as its referrer; an image is a link to it (the page shows nothing from other sites). A line
 // break inside a paragraph stays a break, as a chat shows what was written. A text still streaming renders as far as it
-// goes: a fence not yet closed is code to the end.
+// goes: a fence not yet closed is code to the end. A fence's code is colored by its language (ui/highlight.js). An
+// entity in the text (&amp;, &#39;) is its character, as the model writes them meaning it (a code span or a fence keeps
+// them as written).
 //
 //   markdown(text) → HTML (a fragment of blocks)
 import { esc } from '/asks.js'
+import { highlight } from '/ui/highlight.js'
 
 const LIST = /^( {0,3})([-*+]|\d{1,9}[.)])(?:[ \t]+|$)/
 const FENCE = /^ {0,3}(`{3,}|~{3,})[ \t]*([^\s`]*)[^`]*$/
@@ -41,7 +44,7 @@ function blocks(lines, tight) {
       const close = new RegExp('^ {0,3}' + (m[1][0] === '`' ? '`' : '~') + '{' + m[1].length + ',}[ \\t]*$'), body = []
       for (i++; i < lines.length && !close.test(lines[i]); i++) body.push(lines[i])
       i++
-      out.push(`<pre${m[2] ? ` data-lang="${esc(m[2])}"` : ''}><code>${esc(body.join('\n'))}</code></pre>`)
+      out.push(`<pre${m[2] ? ` data-lang="${esc(m[2])}"` : ''}><code>${highlight(body.join('\n'), m[2])}</code></pre>`)
       continue
     }
     if ((m = line.match(HEADING))) { // # .. ######, as h3 .. h6: the page's own headings come first
@@ -151,8 +154,8 @@ function inline(text) {
   text = text.replace(/\\([\\`*_{}[\]()#+\-.!|~<>"])/g, (m, c) => keep(esc(c)))
   text = text.replace(/<((?:https?|mailto):[^\s<>]+)>/gi, (m, url) => keep(link(url, esc(url))))
   text = text.replace(/(!?)\[([^\]\n]*)\]\([ \t]*<?([^\s<>()]*(?:\([^\s<>()]*\)[^\s<>()]*)*)>?(?:[ \t]+(?:"[^"\n]*"|'[^'\n]*'))?[ \t]*\)/g,
-    (m, bang, label, url) => keep(link(url, marks(esc(label)) || esc(url), !!bang)))
-  let html = esc(text)
+    (m, bang, label, url) => keep(link(decode(url), marks(esc(decode(label))) || esc(url), !!bang)))
+  let html = esc(decode(text))
   html = html.replace(/\bhttps?:\/\/(?:(?!&quot;|&lt;|&gt;)[^\s<\u0000])+/g, url => {
     const tail = url.match(/[.,;:!?'*_~)\]]+$/)?.[0] ?? '' // the sentence's own punctuation stays out
     const href = tail ? url.slice(0, -tail.length) : url
@@ -169,6 +172,16 @@ const marks = html => html
   .replace(/(^|[^*\w\\])\*(?=[^\s*])([^*\n]*?[^\s*])\*(?!\*)/g, '$1<em>$2</em>')
   .replace(/(^|[^_\w])_(?=[^\s_])([^_\n]*?[^\s_])_(?![_\w])/g, '$1<em>$2</em>')
   .replace(/~~(?=\S)([\s\S]*?\S)~~/g, '<del>$1</del>')
+// an entity is its character, once (&amp;amp; is &amp;): the named ones a text has a use for, and the numbers, but
+// never NUL (the placeholder above), a surrogate or a code point past the last; what isn't one stays as written
+const NAMED = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: '\u00a0', copy: '©', reg: '®', trade: '™', hellip: '…', mdash: '—', ndash: '–',
+  laquo: '«', raquo: '»', ldquo: '“', rdquo: '”', lsquo: '‘', rsquo: '’', middot: '·', bull: '•', deg: '°', times: '×', divide: '÷', plusmn: '±',
+  euro: '€', pound: '£', yen: '¥', cent: '¢', sect: '§', para: '¶', larr: '←', rarr: '→', uarr: '↑', darr: '↓', harr: '↔', ne: '≠', le: '≤', ge: '≥', infin: '∞', check: '✓' }
+const decode = s => s.replace(/&(?:#(\d{1,7})|#[xX]([\da-fA-F]{1,6})|([A-Za-z][A-Za-z\d]{1,31}));/g, (m, dec, hex, name) => {
+  if (name) return NAMED[name] ?? m
+  const n = parseInt(dec ?? hex, dec ? 10 : 16)
+  return n === 0 || n > 0x10ffff || (n >= 0xd800 && n <= 0xdfff) ? '\ufffd' : String.fromCodePoint(n)
+})
 // a link out of the page: http, https and mailto only (anything else is its words); an image, a link to it
 function link(url, label, image = false) {
   if (!/^(?:https?:\/\/|mailto:)/i.test(url)) return label

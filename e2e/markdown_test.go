@@ -33,6 +33,7 @@ func TestMarkdown(t *testing.T) {
 	link := func(href, label, cls string) string {
 		return fmt.Sprintf(`<a href="%s" target="_blank" rel="noopener noreferrer"%s>%s</a>`, href, cls, label)
 	}
+	sp := func(cls, text string) string { return fmt.Sprintf(`<span class="hl-%s">%s</span>`, cls, text) }
 	cases := []struct{ in, want string }{
 		{"# Title", `<h3>Title</h3>`},
 		{"## Sub\ntext", `<h4>Sub</h4><p>text</p>`},
@@ -48,8 +49,19 @@ func TestMarkdown(t *testing.T) {
 		{"| a | b |\n|:-|-:|\n| 1 | 2 |", `<div class="table"><table><thead><tr><th style="text-align:left">a</th><th style="text-align:right">b</th></tr></thead>` +
 			`<tbody><tr><td style="text-align:left">1</td><td style="text-align:right">2</td></tr></tbody></table></div>`},
 		{"| x \\| y | z |\n|---|---|\n| `a|b` | **c** |", `<div class="table"><table><thead><tr><th>x | y</th><th>z</th></tr></thead><tbody><tr><td><code>a|b</code></td><td><strong>c</strong></td></tr></tbody></table></div>`},
-		{"```js\nconst a = '<b>'\n```", `<pre data-lang="js"><code>const a = '&lt;b&gt;'</code></pre>`},
+		// fenced code, colored by its language (ui/highlight.js): a span per token, the code escaped, operators plain
+		{"```js\nconst a = '<b>'\n```", `<pre data-lang="js"><code>` + sp("k", "const") + ` a = ` + sp("s", "'&lt;b&gt;'") + `</code></pre>`},
+		{"```go\nfunc main() {\n\tfmt.Println(\"hi\", 42) // say\n}\n```", `<pre data-lang="go"><code>` + sp("k", "func") + ` ` + sp("f", "main") + "() {\n    fmt." + sp("f", "Println") +
+			`(` + sp("s", "&quot;hi&quot;") + `, ` + sp("n", "42") + `) ` + sp("c", "// say") + "\n}</code></pre>"},
+		{"```sh\n$ ls -la /tmp # list\n```", `<pre data-lang="sh"><code>` + sp("p", "$ ") + sp("f", "ls") + ` ` + sp("a", "-la") + ` /tmp ` + sp("c", "# list") + `</code></pre>`},
+		{"```json\n{\"a\": 1, \"b\": [true, null]}\n```", `<pre data-lang="json"><code>{` + sp("a", "&quot;a&quot;") + `: ` + sp("n", "1") + `, ` + sp("a", "&quot;b&quot;") + `: [` + sp("n", "true") + `, ` + sp("n", "null") + `]}</code></pre>`},
+		{"```diff\n-old\n+new\n```", `<pre data-lang="diff"><code>` + sp("d", "-old") + "\n" + sp("i", "+new") + `</code></pre>`},
+		{"```brainfuck\n+++ <\n```", `<pre data-lang="brainfuck"><code>+++ &lt;</code></pre>`}, // a language it doesn't know: no spans
 		{"```\nstill streaming", `<pre><code>still streaming</code></pre>`},
+		{"```py\nx = 'still", `<pre data-lang="py"><code>x = ` + sp("s", "'still") + `</code></pre>`}, // a string cut by the stream runs to the end
+		// an entity is its character once (the model writes &amp; meaning &); what it decodes to is escaped like anything
+		{"a &amp; b &lt;b&gt; &#65;&#x42; &bogus; `&amp;`", `<p>a &amp; b &lt;b&gt; AB &amp;bogus; <code>&amp;amp;</code></p>`},
+		{"&lt;script&gt;alert(1)&lt;/script&gt;", `<p>&lt;script&gt;alert(1)&lt;/script&gt;</p>`},
 		{"a `<code>` **bold** *it* ~~gone~~ snake_case_name _em_", `<p>a <code>&lt;code&gt;</code> <strong>bold</strong> <em>it</em> <del>gone</del> snake_case_name <em>em</em></p>`},
 		{"2 * 3 * 4", `<p>2 * 3 * 4</p>`},
 		{"**`x`**", `<p><strong><code>x</code></strong></p>`},

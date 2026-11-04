@@ -88,7 +88,8 @@ func TestScreens(t *testing.T) {
 	event("alice", "s-alice", map[string]any{"kind": "turn.start", "text": "Run the test suite and fix what fails"})
 	event("alice", "s-alice", map[string]any{"kind": "chat.delta", "turnId": "a1", "step": 0, "blocks": []map[string]any{
 		{"i": 0, "kind": "thinking", "text": "The suite is in `make test`; let me run it first and look at the failures."},
-		{"i": 1, "kind": "text", "text": "I'll run the tests first:\n\n```\nmake test\n```\n\nThen I'll look at **each failure** in turn."}}})
+		{"i": 1, "kind": "text", "text": "I'll run the tests first:\n\n```sh\n$ make test -j4 $CI 2>&1 | tee out.log  # the whole suite\n```\n\nThen I'll look at **each failure** in turn, starting from the router:\n\n" +
+			"```go\n// the router's handler\nfunc route(p string) (int, error) {\n\tif len(p) > 64 {\n\t\treturn 0, nil\n\t}\n\treturn strconv.Atoi(p)\n}\n```"}}})
 	event("alice", "s-alice", map[string]any{"kind": "chat.stop", "turnId": "a1", "step": 0})
 	event("alice", "s-alice", map[string]any{"kind": "tool.start", "tool": "Read", "summary": "src/router.js"})
 	event("alice", "s-alice", map[string]any{"kind": "tool.end", "tool": "Read", "summary": "src/router.js"})

@@ -145,6 +145,12 @@ button.close:focus-visible { outline:2px solid var(--focus-line); outline-offset
 .md a { color:inherit; text-decoration:underline; text-underline-offset:2px; }
 .md a:focus-visible { outline:2px solid currentColor; outline-offset:1px; }
 .md pre code { background:none; padding:0; font:inherit; }
+/* a fenced code block's colors (ui/highlight.js), each at 4.5:1 or better on the block's dark ground in every theme and
+   scheme (the code block is dark on light paper too); a theme may set the variables */
+.hl-k { color:var(--hl-k, #ff8a80); } .hl-s { color:var(--hl-s, #a5d6ff); } .hl-c { color:var(--hl-c, #9aa4af); }
+.hl-n { color:var(--hl-n, #ffd866); } .hl-f { color:var(--hl-f, #d2a8ff); } .hl-t { color:var(--hl-t, #ffa657); }
+.hl-a { color:var(--hl-a, #7ee787); } .hl-p { color:var(--hl-p, #b0b8c2); font-weight:700; } .hl-x { color:var(--hl-x, #7fdbda); }
+.hl-i { color:var(--hl-i, #7ee787); } .hl-d { color:var(--hl-d, #ff8a80); }
 .it .body pre { background:var(--ink); color:var(--paper-2); padding:6px 8px; margin:4px 0; font:12px/1.5 var(--mono); overflow:auto; white-space:pre; }
 .it .body code { background:rgba(0,0,0,.08); padding:0 3px; font:12px var(--mono); }
 .it.user, .it.decision { align-self:flex-end; background:var(--me-bg); color:var(--me-ink); padding:6px 10px; border:2px solid var(--me-bg); box-shadow:2px 2px 0 rgba(0,0,0,.2); }
