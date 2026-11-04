@@ -480,7 +480,7 @@ export function createChat(sym, { askWho, onClose = () => {}, onTaskChip = () =>
         node.innerHTML = `<b>${esc(it.text)}</b> ${esc(it.summary || '')}`
         break
       case 'message': {
-        const out = !!name && it.from === name // a task session sends as its member's name
+        const out = !!name && (it.from === name || displayName(it.from) === name) // a task session sends as its member's name (the window shows it short)
         node.className = `it message${out ? ' out' : ''}`
         node.innerHTML = `<div class="from">${esc(out ? t('chat.msgTo', { name: displayName(it.to) || '?' }) : t('chat.msgFrom', { name: displayName(it.from) || '?' }))}</div><div class="${bodyClass(it)}">${bodyHTML(it)}</div>${timeOf(it)}`
         break

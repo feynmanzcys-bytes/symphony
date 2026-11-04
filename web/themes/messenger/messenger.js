@@ -221,7 +221,7 @@ function showChat() {
     state: stateOf(s), line: statusText(on ? s : null),
     taskChip: task ? { id: task.id, title: task.title, label: `${task.id} · ${task.title.split('\n')[0].slice(0, 40)}` } : null,
     // the chips say little and tell the rest on hover: "opus · xhigh" (the model's full name), the folder's name (its path)
-    chips: [['model', on ? shortModel(s) : '', on ? modelText(s) : ''], ['dir', base(dir), dir]],
+    chips: [['model', on ? shortModel(s) : '', on ? modelText(s) : ''], ['dir', base(picked.sid && member?.dir ? member.dir : dir), dir]], // (a member's folder by the repository's name, its worktree on hover: the worktree is named like the session)
     buttons, buttonsKey: `${picked.account}|${picked.sid}|${on}|${busy}|${!!launchOpts?.enabled}|${task?.id}|${member?.session}`,
     terminal: on && s.launch ? s.launch : null, // its terminal in the conversation, as the computer's screen shows it small
     session: picked.sid || s?.id || null, online: on,
@@ -374,7 +374,7 @@ function renderProfile() {
     `<h3>${esc(t('msgr.profile.about'))}</h3><dl>` +
     row('model', on ? modelPicker(s) : esc(acc.last?.model || '')) + row('folder', esc(s?.cwd || acc.last?.dir || acc.dir || '')) +
     row('repo', s?.repo ? esc(s.repo.name || base(s.repo.root)) : '') + row('engine', s?.engine ? esc(s.engine.version + (s.mod ? ' · ' + t('msgr.profile.modVersion', { version: s.mod }) : '')) : '') +
-    row('session', esc(s?.title || '')) + row('login', esc(s?.login || '')) + `</dl>` +
+    row('session', esc(s?.task ? displayName(s.title, task) : s?.title || '')) + row('login', esc(s?.login || '')) + `</dl>` +
     (on ? `<h3>${esc(t('msgr.profile.figures'))}</h3><dl>` +
       row('context', typeof ctx === 'number' ? `<span class="bar${ctx >= 90 ? ' full' : ctx >= 70 ? ' high' : ''}"><i style="width:${Math.min(100, ctx)}%"></i></span>${Math.round(ctx)}%` : '') +
       row('limits', (u?.rateLimits || []).map(r => esc(`${limitLabel(r.kind)} ${Math.round(r.percentUsed)}%`)).join(' · ')) +
