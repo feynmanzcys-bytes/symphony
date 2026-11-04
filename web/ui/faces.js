@@ -2,7 +2,8 @@
 // account's look, {shape, hue}: picked when it is made, changed on the employees page); without one, the name picks
 // a shape and a hue (so advisors, groups and names from before have faces too, the ones they always had). The markup
 // is the same everywhere (the list, the profile, a group's members, the team chat); the theme's sheet draws the state
-// as motion, each face a little out of step with the others (--d).
+// as motion, each face a little out of step with the others (--d). The state is on the shape itself: a stroke in its
+// color along the outline, which glows outward (a drop shadow of the shape, never a frame around it).
 //
 //   lookOf(name, look?)              → { shape, hue }
 //   faceHTML(name, state, cls, look?) → the <div class="face"> markup
@@ -32,7 +33,7 @@ export function faceHTML(name, state, cls = '', look) {
   // (one lightness for both schemes: the sidebar is graphite in either, and the profile's and the group's faces
   // sit on paper that is light or dark; --d puts the faces' motion out of step)
   return `<div class="face ${cls}" data-state="${esc(state)}" aria-hidden="true" style="--c:hsl(${hue} 50% 50%);--d:${(hue % 7) + (hash(name) % 3)}"><svg viewBox="0 0 44 44">` +
-    `<circle class="ring" cx="22" cy="22" r="21.5"/>${BODY[shape]}` +
+    `${BODY[shape]}` +
     `<ellipse class="eye" cx="15.5" cy="19" rx="3.1" ry="3.6"/><ellipse class="eye" cx="28.5" cy="19" rx="3.1" ry="3.6"/>` +
     `<circle class="pupil" cx="15.9" cy="19.4" r="1.6"/><circle class="pupil" cx="28.9" cy="19.4" r="1.6"/>` +
     (mouth ? `<path class="mouth" d="M15 29 Q22 34 29 29"/>` : `<path class="mouth" d="M16 30 L28 30"/>`) +

@@ -178,19 +178,21 @@ html.w-lt-700 #taskwin .close, html.w-lt-700 #chat .head .close { display: inlin
 
 /* the faces: a shape by the name, a hue by the name, the eyes; the state is the motion, no light beside it */
 .face { position: relative; width: 42px; height: 42px; flex: none; }
-/* in the list, the state is a ring around the face that breathes: green and slow when idle, amber and quicker while it
-   works, red and quick while it waits for you; none off duty. The ring's color stays put (it reads 3:1 on the sidebar
-   in every frame); only its glow moves, and data-still stops that */
-.rows .row .face::after { content: ''; position: absolute; inset: -3px; border-radius: 50%; border: 2px solid var(--ring, transparent); box-shadow: 0 0 0 0 color-mix(in srgb, var(--ring, transparent) 45%, transparent); pointer-events: none; }
-.rows .row .face[data-state=idle] { --ring: var(--side-idle); }
-.rows .row .face[data-state=idle]::after { animation: breathe 3.2s ease-in-out infinite; }
-.rows .row .face[data-state=thinking], .rows .row .face[data-state=tool] { --ring: var(--side-busy); }
-.rows .row .face:is([data-state=thinking], [data-state=tool])::after { animation: breathe 1.6s ease-in-out infinite; }
-.rows .row .face[data-state=waiting] { --ring: var(--side-hot); }
-.rows .row .face[data-state=waiting]::after { animation: breathe .8s ease-in-out infinite; }
-.rows .row .face:is([data-state=ended], [data-state=done])::after { display: none; }
-.rows .row .face .ring { display: none; } /* (the breathing ring says it in the list; the big faces keep theirs) */
-@keyframes breathe { 50% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--ring) 45%, transparent); } }
+/* the state is on the shape itself: a stroke in the state's color along its outline, which glows outward and breathes
+   (green and slow when idle, amber and quicker while it works, red and quick while it waits for you; none off duty).
+   The stroke's color stays put (it reads 3:1 where the face sits); only the glow moves, and data-still stops that.
+   The colors: the marks' on paper, the sidebar's own on graphite */
+.face[data-state=idle] { --ring: var(--st-idle); }
+.face:is([data-state=thinking], [data-state=tool]) { --ring: var(--st-busy); }
+.face[data-state=waiting] { --ring: var(--st-wait); }
+.side .face[data-state=idle] { --ring: var(--side-idle); }
+.side .face:is([data-state=thinking], [data-state=tool]) { --ring: var(--side-busy); }
+.side .face[data-state=waiting] { --ring: var(--side-hot); }
+.face .body { stroke: var(--ring, transparent); stroke-width: 2.5; paint-order: stroke; }
+.face[data-state=idle] svg { animation: glow 3.2s ease-in-out infinite; }
+.face:is([data-state=thinking], [data-state=tool]) svg { animation: glow 1.6s ease-in-out infinite; }
+.face[data-state=waiting] svg { animation: glow .8s ease-in-out infinite; }
+@keyframes glow { 0%, 100% { filter: drop-shadow(0 0 0 transparent); } 50% { filter: drop-shadow(0 0 5px var(--ring)); } }
 /* said to screen readers only */
 .vh { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .face svg { width: 100%; height: 100%; display: block; overflow: visible; }
@@ -198,15 +200,12 @@ html.w-lt-700 #taskwin .close, html.w-lt-700 #chat .head .close { display: inlin
 .face .eye { fill: #fff; transform-box: fill-box; transform-origin: center; }
 .face .pupil { fill: #15171c; transform-box: fill-box; transform-origin: center; }
 .face .mouth { fill: none; stroke: #fff; stroke-width: 2; stroke-linecap: round; }
-.face .ring { fill: none; stroke: var(--side-hot); stroke-width: 3; opacity: 0; }
-.profile .face .ring, #taskwin .face .ring { stroke: var(--danger); }
 .profile dd select { font: inherit; font-size: 12px; max-width: 9em; padding: 1px 4px; margin: -2px 2px -2px 0; border-radius: 6px; border: 1px solid var(--field-line); background: var(--field); color: var(--ink); } /* the running session's model and effort, changed here */
 .face .hand { fill: var(--c); opacity: 0; transform-box: fill-box; transform-origin: bottom center; }
 .face .check { fill: none; stroke: var(--ok); stroke-width: 3; stroke-linecap: round; opacity: 0; }
-.face[data-state=thinking] svg { animation: pulse 1.6s ease-in-out infinite; }
+.face[data-state=thinking] .body, .face[data-state=thinking] .eye, .face[data-state=thinking] .pupil, .face[data-state=thinking] .mouth { transform-box: fill-box; transform-origin: center; }
 .face[data-state=thinking] .pupil { animation: look 2.4s steps(1) infinite; }
-.face[data-state=tool] svg { animation: tick .5s steps(2) infinite; }
-.face[data-state=waiting] .ring { opacity: 1; animation: ring 1s ease-in-out infinite; }
+.face[data-state=tool] .mouth { animation: tick .5s steps(2) infinite; transform-box: fill-box; transform-origin: center; }
 .face[data-state=waiting] .hand { opacity: 1; animation: wave .8s ease-in-out infinite alternate; }
 .face[data-state=ended] .body { fill: #6b7680; }
 .face[data-state=ended] .eye { transform: scaleY(.12); }
@@ -220,7 +219,6 @@ html.w-lt-700 #taskwin .close, html.w-lt-700 #chat .head .close { display: inlin
 @keyframes pulse { 50% { transform: scale(1.06); } }
 @keyframes look { 0% { transform: translate(0, 0); } 33% { transform: translate(1.5px, -1px); } 66% { transform: translate(-1.5px, 0); } }
 @keyframes tick { 50% { transform: rotate(3deg); } }
-@keyframes ring { 50% { stroke-opacity: .3; } }
 @keyframes wave { from { transform: rotate(-12deg); } to { transform: rotate(12deg); } }
 @keyframes glance { 0%, 62% { transform: translate(0, 0); } 66%, 78% { transform: translate(1.6px, .3px); } 82%, 92% { transform: translate(-1.4px, .2px); } }
 @keyframes blink { 0%, 96%, 100% { transform: scaleY(1); } 97%, 99% { transform: scaleY(.12); } }
