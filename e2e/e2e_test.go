@@ -139,7 +139,7 @@ func TestOffice(t *testing.T) {
 
 	// ---------- 2. the office page ----------
 	browser := newBrowser(t)
-	office := tab(t, browser, b.URL+"/")
+	office := tab(t, browser, b.URL+"/t/office/")
 	type officeDOM struct {
 		Emps   []string `json:"emps"`
 		Adds   int      `json:"adds"`

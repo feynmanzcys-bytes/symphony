@@ -97,6 +97,7 @@ func NewServer(hub *Hub, web fs.FS) *Server {
 	s.mux.HandleFunc("POST /api/answer/{id}", s.answer)
 	s.mux.HandleFunc("GET /api/asks/{id}/input", s.askInput)
 	s.mux.HandleFunc("POST /api/accounts", s.createAccount)
+	s.mux.HandleFunc("POST /api/accounts/import", s.importStaff)
 	s.mux.HandleFunc("DELETE /api/accounts/{id}", s.deleteAccount)
 	s.mux.HandleFunc("GET /api/launch/options", s.launchOptions)
 	s.mux.HandleFunc("GET /api/settings", s.settings)
@@ -398,6 +399,23 @@ func (s *Server) createAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, acc)
+}
+
+// importStaff makes and changes employees in one go (POST /api/accounts/import, the settings' employees page):
+// {employees: [{name, dir?, model?, effort?, permissionMode?, context?}]}, all of it or none (Hub.ImportStaff).
+func (s *Server) importStaff(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Employees []StaffEntry `json:"employees"`
+	}
+	if !decode(w, r, &req) {
+		return
+	}
+	out, err := s.Hub.ImportStaff(req.Employees)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, 200, out)
 }
 
 func (s *Server) deleteAccount(w http.ResponseWriter, r *http.Request) {

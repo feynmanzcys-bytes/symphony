@@ -4,6 +4,7 @@ package e2e
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -25,8 +26,8 @@ var (
 	latinLangs   = map[string]bool{"en": true, "es": true, "fr": true, "de": true, "pt-BR": true}
 )
 
-// TestI18n opens the office and approval pages in every language with made-up activity (no sessions, no
-// tokens). Every key a page asks for must exist in its language, and pages in a Latin-script language must
+// TestI18n opens Coworkers, the pixel office and the approval page in every language with made-up activity (no
+// sessions, no tokens). Every key a page asks for must exist in its language, and pages in a Latin-script language must
 // show no CJK, kana, Hangul or Cyrillic: that catches text the code shows without going through t().
 func TestI18n(t *testing.T) {
 	requireBrowser(t)
@@ -65,6 +66,7 @@ func TestI18n(t *testing.T) {
 		langs = strings.Split(only, ",")
 	}
 	for _, lang := range langs {
+		checkCoworkers(t, b, browser, lang)
 		checkOffice(t, b, browser, lang)
 		checkApprove(t, b, browser, lang)
 	}
@@ -78,7 +80,7 @@ func TestI18n(t *testing.T) {
 		t.Fatalf("pickLang: got %q, want %q", got, want)
 	}
 	// an unsupported ?lang= falls through to the browser's language (English: newBrowser pins it)
-	odd := tab(t, browser, b.URL+"/?lang=xx")
+	odd := tab(t, browser, b.URL+"/t/office/?lang=xx")
 	if lang := get(t, odd, 10*time.Second, chromedp.Evaluate[string](`document.documentElement.lang`)); lang != "en" {
 		t.Fatalf("?lang=xx should fall back to English, got %q", lang)
 	}
@@ -91,7 +93,7 @@ func TestI18n(t *testing.T) {
 // log, an online and an offline employee's window, and the launch dialog. Its tab is closed afterwards.
 func checkOffice(t *testing.T, b *testBridge, browser context.Context, lang string) {
 	t.Helper()
-	office, closeTab := openTab(t, browser, b.URL+"/?lang="+lang)
+	office, closeTab := openTab(t, browser, b.URL+"/t/office/?lang="+lang)
 	defer closeTab()
 	var texts []string
 	read := func() { texts = append(texts, get(t, office, 5*time.Second, chromedp.Evaluate[string](pageText))) }
@@ -149,6 +151,51 @@ func checkOffice(t *testing.T, b *testBridge, browser context.Context, lang stri
 	checkTexts(t, lang, "office", texts)
 	if miss := get(t, office, 5*time.Second, chromedp.Evaluate[[]string](`window.__i18nMissing`)); len(miss) > 0 {
 		t.Errorf("%s: the office asked for keys its catalog lacks: %v", lang, miss)
+	}
+}
+
+// checkCoworkers walks Coworkers, the main theme, in one language: the waiting coworker's conversation with her cards
+// in it, the settings and the employees page (a row being edited, two selected, the import saying what it would do,
+// entry by entry). Its tab is closed afterwards.
+func checkCoworkers(t *testing.T, b *testBridge, browser context.Context, lang string) {
+	t.Helper()
+	cw, closeTab := openTab(t, browser, b.URL+"/t/messenger/?lang="+lang)
+	defer closeTab()
+	var texts []string
+	read := func() { texts = append(texts, get(t, cw, 5*time.Second, chromedp.Evaluate[string](pageText))) }
+	is := func(expr string) bool { return get(t, cw, 5*time.Second, chromedp.Evaluate[bool](expr)) }
+	run := func(stmt string) {
+		get(t, cw, 10*time.Second, chromedp.Evaluate[bool](fmt.Sprintf(`(() => { %s; return true })()`, stmt)))
+	}
+	waitUntil(t, 20*time.Second, lang+": Coworkers lists the three", func() bool { return is(`document.querySelectorAll('#people .row').length === 3`) })
+	if got := get(t, cw, 5*time.Second, chromedp.Evaluate[string](`document.documentElement.lang`)); got != lang {
+		t.Fatalf("%s: Coworkers says lang=%q", lang, got)
+	}
+	run(fmt.Sprintf(`document.querySelector('#people .row[data-account=%q]').click()`, b.account("alice").ID))
+	waitUntil(t, 10*time.Second, lang+": alice's conversation shows her asks' cards", func() bool {
+		return is(`!document.getElementById('chat').hidden && document.querySelectorAll('#chat .flow .it.ask.carded .card').length >= 2`)
+	})
+	read()
+	run(`document.querySelector('.open-settings').click()`)
+	waitUntil(t, 10*time.Second, lang+": the settings open", func() bool { return is(`!document.getElementById('settings').hidden`) })
+	run(`document.querySelector('#settings .people .all').click()`)
+	waitUntil(t, 10*time.Second, lang+": the employees page lists the three", func() bool {
+		return is(`!document.getElementById('staff').hidden && document.querySelectorAll('#staff .emp').length === 3 && document.querySelectorAll('#staff .batch select[name=model] option').length > 2`)
+	})
+	run(`document.querySelector('#staff .emp .edit').click(); [...document.querySelectorAll('#staff .emp .pick')].slice(1).forEach(b => b.click())`)
+	waitUntil(t, 10*time.Second, lang+": a row unfolds, two selected", func() bool {
+		return is(`!!document.getElementById('staff-editor') && !document.querySelector('#staff .batch .delete').disabled`)
+	})
+	read()
+	run(`document.querySelector('#staff .tools .import').click(); (x => { x.value = '[{"name":"zed","context":true},{"name":"bob","model":"haiku"},{"name":"carol","model":"gpt","color":1},{"x":1}]'; x.dispatchEvent(new Event('input')) })(document.getElementById('staff-import-text'))`)
+	waitUntil(t, 10*time.Second, lang+": the import says what each entry would do", func() bool {
+		return is(`document.querySelectorAll('#staff .importer .preview li').length === 4`)
+	})
+	read()
+	screenshot(t, cw, "i18n-"+lang+"-staff.png")
+	checkTexts(t, lang, "Coworkers", texts)
+	if miss := get(t, cw, 5*time.Second, chromedp.Evaluate[[]string](`window.__i18nMissing`)); len(miss) > 0 {
+		t.Errorf("%s: Coworkers asked for keys its catalogs lack: %v", lang, miss)
 	}
 }
 

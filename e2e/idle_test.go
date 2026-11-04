@@ -43,7 +43,7 @@ func TestIdle(t *testing.T) {
 	idle := []string{"bob", "carol", "dave", "erin", "frank"}
 
 	browser := newBrowser(t)
-	office, _ := clockTab(t, browser, b.URL+"/?lang=en", 0)
+	office, _ := clockTab(t, browser, b.URL+"/t/office/?lang=en", 0)
 	type tag struct{ Act, Room, Spot, Moving, State, Classes string }
 	tags := func() map[string]tag {
 		var raw map[string]tag
@@ -213,7 +213,7 @@ func TestIdle(t *testing.T) {
 	}
 	screenshot(t, office, "idle-nap.png")
 	// a page opened now puts everyone straight where they are, nobody walks there from the desk
-	fresh, closeFresh := clockTab(t, browser, b.URL+"/?lang=en", lastWarp)
+	fresh, closeFresh := clockTab(t, browser, b.URL+"/t/office/?lang=en", lastWarp)
 	var first string
 	waitUntil(t, 20*time.Second, "a new page fills in the name tags", func() bool {
 		first = get(t, fresh, 5*time.Second, chromedp.Evaluate[string](`[...document.querySelectorAll('.emp-label')].map(l => l.dataset.state === 'ended' ? '0' : l.dataset.act ? l.dataset.moving : '?').join('')`))

@@ -2,7 +2,7 @@
 
 Unofficial. Not affiliated with Anthropic.
 
-The Claude Code mod of [symphony](https://github.com/feynmanzcys-bytes/symphony), a pixel-art office in a web page where a team of Claude Code sessions sit as employees at their desks. With it, a session shows up in the office: its window there shows the session as a chat and takes prompts, and the session's permission requests and AskUserQuestion questions are answered in the page.
+The Claude Code mod of [symphony](https://github.com/feynmanzcys-bytes/symphony), a web page where a team of Claude Code sessions work together: coworkers in a messaging app, or, as the other theme, employees at their desks in a pixel-art office. With it, a session shows up in the office: its conversation there shows the session as a chat and takes prompts, and the session's permission requests and AskUserQuestion questions are answered in the page.
 
 ## What it needs
 

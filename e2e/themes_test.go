@@ -34,8 +34,8 @@ func TestThemesLoad(t *testing.T) {
 	if err := json.NewDecoder(resp.Body).Decode(&listed); err != nil || len(listed.Themes) == 0 {
 		t.Fatalf("/api/themes: %v %+v", err, listed)
 	}
-	if listed.Themes[0].Name != "office" || listed.Current != "office" {
-		t.Fatalf("the default theme should be the pixel office, listed first: %+v", listed)
+	if listed.Themes[0].Name != "messenger" || listed.Current != "messenger" {
+		t.Fatalf("the default theme should be Coworkers (messenger), listed first: %+v", listed)
 	}
 	// what the bridge's content security policy blocks counts as an error too
 	script := `window.__errors = []

@@ -1,7 +1,7 @@
 {
   "name": "symphony",
   "owner": { "name": "feynmanzcys-bytes", "url": "https://github.com/feynmanzcys-bytes" },
-  "description": "Unofficial Claude Code mods for symphony, a pixel-art office for a team of Claude Code sessions; not affiliated with Anthropic",
+  "description": "Unofficial Claude Code mods for symphony, an office web page for a team of Claude Code sessions; not affiliated with Anthropic",
   "plugins": [
     {
       "name": "symphony-bridge",

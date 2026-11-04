@@ -738,7 +738,7 @@ func perfTasksOffice(t *testing.T) {
 	}
 
 	browser := newBrowser(t)
-	office := perfTab(t, browser, b.URL+"/?lang=en")
+	office := perfTab(t, browser, b.URL+"/t/office/?lang=en")
 	jsb := func(e string) bool { return get(t, office, 10*time.Second, chromedp.Evaluate[bool](e)) }
 	js := func(e string) string { return get(t, office, 10*time.Second, chromedp.Evaluate[string](e)) }
 	do(t, office, 5*time.Second, chromedp.Evaluate[chromedp.Void](`localStorage.setItem('symphony.pixels', '0')`))

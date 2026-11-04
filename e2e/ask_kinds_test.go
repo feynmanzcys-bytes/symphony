@@ -47,7 +47,7 @@ func TestAskKinds(t *testing.T) {
 	dir := t.TempDir()
 
 	browser := newBrowser(t)
-	office, _ := clockTab(t, browser, b.URL+"/?lang=en", 0)
+	office, _ := clockTab(t, browser, b.URL+"/t/office/?lang=en", 0)
 	do(t, office, 10*time.Second, chromedp.EmulateViewport(1400, 900))
 	p := &screens{t: t, ctx: office, lang: "asks-office"}
 

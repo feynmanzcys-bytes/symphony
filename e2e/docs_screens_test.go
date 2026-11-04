@@ -29,13 +29,14 @@ import (
 // TestDocsScreens remakes the README's screenshots in docs/ from made-up activity (no tokens: claude is a script that
 // sits there, and the sessions are reported in as the mod would): a team of nine in every state, two of them waiting
 // for you, two idle ones wandering, a running task of three in a small meeting room, the others off duty or at work.
-// It writes docs/office.png (the pixel office), docs/social-preview.png (the same at 1280x640, for GitHub's social
-// preview), docs/approve.png (an employee window with a permission card and a question card over its input),
-// and docs/coworkers.png (the Coworkers theme with a conversation open), all at 1400x860 CSS pixels unless named
-// otherwise. It writes into the
+// It writes docs/coworkers.png (Coworkers, the default theme, with a conversation open), docs/social-preview.png (the
+// same at 1280x640, for GitHub's social preview), docs/approve.png (a conversation with a question card and a
+// permission card where they came up), docs/staff.png (Settings → All employees, two selected to change together) and
+// docs/office.png (the pixel office), all at 1400x860 CSS pixels unless named otherwise. It writes into the
 // repository, so it runs only with SYMPHONY_E2E=1 and SYMPHONY_E2E_DOCS=1. It fails on a page error, a key a catalog
 // lacks, a raw key on screen, or the test's temporary folder showing anywhere: the folders on screen read like a
-// user's (the task's must exist for git, so they are temporary, but they are named like projects and kept off screen).
+// user's (the task's must exist for git, so they are temporary, but they are named like projects and kept off screen:
+// the members' desk sessions move on to a folder named like the others' once the task has its worktrees).
 func TestDocsScreens(t *testing.T) {
 	if os.Getenv("SYMPHONY_E2E") != "1" || os.Getenv("SYMPHONY_E2E_DOCS") != "1" {
 		t.Skip("writes docs/*.png; set SYMPHONY_E2E=1 and SYMPHONY_E2E_DOCS=1 to remake them")
@@ -431,6 +432,21 @@ func TestDocsScreens(t *testing.T) {
 	addWorker(&worker{sid: member["judy"], token: tokens["judy"], model: models[member["judy"]], turn: "j1", context: 4, cost: 0.05,
 		tools: [][2]string{{"Grep", "retry"}, {"Read", "src/webhooks/retry.ts"}, {"Bash", "git log --oneline main..symphony/" + task.ID + "/grace"}}})
 
+	// grace and heidi's desk sessions move on to a folder named like the others' (the task's is a temporary one, for git,
+	// and would show on the employees page); what each one starts with from the page, ivan going by the settings
+	for _, name := range []string{"grace", "heidi"} {
+		event(name, "s-"+name, map[string]any{"kind": "session.cwd", "cwd": home + "payments"})
+	}
+	opt, yes := func(v string) *string { return &v }, true
+	if _, err := b.Hub.ImportStaff([]bridge.StaffEntry{
+		{Name: "alice", Model: opt("opus"), Effort: opt("max"), Context: &yes}, {Name: "bob", Model: opt("sonnet"), Effort: opt("high"), PermissionMode: opt("acceptEdits")},
+		{Name: "carol", Model: opt("opus"), Effort: opt("xhigh")}, {Name: "dave", Model: opt("sonnet"), Effort: opt("medium"), PermissionMode: opt("acceptEdits")},
+		{Name: "erin", Model: opt("fable"), Effort: opt("high"), Context: &yes}, {Name: "frank", Model: opt("haiku"), Effort: opt("low")},
+		{Name: "grace", Model: opt("opus"), Effort: opt("high"), Context: &yes}, {Name: "heidi", Model: opt("sonnet"), Effort: opt("xhigh")},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
 	// ---------- what a shot checks: no raw keys, no errors, no temporary folder on screen ----------
 	shot := func(s *screens, name string, w, h int) {
 		t.Helper()
@@ -462,6 +478,36 @@ func TestDocsScreens(t *testing.T) {
 	}, func() string { return coworkers.js(`document.getElementById('profile').innerText`) })
 	coworkers.run(`(f => f.scrollTop = f.scrollHeight)(document.querySelector('#chat .flow'))`)
 	shot(coworkers, "coworkers.png", 1400, 860)
+
+	// ---------- social-preview.png: the same at GitHub's 1280x640 ----------
+	do(t, coworkers.ctx, 10*time.Second, chromedp.EmulateViewport(1280, 640))
+	time.Sleep(time.Second)
+	coworkers.run(`(f => f.scrollTop = f.scrollHeight)(document.querySelector('#chat .flow'))`)
+	shot(coworkers, "social-preview.png", 1280, 640)
+	do(t, coworkers.ctx, 10*time.Second, chromedp.EmulateViewport(1400, 860))
+
+	// ---------- approve.png: carol's conversation, her question and her subagent's permission where they came up ----------
+	coworkers.run(`[...document.querySelectorAll('#people .row')].find(r => r.dataset.account === ` + fmt.Sprintf("%q", ids["carol"]) + `).click()`)
+	waitUntil(t, 10*time.Second, "carol's conversation shows both cards", func() bool {
+		return coworkers.is(`!document.getElementById('chat').hidden && document.querySelectorAll('#chat .flow .it.ask.carded .card').length === 2`)
+	})
+	time.Sleep(time.Second)
+	coworkers.run(`(f => f.scrollTop = f.scrollHeight)(document.querySelector('#chat .flow')); document.activeElement?.blur()`)
+	shot(coworkers, "approve.png", 1400, 860)
+
+	// ---------- staff.png: Settings → All employees, two selected to change together ----------
+	coworkers.run(`document.querySelector('.open-settings').click(); document.querySelector('#settings .people .all').click()`)
+	waitUntil(t, 10*time.Second, "the employees page lists the nine", func() bool {
+		return coworkers.is(`!document.getElementById('staff').hidden && document.querySelectorAll('#staff .emp').length === 9 && document.querySelectorAll('#staff .batch select[name=effort] option').length > 2`)
+	})
+	// (the settings under it name the data folder, a temporary one here, at their end: out of sight, and left out)
+	coworkers.run(`document.querySelector('#settings .about').hidden = true;
+		for (const n of ['frank', 'heidi']) [...document.querySelectorAll('#staff .emp')].find(r => r.querySelector('.nm').textContent === n).querySelector('.pick').click();
+		(s => { s.value = 'high'; s.dispatchEvent(new Event('change', { bubbles: true })) })(document.querySelector('#staff .batch select[name=effort]')); document.activeElement?.blur()`)
+	waitUntil(t, 5*time.Second, "two selected, a change ready to apply", func() bool {
+		return coworkers.is(`!document.querySelector('#staff .batch .apply').disabled`)
+	})
+	shot(coworkers, "staff.png", 1400, 860)
 	coworkers.done()
 	closeCoworkers()
 
@@ -476,7 +522,6 @@ func TestDocsScreens(t *testing.T) {
 		return 0
 	}
 	office.run(fmt.Sprintf(`window.__warp = %d`, (70*time.Second - idleFor()).Milliseconds()))
-	hudDown := true
 	settled := func() bool {
 		return office.is(fmt.Sprintf(`(() => {
 			const tags = [...document.querySelectorAll('.emp-label')]
@@ -484,8 +529,8 @@ func TestDocsScreens(t *testing.T) {
 			const idle = [%q, %q].map(id => tags.find(l => !l.classList.contains('member') && l.dataset.account === id))
 			const still = idle.every(l => l && (l.dataset.moving === '0' || l.dataset.act === 'chase'))
 			const away = idle.filter(l => l && l.dataset.room && l.dataset.room !== 'desk').length
-			return seated === 3 && still && away === 2 && !!document.querySelector('#stats .chip.hot') && !document.getElementById('hud').classList.contains('up') === %v
-		})()`, task.ID, ids["erin"], ids["frank"], hudDown))
+			return seated === 3 && still && away === 2 && !!document.querySelector('#stats .chip.hot') && !document.getElementById('hud').classList.contains('up')
+		})()`, task.ID, ids["erin"], ids["frank"]))
 	}
 	wander := func() {
 		t.Helper()
@@ -502,26 +547,5 @@ func TestDocsScreens(t *testing.T) {
 	}
 	wander()
 	shot(office, "office.png", 1400, 860)
-
-	// ---------- social-preview.png: the office at GitHub's 1280x640, the HUD slid up out of the way ----------
-	do(t, office.ctx, 10*time.Second, chromedp.EmulateViewport(1280, 640))
-	office.run(`document.getElementById('hud-tab').click()`)
-	time.Sleep(3 * time.Second) // the figures find their new places
-	hudDown = false
-	wander()
-	shot(office, "social-preview.png", 1280, 640)
-	office.run(`document.getElementById('hud-tab').click()`)
-	hudDown = true
-	do(t, office.ctx, 10*time.Second, chromedp.EmulateViewport(1400, 860))
-	time.Sleep(2 * time.Second)
-
-	// ---------- approve.png: carol's window, her question and her subagent's permission over the input ----------
-	clickLabel(t, office.ctx, ids["carol"])
-	waitUntil(t, 10*time.Second, "carol's window shows both cards", func() bool {
-		return office.is(`!document.getElementById('chat').hidden && document.querySelectorAll('#chat #asks .card').length === 2 && document.querySelector('#chat .dock').classList.contains('asking')`)
-	})
-	time.Sleep(time.Second) // the dock's rise
-	office.run(`document.activeElement?.blur()`)
-	shot(office, "approve.png", 1400, 860)
 	office.done()
 }

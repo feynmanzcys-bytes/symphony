@@ -115,6 +115,9 @@ export function connect({ stream = true } = {}) {
     answer: (id, body) => post(`/api/answer/${id}`, body),
     createAccount: name => post('/api/accounts', { name }),
     deleteAccount: id => call('DELETE', `/api/accounts/${id}`),
+    // the employees page: makes and changes employees in one go, all of it or none ({created, updated}; the entries:
+    // {name, dir?, model?, effort?, permissionMode?, context?}, a name that isn't an employee's a new one)
+    importStaff: employees => post('/api/accounts/import', { employees }),
     launch: req => post('/api/launch', req, { timeout: 60000 }), // the bridge checks the mod first (claude plugin list)
     dirs: path => get('/api/dirs?path=' + encodeURIComponent(path)),
     launchOptions,

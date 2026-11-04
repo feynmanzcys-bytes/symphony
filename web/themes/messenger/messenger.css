@@ -215,12 +215,21 @@ button.px.icon { width: 32px; padding: 2px 0; text-align: center; }
 #settings .seg label:last-of-type { border-radius: 0 8px 8px 0; }
 #settings .seg input:checked + label { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 /* the checkboxes and radio buttons: a rounded box or a circle, filled with the accent when picked (ui.css draws them) */
-:is(#settings, #launch, #task) input[type=checkbox], :is(#asks, .flow .card) input:is([type=checkbox], [type=radio]) { border-width: 1.5px; background-size: 12px 12px; }
-:is(#settings, #launch, #task, #asks, .flow .card) input[type=checkbox] { border-radius: 4px; }
-:is(#settings, #launch, #task, #asks, .flow .card) input[type=checkbox]:checked { background-color: var(--accent); border-color: var(--accent); }
+:is(#settings, #launch, #task, #staff) input[type=checkbox], :is(#asks, .flow .card) input:is([type=checkbox], [type=radio]) { border-width: 1.5px; background-size: 12px 12px; }
+:is(#settings, #launch, #task, #staff, #asks, .flow .card) input[type=checkbox] { border-radius: 4px; }
+:is(#settings, #launch, #task, #staff, #asks, .flow .card) input[type=checkbox]:checked { background-color: var(--accent); border-color: var(--accent); }
 :is(#asks, .flow .card) input[type=radio]:checked { background: var(--accent); border-color: var(--accent); }
 button.close { border-radius: 50%; }
 #settings .entries { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+#staff .panel { border-radius: 12px; }
+#staff .top { border-bottom: 1px solid var(--line); }
+#staff :is(input:not([type=checkbox]), select, textarea) { border: 1px solid var(--field-line); border-radius: 8px; padding: 4px 8px; }
+#staff select:not([multiple]) { padding-right: 26px; }
+#staff .list, #staff .importer, #staff .batch, #staff .preview { border-width: 1px; border-color: var(--line); border-radius: 10px; }
+#staff .list, #staff .preview { overflow: hidden; }
+#staff .preview { overflow-y: auto; }
+#staff .emp .tag, #staff .preview .k { border-radius: 999px; padding: 0 8px; }
+#staff .emp.open { box-shadow: inset 4px 0 0 var(--accent); }
 #settings .errlog .acts .issues { color: var(--accent); }
 .open-settings .news { border-radius: 50%; border-color: var(--side); }
 .errbox { border-width: 1px; border-radius: 8px; }
@@ -238,7 +247,7 @@ button.close { border-radius: 50%; }
 #task .on { border-color: var(--accent); }
 #task .foot { border-top-width: 1px; }
 :is(#launch, #task) .panel > .title { border-bottom: 1px solid var(--line); }
-:is(#launch, #task) .browser { border-width: 1px; border-color: var(--field-line); border-radius: 8px; overflow: hidden; }
+:is(#launch, #task, #staff) .browser { border-width: 1px; border-color: var(--field-line); border-radius: 8px; overflow: hidden; }
 #launch .adv { border-width: 1px; border-radius: 10px; }
 #launch .adv > summary { border-radius: 9px; }
 #launch .adv[open] > summary { border-radius: 9px 9px 0 0; }

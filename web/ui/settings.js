@@ -3,7 +3,8 @@
 // (the pixel office's pixel size), motion paused or not. The conversation: the steps between answers shown unfolded.
 // The employees: what a new one starts with, the bridge's settings (the launch dialog's Advanced settings fill them
 // in): the default folder, where one started without a working folder gets a folder of its own, the model, the
-// thinking effort, the permission mode, and whether it hears who else is in the office.
+// thinking effort, the permission mode, and whether it hears who else is in the office; and every employee on a page
+// of its own over the settings (ui/staff.js): what each one starts with, changed, imported and exported.
 // Reporting a problem: what went wrong is in the error log already (the bridge writes it as it happens); one button
 // gives the report file (the errors, this bridge and this page, the bridge's last log lines; no key, no token, no chat)
 // to send by email or attach to an issue, and what the log holds can be looked at. And what this is: the versions,
@@ -14,7 +15,7 @@
 //     extra:   [{ label, el, hint }] rows of the theme's own, under how the page looks (the office's pixel size)
 //     records: [{ id, label, icon, open() }] the theme's logs (the office's message and activity logs): a button each,
 //              which closes the settings and shows that log
-//   settings.open() · settings.close() · settings.hidden · settings.el
+//   settings.open() · settings.close() · settings.hidden · settings.el · settings.staff (the employees page)
 //   settingsButton(sym, settings, { cls, icon }) → the theme's button: "Settings", marked while the error log has
 //     something newer than what was seen
 import { t, lang, esc, button, errorText, fill } from '/ui/common.js'
@@ -24,6 +25,7 @@ import { motion } from '/ui/motion.js'
 import { themePicker } from '/ui/themes.js'
 import { pref, setPref, STEPS_OPEN, FAULTS_SEEN } from '/ui/prefs.js'
 import { onBackdrop, showError, setText } from '/ui/errors.js'
+import { createStaff } from '/ui/staff.js'
 
 const ISSUES = 'https://github.com/feynmanzcys-bytes/symphony/issues/new'
 const SHOW = 30 // entries of the error log the dialog lists (a report has them all)
@@ -57,6 +59,7 @@ const MARKUP = `
           <div class="row check"><input type="checkbox" id="set-context"><label for="set-context"></label><small class="hint" id="set-context-hint"></small></div>
           <p class="said" role="status"></p>
         </div>
+        <div class="people"><button type="button" class="px all" aria-haspopup="dialog" aria-describedby="set-people-hint"></button><small class="hint" id="set-people-hint"></small></div>
       </section>
       <section class="records" aria-labelledby="set-records" hidden><h3 id="set-records"></h3><div class="acts"></div></section>
       <section class="errlog" aria-labelledby="set-errlog"><h3 id="set-errlog"></h3>
@@ -212,6 +215,14 @@ export function createSettings(sym, { scheme = null, extra = [], records = [] } 
   }
   for (const [name, sel] of Object.entries(picks)) sel.addEventListener('change', () => { if (name === 'permissionMode') warnMode(); saveDefault({ [name]: sel.value }) })
   ctxBox.addEventListener('change', () => saveDefault({ context: ctxBox.checked }))
+  // every employee, on a page of its own over the settings (Esc there comes back here): what each one starts with,
+  // changed for one or several, imported from a list, exported
+  const staff = createStaff(sym), people = $('.staff .people .all')
+  $('#set-people-hint').textContent = t('staff.openHint')
+  const drawPeople = () => setText(people, t('staff.open', { n: sym.state.accounts.filter(a => !a.advisor).length }))
+  people.onclick = () => staff.open()
+  sym.on('snapshot', drawPeople)
+  drawPeople()
 
   // ---------- the theme's logs ----------
   // Each shows beside the page, not in here: the settings close, and the focus goes to the log (its heading, so its name
@@ -398,6 +409,7 @@ export function createSettings(sym, { scheme = null, extra = [], records = [] } 
 
   const settings = {
     el,
+    staff,
     get hidden() { return el.hidden },
     open() {
       if (!el.hidden) return
@@ -415,7 +427,7 @@ export function createSettings(sym, { scheme = null, extra = [], records = [] } 
         if (inSight()) seen()
       })
     },
-    close() { el.hidden = true },
+    close() { staff.close(); el.hidden = true },
     toggle() { el.hidden ? settings.open() : settings.close() },
     marks,
     mark,

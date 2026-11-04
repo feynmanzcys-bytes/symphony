@@ -104,7 +104,7 @@ func TestScreens(t *testing.T) {
 	event("erin", "s-erin", map[string]any{"kind": "session.end"})
 
 	browser := newBrowser(t)
-	en, _ := clockTab(t, browser, b.URL+"/?lang=en", 0)
+	en, _ := clockTab(t, browser, b.URL+"/t/office/?lang=en", 0)
 	do(t, en, 10*time.Second, chromedp.EmulateViewport(1400, 860)) // the window's size less the browser's own bars
 	p := &screens{t: t, ctx: en, lang: "en"}
 	waitUntil(t, 20*time.Second, "the office shows the eight employees and the clickable nameplates", func() bool {
@@ -664,7 +664,7 @@ func TestScreens(t *testing.T) {
 
 	// ---------- the task screens in zh-CN and ja ----------
 	for _, lang := range []string{"zh-CN", "ja"} {
-		ctx, closeTab := clockTab(t, browser, b.URL+"/?lang="+lang, 0)
+		ctx, closeTab := clockTab(t, browser, b.URL+"/t/office/?lang="+lang, 0)
 		do(t, ctx, 10*time.Second, chromedp.EmulateViewport(1400, 860))
 		q := &screens{t: t, ctx: ctx, lang: lang}
 		waitUntil(t, 20*time.Second, lang+": the office shows the team and the tasks", func() bool {

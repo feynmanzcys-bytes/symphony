@@ -33,7 +33,7 @@ func TestLayout(t *testing.T) {
 	b.post(t, alice.Token, "/api/ask", map[string]any{"session": "s-alice", "kind": "permission", "tool": "Bash", "input": map[string]any{"command": "ls"}})
 
 	browser := newBrowser(t)
-	office, _ := clockTab(t, browser, b.URL+"/?lang=en", 0)
+	office, _ := clockTab(t, browser, b.URL+"/t/office/?lang=en", 0)
 	later := func() { // the page shows both employees, and the pending chip for alice's ask
 		waitUntil(t, 20*time.Second, "the office shows the employees and the pending chip", func() bool {
 			return get(t, office, 5*time.Second, chromedp.Evaluate[bool](`document.querySelectorAll('.emp-label').length === 2 && !!document.querySelector('#stats .chip.hot')`))
@@ -227,7 +227,7 @@ func TestAsksDock(t *testing.T) {
 	b.post(t, alice.Token, "/api/ask", map[string]any{"session": "s-alice", "kind": "permission", "tool": "Bash", "input": map[string]any{"command": "ls"}})
 
 	browser := newBrowser(t)
-	office := tab(t, browser, b.URL+"/?lang=en")
+	office := tab(t, browser, b.URL+"/t/office/?lang=en")
 	type box struct{ Top, Bottom float64 }
 	cards := func() []box {
 		var boxes []box

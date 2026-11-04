@@ -73,8 +73,8 @@ func TestTask(t *testing.T) {
 	}
 
 	browser := newBrowser(t)
-	office, _ := clockTab(t, browser, b.URL+"/?lang=en", 0) // collects the page's errors in window.__errors
-	js := func(expr string) string {                        // the value as JSON, strings without their quotes
+	office, _ := clockTab(t, browser, b.URL+"/t/office/?lang=en", 0) // collects the page's errors in window.__errors
+	js := func(expr string) string {                                 // the value as JSON, strings without their quotes
 		out := get(t, office, 5*time.Second, chromedp.Evaluate[string](fmt.Sprintf(`JSON.stringify((() => { return %s })())`, expr)))
 		var str string
 		if json.Unmarshal([]byte(out), &str) == nil {

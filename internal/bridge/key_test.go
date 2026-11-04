@@ -241,13 +241,14 @@ func TestPageKeyRequired(t *testing.T) {
 		body, _ := io.ReadAll(res.Body)
 		return res, string(body)
 	}
-	for _, path := range []string{"/", "/?theme=zen", "/t/zen/", "/t/office/", "/t/nope/", "/approve"} {
+	for _, path := range []string{"/", "/?theme=zen", "/t/zen/", "/t/office/", "/t/messenger/", "/t/nope/", "/approve"} {
 		res, body := do("GET", path)
 		if res.StatusCode != http.StatusForbidden || !strings.HasPrefix(res.Header.Get("content-type"), "text/html") {
 			t.Fatalf("GET %s without the key: %d %s", path, res.StatusCode, res.Header.Get("content-type"))
 		}
 		if !strings.Contains(body, `<html lang="ja">`) || !strings.Contains(body, i18n.T("page_key.title")) ||
-			!strings.Contains(body, i18n.T("page_key.run")) || strings.Contains(body, "<script") || strings.Contains(body, "<html>office</html>") {
+			!strings.Contains(body, i18n.T("page_key.run")) || strings.Contains(body, "<script") ||
+			strings.Contains(body, "<html>messenger</html>") || strings.Contains(body, "<html>office</html>") || strings.Contains(body, "<html>zen</html>") {
 			t.Fatalf("GET %s: the page should say how to get in, in the bridge's language, and nothing else:\n%s", path, body)
 		}
 	}

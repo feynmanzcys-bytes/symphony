@@ -87,7 +87,7 @@ func TestTerminalView(t *testing.T) {
 		func() string { return term.Screen(10) })
 
 	browser := newBrowser(t)
-	office, _ := clockTab(t, browser, b.URL+"/?lang=en", 0) // collects the page's errors in window.__errors
+	office, _ := clockTab(t, browser, b.URL+"/t/office/?lang=en", 0) // collects the page's errors in window.__errors
 	p := &screens{t: t, ctx: office, lang: "terminal-office"}
 
 	// ---------- the screen model, in the page ----------

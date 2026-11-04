@@ -13,12 +13,13 @@ import (
 // Themes: the office page comes in themes, one folder each under web/themes/<name>/ with a theme.json (the name, a
 // title and a description by language, the version, the protocol version it needs) and an index.html; its own files
 // are served under /t/<name>/, the shared ones (symphony.js, i18n.js, asks.js, ui/, locales/) at the root. GET /
-// serves the theme the browser picked (?theme=<name>, else the symphony.theme cookie, else the default), and
-// GET /t/<name>/ picks one and serves it; GET /api/themes lists them.
+// serves the theme the browser picked (?theme=<name>, else the symphony.theme cookie, else the default: Coworkers, the
+// messenger theme; the pixel office is the other one to pick), and GET /t/<name>/ picks one and serves it; GET
+// /api/themes lists them.
 
 const (
 	themeCookie  = "symphony.theme"
-	defaultTheme = "office"
+	defaultTheme = "messenger"
 )
 
 var themeNameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)

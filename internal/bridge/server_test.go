@@ -14,23 +14,25 @@ import (
 )
 
 var testWeb = fstest.MapFS{
-	"themes/office/index.html": {Data: []byte("<html>office</html>")},
-	"themes/office/theme.json": {Data: []byte(`{"name":"office","title":{"en":"Pixel office"},"since":1}`)},
-	"themes/zen/index.html":    {Data: []byte("<html>zen</html>")},
-	"themes/zen/theme.json":    {Data: []byte(`{"name":"zen","title":{"en":"Zen","zh-CN":"禅"},"since":1}`)},
-	"themes/zen/zen.css":       {Data: []byte("body{}")},
-	"themes/bad/index.html":    {Data: []byte("<html>bad</html>")}, // no manifest: not a theme
-	"themes/wrong/index.html":  {Data: []byte("<html>wrong</html>")},
-	"themes/wrong/theme.json":  {Data: []byte(`{"name":"other"}`)}, // the manifest's name must be the folder's
-	"approve.html":             {Data: []byte("<html>approve</html>")},
-	"approve.js":               {Data: []byte("export const approve = 1")},
-	"asks.js":                  {Data: []byte("export const x = 1")},
-	"i18n.js":                  {Data: []byte("export const t = key => key")},
-	"symphony.js":              {Data: []byte("export const connect = () => {}")},
-	"ui/chat.js":               {Data: []byte("export const chat = 1")},
-	"ui/ui.css":                {Data: []byte(".it{}")},
-	"locales/en.json":          {Data: []byte(`{"error.unknown": "something went wrong"}`)},
-	"locales/xx.json":          {Data: []byte(`{}`)}, // not a supported language: the bridge must not serve it
+	"themes/messenger/index.html": {Data: []byte("<html>messenger</html>")},
+	"themes/messenger/theme.json": {Data: []byte(`{"name":"messenger","title":{"en":"Coworkers"},"since":1}`)},
+	"themes/office/index.html":    {Data: []byte("<html>office</html>")},
+	"themes/office/theme.json":    {Data: []byte(`{"name":"office","title":{"en":"Pixel office"},"since":1}`)},
+	"themes/zen/index.html":       {Data: []byte("<html>zen</html>")},
+	"themes/zen/theme.json":       {Data: []byte(`{"name":"zen","title":{"en":"Zen","zh-CN":"禅"},"since":1}`)},
+	"themes/zen/zen.css":          {Data: []byte("body{}")},
+	"themes/bad/index.html":       {Data: []byte("<html>bad</html>")}, // no manifest: not a theme
+	"themes/wrong/index.html":     {Data: []byte("<html>wrong</html>")},
+	"themes/wrong/theme.json":     {Data: []byte(`{"name":"other"}`)}, // the manifest's name must be the folder's
+	"approve.html":                {Data: []byte("<html>approve</html>")},
+	"approve.js":                  {Data: []byte("export const approve = 1")},
+	"asks.js":                     {Data: []byte("export const x = 1")},
+	"i18n.js":                     {Data: []byte("export const t = key => key")},
+	"symphony.js":                 {Data: []byte("export const connect = () => {}")},
+	"ui/chat.js":                  {Data: []byte("export const chat = 1")},
+	"ui/ui.css":                   {Data: []byte(".it{}")},
+	"locales/en.json":             {Data: []byte(`{"error.unknown": "something went wrong"}`)},
+	"locales/xx.json":             {Data: []byte(`{}`)}, // not a supported language: the bridge must not serve it
 }
 
 // testKey is the page key of the bridges these tests start.
@@ -586,10 +588,10 @@ func TestThemes(t *testing.T) {
 			n = append(n, th.Name)
 		}
 		return
-	}(); strings.Join(names, ",") != "office,zen" {
-		t.Fatalf("themes: %v (the default first, a folder without a good manifest left out)", names)
+	}(); strings.Join(names, ",") != "messenger,office,zen" {
+		t.Fatalf("themes: %v (the default first, then by name, a folder without a good manifest left out)", names)
 	}
-	if resp, body := get("/", ""); body != "<html>office</html>" || cookieOf(resp) != "" {
+	if resp, body := get("/", ""); body != "<html>messenger</html>" || cookieOf(resp) != "" {
 		t.Fatalf("/ without a cookie should be the default theme and set none: %q %q", body, cookieOf(resp))
 	}
 	if resp, body := get("/?theme=zen", ""); body != "<html>zen</html>" || cookieOf(resp) != "zen" {
@@ -598,7 +600,10 @@ func TestThemes(t *testing.T) {
 	if _, body := get("/", "zen"); body != "<html>zen</html>" {
 		t.Fatalf("/ with the cookie should serve the remembered theme: %q", body)
 	}
-	if _, body := get("/", "nope"); body != "<html>office</html>" {
+	if _, body := get("/", "office"); body != "<html>office</html>" {
+		t.Fatalf("/ with the pixel office remembered should serve it: %q", body)
+	}
+	if _, body := get("/", "nope"); body != "<html>messenger</html>" {
 		t.Fatalf("an unknown theme in the cookie means the default: %q", body)
 	}
 	if _, body := get("/?theme=nope", "zen"); body != "<html>zen</html>" {
@@ -637,7 +642,7 @@ func TestThemes(t *testing.T) {
 	if err := json.Unmarshal([]byte(body), &list); err != nil || resp.StatusCode != 200 {
 		t.Fatalf("/api/themes: %d %q %v", resp.StatusCode, body, err)
 	}
-	if len(list.Themes) != 2 || list.Themes[1].Title["zh-CN"] != "禅" || list.Current != "zen" {
+	if len(list.Themes) != 3 || list.Themes[2].Title["zh-CN"] != "禅" || list.Current != "zen" {
 		t.Fatalf("/api/themes: %+v", list)
 	}
 }

@@ -89,15 +89,15 @@ button.close:focus-visible { outline:2px solid var(--focus-line); outline-offset
 /* the dialogs' checkboxes: a box with a tick drawn in the page's style */
 /* (the dialogs' checkboxes; the cards' checkboxes and radio buttons: the settings' light-or-dark radios are hidden, their
    labels show the choice) */
-:is(#settings, #launch, #task) input[type=checkbox], :is(#asks, .flow .card, #queue) input:is([type=checkbox], [type=radio]) { -webkit-appearance:none; appearance:none; flex:none; width:16px; height:16px; margin:0; vertical-align:-3px;
+:is(#settings, #launch, #task, #staff) input[type=checkbox], :is(#asks, .flow .card, #queue) input:is([type=checkbox], [type=radio]) { -webkit-appearance:none; appearance:none; flex:none; width:16px; height:16px; margin:0; vertical-align:-3px;
   border:2px solid var(--field-line); background:var(--field) center / 10px 10px no-repeat; cursor:pointer; }
 :is(#asks, .flow .card, #queue) input:is([type=checkbox], [type=radio]) { margin-right:6px; }
-:is(#settings, #launch, #task, #asks, .flow .card, #queue) input[type=checkbox]:checked { background-color:var(--ink); background-image:var(--check-mark); border-color:var(--ink); }
+:is(#settings, #launch, #task, #staff, #asks, .flow .card, #queue) input[type=checkbox]:checked { background-color:var(--ink); background-image:var(--check-mark); border-color:var(--ink); }
 /* a radio button: round, a dot of ink in it when picked */
 :is(#asks, .flow .card, #queue) input[type=radio] { border-radius:50%; }
 :is(#asks, .flow .card, #queue) input[type=radio]:checked { background:var(--ink); border-color:var(--ink); box-shadow:inset 0 0 0 3px var(--field); }
-:is(#settings, #launch, #task) input[type=checkbox]:disabled, :is(#asks, .flow .card, #queue) input:is([type=checkbox], [type=radio]):disabled { opacity:.55; cursor:default; }
-:is(#settings, #launch, #task) input[type=checkbox]:focus-visible, :is(#asks, .flow .card, #queue) input:is([type=checkbox], [type=radio]):focus-visible { outline:2px solid var(--focus-line); outline-offset:2px; }
+:is(#settings, #launch, #task, #staff) input[type=checkbox]:disabled, :is(#asks, .flow .card, #queue) input:is([type=checkbox], [type=radio]):disabled { opacity:.55; cursor:default; }
+:is(#settings, #launch, #task, #staff) input[type=checkbox]:focus-visible, :is(#asks, .flow .card, #queue) input:is([type=checkbox], [type=radio]):focus-visible { outline:2px solid var(--focus-line); outline-offset:2px; }
 .chat .head .close { position:absolute; right:8px; top:6px; }
 .chat .who { display:flex; align-items:center; gap:8px; }
 .chat .who .dot { width:10px; height:10px; margin:0; }
@@ -272,18 +272,18 @@ button.close:focus-visible { outline:2px solid var(--focus-line); outline-offset
 #launch label { display:block; margin:8px 0 2px; font-size:12px; color:var(--muted-2); }
 #launch input:not([type=checkbox]), #launch select { width:100%; box-sizing:border-box; font:inherit; color:var(--ink); background:var(--field); border:2px solid var(--field-line); padding:3px 6px; }
 #launch input[readonly] { background:var(--field-ro); }
-:is(#launch, #task) :is(input:not([type=checkbox]), select, textarea):focus, :is(#asks, .flow .card, #queue) input[type=text]:focus { outline:none; border-color:var(--focus-line); box-shadow:var(--focus-ring); }
+:is(#launch, #task, #staff) :is(input:not([type=checkbox]), select, textarea):focus, :is(#asks, .flow .card, #queue) input[type=text]:focus { outline:none; border-color:var(--focus-line); box-shadow:var(--focus-ring); }
 #launch .row { display:flex; gap:6px; }
 #launch .row input { flex:1; }
 #launch .grid { display:grid; grid-template-columns:1fr 1fr; gap:0 10px; }
-:is(#launch, #task) .browser { border:2px solid var(--ink); margin-top:6px; background:var(--card); }
-:is(#launch, #task) .browser .cur { padding:3px 6px; background:var(--field-ro); font:12px var(--mono); word-break:break-all; }
-:is(#launch, #task) .browser ul { list-style:none; margin:0; padding:0; max-height:180px; overflow:auto; }
-:is(#launch, #task) .browser li { padding:2px 8px; cursor:pointer; font-size:13px; }
-:is(#launch, #task) .browser li:hover { background:var(--accent); }
-:is(#launch, #task) .browser li > button { all:unset; display:block; cursor:pointer; }
-:is(#launch, #task) .browser li > button:focus-visible { outline:2px solid var(--ink); outline-offset:-2px; }
-:is(#launch, #task) .browser .pick { margin:6px; }
+:is(#launch, #task, #staff) .browser { border:2px solid var(--ink); margin-top:6px; background:var(--card); }
+:is(#launch, #task, #staff) .browser .cur { padding:3px 6px; background:var(--field-ro); font:12px var(--mono); word-break:break-all; }
+:is(#launch, #task, #staff) .browser ul { list-style:none; margin:0; padding:0; max-height:180px; overflow:auto; }
+:is(#launch, #task, #staff) .browser li { padding:2px 8px; cursor:pointer; font-size:13px; }
+:is(#launch, #task, #staff) .browser li:hover { background:var(--accent); }
+:is(#launch, #task, #staff) .browser li > button { all:unset; display:block; cursor:pointer; }
+:is(#launch, #task, #staff) .browser li > button:focus-visible { outline:2px solid var(--ink); outline-offset:-2px; }
+:is(#launch, #task, #staff) .browser .pick { margin:6px; }
 :is(#launch, #task) .recent { margin-top:4px; display:flex; flex-wrap:wrap; gap:4px; }
 :is(#launch, #task) .recent span { font:11px/1.6 var(--mono); background:var(--chip); padding:0 6px; cursor:pointer; }
 :is(#launch, #task) .recent span:hover { background:var(--accent); }
@@ -491,7 +491,7 @@ button.close:focus-visible { outline:2px solid var(--focus-line); outline-offset
 #settings select:focus-visible { outline:none; border-color:var(--focus-line); box-shadow:var(--focus-ring); }
 /* the dialogs' drop-downs: the page's arrow, not the system's (after the fields' own rules, which set the background and
    the padding; as specific as the task dialog's) */
-.panel select, :is(#launch, #task, #settings) select:not([multiple]) { -webkit-appearance:none; appearance:none; padding-right:26px;
+.panel select, :is(#launch, #task, #settings, #staff) select:not([multiple]) { -webkit-appearance:none; appearance:none; padding-right:26px;
   background-image:var(--select-arrow); background-repeat:no-repeat; background-position:right 8px center; background-size:10px 6px; cursor:pointer; }
 #settings input[type=checkbox]:disabled + label { cursor:default; }
 /* light or dark: three buttons in a row, the picked one filled */
@@ -555,6 +555,85 @@ button.close:focus-visible { outline:2px solid var(--focus-line); outline-offset
   #settings .row.check { grid-template-columns:auto minmax(0, 1fr); column-gap:8px; } /* the box beside its words */
   #settings .row.check > input { grid-column:1; justify-self:start; }
   #settings .row.check > label, #settings .row.check > .hint { grid-column:2; }
+}
+#settings .people { display:flex; flex-wrap:wrap; align-items:center; gap:6px 12px; margin:14px 0 2px; }
+#settings .people .all { padding:4px 12px; }
+#settings .people .hint { flex:1 1 220px; font-size:11px; color:var(--muted-2); }
+/* the employees page (ui/staff.js), over the settings: the tools (find, import, export), the import unfolded under them
+   (the list, what it would do, entry by entry), the selected ones' drop-downs, and the list: each employee a row (its
+   box, who it is and what it starts with, its Edit button), the one being edited unfolded under its row */
+#staff { z-index:26; }
+#staff .panel { width:min(980px, calc(100vw - 32px)); max-height:min(90vh, 980px); padding:0; display:flex; flex-direction:column; overflow:hidden; }
+#staff .top { flex:none; display:flex; align-items:center; gap:8px; padding:10px 12px 8px 16px; border-bottom:2px solid var(--ink); }
+#staff .top h2 { margin:0; flex:1; font-size:16px; }
+#staff .body { overflow:auto; padding:10px 16px 16px; overscroll-behavior:contain; }
+#staff [hidden] { display:none !important; }
+#staff .what { margin:0 0 10px; font-size:12px; color:var(--muted-2); max-width:72ch; }
+#staff :is(input:not([type=checkbox]), select, textarea) { box-sizing:border-box; font:inherit; font-size:13px; color:var(--ink); background-color:var(--field); border:2px solid var(--field-line); padding:3px 6px; }
+#staff select:not([multiple]) { padding-right:26px; } /* (room for the arrow; as specific as the fields' rule above) */
+#staff .tools { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+#staff .tools input { flex:1 1 220px; min-width:0; }
+#staff .said { margin:8px 0 0; font-size:12px; font-weight:700; color:var(--ink); white-space:pre-line; overflow-wrap:anywhere; } /* (always there, empty too: a live region screen readers follow) */
+#staff .said:empty { margin:0; }
+#staff .said.err { font-weight:400; color:var(--danger-ink); }
+#staff .acts { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-top:8px; }
+#staff .acts.end { justify-content:flex-end; }
+#staff .importer { margin-top:10px; padding:10px 12px; border:2px solid var(--ink); background:var(--card); }
+#staff .importer h3 { margin:0 0 6px; font-size:13px; }
+#staff .importer label { display:block; margin:8px 0 2px; font-size:12px; color:var(--muted-2); }
+#staff .importer textarea { display:block; width:100%; min-height:110px; resize:vertical; font:12px/1.5 var(--mono); }
+#staff .sum { margin:10px 0 4px; font-size:12px; color:var(--muted-2); }
+#staff .sum.err { color:var(--danger-ink); font-weight:700; }
+#staff .preview { list-style:none; margin:0; padding:0; max-height:240px; overflow:auto; border:2px solid var(--line); background:var(--paper); }
+#staff .preview:empty { display:none; }
+#staff .preview li { display:flex; flex-wrap:wrap; gap:2px 8px; align-items:baseline; padding:3px 8px; font-size:12px; color:var(--ink); }
+#staff .preview li + li { border-top:1px dashed var(--line); }
+#staff .preview .k { flex:none; font-size:11px; line-height:1.6; padding:0 6px; background:var(--chip); color:var(--ink); }
+#staff .preview .new .k { background:var(--hl); }
+#staff .preview .bad .k { background:var(--danger-bg); color:var(--danger-ink); font-weight:700; }
+#staff .preview .w { flex:1 1 240px; min-width:0; color:var(--muted-2); overflow-wrap:anywhere; }
+#staff .preview .bad .w { color:var(--danger-ink); }
+#staff .batch { display:flex; flex-wrap:wrap; gap:6px 10px; align-items:flex-end; margin-top:12px; padding:8px 10px; border:2px solid var(--line); background:var(--pane); }
+#staff .batch .n { flex:1 0 100%; font-size:12px; font-weight:700; color:var(--ink); }
+#staff .batch.none .n { font-weight:400; color:var(--muted-2); }
+#staff .batch label { display:flex; flex-direction:column; gap:2px; min-width:0; font-size:11px; color:var(--muted-2); }
+#staff .batch select { max-width:min(240px, 100%); }
+#staff .batch .acts { margin:0 0 0 auto; }
+#staff .batch .warn { flex:1 0 100%; margin:0; font-size:12px; font-weight:700; color:var(--danger-ink); }
+#staff .head { display:flex; flex-wrap:wrap; align-items:center; gap:4px 8px; margin:12px 0 4px; padding:0 10px; font-size:12px; }
+#staff .head label { color:var(--ink); cursor:pointer; }
+#staff .head .count { margin-left:auto; color:var(--muted-2); }
+#staff .list { list-style:none; margin:0; padding:0; border:2px solid var(--ink); background:var(--card); }
+#staff .list > li + li { border-top:1px solid var(--line); }
+#staff .list > .empty { padding:14px; color:var(--muted-2); text-align:center; font-size:13px; }
+#staff .emp { display:grid; grid-template-columns:auto minmax(0, 1fr) auto; align-items:center; gap:4px 10px; padding:6px 10px; }
+#staff .emp.open { background:var(--hl); }
+#staff .emp .who { display:flex; flex-wrap:wrap; align-items:baseline; gap:2px 10px; }
+#staff .emp .nm { font-weight:700; font-size:13px; color:var(--ink); overflow-wrap:anywhere; }
+#staff .emp .st { font-size:12px; color:var(--muted-2); }
+#staff .emp .tag { font-size:11px; line-height:1.6; padding:0 6px; background:var(--chip); color:var(--ink); }
+#staff .emp .cfg { display:flex; flex-wrap:wrap; gap:2px 14px; margin-top:2px; font-size:12px; }
+#staff .emp .dir { min-width:0; font:11.5px/1.6 var(--mono); color:var(--ink); overflow-wrap:anywhere; }
+#staff .emp .dir.own { color:var(--muted-2); }
+#staff .emp .dir.own b { color:var(--ink); }
+#staff .emp .opts { color:var(--muted-2); }
+#staff .emp .edit { font-size:12px; }
+#staff .editing { padding:8px 14px 12px 36px; background:var(--pane); }
+#staff .editing h3 { margin:0 0 4px; font-size:13px; }
+#staff .editing label { display:block; margin:8px 0 2px; font-size:12px; color:var(--muted-2); }
+#staff .editing .path { display:flex; gap:6px; }
+#staff .editing .path input { flex:1; min-width:0; font:12px var(--mono); }
+#staff .editing select { width:100%; }
+#staff .editing .grid { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:0 10px; }
+#staff .editing .warn { margin-top:4px; font-size:12px; font-weight:700; color:var(--danger-ink); }
+#staff .editing label.check { display:flex; align-items:center; gap:6px; color:var(--ink); font-size:13px; margin-top:10px; cursor:pointer; }
+@media (max-width: 640px) {
+  #staff .body { padding:10px 10px 14px; }
+  #staff .emp { grid-template-columns:auto minmax(0, 1fr); }
+  #staff .emp .edit { grid-column:2; justify-self:start; }
+  #staff .editing { padding-left:14px; }
+  #staff .editing .grid { grid-template-columns:minmax(0, 1fr); }
+  #staff .batch .acts { margin-left:0; }
 }
 /* the theme's button that opens them: a mark while the error log has news */
 .open-settings { position:relative; }

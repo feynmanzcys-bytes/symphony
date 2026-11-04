@@ -210,7 +210,9 @@ export function createLaunchDialog(sym, { options = () => sym.launchOptions(true
       field('name').value = acc ? acc.name : ''
       field('name').readOnly = !!acc
       const recent = opts.recentDirs || []
-      put(last ? { dir: last.dir || acc.dir || acc.home || '', model: last.model || '', effort: last.effort || '', permissionMode: last.permissionMode || '', resume: '', context: !!last.context }
+      // (one whose last choices say its own folder goes back there, wherever its session went since: the employees page
+      // may have said so)
+      put(last ? { dir: last.dir || acc.home || '', model: last.model || '', effort: last.effort || '', permissionMode: last.permissionMode || '', resume: '', context: !!last.context }
         : { ...settingsChoices(), dir: acc ? acc.dir || acc.home || '' : '' })
       form.querySelector('.adv-note').textContent = t(fromLast ? 'launch.fromLast' : 'launch.fromSettings')
       warn()

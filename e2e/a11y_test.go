@@ -563,6 +563,18 @@ func TestContrast(t *testing.T) {
 			`!!document.querySelector('#settings .entry[open] pre') && document.querySelector('#settings .errlog .saved').textContent !== ''`, `#settings`, `document.querySelector('#settings .close').click()`},
 		{"error", `import('/ui/errors.js').then(m => m.showError('first line\nsecond line: what went wrong'))`, `(o => !!o && !o.hidden)(document.getElementById('oops'))`, `#oops`,
 			`document.querySelector('#oops .actions button').click()`},
+		// the employees page over the settings: the list, a row being edited (the warning under bypassPermissions), two
+		// selected with the drop-downs over them (the warning there too), the import with an entry of each kind
+		{"employees", `document.querySelector('.open-settings').click(); document.querySelector('#settings .people .all').click()`,
+			`!document.getElementById('staff').hidden && document.querySelectorAll('#staff .emp').length === 5 && document.querySelectorAll('#staff .batch select[name=model] option').length > 2`, `#staff`, ``},
+		{"employees, edited", `document.querySelector('#staff .emp .edit').click(); (s => { s.value = 'bypassPermissions'; s.dispatchEvent(new Event('change', { bubbles:true })) })(document.getElementById('staff-mode'))`,
+			`!!document.getElementById('staff-editor') && !document.getElementById('staff-warn').hidden`, `#staff`, `document.querySelector('#staff-editor .cancel').click()`},
+		{"employees, selected", `[...document.querySelectorAll('#staff .emp .pick')].slice(0, 2).forEach(b => b.click()); (s => { s.value = 'bypassPermissions'; s.dispatchEvent(new Event('change', { bubbles:true })) })(document.querySelector('#staff .batch select[name=permissionMode]'))`,
+			`!document.getElementById('staff-batch-warn').hidden && !document.querySelector('#staff .batch .apply').disabled`, `#staff`,
+			`(s => { s.value = '*'; s.dispatchEvent(new Event('change', { bubbles:true })) })(document.querySelector('#staff .batch select[name=permissionMode]')); document.getElementById('staff-all').click(); document.getElementById('staff-all').click()`},
+		{"employees, import", `document.querySelector('#staff .tools .import').click(); (x => { x.value = '[{"name":"zed"},{"name":"alice","model":"haiku"},{"name":"bob"},{"name":"carol","model":"gpt"}]'; x.dispatchEvent(new Event('input')) })(document.getElementById('staff-import-text'))`,
+			`document.querySelectorAll('#staff .importer .preview li').length === 4 && !!document.querySelector('#staff .importer .preview li.bad')`, `#staff`,
+			`document.querySelector('#staff .importer .cancel').click(); document.querySelector('#staff .close').click(); document.querySelector('#settings .close').click()`},
 	}
 	// the steps between answers, unfolded as the settings can have them (so the tool rows in them are measured)
 	steps := func(open string) contrastView {
@@ -716,6 +728,9 @@ func TestNarrow(t *testing.T) {
 		}
 	}
 	closeAll := `for (const s of ['#chat .close', '#taskwin .close', '#launch .cancel', '#task .cancel']) { const e = document.querySelector(s); if (e && !e.closest('[hidden]')) e.click() }`
+	// the employees page over the settings: its list, a row being edited, the import with what it would do
+	staffOpen, staffReady := `document.querySelector('#settings .people .all').click()`, `!document.getElementById('staff').hidden && document.querySelectorAll('#staff .emp').length === 5`
+	staffImport := `document.querySelector('#staff-editor .cancel').click(); document.querySelector('#staff .tools .import').click(); (x => { x.value = 'zed\nalice'; x.dispatchEvent(new Event('input')) })(document.getElementById('staff-import-text'))`
 	type step struct{ name, setup, ready string }
 	pages := []struct {
 		theme string
@@ -734,6 +749,9 @@ func TestNarrow(t *testing.T) {
 			{"task dialog", closeAll + `; document.getElementById('new-task').click()`, `!document.getElementById('task').hidden`},
 			{"logs", closeAll + `; document.getElementById('open-log').click(); document.getElementById('open-msgs').click()`, `!document.getElementById('msgs-panel').hidden`},
 			{"settings", `document.querySelector('#log .close').click(); document.querySelector('#msgs-panel .close').click(); document.getElementById('open-settings').click()`, `!document.getElementById('settings').hidden && !!document.querySelector('#settings .about dd')`},
+			{"employees", staffOpen, staffReady},
+			{"employees edited", `document.querySelector('#staff .emp .edit').click()`, `!!document.getElementById('staff-editor')`},
+			{"employees import", staffImport, `document.querySelectorAll('#staff .importer .preview li').length === 2`},
 		}},
 		{"messenger", 800, 600, `document.querySelectorAll('#people .row').length === 5`, []step{
 			{"sidebar", ``, ``},
@@ -743,6 +761,9 @@ func TestNarrow(t *testing.T) {
 			{"launch", `document.getElementById('new-emp').click()`, `!document.getElementById('launch').hidden`},
 			{"launch advanced", `document.querySelector('#launch .adv').open = true`, `document.querySelector('#launch .preview').getClientRects().length > 0`},
 			{"settings", `document.querySelector('#launch .cancel').click(); document.querySelector('.open-settings').click()`, `!document.getElementById('settings').hidden && !!document.querySelector('#settings .about dd')`},
+			{"employees", staffOpen, staffReady},
+			{"employees edited", `document.querySelector('#staff .emp .edit').click()`, `!!document.getElementById('staff-editor')`},
+			{"employees import", staffImport, `document.querySelectorAll('#staff .importer .preview li').length === 2`},
 		}},
 	}
 	for _, pg := range pages {

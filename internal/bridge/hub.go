@@ -466,11 +466,7 @@ func (h *Hub) Snapshot() Snapshot {
 func (h *Hub) snapshotLocked(full bool) Snapshot {
 	snap := Snapshot{Type: "snapshot", Protocol: Protocol, Started: h.started, Accounts: []AccountView{}, Sessions: []*Session{}, Asks: []*Ask{}, Launches: []*Launch{}, Tasks: h.tasksLocked(), Ledger: h.ledgerTodayLocked(), Faults: h.faultSummary()}
 	for _, a := range h.accounts {
-		v := AccountView{ID: a.ID, Name: a.Name, Seat: a.Seat, Advisor: a.Advisor, Last: a.Last, Dir: a.Dir, Home: a.Home}
-		if s := h.onlineLocked(a.ID); s != nil {
-			v.Session = s.ID
-		}
-		snap.Accounts = append(snap.Accounts, v)
+		snap.Accounts = append(snap.Accounts, h.accountViewLocked(a))
 	}
 	sort.Slice(snap.Accounts, func(i, j int) bool { return snap.Accounts[i].Seat < snap.Accounts[j].Seat })
 	for _, s := range h.sessions {

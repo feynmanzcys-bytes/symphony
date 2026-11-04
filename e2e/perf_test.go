@@ -21,7 +21,7 @@ func TestPerf(t *testing.T) {
 	repo, _ := filepath.Abs("..")
 	b := startBridge(t, filepath.Join(repo, "mods", "symphony-bridge"))
 	browser := newBrowser(t)
-	office, _ := clockTab(t, browser, b.URL+"/?lang=en", 0)
+	office, _ := clockTab(t, browser, b.URL+"/t/office/?lang=en", 0)
 	js := func(e string) string { return get(t, office, 10*time.Second, chromedp.Evaluate[string](e)) }
 	jsb := func(e string) bool { return get(t, office, 10*time.Second, chromedp.Evaluate[bool](e)) }
 	count := func(sel string) int {

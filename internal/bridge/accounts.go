@@ -49,6 +49,16 @@ type AccountView struct {
 	Home    string         `json:"home,omitempty"`
 }
 
+// accountViewLocked is an account as the snapshot shows it: without the token, with its desk session while it's online.
+// (Last is shared, never changed in place: a change puts a new one in its place.)
+func (h *Hub) accountViewLocked(a *Account) AccountView {
+	v := AccountView{ID: a.ID, Name: a.Name, Seat: a.Seat, Advisor: a.Advisor, Last: a.Last, Dir: a.Dir, Home: a.Home}
+	if s := h.onlineLocked(a.ID); s != nil {
+		v.Session = s.ID
+	}
+	return v
+}
+
 var (
 	ErrUnknownAccount = newError("account_unknown", "no such account")
 	ErrNameTaken      = newError("account_name_taken", "that name is already taken")
