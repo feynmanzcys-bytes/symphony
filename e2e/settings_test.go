@@ -21,18 +21,18 @@ import (
 	"github.com/feynmanzcys-bytes/symphony/internal/bridge"
 )
 
-// TestSettings walks through the settings and the error log with made-up activity (no tokens). The pixel office: its
-// HUD's Settings button opens a dialog named "Settings" with the focus in it; the pixel size, motion and the steps'
-// fold take effect and are remembered; Esc closes it, and only it. Reporting a problem: nothing recorded at first; a
-// script's error on the page and a start that failed (a folder that isn't there) go into the error log by themselves,
-// marking the HUD's button while the dialog is shut; the settings count them, and what's recorded unfolds into them;
+// TestSettings walks through the settings and the error log with made-up activity (no tokens), in Coworkers. Its gear
+// opens a dialog named "Settings" with the focus in it; motion and the steps' fold take effect and are remembered; Esc
+// closes it, and only it. Reporting a problem: nothing recorded at first; a script's error on the page and a start
+// that failed (a folder that isn't there) go into the error log by themselves, marking the gear while the dialog is
+// shut; the settings count them, and what's recorded unfolds into them;
 // "I want to report a problem" gives the report as a file (the browser's download) holding the errors, the bridge, the
 // page and the bridge's last log lines but not the page key or a token, and says where it went; nothing asks to copy
 // anything; Clear empties the log. Errors shown: the launch dialog's failure is a box saying the error log has it
-// (its selection survives the office's redraws), and a drag that selects in a dialog and lets go over the backdrop
+// (its selection survives the page's redraws), and a drag that selects in a dialog and lets go over the backdrop
 // leaves the dialog open (a click on the backdrop still closes it); a failure shown over the page (showError, instead
-// of alert) goes into the error log too. Coworkers: its gear opens the same dialog, where light, dark or as the system
-// picks its colors, remembered. The employees' default folder: the bridge's, shown in the settings; a relative one
+// of alert) goes into the error log too. In a second page the gear says the log has news, and light, dark or as the
+// system picks the colors, remembered. The employees' default folder: the bridge's, shown in the settings; a relative one
 // refused; another saved (settings.json) and the default back with its button, the focus kept in the dialog; the page
 // names an employee's own folder as the bridge does; a new employee started without a folder gets one there, which the
 // launch dialog's placeholder and preview name, a new git repository bound to it. What a new employee starts with: the
@@ -63,22 +63,19 @@ func TestSettings(t *testing.T) {
 		do(t, ctx, 10*time.Second, chromedp.KeyEvent(keys))
 		time.Sleep(120 * time.Millisecond) // (the windows' observers)
 	}
-	ctx, _ := clockTab(t, browser, b.URL+"/t/office/?lang=en", 0)
+	ctx, _ := clockTab(t, browser, b.URL+"/t/messenger/?lang=en", 0)
 	do(t, ctx, 10*time.Second, chromedp.EmulateViewport(1400, 900))
 	p := &screens{t: t, ctx: ctx, lang: "settings"}
-	waitUntil(t, 20*time.Second, "the office shows alice and the Settings button", func() bool {
-		return p.is(`document.querySelectorAll('.emp-label').length === 1 && !!document.getElementById('open-settings')`)
+	waitUntil(t, 20*time.Second, "Coworkers lists alice and shows its gear", func() bool {
+		return p.is(`document.querySelectorAll('#people .row').length === 1 && !!document.querySelector('.side-actions .open-settings')`)
 	})
-	if p.is(`!!document.querySelector('#hud .prefs, #hud select, #hud .pixel-steps, #still')`) {
-		t.Fatal("the HUD should keep its rarely used controls in the settings now")
-	}
-	news := `!document.querySelector('#open-settings .news').hidden`
+	news := `!document.querySelector('.side-actions .open-settings .news').hidden`
 	if p.is(news) {
 		t.Fatal("no error yet: the Settings button shouldn't be marked")
 	}
 
 	// ---------- the dialog and what it sets ----------
-	p.run(`document.getElementById('open-settings').focus()`)
+	p.run(`document.querySelector('.side-actions .open-settings').focus()`)
 	key(ctx, kb.Enter)
 	waitUntil(t, 5*time.Second, "the settings open, the focus in them", func() bool {
 		return p.is(`!document.getElementById('settings').hidden && document.getElementById('settings').contains(document.activeElement)`)
@@ -93,11 +90,7 @@ func TestSettings(t *testing.T) {
 		t.Errorf("an empty error log should say so: %q", p.js(`document.querySelector('#settings .errlog .state').textContent`))
 	}
 	p.shot("dialog")
-	p.run(`document.querySelector('.pixel-steps button[data-level="2"]').click()`)
-	waitUntil(t, 5*time.Second, "the pixel size changes and is kept", func() bool {
-		return p.is(`localStorage.getItem('symphony.pixels') === '2' && document.querySelector('.pixel-steps button[data-level="2"]').getAttribute('aria-pressed') === 'true'`)
-	})
-	p.run(`document.querySelector('.pixel-steps button[data-level="0"]').click(); document.getElementById('set-still').click()`)
+	p.run(`document.getElementById('set-still').click()`)
 	waitUntil(t, 5*time.Second, "motion pauses", func() bool {
 		return p.is(`document.documentElement.hasAttribute('data-still') && localStorage.getItem('symphony.still') === '1'`)
 	})
@@ -110,7 +103,7 @@ func TestSettings(t *testing.T) {
 	p.run(`document.getElementById('set-steps').click()`)
 	key(ctx, kb.Escape)
 	waitUntil(t, 5*time.Second, "Esc closes the settings, the focus back on the button", func() bool {
-		return p.is(`document.getElementById('settings').hidden && document.activeElement === document.getElementById('open-settings')`)
+		return p.is(`document.getElementById('settings').hidden && document.activeElement === document.querySelector('.side-actions .open-settings')`)
 	})
 
 	// ---------- the error log fills as things go wrong ----------
@@ -126,11 +119,11 @@ func TestSettings(t *testing.T) {
 		return srcs["page"] && srcs["launch"]
 	}, func() string { return fmt.Sprint(b.Hub.Faults()) })
 	waitUntil(t, 10*time.Second, "the Settings button is marked", func() bool {
-		return p.is(news) && p.is(`document.getElementById('open-settings').getAttribute('aria-label') === 'Settings: something new in the error log'`)
+		return p.is(news) && p.is(`document.querySelector('.side-actions .open-settings').getAttribute('aria-label') === 'Settings: something new in the error log'`)
 	})
 	// (the page's own errors are the test's, not the page's: they're cleared for done())
 	p.run(`window.__errors = []`)
-	p.run(`document.getElementById('open-settings').click()`)
+	p.run(`document.querySelector('.side-actions .open-settings').click()`)
 	waitUntil(t, 10*time.Second, "the settings count them, and what's recorded unfolds into them, newest first", func() bool {
 		p.run(`document.querySelector('#settings .recorded').open = true`)
 		return p.is(`document.querySelectorAll('#settings .entry').length === 2 && document.querySelector('#settings .errlog .state').textContent === 'Errors recorded: 2' && !document.querySelector('#settings .recorded').hidden`) &&
@@ -145,7 +138,7 @@ func TestSettings(t *testing.T) {
 	})
 	p.run(`[...document.querySelectorAll('#settings .entry')].find(e => e.querySelector('.src').textContent === 'Page').querySelector('summary').click()`)
 	waitUntil(t, 5*time.Second, "an entry unfolds into its whole text", func() bool {
-		return p.is(`(e => e.open && e.querySelector('pre').textContent.includes('boom from the test') && e.querySelector('pre').textContent.includes('page: office'))([...document.querySelectorAll('#settings .entry')].find(e => e.open))`)
+		return p.is(`(e => e.open && e.querySelector('pre').textContent.includes('boom from the test') && e.querySelector('pre').textContent.includes('page: messenger'))([...document.querySelectorAll('#settings .entry')].find(e => e.open))`)
 	})
 	// "I want to report a problem": the report file (the browser's download is the test's: its name, its contents)
 	p.run(`HTMLAnchorElement.prototype.click = function () { window.__saved = { name: this.download, href: this.href } }; URL.createObjectURL = (make => blob => { window.__blob = blob; return make(blob) })(URL.createObjectURL.bind(URL))`)
@@ -154,7 +147,7 @@ func TestSettings(t *testing.T) {
 		return p.is(`!!window.__saved && /^symphony-report-\d{8}-\d{6}\.txt$/.test(window.__saved.name) && document.querySelector('#settings .errlog .saved').textContent.includes(window.__saved.name)`)
 	}, func() string { return p.js(`JSON.stringify(window.__saved)`) })
 	report := get(t, ctx, 10*time.Second, chromedp.Evaluate[string](`window.__blob.text()`, chromedp.EvalAwaitPromise))
-	for _, want := range []string{"symphony — error report", "bridge: v9.9.9-test", "page: office · en", "errors: 2, newest first", "boom from the test", "/no/such/folder", "another line", "browser: "} {
+	for _, want := range []string{"symphony — error report", "bridge: v9.9.9-test", "page: messenger · en", "errors: 2, newest first", "boom from the test", "/no/such/folder", "another line", "browser: "} {
 		if !strings.Contains(report, want) {
 			t.Errorf("the report lacks %q:\n%s", want, report)
 		}
@@ -176,9 +169,8 @@ func TestSettings(t *testing.T) {
 
 	// ---------- errors one can copy ----------
 	// the launch dialog: a failed start in a box (the bridge answers the folder is missing), its text still selected
-	// through the office's redraws; a drag that ends over the backdrop leaves the dialog open
-	p.run(`document.querySelector('.emp-label').click()`)
-	waitUntil(t, 10*time.Second, "alice's window opens", func() bool { return p.is(`!document.getElementById('chat').hidden`) })
+	// through the page's redraws; a drag that ends over the backdrop leaves the dialog open
+	clickRow(t, ctx, alice.ID)
 	b.post(t, alice.Token, "/api/event", map[string]any{"session": "s-a", "kind": "session.end", "reason": "exit"})
 	waitUntil(t, 10*time.Second, "she goes off duty, with Start work", func() bool {
 		return p.is(`[...document.querySelectorAll('#chat .btns button')].some(b => b.textContent === 'Start work')`)
@@ -191,7 +183,7 @@ func TestSettings(t *testing.T) {
 	}, func() string { return p.js(`document.querySelector('#launch .status').textContent`) })
 	p.run(`getSelection().selectAllChildren(document.querySelector('#launch .status .errbox .msg'))`)
 	selected := p.js(`getSelection().toString()`)
-	for i := 0; i < 3; i++ { // the office redraws on every change
+	for i := 0; i < 3; i++ { // the sidebar redraws on every change
 		b.post(t, alice.Token, "/api/event", map[string]any{"session": "s-a", "kind": "session.title", "title": fmt.Sprint("redraw ", i)})
 		time.Sleep(150 * time.Millisecond)
 	}
@@ -234,11 +226,11 @@ func TestSettings(t *testing.T) {
 	waitUntil(t, 5*time.Second, "Esc closes it", func() bool { return p.is(`document.getElementById('oops').hidden`) })
 	p.done()
 
-	// ---------- Coworkers: the gear, light or dark ----------
+	// ---------- a second page: the gear says the log has news; light or dark ----------
 	mctx, _ := clockTab(t, browser, b.URL+"/t/messenger/?lang=en", 0)
 	do(t, mctx, 10*time.Second, chromedp.EmulateViewport(1400, 900))
 	m := &screens{t: t, ctx: mctx, lang: "settings-coworkers"}
-	waitUntil(t, 20*time.Second, "Coworkers shows its gear", func() bool {
+	waitUntil(t, 20*time.Second, "the second page shows its gear", func() bool {
 		return m.is(`!!document.querySelector('.side-actions .open-settings') && !document.getElementById('dark')`)
 	})
 	// (named Settings, and saying the error log has news: the failed start above came after the log was cleared)
@@ -266,12 +258,12 @@ func TestSettings(t *testing.T) {
 
 	// ---------- the employees' default folder ----------
 	// (in a tab of its own, last: opening the settings counts the error log as seen, which Coworkers' gear checks above)
-	sctx, _ := clockTab(t, browser, b.URL+"/t/office/?lang=en", 0)
+	sctx, _ := clockTab(t, browser, b.URL+"/t/messenger/?lang=en", 0)
 	do(t, sctx, 10*time.Second, chromedp.EmulateViewport(1400, 900))
 	s := &screens{t: t, ctx: sctx, lang: "settings-staff"}
-	waitUntil(t, 20*time.Second, "the office shows its Settings button", func() bool { return s.is(`!!document.getElementById('open-settings')`) })
+	waitUntil(t, 20*time.Second, "the third page shows its gear", func() bool { return s.is(`!!document.querySelector('.side-actions .open-settings')`) })
 	def := b.Hub.Settings().BotHomeDefault
-	s.run(`document.getElementById('open-settings').click()`)
+	s.run(`document.querySelector('.side-actions .open-settings').click()`)
 	waitUntil(t, 10*time.Second, "the settings show the bridge's default folder, nothing to go back to", func() bool {
 		return s.is(fmt.Sprintf(`document.getElementById('set-bot-home').value === %q && document.querySelector('#settings .staff .reset').hidden`, def))
 	}, func() string { return s.js(`document.querySelector('#settings .staff').innerText`) })
@@ -301,7 +293,7 @@ func TestSettings(t *testing.T) {
 	})
 	// what was typed and not saved goes when the settings open again
 	s.run(`document.getElementById('set-bot-home').value = '/typed/not/saved'; document.querySelector('#settings .close').click()`)
-	s.run(`document.getElementById('open-settings').click()`)
+	s.run(`document.querySelector('.side-actions .open-settings').click()`)
 	waitUntil(t, 10*time.Second, "the field shows the bridge's folder again", func() bool {
 		return s.is(fmt.Sprintf(`document.getElementById('set-bot-home').value === %q && document.querySelector('#settings .staff .said').textContent === ''`, def))
 	})
@@ -365,11 +357,11 @@ func TestSettings(t *testing.T) {
 	// ---------- what a new employee starts with ----------
 	// the settings: the model, the effort, the permission mode and the office context, Claude Code's own at first, each
 	// saved as it changes (settings.json), the bypassPermissions warning under its select
-	s.run(`document.getElementById('open-settings').click()`)
+	s.run(`document.querySelector('.side-actions .open-settings').click()`)
 	waitUntil(t, 10*time.Second, "the settings show Claude Code's own for each", func() bool {
 		return s.is(`(f => f('set-model').options.length > 1 && f('set-model').value === '' && f('set-effort').value === '' && f('set-mode').value === '' && !f('set-context').checked && f('set-mode-warn').hidden)(id => document.getElementById(id))`)
 	})
-	for id, want := range map[string]string{"set-model": "Model (--model)", "set-effort": "Thinking effort (--effort)", "set-mode": "Permission mode (--permission-mode)", "set-context": "Tell it who else is in the office"} {
+	for id, want := range map[string]string{"set-model": "Model", "set-effort": "Thinking effort", "set-mode": "Permission mode", "set-context": "Tell it who else is in the office"} { // (Coworkers' labels, without the CLI flags)
 		if n := ax(t, sctx, `document.getElementById('`+id+`')`); n.Name != want {
 			t.Errorf("%s should be named by its label: %+v", id, n)
 		}
@@ -410,7 +402,7 @@ func TestSettings(t *testing.T) {
 	s.shot("launch-folded")
 	s.run(`document.querySelector('#launch .adv > summary').click()`)
 	waitUntil(t, 5*time.Second, "unfolded: where the fields come from, the warning under the select, not under the line", func() bool {
-		return s.is(`document.querySelector('#launch .adv').open && document.querySelector('#launch .adv-note').textContent === 'Filled in from the settings (Settings → Employees). Changing them here doesn\'t change the settings.' && document.querySelector('#launch .adv .warn').getClientRects().length > 0 && !document.querySelector('#launch .warn.out').getClientRects().length`)
+		return s.is(`document.querySelector('#launch .adv').open && document.querySelector('#launch .adv-note').textContent === 'Filled in from the settings (Settings → Coworkers). Changing them here doesn\'t change the settings.' && document.querySelector('#launch .adv .warn').getClientRects().length > 0 && !document.querySelector('#launch .warn.out').getClientRects().length`)
 	}, func() string { return s.js(`document.querySelector('#launch .adv-note').textContent`) })
 	pick("#launch [name=model]", "sonnet")
 	waitUntil(t, 5*time.Second, "one changed for this start: the button to set them back shows", func() bool {
@@ -449,8 +441,8 @@ func TestSettings(t *testing.T) {
 		t.Fatal(err)
 	}
 	b.post(t, leeAcc.Token, "/api/event", map[string]any{"session": "s-l", "kind": "session.end", "reason": "exit"})
-	s.run(fmt.Sprintf(`document.querySelector('.emp-label:not(.member)[data-account=%q]').click()`, leeAcc.ID))
-	waitUntil(t, 10*time.Second, "Lee's window offers Start work", func() bool { return s.is(`!!document.querySelector('#chat .btns .go-work')`) })
+	clickRow(t, sctx, leeAcc.ID)
+	waitUntil(t, 10*time.Second, "Lee's conversation offers Start work", func() bool { return s.is(`!!document.querySelector('#chat .btns .go-work')`) })
 	s.run(`document.querySelector('#chat .btns .go-work').click()`)
 	waitUntil(t, 10*time.Second, "the dialog opens folded, as Lee last worked", func() bool {
 		return s.is(`(f => !document.getElementById('launch').hidden && !f.querySelector('.adv').open && f.elements.model.value === 'opus' && f.elements.effort.value === 'max' && f.elements.permissionMode.value === 'bypassPermissions' && f.elements.context.checked && document.activeElement === f.querySelector('.go'))(document.querySelector('#launch form'))`)
@@ -471,7 +463,7 @@ func TestSettings(t *testing.T) {
 
 	// the task dialog: its permission mode and a new advisor's model and effort as the settings say, and those of an
 	// employee never started from the page (alice); one that was keeps its last choices (Lee's, Kai Ro's Claude Code's own)
-	s.run(`document.querySelector('#chat .close').click(); document.getElementById('new-task').click()`)
+	s.run(`document.getElementById('new-task').click()`)
 	waitUntil(t, 10*time.Second, "the task dialog opens", func() bool {
 		return s.is(`!document.getElementById('task').hidden && document.querySelectorAll('#task .mem').length === 3`)
 	})

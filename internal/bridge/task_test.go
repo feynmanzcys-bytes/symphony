@@ -119,7 +119,6 @@ func readFile(t *testing.T, path string) string {
 // goes by its session name; the desk sessions go on beside them. Ending the task stops the sessions, saves what they
 // left uncommitted, merges the plain folder's branches into it (its repository and the branches stay), keeps the
 // branches in the user's repository and deletes the advisor.
-func hint(n int) *int { return &n }
 
 func TestTaskLifecycle(t *testing.T) {
 	e := newTaskEnv(t, "")
@@ -134,7 +133,7 @@ func TestTaskLifecycle(t *testing.T) {
 	bob.ok("POST", "/api/event", Event{Session: "bob-desk", Kind: "session.start", Cwd: repo})
 	e.srv.Hub.setLast(aliceAcc.ID, LaunchRequest{Dir: plain, Model: "sonnet"})
 
-	task := asTask(t, e.page.ok("POST", "/api/tasks", TaskRequest{Room: hint(2), Title: "  build the thing  ",
+	task := asTask(t, e.page.ok("POST", "/api/tasks", TaskRequest{Title: "  build the thing  ",
 		Leader: true, PermissionMode: "bypassPermissions", Lang: "en", Members: []TaskMemberRequest{
 			{Account: bobAcc.ID, Model: "opus", Effort: "max"},
 			{Account: aliceAcc.ID, Model: "sonnet", Effort: "high"},
@@ -270,7 +269,7 @@ func TestTaskLifecycle(t *testing.T) {
 	}
 
 	// the members are taken; an advisor in a running task can't be deleted
-	if st, code := e.page.failure("POST", "/api/tasks", TaskRequest{Room: hint(3), Title: "x", Members: []TaskMemberRequest{{Account: aliceAcc.ID}, {Account: bobAcc.ID}}}); st != http.StatusConflict || code != "task_member_busy" {
+	if st, code := e.page.failure("POST", "/api/tasks", TaskRequest{Title: "x", Members: []TaskMemberRequest{{Account: aliceAcc.ID}, {Account: bobAcc.ID}}}); st != http.StatusConflict || code != "task_member_busy" {
 		t.Fatalf("members in a running task: want 409 task_member_busy, got %d %q", st, code)
 	}
 	if st, code := e.page.failure("DELETE", "/api/accounts/"+r.Account, nil); st != http.StatusConflict || code != "account_busy" {
@@ -363,7 +362,7 @@ func TestTaskMergeConflict(t *testing.T) {
 	_, carolAcc := as(t, e.srv, e.base, "carol")
 	e.srv.Hub.setLast(bobAcc.ID, LaunchRequest{Dir: plain})
 	e.srv.Hub.setLast(carolAcc.ID, LaunchRequest{Dir: plain})
-	task := asTask(t, e.page.ok("POST", "/api/tasks", TaskRequest{Room: hint(0), Title: "plan it", Lang: "zh-CN",
+	task := asTask(t, e.page.ok("POST", "/api/tasks", TaskRequest{Title: "plan it", Lang: "zh-CN",
 		Members: []TaskMemberRequest{{Account: bobAcc.ID}, {Account: carolAcc.ID}, {Advisor: &AdvisorRequest{Name: "helper", Dir: plain}}}}))
 	if task.Leader != "" {
 		t.Fatalf("without leader the task has no lead: %+v", task)
@@ -435,7 +434,7 @@ func TestTaskEndsWithItsLastMember(t *testing.T) {
 	alice, aliceAcc := as(t, e.srv, e.base, "alice")
 	e.srv.Hub.setLast(bobAcc.ID, LaunchRequest{Dir: plain})
 	e.srv.Hub.setLast(aliceAcc.ID, LaunchRequest{Dir: plain})
-	task := asTask(t, e.page.ok("POST", "/api/tasks", TaskRequest{Room: hint(1), Title: "t", Leader: true,
+	task := asTask(t, e.page.ok("POST", "/api/tasks", TaskRequest{Title: "t", Leader: true,
 		Members: []TaskMemberRequest{{Account: bobAcc.ID}, {Account: aliceAcc.ID}}}))
 	b, a := task.Members[0], task.Members[1]
 	bob.ok("POST", "/api/event", Event{Session: "b", Kind: "session.start", Launch: b.Launch, Task: task.ID})
@@ -463,7 +462,7 @@ func TestTaskStop(t *testing.T) {
 	plain := e.folder(t, "plain")
 	_, bobAcc := as(t, e.srv, e.base, "bob")
 	e.srv.Hub.setLast(bobAcc.ID, LaunchRequest{Dir: plain})
-	task := asTask(t, e.page.ok("POST", "/api/tasks", TaskRequest{Room: hint(1), Title: "t",
+	task := asTask(t, e.page.ok("POST", "/api/tasks", TaskRequest{Title: "t",
 		Members: []TaskMemberRequest{{Account: bobAcc.ID}, {Advisor: &AdvisorRequest{Name: "helper", Dir: plain}}}}))
 	e.srv.Hub.Stop()
 	e.srv.Launcher.Terms.KillAll()
@@ -486,7 +485,7 @@ func TestTaskSubfolder(t *testing.T) {
 	_, aliceAcc := as(t, e.srv, e.base, "alice")
 	e.srv.Hub.setLast(bobAcc.ID, LaunchRequest{Dir: app})
 	e.srv.Hub.setLast(aliceAcc.ID, LaunchRequest{Dir: repo})
-	task := asTask(t, e.page.ok("POST", "/api/tasks", TaskRequest{Room: hint(1), Title: "t",
+	task := asTask(t, e.page.ok("POST", "/api/tasks", TaskRequest{Title: "t",
 		Members: []TaskMemberRequest{{Account: bobAcc.ID}, {Account: aliceAcc.ID}}}))
 	b, a := task.Members[0], task.Members[1]
 	if b.Worktree != filepath.Join(app, ".symphony", "worktrees", "bob-T1") || e.named("bob-T1").dir != filepath.Join(b.Worktree, "app") ||
@@ -545,7 +544,6 @@ func TestTaskErrors(t *testing.T) {
 		"an advisor's missing folder":       {TaskRequest{Title: "t", Members: []TaskMemberRequest{{Account: bob.ID}, advisor("x", filepath.Join(plain, "nope"))}}, 400, "launch_dir_missing"},
 		"an unknown model":                  {TaskRequest{Title: "t", Members: []TaskMemberRequest{{Account: bob.ID, Model: "gpt"}, {Account: alice.ID}}}, 400, "launch_bad_option"},
 		"an unknown permission mode":        {TaskRequest{Title: "t", PermissionMode: "yolo", Members: two}, 400, "launch_bad_option"},
-		"a negative room":                   {TaskRequest{Room: hint(-1), Title: "t", Members: two}, 400, "launch_bad_option"},
 		"an employee and an advisor in one": {TaskRequest{Title: "t", Members: []TaskMemberRequest{{Account: alice.ID, Advisor: &AdvisorRequest{Name: "x", Dir: plain}}, {Account: bob.ID}}}, 400, "launch_bad_option"},
 		"an employee whose folder is gone":  {TaskRequest{Title: "t", Members: []TaskMemberRequest{{Account: bob.ID}, {Account: gone.ID}}}, 400, "task_dir_missing"},
 	} {
@@ -615,11 +613,11 @@ func TestTaskErrors(t *testing.T) {
 
 	// the tries that failed keep their numbers (messages may have been logged under them); an employee is in one task
 	// at a time
-	task := asTask(t, e.page.ok("POST", "/api/tasks", TaskRequest{Room: hint(4), Title: "t", Members: two}))
+	task := asTask(t, e.page.ok("POST", "/api/tasks", TaskRequest{Title: "t", Members: two}))
 	if task.ID != "T4" {
 		t.Fatalf("the first task made should be T4 (T1 to T3 went to the tries that failed), got %s", task.ID)
 	}
-	st, body = e.page.do("POST", "/api/tasks", TaskRequest{Room: hint(5), Title: "t", Members: []TaskMemberRequest{advisor("x", plain), {Account: bob.ID}}})
+	st, body = e.page.do("POST", "/api/tasks", TaskRequest{Title: "t", Members: []TaskMemberRequest{advisor("x", plain), {Account: bob.ID}}})
 	if params, _ := body["params"].(map[string]any); st != http.StatusConflict || body["code"] != "task_member_busy" || params["name"] != "bob" {
 		t.Fatalf("want 409 task_member_busy naming bob, got %d %v", st, body)
 	}
@@ -650,7 +648,7 @@ func TestTaskOpenEndsLeftovers(t *testing.T) {
 	writeFile(t, filepath.Join(plain, "notes.txt"), "notes\n")
 	_, bobAcc := as(t, e.srv, e.base, "bob")
 	e.srv.Hub.setLast(bobAcc.ID, LaunchRequest{Dir: plain})
-	task := asTask(t, e.page.ok("POST", "/api/tasks", TaskRequest{Room: hint(1), Title: "t", Leader: true,
+	task := asTask(t, e.page.ok("POST", "/api/tasks", TaskRequest{Title: "t", Leader: true,
 		Members: []TaskMemberRequest{{Account: bobAcc.ID}, {Advisor: &AdvisorRequest{Name: "helper", Dir: plain}}}}))
 	writeFile(t, filepath.Join(task.Members[1].Worktree, "help.txt"), "helped\n")
 	if _, err := e.srv.Hub.CreateAdvisor("ghost"); err != nil {
@@ -693,7 +691,7 @@ func TestTaskDetachedWork(t *testing.T) {
 	_, aliceAcc := as(t, e.srv, e.base, "alice")
 	e.srv.Hub.setLast(bobAcc.ID, LaunchRequest{Dir: plain})
 	e.srv.Hub.setLast(aliceAcc.ID, LaunchRequest{Dir: plain})
-	task := asTask(t, e.page.ok("POST", "/api/tasks", TaskRequest{Room: hint(1), Title: "t",
+	task := asTask(t, e.page.ok("POST", "/api/tasks", TaskRequest{Title: "t",
 		Members: []TaskMemberRequest{{Account: bobAcc.ID}, {Account: aliceAcc.ID}}}))
 	b, a := task.Members[0], task.Members[1]
 	writeFile(t, filepath.Join(a.Worktree, "alice.txt"), "alice's\n")
@@ -728,7 +726,7 @@ func TestTaskKeepsIgnoredFiles(t *testing.T) {
 	e.srv.Hub.setLast(bobAcc.ID, LaunchRequest{Dir: repo})
 	e.srv.Hub.setLast(aliceAcc.ID, LaunchRequest{Dir: repo})
 	start := func() *Task {
-		return asTask(t, e.page.ok("POST", "/api/tasks", TaskRequest{Room: hint(1), Title: "t",
+		return asTask(t, e.page.ok("POST", "/api/tasks", TaskRequest{Title: "t",
 			Members: []TaskMemberRequest{{Account: bobAcc.ID}, {Account: aliceAcc.ID}}}))
 	}
 	ignored := map[string]string{"out/app.bin": "binary", "out/sub/x.o": "object", ".env": "TOKEN=secret", "src/.env": "nested"}
@@ -798,7 +796,7 @@ func TestTaskKeepsNestedCommits(t *testing.T) {
 	e.srv.Hub.setLast(bobAcc.ID, LaunchRequest{Dir: repo})
 	e.srv.Hub.setLast(aliceAcc.ID, LaunchRequest{Dir: repo})
 	start := func() *Task {
-		return asTask(t, e.page.ok("POST", "/api/tasks", TaskRequest{Room: hint(1), Title: "t",
+		return asTask(t, e.page.ok("POST", "/api/tasks", TaskRequest{Title: "t",
 			Members: []TaskMemberRequest{{Account: bobAcc.ID}, {Account: aliceAcc.ID}}}))
 	}
 	end := func(task *Task) *Task {
@@ -855,12 +853,12 @@ func TestTaskFolderChecks(t *testing.T) {
 	_, carolAcc := as(t, e.srv, e.base, "carol")
 	e.srv.Hub.setLast(aliceAcc.ID, LaunchRequest{Dir: plain})
 	e.srv.Hub.setLast(carolAcc.ID, LaunchRequest{Dir: plain})
-	task := asTask(t, e.page.ok("POST", "/api/tasks", TaskRequest{Room: hint(1), Title: "t",
+	task := asTask(t, e.page.ok("POST", "/api/tasks", TaskRequest{Title: "t",
 		Members: []TaskMemberRequest{{Account: aliceAcc.ID}, {Account: carolAcc.ID}}}))
 	wt := task.Members[0].Worktree
 
 	advisor := func(dir string) TaskRequest {
-		return TaskRequest{Room: hint(2), Title: "t", Members: []TaskMemberRequest{{Advisor: &AdvisorRequest{Name: "x", Dir: dir}}, {Advisor: &AdvisorRequest{Name: "y", Dir: dir}}}}
+		return TaskRequest{Title: "t", Members: []TaskMemberRequest{{Advisor: &AdvisorRequest{Name: "x", Dir: dir}}, {Advisor: &AdvisorRequest{Name: "y", Dir: dir}}}}
 	}
 	for name, tc := range map[string]struct {
 		dir    string
@@ -883,7 +881,7 @@ func TestTaskFolderChecks(t *testing.T) {
 	}
 	// bob's desk session went into alice's worktree
 	bob.ok("POST", "/api/event", Event{Session: "bob-desk", Kind: "session.start", Cwd: wt})
-	st, body := e.page.do("POST", "/api/tasks", TaskRequest{Room: hint(2), Title: "t",
+	st, body := e.page.do("POST", "/api/tasks", TaskRequest{Title: "t",
 		Members: []TaskMemberRequest{{Account: bobAcc.ID}, {Advisor: &AdvisorRequest{Name: "x", Dir: e.folder(t, "elsewhere")}}}})
 	if params, _ := body["params"].(map[string]any); st != 400 || body["code"] != "task_dir_in_worktree" || params["name"] != "bob" || params["dir"] != wt {
 		t.Fatalf("want 400 task_dir_in_worktree naming bob, got %d %v", st, body)
@@ -980,7 +978,7 @@ func TestTaskMemberNeverComes(t *testing.T) {
 	_, aliceAcc := as(t, e.srv, e.base, "alice")
 	e.srv.Hub.setLast(bobAcc.ID, LaunchRequest{Dir: plain})
 	e.srv.Hub.setLast(aliceAcc.ID, LaunchRequest{Dir: plain})
-	task := asTask(t, e.page.ok("POST", "/api/tasks", TaskRequest{Room: hint(1), Title: "t",
+	task := asTask(t, e.page.ok("POST", "/api/tasks", TaskRequest{Title: "t",
 		Members: []TaskMemberRequest{{Account: bobAcc.ID}, {Account: aliceAcc.ID}}}))
 	b, a := task.Members[0], task.Members[1]
 	bob.ok("POST", "/api/event", Event{Session: "b", Kind: "session.start", Launch: b.Launch, Task: task.ID})
@@ -1002,7 +1000,7 @@ func TestTaskMemberNamedLate(t *testing.T) {
 	plain := e.folder(t, "plain")
 	_, bobAcc := as(t, e.srv, e.base, "bob")
 	e.srv.Hub.setLast(bobAcc.ID, LaunchRequest{Dir: plain})
-	task := asTask(t, e.page.ok("POST", "/api/tasks", TaskRequest{Room: hint(1), Title: "t", Leader: true,
+	task := asTask(t, e.page.ok("POST", "/api/tasks", TaskRequest{Title: "t", Leader: true,
 		Members: []TaskMemberRequest{{Account: bobAcc.ID}, {Advisor: &AdvisorRequest{Name: "helper", Dir: plain}}}}))
 	for i, sid := range []string{"b1", "h1"} {
 		m := task.Members[i]
@@ -1045,7 +1043,7 @@ func TestTaskMemberNamedLateReplaces(t *testing.T) {
 	alice, aliceAcc := as(t, e.srv, e.base, "alice")
 	e.srv.Hub.setLast(bobAcc.ID, LaunchRequest{Dir: plain})
 	e.srv.Hub.setLast(aliceAcc.ID, LaunchRequest{Dir: plain})
-	task := asTask(t, e.page.ok("POST", "/api/tasks", TaskRequest{Room: hint(1), Title: "t", Leader: true,
+	task := asTask(t, e.page.ok("POST", "/api/tasks", TaskRequest{Title: "t", Leader: true,
 		Members: []TaskMemberRequest{{Account: bobAcc.ID}, {Account: aliceAcc.ID}}}))
 	b, a := task.Members[0], task.Members[1]
 	alice.ok("POST", "/api/event", Event{Session: "a1", Kind: "session.start", Launch: a.Launch, Task: task.ID, Cwd: a.Worktree})
@@ -1087,7 +1085,7 @@ func TestTaskSessionStartsAgain(t *testing.T) {
 	alice, aliceAcc := as(t, e.srv, e.base, "alice")
 	e.srv.Hub.setLast(bobAcc.ID, LaunchRequest{Dir: plain})
 	e.srv.Hub.setLast(aliceAcc.ID, LaunchRequest{Dir: plain})
-	res := e.page.ok("POST", "/api/tasks", TaskRequest{Room: hint(1), Title: "t", Leader: true,
+	res := e.page.ok("POST", "/api/tasks", TaskRequest{Title: "t", Leader: true,
 		Members: []TaskMemberRequest{{Account: bobAcc.ID}, {Account: aliceAcc.ID}}})
 	if _, ok := res["ended"]; ok {
 		t.Fatalf("a running task has no end time: %v", res)
@@ -1174,7 +1172,7 @@ func TestTaskChat(t *testing.T) {
 	alice, aliceAcc := as(t, e.srv, e.base, "alice")
 	e.srv.Hub.setLast(bobAcc.ID, LaunchRequest{Dir: plain})
 	e.srv.Hub.setLast(aliceAcc.ID, LaunchRequest{Dir: plain})
-	task := asTask(t, e.page.ok("POST", "/api/tasks", TaskRequest{Room: hint(1), Title: "t", Leader: true,
+	task := asTask(t, e.page.ok("POST", "/api/tasks", TaskRequest{Title: "t", Leader: true,
 		Members: []TaskMemberRequest{{Account: bobAcc.ID}, {Account: aliceAcc.ID}}}))
 	b, a := task.Members[0], task.Members[1]
 	bob.ok("POST", "/api/event", Event{Session: "b", Kind: "session.start", Launch: b.Launch, Task: task.ID})
@@ -1362,7 +1360,7 @@ func TestTaskChatMentions(t *testing.T) {
 	plain := e.folder(t, "plain")
 	bob, bobAcc := as(t, e.srv, e.base, "bob")
 	e.srv.Hub.setLast(bobAcc.ID, LaunchRequest{Dir: plain})
-	task := asTask(t, e.page.ok("POST", "/api/tasks", TaskRequest{Room: hint(1), Title: "t",
+	task := asTask(t, e.page.ok("POST", "/api/tasks", TaskRequest{Title: "t",
 		Members: []TaskMemberRequest{{Account: bobAcc.ID}, {Advisor: &AdvisorRequest{Name: "小 王", Dir: plain}}, {Advisor: &AdvisorRequest{Name: "John Smith", Dir: plain}}}}))
 	b, w, j := task.Members[0], task.Members[1], task.Members[2]
 	if w.Name != "小 王-"+task.ID || j.Name != "John Smith-"+task.ID {

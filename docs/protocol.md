@@ -1,8 +1,8 @@
 # The bridge's protocol
 
-What the bridge gives the pages and takes from them, and what the mod reports to it. Protocol version **2** (the snapshot's `protocol`). Additions keep the number; a removed or renamed field raises it. A page that finds a number it doesn't know shows `error.protocol_mismatch` and goes on as far as it can.
+What the bridge gives the pages and takes from them, and what the mod reports to it. Protocol version **3** (the snapshot's `protocol`). Additions keep the number; a removed or renamed field raises it. A page that finds a number it doesn't know shows `error.protocol_mismatch` and goes on as far as it can.
 
-History: 1 (v0.8.0) the first numbered one; 2 (v0.9.0) `Task.roomName` removed, `Task.room` became an optional hint.
+History: 1 (v0.8.0) the first numbered one; 2 (v0.9.0) `Task.roomName` removed, `Task.room` became an optional hint; 3 `Task.room` and `POST /api/tasks`' `room` removed with the pixel office, the theme that used them.
 
 The pages are themes of one office page (`web/themes/<name>/`), all on the same client library, `web/symphony.js`, and the same shared pieces, `web/ui/*.js`. Everything below is what those use; a theme may use the library and never touch HTTP.
 
@@ -13,7 +13,7 @@ The pages are themes of one office page (`web/themes/<name>/`), all on the same 
 - This machine only: the bridge listens on a loopback address (`-addr`'s host is `127.0.0.1`, `localhost` or `::1`; any other stops it) and answers 403 to a connection from any other address.
 - Same origin only: the bridge refuses (403) a `Host` that isn't this machine (DNS rebinding) and any write (`POST`, `DELETE`) whose `Origin` isn't its own. The mod sends no `Origin`.
 - Every answer carries `Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; font-src 'self'; media-src 'self' data: blob:; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'`, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff` and `Referrer-Policy: no-referrer`.
-- `GET /` serves the theme the browser picked (`?theme=<name>`, remembered in the `symphony.theme` cookie; else the cookie's; else `messenger`, Coworkers (until v1.4.0 the default was `office`, the pixel office)), `GET /t/<name>/` picks a theme and serves it (a theme the bridge doesn't have, one taken out since, answers 303 to `/` with the query kept), `GET /t/<name>/<file>` its own files, `GET /api/themes` lists them (`{themes: [Theme], current, protocol}`). The shared files are at the root: `/symphony.js`, `/i18n.js`, `/asks.js`, `/ui/<file>`, `/locales/<lang>.json`. `/approve` is the simple approval page.
+- `GET /` serves the theme the browser picked (`?theme=<name>`, remembered in the `symphony.theme` cookie; else the cookie's; else `messenger`, Coworkers, the one theme (until v1.4.0 the default was `office`, the pixel office, taken out since)), `GET /t/<name>/` picks a theme and serves it (a theme the bridge doesn't have, one taken out since, answers 303 to `/` with the query kept), `GET /t/<name>/<file>` its own files, `GET /api/themes` lists them (`{themes: [Theme], current, protocol}`). The shared files are at the root: `/symphony.js`, `/i18n.js`, `/asks.js`, `/ui/<file>`, `/locales/<lang>.json`. `/approve` is the simple approval page.
 - Errors: `{error: <English>, code, params}`; the page translates `error.<code>` with `params`. Statuses: 400 a bad request, 401 no page key (`page_key`) or the mod's token is unknown (`token_invalid`), 403 another account's ask, a cross-site write, a foreign `Host` or another machine, 404 unknown, 409 a conflict (an account busy: online or a start from the page on its way, `account_busy`; the process of its last start still running with its session off duty, `launch_still_running` with `params.command`, the command that shows its terminal; an ask settled, a name taken, a session offline, a task's member busy), 412 git missing, 429 a page that reported too many errors in the last minute (`fault_too_many`), 500 a git or terminal failure, an employee's own folder that couldn't be made (`bot_home_failed`), or a data file that couldn't be written (`data_write_failed`). Every 5xx a page gets, and every failed start of a session or a task (`POST /api/launch`, `POST /api/tasks`) but for a form left incomplete or a desk in use, goes into the error log too (§5).
 
 ### 1.1 The page key
@@ -73,7 +73,7 @@ Times are RFC 3339 strings; ids are opaque strings; fields marked optional are l
 
 **Launch**: `id`, `attach`, `name`, `dir`, `account`, `model`?, `effort`?, `command`, `status` (`starting`, `online`, `failed`, `ended`: it was online and its process has exited), `error`?/`errorCode`?/`errorParams`?, `session`?, `time`, `task`?.
 
-**Task**: `id` (`T` + a number), `room`? (an integer hint: the small room the task was started from in the theme that made it; a theme seats tasks itself and may honor it), `title`, `leader`? (the lead's account id; absent for a flat task), `permissionMode`, `lang`?, `members` [Member], `repos` [TaskRepo], `status` (`running`, `ending`, `failed`; ended ones leave the snapshot), `error`?/`errorCode`?/`errorParams`?, `created`, `ended`?. **Member**: `account`, `name` (`<account name>-<task id>`), `advisor`?, `dir`, `branch`, `worktree`, `model`?, `effort`?, `launch`?, `session`? (once it reported in), `kept`? (where what git ignored in its worktree went when the task ended: `<folder>/.symphony/kept/<slug>-<task id>`; empty when there was nothing; set on a failed task too, for what was moved before the failure). **TaskRepo**: `dir`, `inited`, `base`, `root`.
+**Task**: `id` (`T` + a number), `title`, `leader`? (the lead's account id; absent for a flat task), `permissionMode`, `lang`?, `members` [Member], `repos` [TaskRepo], `status` (`running`, `ending`, `failed`; ended ones leave the snapshot), `error`?/`errorCode`?/`errorParams`?, `created`, `ended`?. **Member**: `account`, `name` (`<account name>-<task id>`), `advisor`?, `dir`, `branch`, `worktree`, `model`?, `effort`?, `launch`?, `session`? (once it reported in), `kept`? (where what git ignored in its worktree went when the task ended: `<folder>/.symphony/kept/<slug>-<task id>`; empty when there was nothing; set on a failed task too, for what was moved before the failure). **TaskRepo**: `dir`, `inited`, `base`, `root`.
 
 **ChatItem**: `id`, `seq`, `kind` (`user`, `thinking`, `text`, `tool`, `command`, `message`, `ask`, `notice`), `text`?, `done`, `tool`?, `summary`?, `status`? (tool: `ok`, `error`, `denied`; user: `queued`, `sent`, `dropped` (`summary` why it didn't enter: a hook's or the engine's reason); ask: `pending`, `allow`, `allowSession` (allowed with `remember`), `deny`, `answered`, `cancelled`, and an elicitation's `accept`, `decline`, `cancel` as the terminal answered it), `agentId`?, `origin`? (user: `composer`, `page`, `task`, or the engine's kind), `from`?/`to`? (message), `ask`?/`askKind`?, `secs`? (thinking), `ms`? (tool: how long it took; ask: how long it waited to be settled), `time`. A notice's `text` is a code the page translates (`chat.notice.<code>`: `ended`, `aborted`, `refused`, `error`, `exited` (a page-started process that exited badly: the exit status and the last lines of its screen), `compacted`, `modelSwitched`, `notify`, `remembered` (the mod keeps a rule: `summary` is `<tool> <prefix>`)) and `summary` a detail shown after it; a tool row's `text` is the reason it failed or was denied.
 
@@ -84,9 +84,8 @@ Times are RFC 3339 strings; ids are opaque strings; fields marked optional are l
 ## 4. What a page derives
 
 - A session's display state: `waiting` while it has pending asks (the bridge sets it), else `state`; off duty is `ended`, and a session is kept 10 minutes after it ended (then it leaves the snapshot); 45 seconds without a heartbeat ends it, and a page-started session whose process exits ends at once; a session that ends has its pending asks withdrawn (cancelled).
-- `stateSince` says how long a session has been in its state (the pixel office's idle life counts from it; a reload changes nothing).
+- `stateSince` says how long a session has been in its state (a theme that animates from it gets the same picture after a reload).
 - An employee away in a task: its account has a member session online in a task (`Task.members[].session` with a session not `ended`); its desk session is separate (`AccountView.session`).
-- A task's room is the page's business (§3, `room`).
 - The ledger's "today" is the bridge's local day; `/api/ledger` has every day kept (90).
 
 ## 5. The calls a page makes
@@ -112,7 +111,7 @@ Every call shows the page key (§1.1).
 | `GET /api/terminal/{launch}/stream?cols=&rows=&sizes=` | | the terminal's raw output (not server-sent events): the history (its last 256 KiB) first, then what comes, until the process ends; `cols` and `rows` size the terminal first. With `sizes=1` (a view that draws the screen itself, `ui/terminal.js`) the output carries the terminal's size as xterm reports one, `ESC [ 8 ; rows ; cols t`: before the history (the size it was laid out at) and wherever it changed, whoever changed it; never in the history. For `symphony attach` and the in-page terminal; `terminal_unknown_session` (404) |
 | `POST /api/terminal/{launch}/input`, `POST .../resize` | the bytes to type (`application/octet-stream`, at most 1 MiB); `{cols, rows}` | 204; `terminal_ended` (409) for input once the process has ended, `terminal_unknown_session` (404) |
 | `GET /api/tasks` | | `{tasks: [Task]}` |
-| `POST /api/tasks` | `{room?, title, leader, permissionMode, lang?, members: [{account} \| {advisor: {name, dir}}, model, effort]}` (2 to 5 members) | the Task |
+| `POST /api/tasks` | `{title, leader, permissionMode, lang?, members: [{account} \| {advisor: {name, dir}}, model, effort]}` (2 to 5 members) | the Task |
 | `POST /api/tasks/{id}/end`, `DELETE /api/tasks/{id}` (a failed one) | | `{ok}` |
 | `POST /api/tasks/{id}/say` | `{text}`, leading `@<member name>`s pick the members (`@bob-T7`, or the short name `@bob`) | `{ok, missed}` |
 | `GET /api/tasks/{id}/chat` | | `{messages: [Message]}` |
@@ -148,7 +147,7 @@ A theme is `web/themes/<name>/` with `theme.json` (§3 Theme, `name` the folder'
 1. Every account (off duty included) and every online session, with its state and model; one click reaches a session's chat (`ui/chat.js`, `createChat`) and from it the asks. With `terminal` (the launch id of an online page-started session) `chat.show` offers the session's terminal in the window (`ui/terminal.js`).
 2. The pending asks visible at a glance and reachable with one click from anywhere.
 3. A new employee (`ui/launch.js`) and "Start work" for an off-duty one.
-4. The running tasks and the task window (`ui/task.js`); a theme draws tasks its own way but opens the shared dialog and window. The bridge knows no rooms: `Task.room` is a hint for the theme that made it.
+4. The running tasks and the task window (`ui/task.js`); a theme lists tasks its own way but opens the shared dialog and window.
 5. The message log and the activity log in some form.
 6. `t()` for every string; its own catalog, when it has one, in all ten languages (`go test ./internal/i18n/` checks theme catalogs for parity).
 7. `ui/ui.css` for the shared pieces' look, restyled through its variables.

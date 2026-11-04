@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"image/png"
-	"math"
 	"math/rand/v2"
 	"net/http"
 	"os"
@@ -349,35 +348,18 @@ func TestDesignScreens(t *testing.T) {
 		do(t, ctx, 10*time.Second, light, chromedp.EmulateViewport(1400, 860))
 		return &screens{t: t, ctx: ctx, lang: "en"}, cancel
 	}
-	office, _ := open("/t/office/?lang=en") // (not /: that serves the theme last picked, a cookie)
-	waitUntil(t, 20*time.Second, "the office shows the team and the rooms' nameplates", func() bool {
-		return office.is(`document.querySelectorAll('.emp-label').length >= 8 && document.querySelectorAll('.room-plate.click').length >= 4`)
+	cw, closeCw := open("/t/messenger/?lang=en") // (not /: that serves the theme last picked, a cookie)
+	waitUntil(t, 20*time.Second, "Coworkers lists the nine", func() bool {
+		return cw.is(`document.querySelectorAll('#people .row').length === 9`)
 	}, func() string {
-		return office.js(`document.querySelectorAll('.emp-label').length + ' tags, ' + document.querySelectorAll('.room-plate.click').length + ' clickable plates; errors: ' + JSON.stringify(window.__errors)`)
+		return cw.js(`document.querySelectorAll('#people .row').length + ' rows; errors: ' + JSON.stringify(window.__errors)`)
 	})
-	var plates []struct {
-		Name, Seats string
-		X, Y        float64
-	}
-	if err := json.Unmarshal([]byte(office.js(`[...document.querySelectorAll('.room-plate')].map(p => ({ Name:p.textContent, Seats:p.dataset.seats, X:p.getBoundingClientRect().left, Y:p.getBoundingClientRect().top }))`)), &plates); err != nil {
-		t.Fatal(err)
-	}
-	t.Logf("rooms: %+v", plates)
-	room := -1 // the room for 3 nearest the middle of the window's height, clear of the HUD and roomy for the tags
-	for i, p := range plates {
-		if p.Seats == "3" && (room < 0 || math.Abs(p.Y-430) < math.Abs(plates[room].Y-430)) {
-			room = i
-		}
-	}
-	if room < 0 {
-		t.Fatalf("no small meeting room for 3: %+v", plates)
-	}
-	body, _ := json.Marshal(map[string]any{"room": room, "title": "Add retries and idempotency keys to the payment webhooks", "leader": true,
+	body, _ := json.Marshal(map[string]any{"title": "Add retries and idempotency keys to the payment webhooks", "leader": true,
 		"permissionMode": "acceptEdits", "lang": "en", "members": []map[string]any{
 			{"account": ids["grace"], "model": "opus", "effort": "high"}, {"account": ids["heidi"], "model": "sonnet", "effort": "xhigh"},
 			{"advisor": map[string]string{"name": "judy", "dir": payments}, "model": "opus", "effort": "max"}}})
 	var task bridge.Task
-	if res := office.fetch("POST", "/api/tasks", string(body)); json.Unmarshal([]byte(res), &task) != nil || task.ID == "" {
+	if res := cw.fetch("POST", "/api/tasks", string(body)); json.Unmarshal([]byte(res), &task) != nil || task.ID == "" {
 		t.Fatalf("creating the task failed: %s", res)
 	}
 	var list []struct{ Name, Token string }
@@ -481,7 +463,6 @@ func TestDesignScreens(t *testing.T) {
 		time.Sleep(300 * time.Millisecond)
 	}
 
-	cw, closeCw := open("/t/messenger/?lang=en")
 	size(cw, 1400, 860)
 	waitUntil(t, 20*time.Second, "Coworkers lists the nine and the task's group", func() bool {
 		return cw.is(`document.querySelectorAll('#people .row').length === 9 && document.querySelectorAll('#groups .row').length === 1 && !document.documentElement.hasAttribute('data-dark')`)
@@ -655,10 +636,4 @@ func TestDesignScreens(t *testing.T) {
 	shot(zh, "27-zh-asks")
 	zh.done()
 	closeZh()
-
-	// the pixel office, for reference
-	size(office, 1400, 860)
-	time.Sleep(time.Second)
-	shot(office, "28-office")
-	office.done()
 }

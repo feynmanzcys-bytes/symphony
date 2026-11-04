@@ -1,8 +1,8 @@
 //go:build e2e
 
 // End-to-end acceptance: starts real Claude Code sessions in tmux with the mod, connected to a bridge in this
-// process, and uses headless chromium to click through the office page's popups and check the rendering. It spends
-// real tokens, so it has to be turned on explicitly:
+// process, and uses headless chromium to click through the Coworkers page and check the rendering. It spends real
+// tokens, so it has to be turned on explicitly:
 //
 //	SYMPHONY_E2E=1 go test -tags e2e -v -count=1 -timeout 20m ./e2e/
 //
@@ -58,6 +58,12 @@ func workDir(t *testing.T, name string) string {
 
 func exists(path string) bool { _, err := os.Stat(path); return err == nil }
 
+// TestOffice is the acceptance with real sessions (its name from the days of the pixel office; CI and the docs name
+// it): two sessions started by hand take their seats, a third with a taken token and one without a token stay out;
+// in Coworkers their asks (a question, a permission denied with a reason, one allowed) are answered in the
+// conversations, A's conversation shows the chat as the mod streamed it, a message between the sessions shows in both
+// conversations, a new coworker is hired with "+ Coworker" and talked to through its conversation, and one off duty
+// goes back to work from its conversation, in the same seat.
 func TestOffice(t *testing.T) {
 	requireTools(t)
 	model := os.Getenv("SYMPHONY_E2E_MODEL")
@@ -137,31 +143,26 @@ func TestOffice(t *testing.T) {
 	paneE := startClaude(t, "sym-e2e-"+stamp+"-e", dirE, map[string]string{"SYMPHONY_BRIDGE": b.URL}, claudeArgs("--name", "outsider-"+stamp)...)
 	dumpAll = func() string { return dumpAB() + "\n" + paneC.dump() + "\n" + paneE.dump() }
 
-	// ---------- 2. the office page ----------
+	// ---------- 2. the Coworkers page ----------
 	browser := newBrowser(t)
-	office := tab(t, browser, b.URL+"/t/office/")
-	type officeDOM struct {
-		Emps   []string `json:"emps"`
-		Adds   int      `json:"adds"`
-		Canvas bool     `json:"canvas"`
+	page := tab(t, browser, b.URL+"/t/messenger/")
+	type sideDOM struct {
+		Names []string `json:"names"`
+		Hire  bool     `json:"hire"`
 	}
-	var page officeDOM
-	waitUntil(t, 30*time.Second, `the office shows two employees and one empty seat with a "+"`, func() bool {
-		page = get(t, office, 10*time.Second, chromedp.Evaluate[officeDOM](`({
-			emps: [...document.querySelectorAll('.emp-label')].map(d => d.textContent),
-			adds: [...document.querySelectorAll('.seat-add')].filter(b => !b.hidden).length,
-			canvas: (() => {
-				const c = document.querySelector('canvas#office')
-				return !!c && c.width > 0 && c.getContext('2d').getImageData(c.width / 2 | 0, c.height / 2 | 0, 1, 1).data[3] > 0
-			})(),
+	var side sideDOM
+	waitUntil(t, 30*time.Second, `the sidebar lists the two coworkers and offers "+ Coworker"`, func() bool {
+		side = get(t, page, 10*time.Second, chromedp.Evaluate[sideDOM](`({
+			names: [...document.querySelectorAll('#people .row .nm')].map(d => d.textContent.trim()),
+			hire: (b => !!b && !b.hidden)(document.getElementById('new-emp')),
 		})`))
-		return len(page.Emps) == 2 && page.Adds == 1 && page.Canvas
-	}, func() string { return fmt.Sprintf("%+v", page) })
-	joined := strings.Join(page.Emps, "|")
+		return len(side.Names) == 2 && side.Hire
+	}, func() string { return fmt.Sprintf("%+v", side) })
+	joined := strings.Join(side.Names, "|")
 	if !strings.Contains(joined, nameA) || !strings.Contains(joined, nameB) {
-		t.Fatalf("the office lacks the two names: %s", joined)
+		t.Fatalf("the sidebar lacks the two names: %s", joined)
 	}
-	screenshot(t, office, "office-start.png")
+	screenshot(t, page, "coworkers-start.png")
 
 	// ---------- 3. the sessions work at the same time ----------
 	paneA.say(`First use the AskUserQuestion tool to ask me one question: "Which color do you like?", with exactly two options, "Red" and "Blue". Once you have my answer, use Bash to run echo <the color I picked> > answer.txt (only that one command), then tell me the result.`)
@@ -169,7 +170,7 @@ func TestOffice(t *testing.T) {
 	paneC.say(`Use Bash to run touch fallback.txt, only that one command.`)
 	paneE.say(`Use Bash to run touch outsider.txt, only that one command.`)
 
-	// ---------- 4. handled in the employees' windows ----------
+	// ---------- 4. handled in the coworkers' conversations ----------
 	handled := map[string]bool{}
 	var answeredQuestion, deniedB, allowedA bool
 	// press clicks a card's button like a person, and counts it once the answer has reached the bridge and the card
@@ -177,10 +178,10 @@ func TestOffice(t *testing.T) {
 	press := func(id, button string) {
 		t.Helper()
 		gone := func() bool {
-			return !b.pending(id) && get(t, office, 5*time.Second, chromedp.Evaluate[bool](fmt.Sprintf(`!document.querySelector('#asks .card[data-id="%s"]')`, id)))
+			return !b.pending(id) && get(t, page, 5*time.Second, chromedp.Evaluate[bool](fmt.Sprintf(`!document.querySelector('#chat .card[data-id="%s"]')`, id)))
 		}
 		for try := 1; ; try++ {
-			do(t, office, 10*time.Second, chromedp.Click(chromedp.CSS(button)))
+			do(t, page, 10*time.Second, chromedp.Click(chromedp.CSS(button)))
 			if eventually(5*time.Second, gone) {
 				return
 			}
@@ -189,28 +190,28 @@ func TestOffice(t *testing.T) {
 			}
 		}
 	}
-	waitUntil(t, 4*time.Minute, "the employees' windows handle A's question, B's denial and A's permission", func() bool {
+	waitUntil(t, 4*time.Minute, "the conversations handle A's question, B's denial and A's permission", func() bool {
 		for _, a := range b.Hub.Snapshot().Asks {
 			if handled[a.ID] {
 				continue
 			}
-			// a click on the waiting employee opens its window, where the ask's card rises over the input
-			clickLabel(t, office, a.Account)
-			card := fmt.Sprintf(`#chat:not([hidden]) #asks .card[data-id="%s"]`, a.ID)
-			do(t, office, 20*time.Second, chromedp.WaitVisible(chromedp.CSS(card)))
+			// a click on the waiting coworker's row opens its conversation, where the ask's card sits under its line
+			clickRow(t, page, a.Account)
+			card := fmt.Sprintf(`#chat:not([hidden]) .card[data-id="%s"]`, a.ID)
+			do(t, page, 20*time.Second, chromedp.WaitVisible(chromedp.CSS(card)))
 			switch {
 			case a.Session == sidA && a.Kind == "question":
-				screenshot(t, office, "office-chat-ask.png")
+				screenshot(t, page, "coworkers-chat-ask.png")
 				// the model writes the option labels; pick "Blue" whatever its case
-				picked := get(t, office, 10*time.Second, chromedp.Evaluate[bool](fmt.Sprintf(
+				picked := get(t, page, 10*time.Second, chromedp.Evaluate[bool](fmt.Sprintf(
 					`(b => b ? (b.click(), true) : false)([...document.querySelectorAll('%s input')].find(i => i.value.trim().toLowerCase() === 'blue'))`, card)))
 				if !picked {
-					t.Fatalf("no Blue option in the question:\n%s", get(t, office, 5*time.Second, chromedp.Evaluate[string](fmt.Sprintf(`document.querySelector('%s').innerText`, card))))
+					t.Fatalf("no Blue option in the question:\n%s", get(t, page, 5*time.Second, chromedp.Evaluate[string](fmt.Sprintf(`document.querySelector('%s').innerText`, card))))
 				}
 				press(a.ID, card+` .submit`)
 				answeredQuestion = true
 			case a.Session == sidB && a.Kind == "permission" && a.Tool == "Bash":
-				do(t, office, 10*time.Second, chromedp.SetValue(chromedp.CSS(card+` .reason`), "denied in the page: the e2e test of the deny path"))
+				do(t, page, 10*time.Second, chromedp.SetValue(chromedp.CSS(card+` .reason`), "denied in the page: the e2e test of the deny path"))
 				press(a.ID, card+` .deny`)
 				deniedB = true
 			case a.Session == sidA && a.Kind == "permission" && a.Tool == "Bash":
@@ -223,17 +224,16 @@ func TestOffice(t *testing.T) {
 		}
 		return answeredQuestion && deniedB && allowedA
 	}, dumpAll)
-	// A's window shows the session as a chat: the prompt that was typed in the terminal, its thinking and answer
+	// A's conversation shows the session as a chat: the prompt that was typed in the terminal, its thinking and answer
 	// as the mod streamed them, the Bash call and the settled asks
-	clickLabel(t, office, accA.ID)
-	waitUntil(t, 2*time.Minute, "A's window shows the prompt, the streamed answer, the tool call and the asks", func() bool {
-		kinds := get(t, office, 5*time.Second, chromedp.Evaluate[string](`[...document.querySelectorAll('#chat:not([hidden]) .flow .it')].map(e => e.className).join(' ')`))
+	clickRow(t, page, accA.ID)
+	waitUntil(t, 2*time.Minute, "A's conversation shows the prompt, the streamed answer, the tool call and the asks", func() bool {
+		kinds := get(t, page, 5*time.Second, chromedp.Evaluate[string](`[...document.querySelectorAll('#chat:not([hidden]) .flow .it')].map(e => e.className).join(' ')`))
 		return strings.Contains(kinds, "it user") && strings.Contains(kinds, "it text") && strings.Contains(kinds, "it tool ok done") && strings.Contains(kinds, "it ask answered")
 	}, func() string {
-		return get(t, office, 5*time.Second, chromedp.Evaluate[string](`document.querySelector('#chat .flow')?.innerText ?? ''`))
+		return get(t, page, 5*time.Second, chromedp.Evaluate[string](`document.querySelector('#chat .flow')?.innerText ?? ''`))
 	})
-	screenshot(t, office, "office-chat.png")
-	do(t, office, 10*time.Second, chromedp.Click(chromedp.CSS(`#chat .close`)))
+	screenshot(t, page, "coworkers-chat.png")
 
 	// ---------- 5. results ----------
 	waitUntil(t, 2*time.Minute, "A writes the popup's answer to answer.txt: blue", func() bool {
@@ -301,7 +301,7 @@ func TestOffice(t *testing.T) {
 		}
 	}
 
-	// ---------- 6. messages between sessions: animation + log ----------
+	// ---------- 6. messages between sessions: in both conversations ----------
 	waitUntil(t, 2*time.Minute, "A finishes this turn", func() bool { return b.session(sidA).State == bridge.StateIdle }, paneA.dump)
 	paneA.say(fmt.Sprintf(`Use SendMessage to send the session named %s this sentence: Meeting at 8 tonight. Stop once it is sent and do nothing else.`, nameB))
 	waitUntil(t, 3*time.Minute, "the bridge records A's message to B with both ends paired", func() bool {
@@ -313,18 +313,23 @@ func TestOffice(t *testing.T) {
 		return false
 	}, dumpAB, func() string { data, _ := json.Marshal(b.Hub.Snapshot().Messages); return string(data) })
 	var record string
-	waitUntil(t, 20*time.Second, "the office's message log shows the message", func() bool {
-		get(t, office, 5*time.Second, chromedp.Evaluate[bool](`(document.getElementById('open-msgs').click(), true)`)) // (its button is in the settings)
-		record = get(t, office, 5*time.Second, chromedp.Text(chromedp.CSS(`#msgs-panel`)))
+	clickRow(t, page, accB.ID)
+	waitUntil(t, 20*time.Second, "B's conversation shows the message, from A", func() bool {
+		record = get(t, page, 5*time.Second, chromedp.Evaluate[string](`[...document.querySelectorAll('#chat:not([hidden]) .flow .it.message')].map(e => e.innerText).join('\n')`))
 		return strings.Contains(strings.ToLower(record), "meeting at 8 tonight") && strings.Contains(record, nameA)
 	}, func() string { return record })
-	screenshot(t, office, "office-message.png")
-	do(t, office, 5*time.Second, chromedp.Click(chromedp.CSS(`#msgs-panel .close`)))
+	screenshot(t, page, "coworkers-message.png")
+	clickRow(t, page, accA.ID)
+	waitUntil(t, 20*time.Second, "A's conversation shows it as sent", func() bool {
+		return get(t, page, 5*time.Second, chromedp.Evaluate[bool](`[...document.querySelectorAll('#chat:not([hidden]) .flow .it.message.out')].some(e => e.innerText.toLowerCase().includes('meeting at 8 tonight'))`))
+	}, func() string {
+		return get(t, page, 5*time.Second, chromedp.Evaluate[string](`document.querySelector('#chat .flow')?.innerText ?? ''`))
+	})
 
-	// ---------- 7. hire a new employee with the empty seat's "+" ----------
+	// ---------- 7. hire a new coworker with "+ Coworker" ----------
 	dirD := workDir(t, "d")
-	do(t, office, 20*time.Second,
-		chromedp.Click(chromedp.CSS(`.seat-add`)),
+	do(t, page, 20*time.Second,
+		chromedp.Click(chromedp.CSS(`#new-emp`)),
 		chromedp.WaitVisible(chromedp.CSS(`#launch form`)),
 		chromedp.SetValue(chromedp.CSS(`#launch input[name=name]`), nameD),
 		chromedp.Click(chromedp.CSS(`#launch .adv > summary`)), // the folder and the options are in Advanced settings
@@ -333,8 +338,8 @@ func TestOffice(t *testing.T) {
 		chromedp.SetValue(chromedp.CSS(`#launch select[name=model]`), model),
 		chromedp.SetValue(chromedp.CSS(`#launch select[name=permissionMode]`), "manual"),
 	)
-	screenshot(t, office, "office-launch.png")
-	do(t, office, 10*time.Second, chromedp.Click(chromedp.CSS(`#launch .go`)))
+	screenshot(t, page, "coworkers-launch.png")
+	do(t, page, 10*time.Second, chromedp.Click(chromedp.CSS(`#launch .go`)))
 	var launchD string
 	waitUntil(t, 2*time.Minute, "the new employee comes online, matched with its terminal inside the bridge", func() bool {
 		d := b.online(nameD)
@@ -345,7 +350,7 @@ func TestOffice(t *testing.T) {
 		return d.Cwd == dirD
 	}, func() string { data, _ := json.Marshal(b.Hub.Snapshot().Launches); return string(data) })
 	if acc := b.account(nameD); acc == nil || acc.Seat != 2 {
-		t.Fatalf("the new employee should take seat 2 (counting from 0): %+v", acc)
+		t.Fatalf("the new coworker should take seat 2 (counting from 0): %+v", acc)
 	}
 	// the page passes its language (headless chromium asks for English), so the mod speaks it too
 	for _, l := range b.Hub.Snapshot().Launches {
@@ -353,19 +358,19 @@ func TestOffice(t *testing.T) {
 			t.Fatalf("the launch should carry the page's language: %s", l.Command)
 		}
 	}
-	waitUntil(t, 10*time.Second, "the launch dialog closes by itself and the new employee's window opens", func() bool {
-		return get(t, office, 5*time.Second, chromedp.Evaluate[bool](`document.getElementById('launch').hidden && !document.getElementById('chat').hidden`))
+	waitUntil(t, 10*time.Second, "the launch dialog closes by itself and the new coworker's conversation opens", func() bool {
+		return get(t, page, 5*time.Second, chromedp.Evaluate[bool](fmt.Sprintf(`document.getElementById('launch').hidden && !document.getElementById('chat').hidden && document.querySelector('#chat h2').textContent === %q`, nameD)))
 	})
-	screenshot(t, office, "office-launched.png")
-	// ---------- 7b. the page talks to D through its window: the prompt reaches the session, the answer streams back ----------
-	do(t, office, 10*time.Second,
+	screenshot(t, page, "coworkers-launched.png")
+	// ---------- 7b. the page talks to D through its conversation: the prompt reaches the session, the answer streams back ----------
+	do(t, page, 10*time.Second,
 		chromedp.SetValue(chromedp.CSS(`#chat .say textarea`), "Reply with exactly the word pineapple and nothing else."),
 		chromedp.Click(chromedp.CSS(`#chat .say button`)))
-	waitUntil(t, 3*time.Minute, "D's window shows the page's prompt as sent, and the streamed answer", func() bool {
-		return get(t, office, 5*time.Second, chromedp.Evaluate[bool](
+	waitUntil(t, 3*time.Minute, "D's conversation shows the page's prompt as sent, and the streamed answer", func() bool {
+		return get(t, page, 5*time.Second, chromedp.Evaluate[bool](
 			`!!document.querySelector('#chat .flow .it.user.sent') && [...document.querySelectorAll('#chat .flow .it.text .body')].some(e => e.textContent.toLowerCase().includes('pineapple'))`))
 	}, func() string {
-		return get(t, office, 5*time.Second, chromedp.Evaluate[string](`document.querySelector('#chat .flow')?.innerText ?? ''`))
+		return get(t, page, 5*time.Second, chromedp.Evaluate[string](`document.querySelector('#chat .flow')?.innerText ?? ''`))
 	})
 	// the bridge's log of D's chat has the page's prompt, sent by the mod, and the answer that streamed (the page
 	// shows the answer as it streams; the log marks it done a moment later, at chat.stop)
@@ -378,7 +383,7 @@ func TestOffice(t *testing.T) {
 		}
 		return sent && answered
 	}, func() string { return fmt.Sprintf("sent=%v answered=%v", sent, answered) })
-	screenshot(t, office, "office-chat-say.png")
+	screenshot(t, page, "coworkers-chat-say.png")
 	// the terminal inside the bridge shows the same conversation, and a window could attach to it
 	termD := b.Launcher.Terms.Get(launchD)
 	waitUntil(t, 30*time.Second, "D's terminal shows the answer", func() bool { return strings.Contains(strings.ToLower(termD.Screen(40)), "pineapple") },
@@ -388,9 +393,8 @@ func TestOffice(t *testing.T) {
 	if len(history) == 0 {
 		t.Fatal("attaching to D's terminal should give its history")
 	}
-	do(t, office, 10*time.Second, chromedp.Click(chromedp.CSS(`#chat .close`)))
 
-	// ---------- 8. B goes off duty, then back to work from its card: same seat ----------
+	// ---------- 8. B goes off duty, then back to work from its conversation: same seat ----------
 	seatB := b.account(nameB).Seat
 	// B just got A's message and may be working on it; wait until it's idle before sending it home
 	waitUntil(t, 2*time.Minute, "B is done with the message and idle", func() bool {
@@ -399,16 +403,16 @@ func TestOffice(t *testing.T) {
 	}, paneB.dump)
 	paneB.say("/exit")
 	waitUntil(t, 30*time.Second, "B is off duty after /exit", func() bool { return b.online(nameB) == nil }, paneB.dump)
-	clickLabel(t, office, accB.ID) // B may still be walking out of the door
-	do(t, office, 20*time.Second,
+	clickRow(t, page, accB.ID)
+	do(t, page, 20*time.Second,
 		chromedp.WaitVisible(chromedp.CSS(`#chat .go-work`)),
 		chromedp.Click(chromedp.CSS(`#chat .go-work`)),
 		chromedp.WaitVisible(chromedp.CSS(`#launch form`)),
 	)
-	if name := get(t, office, 5*time.Second, chromedp.Evaluate[string](`document.querySelector('#launch input[name=name]').value`)); name != nameB {
+	if name := get(t, page, 5*time.Second, chromedp.Evaluate[string](`document.querySelector('#launch input[name=name]').value`)); name != nameB {
 		t.Fatalf("putting an employee back to work should fill in the name: %q", name)
 	}
-	do(t, office, 10*time.Second,
+	do(t, page, 10*time.Second,
 		chromedp.Click(chromedp.CSS(`#launch .adv > summary`)),
 		chromedp.WaitVisible(chromedp.CSS(`#launch input[name=dir]`)),
 		chromedp.SetValue(chromedp.CSS(`#launch input[name=dir]`), dirB), // B was started by hand, so there is no last folder to fill in
@@ -422,7 +426,7 @@ func TestOffice(t *testing.T) {
 		}
 		return s.ID != sidB && b.account(nameB).Seat == seatB && s.Cwd == dirB
 	}, func() string { data, _ := json.Marshal(b.Hub.Snapshot().Launches); return string(data) })
-	screenshot(t, office, "office-back.png")
+	screenshot(t, page, "coworkers-back.png")
 
 	// ---------- 9. off duty: a normal /exit, and the bridge marks it ----------
 	paneA.say("/exit")

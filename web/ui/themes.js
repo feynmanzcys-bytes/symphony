@@ -1,4 +1,4 @@
-// The theme picker, shared by every theme: a <select> of the office page's themes (GET /api/themes), the current one
+// The theme picker, shared by every theme: a <select> of the page's themes (GET /api/themes), the current one
 // selected; picking one opens it (/?theme=<name>, which the bridge remembers in a cookie).
 import { t, lang } from '/ui/common.js'
 

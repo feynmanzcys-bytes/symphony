@@ -14,9 +14,9 @@ import (
 
 // TestMarkdown checks the pages' Markdown (web/ui/markdown.js) in the browser (no tokens): every block and mark it knows,
 // what it does with a text still streaming, and that nothing it's given gets out of hand (raw HTML shows as text, a link
-// leads only to http, https or mailto, a quote in an address can't open an attribute). Then, in alice's window, her
-// answer is drawn with its headings, list and table and her prompt as typed, the message log and the team chat's messages
-// with it too.
+// leads only to http, https or mailto, a quote in an address can't open an attribute). Then, in alice's conversation in
+// Coworkers, her answer is drawn with its headings, list and table and her prompt as typed, and a message from another
+// session with it too.
 func TestMarkdown(t *testing.T) {
 	requireBrowser(t)
 	b := startBridge(t, "")
@@ -25,10 +25,10 @@ func TestMarkdown(t *testing.T) {
 		t.Fatal(err)
 	}
 	browser := newBrowser(t)
-	ctx, _ := clockTab(t, browser, b.URL+"/t/office/?lang=en", 0)
+	ctx, _ := clockTab(t, browser, b.URL+"/t/messenger/?lang=en", 0)
 	do(t, ctx, 10*time.Second, chromedp.EmulateViewport(1400, 900))
 	p := &screens{t: t, ctx: ctx, lang: "markdown"}
-	waitUntil(t, 20*time.Second, "the office is up", func() bool { return p.is(`!!document.getElementById('hud')`) })
+	waitUntil(t, 20*time.Second, "Coworkers lists alice", func() bool { return p.is(`document.querySelectorAll('#people .row').length === 1`) })
 
 	link := func(href, label, cls string) string {
 		return fmt.Sprintf(`<a href="%s" target="_blank" rel="noopener noreferrer"%s>%s</a>`, href, cls, label)
@@ -97,9 +97,7 @@ func TestMarkdown(t *testing.T) {
 	answer := "## Plan\n\n1. Read the **log**\n2. Fix `build.sh`\n   - then the tests\n\n| step | time |\n|---|--:|\n| build | 2m |\n\nSee https://example.com/docs."
 	ev(map[string]any{"kind": "chat.delta", "turnId": "a1", "step": 0, "blocks": []map[string]any{{"i": 0, "kind": "text", "text": answer}}})
 	ev(map[string]any{"kind": "chat.stop", "turnId": "a1", "step": 0})
-	label := fmt.Sprintf(`document.querySelector('.emp-label[data-account=%q]')`, alice.ID)
-	waitUntil(t, 20*time.Second, "the office shows alice", func() bool { return p.is(`!!` + label) })
-	p.run(label + `.click()`)
+	clickRow(t, ctx, alice.ID)
 	waitUntil(t, 10*time.Second, "her answer is drawn as Markdown", func() bool {
 		return p.is(`(b => !!b && !!b.querySelector('h4') && b.querySelectorAll('ol > li').length === 2 && !!b.querySelector('ol li ul li') && b.querySelectorAll('table td').length === 2 && b.querySelector('table td + td').style.textAlign === 'right' && b.querySelector('a').target === '_blank')(document.querySelector('#chat .it.text .body.md'))`)
 	}, func() string { return p.js(`document.querySelector('#chat .flow').innerHTML`) })
@@ -107,19 +105,22 @@ func TestMarkdown(t *testing.T) {
 		t.Errorf("a prompt should stay as typed: %s", p.js(`document.querySelector('#chat .it.user .body').outerHTML`))
 	}
 	p.shot("answer")
-	// a message between sessions, in her window and the message log
+	// a message between sessions, drawn as Markdown in the sender's conversation (bob's, where it shows as sent)
 	bob, err := b.Hub.CreateAccount("bob")
 	if err != nil {
 		t.Fatal(err)
 	}
 	b.post(t, bob.Token, "/api/event", map[string]any{"session": "s-b", "kind": "session.start", "cwd": "/work/web"})
 	b.post(t, bob.Token, "/api/event", map[string]any{"session": "s-b", "kind": "message.send", "to": "alice", "text": "Done:\n- **build** fixed\n- tests green", "origin": "model", "delivered": true})
-	waitUntil(t, 10*time.Second, "the message is drawn as Markdown in the message log", func() bool {
-		p.run(`document.getElementById('open-msgs').click()`)
-		return p.is(`(m => !!m && m.querySelectorAll('ul li').length === 2 && !!m.querySelector('strong'))(document.querySelector('#msgs-panel .msg .txt.md'))`)
-	}, func() string { return p.js(`document.getElementById('msgs-panel').innerHTML`) })
-	if strings.Contains(p.js(`document.getElementById('msgs-panel').innerHTML`), "**") {
-		t.Error("the message log should show no Markdown marks")
+	waitUntil(t, 10*time.Second, "Coworkers lists bob", func() bool {
+		return p.is(fmt.Sprintf(`!!document.querySelector('#people .row[data-account=%q]')`, bob.ID))
+	})
+	clickRow(t, ctx, bob.ID)
+	waitUntil(t, 10*time.Second, "the message is drawn as Markdown in bob's conversation", func() bool {
+		return p.is(`(m => !!m && m.querySelectorAll('ul li').length === 2 && !!m.querySelector('strong'))(document.querySelector('#chat .flow .it.message.out .body.md'))`)
+	}, func() string { return p.js(`document.querySelector('#chat .flow').innerHTML`) })
+	if strings.Contains(p.js(`document.querySelector('#chat .flow .it.message').innerText`), "**") {
+		t.Error("the message should show no Markdown marks")
 	}
 	p.done()
 }

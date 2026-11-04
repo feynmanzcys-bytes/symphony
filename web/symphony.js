@@ -36,7 +36,7 @@
 // detail) puts in one the page noticed itself (kind 'ui': an error it showed, once per page). The settings make a
 // report file of the log.
 
-export const PROTOCOL = 2 // the protocol this client speaks; the bridge's snapshot says its own
+export const PROTOCOL = 3 // the protocol this client speaks; the bridge's snapshot says its own
 
 const KEEP_MESSAGES = 300 // of each task shown, and of the rest: as the bridge keeps them
 const TIMEOUT = 15000 // a call without an answer in this long fails

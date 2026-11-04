@@ -67,7 +67,7 @@
   "launch.effort": "思考の強さ",
   "launch.permissionMode": "権限モード",
   "staff.noneSelected": "同僚を選ぶとまとめて変更できます。",
-  "task.titleNewHud": "新しいグループ",
+  "task.titleNew": "新しいグループ",
   "settings.staffWhat": "新しい同僚はこの内容で出勤します（「デフォルト」は Claude Code 自身の設定に任せます）。起動ダイアログの「詳細設定」では、その回だけどの項目も変えられます。再出勤する同僚は前回と同じ内容で始めます。",
   "settings.botHomeHint": "作業フォルダを指定せずに同僚を起動すると、ここにその名前の専用フォルダーを新しく作り、git リポジトリにします。専用フォルダーがある同僚はそれを使い続けます。",
   "launch.fromSettings": "設定（設定 → 同僚）の内容で入力済みです。ここで変えても設定は変わりません。",

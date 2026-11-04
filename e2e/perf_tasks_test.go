@@ -3,7 +3,6 @@
 package e2e
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -25,7 +24,6 @@ import (
 
 	"github.com/chromedp/cdproto/cdp"
 	"github.com/chromedp/cdproto/heapprofiler"
-	"github.com/chromedp/cdproto/page"
 	"github.com/chromedp/cdproto/performance"
 	"github.com/chromedp/cdproto/profiler"
 	cdpruntime "github.com/chromedp/cdproto/runtime"
@@ -34,11 +32,8 @@ import (
 	"github.com/feynmanzcys-bytes/symphony/internal/bridge"
 )
 
-// TestPerfTasks (no tokens) measures the page and the bridge with collaborative tasks: claude is a script that sits
-// there and the test reports every session in and streams made-up activity the way the mod would.
-//   - office: 30 employees and a task in every small room (up to 8), desk and member sessions streaming chat, tools and
-//     messages; frame timing at pixel size steps 1 and 3, the cost of a frame and where it goes, the push sizes with and
-//     without tasks, the page's heap, the name tags' overlaps. Fails on a page error or a frame frozen for 2 s.
+// TestPerfTasks (no tokens) measures the bridge with collaborative tasks: claude is a script that sits there and the
+// test reports every session in the way the mod would (the page under the load of many tasks is TestPerfThemes).
 //   - create: making and ending a 5-member task on a tiny repository, on one with 5,000 files and on a plain folder with
 //     5,000 files, and the latency of other API calls meanwhile.
 //   - cycles: 200 tasks made and ended in a row (SYMPHONY_PERF_CYCLES), the bridge's memory and state before and after.
@@ -51,7 +46,6 @@ func TestPerfTasks(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not found")
 	}
-	t.Run("office", perfTasksOffice)
 	t.Run("create", perfTasksCreate)
 	t.Run("cycles", perfTasksCycles)
 }
@@ -243,7 +237,7 @@ type member struct {
 }
 
 // makeTask posts a task and returns its members, with their tokens (advisors' accounts are made by the bridge).
-func makeTask(t *testing.T, b *testBridge, room int, accounts []string, advisors []string, dir string) (string, []member, time.Duration) {
+func makeTask(t *testing.T, b *testBridge, accounts []string, advisors []string, dir string) (string, []member, time.Duration) {
 	t.Helper()
 	var ms []map[string]any
 	for _, a := range accounts {
@@ -253,7 +247,7 @@ func makeTask(t *testing.T, b *testBridge, room int, accounts []string, advisors
 		ms = append(ms, map[string]any{"advisor": map[string]any{"name": n, "dir": dir}, "model": "sonnet", "effort": "high"})
 	}
 	start := time.Now()
-	out := mustSend(t, b.URL, "", "/api/tasks", map[string]any{"room": room, "title": "Make the tests faster and write it up",
+	out := mustSend(t, b.URL, "", "/api/tasks", map[string]any{"title": "Make the tests faster and write it up",
 		"leader": true, "permissionMode": "bypassPermissions", "lang": "en", "members": ms})
 	took := time.Since(start)
 	var task bridge.Task
@@ -392,119 +386,7 @@ func (s *streamer) halt() {
 	s.wg.Wait()
 }
 
-// sseCount reads /api/stream for d and sums the bytes and count of what comes, by type.
-type sseStat struct{ n, bytes, max int }
-
-func sseCount(t *testing.T, base string, d time.Duration) map[string]*sseStat {
-	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), d)
-	defer cancel()
-	res, err := http.DefaultClient.Do(pageReq("GET", base, "/api/stream", nil).WithContext(ctx))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer res.Body.Close()
-	sc := bufio.NewScanner(res.Body)
-	sc.Buffer(make([]byte, 1<<20), 64<<20)
-	stats := map[string]*sseStat{}
-	first := true
-	for sc.Scan() {
-		line := sc.Bytes()
-		if !bytes.HasPrefix(line, []byte("data: ")) {
-			continue
-		}
-		data := line[6:]
-		var head struct{ Type string }
-		_ = json.Unmarshal(data, &head)
-		kind := head.Type
-		if first { // the full snapshot every subscriber gets first
-			kind, first = "first snapshot", false
-		}
-		st := stats[kind]
-		if st == nil {
-			st = &sseStat{}
-			stats[kind] = st
-		}
-		st.n++
-		st.bytes += len(data)
-		st.max = max(st.max, len(data))
-	}
-	return stats
-}
-
-func sseReport(stats map[string]*sseStat, d time.Duration) string {
-	var keys []string
-	total := 0
-	for k, v := range stats {
-		keys = append(keys, k)
-		total += v.bytes
-	}
-	sort.Strings(keys)
-	var b strings.Builder
-	fmt.Fprintf(&b, "total %.1f KiB/s;", float64(total)/1024/d.Seconds())
-	for _, k := range keys {
-		v := stats[k]
-		fmt.Fprintf(&b, " %s: %d (%.1f/s) avg %d B max %d B, %.1f KiB/s;", k, v.n, float64(v.n)/d.Seconds(), v.bytes/max(v.n, 1), v.max, float64(v.bytes)/1024/d.Seconds())
-	}
-	return b.String()
-}
-
-// ---------- the page ----------
-
-// perfScript goes in before the page's own: it times each animation frame the page draws (one that draws onto the
-// visible canvas) and each message from the event stream, by type, and collects the page's errors.
-const perfScript = `
-window.__warp = 0
-window.__errors = []
-addEventListener('error', e => window.__errors.push(String(e.message)))
-addEventListener('unhandledrejection', e => window.__errors.push(String(e.reason)))
-window.__perf = { on:false, draws:[], cost:[], msgs:{}, long:[] }
-{
-  const P = window.__perf, raf = window.requestAnimationFrame.bind(window)
-  let drew = false
-  const di = CanvasRenderingContext2D.prototype.drawImage
-  CanvasRenderingContext2D.prototype.drawImage = function (...a) { if (this.canvas.isConnected) drew = true; return di.apply(this, a) }
-  window.requestAnimationFrame = cb => raf(ts => {
-    drew = false
-    const t0 = performance.now()
-    try { cb(ts) } finally { if (P.on && drew) { P.draws.push(ts); P.cost.push(performance.now() - t0) } }
-  })
-  const ES = window.EventSource
-  window.EventSource = class extends ES {
-    get onmessage() { return super.onmessage }
-    set onmessage(f) {
-      super.onmessage = m => {
-        const t0 = performance.now()
-        try { f(m) } finally {
-          if (P.on) {
-            const d = m.data, k = d.startsWith('{"type":"snapshot"') ? 'snapshot' : (d.slice(-40).match(/"type":"(\w+)"\}$/) || [, '?'])[1]
-            const s = P.msgs[k] || (P.msgs[k] = { n:0, bytes:0, ms:0, max:0 })
-            const ms = performance.now() - t0
-            s.n++; s.bytes += d.length; s.ms += ms; s.max = Math.max(s.max, ms)
-          }
-        }
-      }
-    }
-  }
-  try { new PerformanceObserver(l => l.getEntries().forEach(e => P.on && P.long.push(Math.round(e.duration)))).observe({ entryTypes:['longtask'] }) } catch {}
-}`
-
-func perfTab(t *testing.T, browser context.Context, url string) context.Context {
-	t.Helper()
-	ctx, cancel := chromedp.NewContext(browser)
-	t.Cleanup(cancel)
-	if err := chromedp.Do(ctx); err != nil {
-		t.Fatalf("opening a tab failed: %v", err)
-	}
-	do(t, ctx, 30*time.Second, chromedp.Func(func(ctx context.Context, tg *chromedp.Target) error {
-		if _, err := cdp.Call(ctx, tg, page.AddScriptToEvaluateOnNewDocument, page.AddScriptToEvaluateOnNewDocumentParams{Source: perfScript}); err != nil {
-			return err
-		}
-		_, err := cdp.Call(ctx, tg, performance.Enable, performance.EnableParams{})
-		return err
-	}), chromedp.Navigate(url))
-	return ctx
-}
+// ---------- the page (what TestPerfThemes measures with) ----------
 
 func cdpRun[R any](t *testing.T, ctx context.Context, f func(ctx context.Context, tg *chromedp.Target) (R, error)) R {
 	t.Helper()
@@ -614,333 +496,6 @@ func top(m map[string]float64, n int, skip func(string) bool) string {
 	return b.String()
 }
 
-type frameStats struct {
-	gaps, cost dist
-	long       []int
-	msgs       map[string]struct{ N, Bytes, Max, Ms float64 }
-}
-
-// measureFrames records the page's drawn frames for d.
-func measureFrames(t *testing.T, ctx context.Context, d time.Duration) frameStats {
-	t.Helper()
-	do(t, ctx, 5*time.Second, chromedp.Evaluate[chromedp.Void](`Object.assign(window.__perf, { on:true, draws:[], cost:[], msgs:{}, long:[] })`))
-	time.Sleep(d)
-	raw := get(t, ctx, 10*time.Second, chromedp.Evaluate[string](`(P => { P.on = false; return JSON.stringify({ draws:P.draws, cost:P.cost, msgs:P.msgs, long:P.long }) })(window.__perf)`))
-	var r struct {
-		Draws, Cost []float64
-		Long        []int
-		Msgs        map[string]struct{ N, Bytes, Max, Ms float64 }
-	}
-	if err := json.Unmarshal([]byte(raw), &r); err != nil {
-		t.Fatal(err)
-	}
-	fs := frameStats{cost: r.Cost, long: r.Long, msgs: r.Msgs}
-	for i := 1; i < len(r.Draws); i++ {
-		fs.gaps = append(fs.gaps, r.Draws[i]-r.Draws[i-1])
-	}
-	return fs
-}
-
-func (fs frameStats) String() string {
-	sort.Sort(sort.Reverse(sort.IntSlice(fs.long)))
-	var b strings.Builder
-	fmt.Fprintf(&b, "frame gaps ms %v, >250 ms: %d; frame cost ms %v; long tasks %d (worst %v)", fs.gaps, fs.gaps.over(250), fs.cost, len(fs.long), fs.long[:min(5, len(fs.long))])
-	var keys []string
-	for k := range fs.msgs {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	for _, k := range keys {
-		m := fs.msgs[k]
-		fmt.Fprintf(&b, "\n    page handled %-8s %5.0f msgs, avg %6.0f B, handler avg %.2f ms max %.1f ms, total %.0f ms", k, m.N, m.Bytes/math.Max(m.N, 1), m.Ms/math.Max(m.N, 1), m.Max, m.Ms)
-	}
-	return b.String()
-}
-
-// tagOverlaps is how the name tags overlap right now: pairs of visible tags whose boxes cover each other by more than a
-// quarter of the smaller one, and the tags partly off the window.
-const tagOverlaps = `JSON.stringify((() => {
-  const box = l => ({ l, r:l.getBoundingClientRect(), n:l.querySelector('.nm')?.textContent ?? l.textContent.slice(0, 12) })
-  const tags = [...document.querySelectorAll('.emp-label')].filter(l => !l.hidden && l.offsetParent).map(box)
-  const bubbles = [...document.querySelectorAll('.bubble')].map(box)
-  const share = (a, b) => {
-    const w = Math.min(a.right, b.right) - Math.max(a.left, b.left), h = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top)
-    return w <= 0 || h <= 0 ? 0 : w * h / Math.min(a.width * a.height, b.width * b.height)
-  }
-  let worst = 0, off = 0, truncated = 0
-  const pairs = [], bubblePairs = [], covered = new Set()
-  for (const a of tags) {
-    if (a.r.left < 0 || a.r.top < 0 || a.r.right > innerWidth || a.r.bottom > innerHeight) off++
-    const nm = a.l.querySelector('.nm'); if (nm && nm.scrollWidth > nm.clientWidth) truncated++
-  }
-  for (let i = 0; i < tags.length; i++) for (let j = i + 1; j < tags.length; j++) {
-    const s = share(tags[i].r, tags[j].r)
-    worst = Math.max(worst, s)
-    if (s > 0.25) pairs.push(tags[i].n + '/' + tags[j].n + ' ' + Math.round(s * 100) + '%')
-  }
-  for (let i = 0; i < bubbles.length; i++) {
-    for (let j = i + 1; j < bubbles.length; j++) if (share(bubbles[i].r, bubbles[j].r) > 0.25) bubblePairs.push(i + '/' + j)
-    for (const t of tags) if (share(bubbles[i].r, t.r) > 0.5) covered.add(t.n)
-  }
-  return { tags:tags.length, members:tags.filter(t => t.l.classList.contains('member')).length, away:tags.filter(t => t.l.classList.contains('away')).length,
-    pairs:pairs.length, worst:Math.round(worst * 100), which:pairs, off, truncated, bubbles:bubbles.length, bubblePairs:bubblePairs.length, tagsUnderBubbles:covered.size }
-})())`
-
-// tagJitter samples the tags' positions every 100 ms for d and counts jumps: a tag moving more than 12 px between two
-// samples while its figure stands still (a storm of tags pushing each other around would show here).
-const tagJitter = `new Promise(done => {
-  const last = new Map(); let jumps = 0, samples = 0, moves = 0
-  const iv = setInterval(() => {
-    samples++
-    for (const l of document.querySelectorAll('.emp-label')) {
-      if (l.hidden) continue
-      const r = l.getBoundingClientRect(), p = last.get(l)
-      if (p) {
-        const d = Math.hypot(r.left - p.x, r.top - p.y)
-        if (d > 12) { if (l.dataset.moving === '1' || p.moving) moves++; else jumps++ }
-      }
-      last.set(l, { x:r.left, y:r.top, moving:l.dataset.moving === '1' })
-    }
-  }, 100)
-  setTimeout(() => { clearInterval(iv); done(JSON.stringify({ samples, jumps, moves })) }, %d)
-})`
-
-// ---------- office: the page under load with a task in every small room ----------
-
-func perfTasksOffice(t *testing.T) {
-	requireBrowser(t)
-	repo, _ := filepath.Abs("..")
-	b := startBridge(t, filepath.Join(repo, "mods", "symphony-bridge"))
-	b.Launcher.Claude = fakeClaude(t, 0)
-	app := folder(t, filepath.Join(t.TempDir(), "app"), 3, true)
-	secs := 20
-	if v, err := strconv.Atoi(os.Getenv("SYMPHONY_PERF_SECS")); err == nil && v > 0 {
-		secs = v
-	}
-	window := time.Duration(secs) * time.Second
-
-	// 30 employees with a desk session each in the tiny repository: e00 to e14 busy, e15 to e29 idle (they wander)
-	type emp struct{ id, name, token, session string }
-	var emps []emp
-	for i := 0; i < 30; i++ {
-		acc, err := b.Hub.CreateAccount(fmt.Sprintf("e%02d", i))
-		if err != nil {
-			t.Fatal(err)
-		}
-		e := emp{acc.ID, acc.Name, acc.Token, fmt.Sprintf("d%02d", i)}
-		emps = append(emps, e)
-		models := []string{"haiku", "sonnet", "opus", "fable"}
-		mustSend(t, b.URL, e.token, "/api/event", map[string]any{"session": e.session, "kind": "session.start", "cwd": app, "model": models[i%4], "effort": "high"})
-	}
-	var desks []streamSession
-	for _, e := range emps[:15] {
-		desks = append(desks, streamSession{token: e.token, session: e.session, name: e.name})
-	}
-
-	browser := newBrowser(t)
-	office := perfTab(t, browser, b.URL+"/t/office/?lang=en")
-	jsb := func(e string) bool { return get(t, office, 10*time.Second, chromedp.Evaluate[bool](e)) }
-	js := func(e string) string { return get(t, office, 10*time.Second, chromedp.Evaluate[string](e)) }
-	do(t, office, 5*time.Second, chromedp.Evaluate[chromedp.Void](`localStorage.setItem('symphony.pixels', '0')`))
-	// the page shows the members sitting in their rooms at once when it loads after they came (no walking in)
-	reload := func(members int) {
-		do(t, office, 30*time.Second, chromedp.Reload())
-		waitUntil(t, 30*time.Second, "the office shows everyone, the members in their rooms", func() bool {
-			return jsb(fmt.Sprintf(`document.querySelectorAll('.emp-label:not(.member)').length === 30 && (tags => tags.length === %d && tags.every(l => !l.hidden && l.dataset.room === 'small' && l.dataset.moving === '0'))([...document.querySelectorAll('.emp-label.member')])`, members))
-		}, func() string {
-			return js(`[...document.querySelectorAll('.emp-label.member')].map(l => l.querySelector('.nm').textContent + ' ' + JSON.stringify(l.dataset)).join('\n')`)
-		})
-	}
-	reload(0)
-	var seats []int
-	if err := json.Unmarshal([]byte(js(`JSON.stringify([...document.querySelectorAll('.room-plate')].map(p => +p.dataset.seats))`)), &seats); err != nil {
-		t.Fatal(err)
-	}
-	rooms := min(8, len(seats))
-	t.Logf("PERF layout: %d small rooms with seats %v (window 1400x860); 8 tasks go in the first %d", len(seats), seats, rooms)
-	if rooms < 2 {
-		t.Fatalf("too few small rooms: %v", seats)
-	}
-	check := func(what string, fs frameStats) {
-		t.Helper()
-		if errs := get(t, office, 5*time.Second, chromedp.Evaluate[[]string](`window.__errors`)); len(errs) > 0 {
-			t.Errorf("page errors during %s: %v", what, errs)
-		}
-		if fs.gaps.max() > 2000 {
-			t.Errorf("a frame froze for %.0f ms during %s", fs.gaps.max(), what)
-		}
-		if len(fs.gaps) < int(window.Seconds())*5/2 {
-			t.Errorf("only %d frames drawn during %s", len(fs.gaps), what)
-		}
-	}
-	cpu := func(a, b map[string]float64, d time.Duration) string {
-		return fmt.Sprintf("main thread busy %.0f%% (script %.0f%%, layout %.0f%%, style %.0f%%); layouts %.0f/s",
-			100*(b["TaskDuration"]-a["TaskDuration"])/d.Seconds(), 100*(b["ScriptDuration"]-a["ScriptDuration"])/d.Seconds(),
-			100*(b["LayoutDuration"]-a["LayoutDuration"])/d.Seconds(), 100*(b["RecalcStyleDuration"]-a["RecalcStyleDuration"])/d.Seconds(),
-			(b["LayoutCount"]-a["LayoutCount"])/d.Seconds())
-	}
-	// frames measures the page's frames for d while /api/stream is read alongside for the first 10 s
-	frames := func(what string, d time.Duration, sse bool) {
-		t.Helper()
-		var stats map[string]*sseStat
-		done := make(chan struct{})
-		go func() {
-			defer close(done)
-			if sse {
-				stats = sseCount(t, b.URL, 10*time.Second)
-			}
-		}()
-		m0 := perfMetrics(t, office)
-		fs := measureFrames(t, office, d)
-		m1 := perfMetrics(t, office)
-		<-done
-		check(what, fs)
-		t.Logf("PERF %s, detail %s, %v: %s\n    %s", what, js(`document.querySelector('canvas').dataset.detail`), d, fs, cpu(m0, m1, d))
-		if sse {
-			t.Logf("PERF %s: /api/state %d B; /api/stream over 10 s: %s", what, stateBytes(t, b.URL), sseReport(stats, 10*time.Second))
-		}
-	}
-	skip := func(k string) bool { return k == "(root)" || k == "(program)" || k == "(idle)" }
-	profile := func(what string) {
-		self, total, wall := cpuProfile(t, office, 5*time.Second)
-		t.Logf("PERF CPU profile %s (%.0f ms sampled), total time (with callees):%s\n    self time:%s", what, wall, top(total, 14, skip), top(self, 10, skip))
-	}
-	tags := func(what string) {
-		jitter := get(t, office, 15*time.Second, chromedp.Evaluate[string](fmt.Sprintf(tagJitter, 5000), chromedp.EvalAwaitPromise))
-		t.Logf("PERF name tags %s: %s; jitter over 5 s: %s", what, js(tagOverlaps), jitter)
-	}
-
-	// ---------- 0 tasks: the baseline ----------
-	st := stream(b.URL, desks)
-	time.Sleep(time.Second)
-	frames("0 tasks, 15 desk sessions streaming, step 1", 10*time.Second, true)
-	st.halt()
-
-	// ---------- a task in each of 8 rooms: e00 to e09, then advisors ----------
-	var members []member
-	var created dist
-	next := 0
-	task := func(k int) {
-		var accs, advs []string
-		for j := 0; j < seats[k]; j++ {
-			if next < 10 {
-				accs = append(accs, emps[next].id)
-				next++
-			} else {
-				advs = append(advs, fmt.Sprintf("adv%d%d", k, j))
-			}
-		}
-		_, ms, took := makeTask(t, b, k, accs, advs, app)
-		created = append(created, float64(took.Milliseconds()))
-		for _, m := range ms {
-			reportIn(t, b, m)
-		}
-		members = append(members, ms...)
-	}
-	for k := 0; k < rooms; k++ {
-		task(k)
-	}
-	t.Logf("PERF made %d tasks with %d members on a tiny repo: POST /api/tasks ms %v", rooms, len(members), created)
-	reload(len(members))
-	// the members stream too, and message their teammates
-	teams := func(ms []member) (list []streamSession) {
-		byTask := map[string][]streamSession{}
-		for _, m := range ms {
-			byTask[m.task] = append(byTask[m.task], streamSession{token: m.token, session: m.session, name: m.name})
-		}
-		for _, team := range byTask {
-			for i, ss := range team {
-				for j, o := range team {
-					if i != j {
-						ss.mates = append(ss.mates, o)
-					}
-				}
-				list = append(list, ss)
-			}
-		}
-		return
-	}
-	all := append(append([]streamSession{}, desks...), teams(members)...)
-	heap0, met0 := pageMem(t, office)
-	st = stream(b.URL, all)
-	time.Sleep(time.Second)
-	what := fmt.Sprintf("%d tasks, %d sessions streaming (15 desk + %d members)", rooms, len(all), len(members))
-	frames(what+", step 1", window, true)
-	snap := b.Hub.Snapshot()
-	part := func(v any) int { data, _ := json.Marshal(v); return len(data) }
-	t.Logf("PERF   a snapshot's parts: tasks %d B (%d), sessions %d B (%d), launches %d B (%d), accounts %d B (%d), asks+messages+rest %d B",
-		part(snap.Tasks), len(snap.Tasks), part(snap.Sessions), len(snap.Sessions), part(snap.Launches), len(snap.Launches), part(snap.Accounts), len(snap.Accounts),
-		part(snap)-part(snap.Tasks)-part(snap.Sessions)-part(snap.Launches)-part(snap.Accounts))
-	heap1, met1 := pageMem(t, office)
-	enc := time.Now()
-	for i := 0; i < 50; i++ {
-		_, _ = json.Marshal(b.Hub.Snapshot())
-	}
-	t.Logf("PERF   building and encoding a snapshot takes %.2f ms (the bridge does it once per push, for all pages)", float64(time.Since(enc).Microseconds())/1000/50)
-	tags("at step 1")
-	screenshot(t, office, "perf-tasks-step1.png")
-	do(t, office, 5*time.Second, chromedp.Evaluate[chromedp.Void](`document.querySelector('.pixels button[data-level="2"]').click()`))
-	time.Sleep(time.Second)
-	frames(what+", step 3", window, false)
-	screenshot(t, office, "perf-tasks-step3.png")
-	// a page that stalls for a second (a long task, a busy machine) while all this streams: what the bridge pushed
-	// and what the page got, side by side
-	do(t, office, 5*time.Second, chromedp.Evaluate[chromedp.Void](`Object.assign(window.__perf, { on:true, msgs:{} }); setTimeout(() => { const t = performance.now(); while (performance.now() - t < 1000); }, 1500)`))
-	got := sseCount(t, b.URL, 6*time.Second)
-	time.Sleep(500 * time.Millisecond)
-	pageGot := js(`(P => { P.on = false; return JSON.stringify(Object.fromEntries(Object.entries(P.msgs).map(([k, v]) => [k, v.n]))) })(window.__perf)`)
-	bridgeGot := map[string]int{}
-	for k, v := range got {
-		bridgeGot[k] = v.n
-	}
-	t.Logf("PERF page stalled for 1 s in a 6 s window: a steady reader of /api/stream got %v, the page got %s", bridgeGot, pageGot)
-	profile("step 3, " + what)
-	do(t, office, 5*time.Second, chromedp.Evaluate[chromedp.Void](`document.querySelector('.pixels button[data-level="0"]').click()`))
-	time.Sleep(time.Second)
-	profile("step 1, " + what)
-	heap2, met2 := pageMem(t, office)
-	t.Logf("PERF page heap after GC: %.1f MiB before streaming, %.1f MiB after %v, %.1f MiB after ~%v; DOM nodes %.0f -> %.0f -> %.0f, listeners %.0f -> %.0f -> %.0f",
-		heap0, heap1, window, heap2, 2*window+20*time.Second, met0["Nodes"], met1["Nodes"], met2["Nodes"], met0["JSEventListeners"], met1["JSEventListeners"], met2["JSEventListeners"])
-
-	// ---------- every room full (as many member figures as there are seats), for the planner and the tags ----------
-	before := len(members)
-	for k := rooms; k < len(seats); k++ {
-		task(k)
-	}
-	if len(members) > before {
-		reload(len(members))
-		st2 := stream(b.URL, teams(members[before:]))
-		time.Sleep(time.Second)
-		frames(fmt.Sprintf("%d tasks, %d members (every room full), %d sessions streaming, step 1", len(seats), len(members), len(all)+len(members)-before), 10*time.Second, false)
-		profile(fmt.Sprintf("step 1, every room full (%d members)", len(members)))
-		tags(fmt.Sprintf("with every room full (%d members)", len(members)))
-		screenshot(t, office, "perf-tasks-full.png")
-		st2.halt()
-		st.fails.Add(st2.fails.Load())
-	}
-	st.halt()
-	t.Logf("PERF posted %d chat deltas, %d tool events, %d messages (x2 events) by the 8-task streamer, %d posts failed; event POST latency ms %v",
-		st.deltas.Load(), st.tools.Load(), st.msgs.Load(), st.fails.Load(), st.post)
-	if st.fails.Load() > 0 {
-		t.Errorf("%d posts failed", st.fails.Load())
-	}
-
-	// ending them all at once
-	start := time.Now()
-	ids := map[string]bool{}
-	for _, m := range members {
-		ids[m.task] = true
-	}
-	for id := range ids {
-		mustSend(t, b.URL, "", "/api/tasks/"+id+"/end", map[string]any{})
-	}
-	waitUntil(t, 120*time.Second, "every task ended", func() bool { return len(b.Hub.Tasks()) == 0 })
-	t.Logf("PERF ended %d tasks at once: all gone from the snapshot after %v", len(ids), time.Since(start).Round(time.Millisecond))
-	if errs := get(t, office, 5*time.Second, chromedp.Evaluate[[]string](`window.__errors`)); len(errs) > 0 {
-		t.Errorf("page errors: %v", errs)
-	}
-}
-
 // ---------- create: making and ending a task on small and big folders ----------
 
 func perfTasksCreate(t *testing.T) {
@@ -984,7 +539,7 @@ func perfTasksCreate(t *testing.T) {
 	for i, c := range cases {
 		accs := employ(fmt.Sprintf("c%d-", i), c.dir, 5)
 		p := probe(b.URL, by.Token, "by")
-		id, ms, took := makeTask(t, b, i, accs, nil, c.dir)
+		id, ms, took := makeTask(t, b, accs, nil, c.dir)
 		ps, pe := p.done()
 		t.Logf("PERF %-26s POST /api/tasks (5 members) %6d ms; meanwhile /api/state ms %v, event POST ms %v", c.name+":", took.Milliseconds(), ps, pe)
 		for _, m := range ms {
@@ -1004,7 +559,7 @@ func perfTasksCreate(t *testing.T) {
 		go func() { done <- endTask(t, b, id) }()
 		if c.name == "plain folder, 5000 files" { // a task on another, tiny repository, made while this one is cleaned up
 			time.Sleep(20 * time.Millisecond)
-			otherID, otherMs, otherTook = makeTask(t, b, 7, spare, nil, other)
+			otherID, otherMs, otherTook = makeTask(t, b, spare, nil, other)
 		}
 		endTook := <-done
 		ps, pe = p.done()
@@ -1079,7 +634,7 @@ func perfTasksCycles(t *testing.T) {
 	start := time.Now()
 	for i := 0; i < cycles; i++ {
 		// one advisor each time too: its account is made and deleted with the task
-		id, ms, took := makeTask(t, b, i%8, accs, []string{"adv"}, app)
+		id, ms, took := makeTask(t, b, accs, []string{"adv"}, app)
 		made = append(made, float64(took.Microseconds())/1000)
 		for _, m := range ms {
 			reportIn(t, b, m)

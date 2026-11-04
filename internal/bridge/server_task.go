@@ -20,7 +20,6 @@ import (
 // TaskRequest is what the task dialog submits. Leader makes the first member the lead; Lang is the page's language,
 // which the kickoff and the members' mods speak.
 type TaskRequest struct {
-	Room           *int                `json:"room,omitempty"` // the page's hint of the room it was started from, kept for the page
 	Title          string              `json:"title"`
 	Leader         bool                `json:"leader"`
 	PermissionMode string              `json:"permissionMode"`
@@ -112,7 +111,7 @@ func (s *Server) startTask(req TaskRequest) (*Task, error) {
 		return nil, newError("task_too_few", "a task needs at least "+strconv.Itoa(taskMinMembers)+" members", "min", strconv.Itoa(taskMinMembers))
 	case len(req.Members) > taskMaxMembers:
 		return nil, newError("task_too_many", "a task takes at most "+strconv.Itoa(taskMaxMembers)+" members", "max", strconv.Itoa(taskMaxMembers))
-	case !validOption(launchPermissionModes, req.PermissionMode), req.Room != nil && *req.Room < 0:
+	case !validOption(launchPermissionModes, req.PermissionMode):
 		return nil, errBadOption
 	}
 	members := make([]*Member, 0, len(req.Members))
@@ -192,7 +191,7 @@ func (s *Server) startTask(req TaskRequest) (*Task, error) {
 			undo.advisors = append(undo.advisors, acc.ID)
 		}
 	}
-	t := &Task{ID: id, Room: req.Room, Title: req.Title, PermissionMode: req.PermissionMode,
+	t := &Task{ID: id, Title: req.Title, PermissionMode: req.PermissionMode,
 		Lang: req.Lang, Members: members, Repos: []*TaskRepo{}, Status: TaskRunning, Created: time.Now()}
 	if req.Leader {
 		t.Leader = members[0].Account

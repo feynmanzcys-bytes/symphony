@@ -217,7 +217,7 @@ func TestFaultsAPI(t *testing.T) {
 	if st := (client{t: t, base: base, modOnly: true}).status("GET", "/api/errors", nil); st != http.StatusUnauthorized {
 		t.Fatalf("the error log needs the page key: %d", st)
 	}
-	page.ok("POST", "/api/errors", map[string]any{"kind": "js", "text": "TypeError: x is undefined", "detail": "office.js:12:3", "theme": "office", "page": "/t/office/?lang=en"})
+	page.ok("POST", "/api/errors", map[string]any{"kind": "js", "text": "TypeError: x is undefined", "detail": "messenger.js:12:3", "theme": "messenger", "page": "/t/messenger/?lang=en"})
 	if st, code := page.failure("POST", "/api/errors", map[string]any{"kind": "whatever", "text": "x"}); st != 400 || code != "fault_bad_request" {
 		t.Fatalf("an unknown kind: %d %s", st, code)
 	}
@@ -228,7 +228,7 @@ func TestFaultsAPI(t *testing.T) {
 	raw, _ := json.Marshal(out["errors"])
 	var list []Fault
 	_ = json.Unmarshal(raw, &list)
-	if len(list) != 2 || list[0].Source != "page" || list[0].Code != "js" || list[0].Detail != "office.js:12:3\npage: office /t/office/?lang=en" ||
+	if len(list) != 2 || list[0].Source != "page" || list[0].Code != "js" || list[0].Detail != "messenger.js:12:3\npage: messenger /t/messenger/?lang=en" ||
 		list[1].Source != "task" || list[1].Code != "launch_disabled" {
 		t.Fatalf("the page's report and the failed call: %+v", list)
 	}

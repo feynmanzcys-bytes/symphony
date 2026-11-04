@@ -67,7 +67,7 @@
   "launch.effort": "Thinking effort",
   "launch.permissionMode": "Permission mode",
   "staff.noneSelected": "Select coworkers to change them together.",
-  "task.titleNewHud": "New group",
+  "task.titleNew": "New group",
   "settings.staffWhat": "What a new coworker starts with (“Default”: Claude Code's own settings). The launch dialog's Advanced settings can change any of it for one start; a coworker going back to work starts as it last did.",
   "settings.botHomeHint": "A coworker started without a working folder gets a new folder of its own in here, named after it and made a git repository. A coworker that has one keeps it.",
   "launch.fromSettings": "Filled in from the settings (Settings → Coworkers). Changing them here doesn't change the settings.",

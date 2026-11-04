@@ -14,8 +14,8 @@ import (
 // title and a description by language, the version, the protocol version it needs) and an index.html; its own files
 // are served under /t/<name>/, the shared ones (symphony.js, i18n.js, asks.js, ui/, locales/) at the root. GET /
 // serves the theme the browser picked (?theme=<name>, else the symphony.theme cookie, else the default: Coworkers, the
-// messenger theme; the pixel office is the other one to pick), and GET /t/<name>/ picks one and serves it; GET
-// /api/themes lists them.
+// messenger theme, the one theme since the pixel office was taken out), and GET /t/<name>/ picks one and serves it;
+// GET /api/themes lists them.
 
 const (
 	themeCookie  = "symphony.theme"

@@ -1,4 +1,4 @@
-// What the shared pieces of the office page have in common, for every theme: the state colors, a session's words
+// What the shared pieces of the page have in common, for every theme: the state colors, a session's words
 // (its status, its build from the model and effort), a little text markup, the launch form's drop-downs and the
 // folder browser.
 import { t, lang, errorText } from '/i18n.js'
@@ -7,13 +7,10 @@ import { esc } from '/asks.js'
 export { esc, t, lang, errorText }
 
 export const GREEN = '#2e9e5b', YELLOW = '#f2b705', RED = '#d64541', GRAY = '#a9a49b'
-// three state colors: idle green, working yellow, waiting for an approval or an answer red; off duty gray (the drawing's
-// colors, for a canvas)
-export const STATE_COLOR = { idle: GREEN, thinking: YELLOW, tool: YELLOW, waiting: RED, ended: GRAY, done: GRAY }
-export const TASK_COLOR = { running: YELLOW, ending: YELLOW, failed: RED, ended: GRAY }
+// three state colors: idle green, working yellow, waiting for an approval or an answer red; off duty gray
 // The same states for the marks on the page (dots, bands, lights): CSS variables each theme sets for its color scheme
-// (ui.css: --st-idle, --st-busy, --st-wait, --st-off), dark enough on light paper to stand out (3:1), the drawing's
-// colors where a page sets none. Not for a canvas, which takes no var().
+// (ui.css: --st-idle, --st-busy, --st-wait, --st-off), dark enough on light paper to stand out (3:1), the colors above
+// where a page sets none.
 const mark = (name, color) => `var(--st-${name}, ${color})`
 export const GRAY_MARK = mark('off', GRAY)
 export const STATE_MARK = { idle: mark('idle', GREEN), thinking: mark('busy', YELLOW), tool: mark('busy', YELLOW), waiting: mark('wait', RED), ended: GRAY_MARK, done: GRAY_MARK }
@@ -74,8 +71,7 @@ export function build(session) {
 }
 export const MODEL_NAME = ['Haiku', 'Sonnet', 'Opus', 'Fable']
 export const EFFORT_NAME = ['low', 'medium', 'high', 'xhigh', 'max']
-// the model and the effort, as the session reported them ("claude-opus-5-5 · max"); buildText adds what the pixel office
-// draws from them (the figure's size and arms)
+// the model and the effort, as the session reported them ("claude-opus-5-5 · max"); buildText says them in words
 export const modelText = s => s?.model ? s.model + (s.effort ? ' · ' + s.effort : '') : ''
 export function buildText(s) {
   if (!s?.model) return ''

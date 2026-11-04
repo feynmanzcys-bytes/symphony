@@ -39,11 +39,11 @@ done
 
 // TestTerminalView walks through the in-page terminal (ui/terminal.js) without spending tokens: claude is a script
 // (termScript), and the test reports its session in as the mod would. First the screen model is fed sequences in the
-// page and checked cell by cell. Then the employee window's "Terminal here", beside "Open terminal", shows the session's
-// terminal in the window: the text with its colors, the wide characters two cells each, the terminal sized to the
-// window, keys typed into it reaching the script (Enter, Backspace, Ctrl+U, a paste), Esc going to the session and not
-// closing the window; the button and Ctrl+] bring the chat back. Then Coworkers' computer shows the screen small, and a
-// click on it shows it in the conversation. Screenshots into e2e/artifacts/terminal-*.png. It fails on a page error, a
+// page and checked cell by cell. Then, in Coworkers, the conversation's "Terminal here", beside "Open terminal", shows
+// the session's terminal in the window: the text with its colors, the wide characters two cells each, the terminal
+// sized to the window, keys typed into it reaching the script (Enter, Backspace, Ctrl+U, a paste), Esc going to the
+// session and not closing the window; the button and Ctrl+] bring the chat back. Then, in a second page, the
+// coworker's computer shows the screen small, and a click on it shows it in the conversation. Screenshots into e2e/artifacts/terminal-*.png. It fails on a page error, a
 // content security policy violation included, or a key a catalog lacks.
 func TestTerminalView(t *testing.T) {
 	if runtime.GOOS == "windows" {
@@ -87,21 +87,22 @@ func TestTerminalView(t *testing.T) {
 		func() string { return term.Screen(10) })
 
 	browser := newBrowser(t)
-	office, _ := clockTab(t, browser, b.URL+"/t/office/?lang=en", 0) // collects the page's errors in window.__errors
-	p := &screens{t: t, ctx: office, lang: "terminal-office"}
+	first, closeFirst := clockTab(t, browser, b.URL+"/t/messenger/?lang=en", 0) // collects the page's errors in window.__errors
+	do(t, first, 10*time.Second, chromedp.EmulateViewport(1400, 900))
+	p := &screens{t: t, ctx: first, lang: "terminal-conversation"}
 
 	// ---------- the screen model, in the page ----------
-	if fails := get(t, office, 20*time.Second, chromedp.Evaluate[[]string](termModelChecks, chromedp.EvalAwaitPromise)); len(fails) > 0 {
+	if fails := get(t, first, 20*time.Second, chromedp.Evaluate[[]string](termModelChecks, chromedp.EvalAwaitPromise)); len(fails) > 0 {
 		t.Fatalf("the screen model:\n%s", strings.Join(fails, "\n"))
 	}
 
-	// ---------- the employee window: the terminal in it ----------
-	waitUntil(t, 20*time.Second, "ann sits at her desk", func() bool {
-		return p.is(fmt.Sprintf(`!!document.querySelector('.emp-label[data-account=%q]')`, acc.ID))
+	// ---------- the conversation: the terminal in it ----------
+	waitUntil(t, 20*time.Second, "Coworkers lists ann", func() bool {
+		return p.is(fmt.Sprintf(`!!document.querySelector('#people .row[data-account=%q]')`, acc.ID))
 	})
-	clickLabel(t, office, acc.ID)
-	waitUntil(t, 10*time.Second, "her window opens with Terminal here beside Open terminal", func() bool {
-		return p.is(`!document.getElementById('chat').hidden && document.querySelector('#chat .btns .terminal')?.nextElementSibling?.classList.contains('termview')`)
+	clickRow(t, first, acc.ID)
+	waitUntil(t, 10*time.Second, "her conversation opens with Terminal here among its buttons", func() bool {
+		return p.is(`!document.getElementById('chat').hidden && !!document.querySelector('#chat .btns .termview')`)
 	}, func() string { return p.js(`document.querySelector('#chat .head').innerHTML`) })
 	if got := p.js(`document.querySelector('#chat .termview').textContent`); got != "Terminal here" {
 		t.Fatalf("the button should read Terminal here: %q", got)
@@ -150,16 +151,21 @@ func TestTerminalView(t *testing.T) {
 	if err := json.Unmarshal([]byte(align), &bars); err != nil || bars[0] < 1 || bars[1]-bars[0] > 1 || bars[0]-bars[1] > 1 {
 		t.Fatalf("the bar after the wide characters should stand under the one after the digits: %s", align)
 	}
-	screenshot(t, office, "terminal-view.png")
+	screenshot(t, first, "terminal-view.png")
 
-	// the terminal fits the window: the script reads the size the page gave it
-	size := p.js(`document.querySelector('#chat .term').dataset.size`)
+	// the terminal fits the window: the script reads the size the page gave it (the bridge reports the new size into
+	// the stream a moment after the page asks for it)
+	var size string
+	waitUntil(t, 10*time.Second, "the terminal takes the window's size", func() bool {
+		size = p.js(`document.querySelector('#chat .term').dataset.size`)
+		return size != "" && size != "120x40"
+	}, func() string { return size })
 	var cols, rows int
 	if _, err := fmt.Sscanf(size, "%dx%d", &cols, &rows); err != nil || cols < 60 || rows < 10 || (cols == 120 && rows == 40) {
 		t.Fatalf("the terminal should take the window's size, not the default 120x40: %q", size)
 	}
 	keys := func(k string, opts ...chromedp.KeyOption) {
-		do(t, office, 10*time.Second, chromedp.KeyEvent(k, opts...))
+		do(t, first, 10*time.Second, chromedp.KeyEvent(k, opts...))
 	}
 	shows := func(what, text string) {
 		t.Helper()
@@ -210,7 +216,7 @@ func TestTerminalView(t *testing.T) {
 		return p.is(`(c => !!c && document.querySelector('#chat .panel').classList.contains('term-on') && document.querySelector('#chat .dock').classList.contains('asking') &&
 			(r => c.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)))(c.getBoundingClientRect()))(document.querySelector('#chat #asks .card'))`)
 	})
-	screenshot(t, office, "terminal-ask.png")
+	screenshot(t, first, "terminal-ask.png")
 	p.run(`document.querySelector('#chat #asks .card .allow').click()`)
 	waitUntil(t, 10*time.Second, "the card goes, the terminal stays", func() bool {
 		return len(b.Hub.Snapshot().Asks) == 0 && p.is(`document.querySelector('#chat .panel').classList.contains('term-on') && getComputedStyle(document.querySelector('#chat .dock')).display === 'none'`)
@@ -230,8 +236,9 @@ func TestTerminalView(t *testing.T) {
 	})
 	p.check()
 	p.done()
+	closeFirst() // (its conversation and its computer's screen watched the terminal: the streams below are the second page's alone)
 
-	// ---------- Coworkers: the computer's screen ----------
+	// ---------- a second page: the computer's screen ----------
 	cw, _ := clockTab(t, browser, b.URL+"/t/messenger/?lang=en", 0)
 	do(t, cw, 10*time.Second, chromedp.EmulateViewport(1400, 860))
 	q := &screens{t: t, ctx: cw, lang: "terminal-messenger"}

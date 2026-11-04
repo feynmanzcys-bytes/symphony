@@ -78,6 +78,7 @@ button.px.icon { width: 32px; padding: 2px 0; text-align: center; }
 #task .lead-tag, #taskwin .badge.lead { background: var(--accent); color: var(--on-accent); }
 /* the conversation: your bubbles in the spark on the right, the model's white on the left */
 .it.user { border: 0; border-radius: 14px 14px 4px 14px; box-shadow: none; }
+.it.user.queued { border: 2px dashed rgba(255,255,255,.6); padding: 4px 8px; } /* not in the session yet: a dashed edge inside the bubble, the text as readable as ever */
 .it.user .body code { background: rgba(255,255,255,.18); }
 .it.text { background: var(--paper); border: 0; border-radius: 14px 14px 14px 4px; box-shadow: var(--shadow); }
 .it.message { border: 0; border-radius: 14px 14px 14px 4px; box-shadow: var(--shadow); }

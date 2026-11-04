@@ -67,7 +67,7 @@
   "launch.effort": "Effort de réflexion",
   "launch.permissionMode": "Mode de permissions",
   "staff.noneSelected": "Sélectionnez des collègues pour les modifier ensemble.",
-  "task.titleNewHud": "Nouveau groupe",
+  "task.titleNew": "Nouveau groupe",
   "settings.staffWhat": "Ce avec quoi un nouveau collègue démarre (« Par défaut » : les réglages propres de Claude Code). Les réglages avancés de la fenêtre de lancement peuvent en changer n’importe lequel pour un seul démarrage ; un collègue qui reprend le travail démarre comme la dernière fois.",
   "settings.botHomeHint": "Un collègue lancé sans dossier de travail reçoit ici un nouveau dossier à lui, à son nom, initialisé en dépôt git. Celui qui en a déjà un le garde.",
   "launch.fromSettings": "Rempli d’après les réglages (Réglages → Collègues). Les modifier ici ne change pas les réglages.",

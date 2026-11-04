@@ -1,6 +1,6 @@
-// Motion that goes on by itself (an animation that runs for good, the pixel office's people walking about) stops while
-// the system asks for less motion (prefers-reduced-motion) or the page's switch says so (WCAG 2.1 2.2.2): html then
-// has data-still, which the stylesheets (ui.css) and the office's drawing follow. The switch, "Pause motion" in the
+// Motion that goes on by itself (an animation that runs for good) stops while the system asks for less motion
+// (prefers-reduced-motion) or the page's switch says so (WCAG 2.1 2.2.2): html then has data-still, which the
+// stylesheets (ui.css and the theme's) follow. The switch, "Pause motion" in the
 // settings (ui/settings.js), is remembered in this browser (symphony.still), for every theme.
 
 const STORE = 'symphony.still'

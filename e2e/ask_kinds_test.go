@@ -3,6 +3,7 @@
 package e2e
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/chromedp/cdproto/cdp"
+	"github.com/chromedp/cdproto/page"
 	"github.com/chromedp/chromedp"
 )
 
@@ -28,9 +31,10 @@ while IFS= read -r line; do printf 'got: %s\n' "$line"; done
 // with remember, the chat says so, and the mod's report of the rule is a notice. An MCP server's form as a card that
 // lists the fields and can't be answered on the page: its button shows the session's terminal, where the card stays out
 // of the way while a permission's card still rises over it, and the mod's settle takes it away; a link only for
-// http(s). In Coworkers the cards sit in the flow under their lines and the input stays usable (a message goes while
-// one waits); with the terminal shown they rise over it and go back to their lines after, what was typed in them kept.
-// Screenshots into e2e/artifacts/screens/asks-*. It fails on a page error or a key a catalog lacks.
+// http(s). The cards sit in the flow under their lines and the input stays usable (a message goes while one waits);
+// with the terminal shown they rise over it and go back to their lines after, what was typed in them kept. A page
+// opened later shows on the coworker's computer what happened before it opened (the bridge's activity log). All in
+// Coworkers. Screenshots into e2e/artifacts/screens/asks-*. It fails on a page error or a key a catalog lacks.
 func TestAskKinds(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("the fake claude is a shell script")
@@ -47,12 +51,12 @@ func TestAskKinds(t *testing.T) {
 	dir := t.TempDir()
 
 	browser := newBrowser(t)
-	office, _ := clockTab(t, browser, b.URL+"/t/office/?lang=en", 0)
-	do(t, office, 10*time.Second, chromedp.EmulateViewport(1400, 900))
-	p := &screens{t: t, ctx: office, lang: "asks-office"}
+	first, _ := clockTab(t, browser, b.URL+"/t/messenger/?lang=en", 0)
+	do(t, first, 10*time.Second, chromedp.EmulateViewport(1400, 900))
+	p := &screens{t: t, ctx: first, lang: "asks-conversation"}
 
 	// ---------- the launch dialog: the office's context ----------
-	waitUntil(t, 20*time.Second, "the office offers a new employee", func() bool {
+	waitUntil(t, 20*time.Second, "Coworkers offers a new coworker", func() bool {
 		return p.is(`!!document.getElementById('new-emp') && !document.getElementById('new-emp').hidden`)
 	})
 	p.run(`document.getElementById('new-emp').click()`)
@@ -87,7 +91,7 @@ func TestAskKinds(t *testing.T) {
 	}
 	acc := b.Hub.Account(view.ID)
 	b.post(t, acc.Token, "/api/event", map[string]any{"session": "s-ann", "kind": "session.start", "cwd": dir, "launch": launchID, "model": "claude-sonnet-5-5"})
-	waitUntil(t, 20*time.Second, "she is online and her window opens", func() bool {
+	waitUntil(t, 20*time.Second, "she is online and her conversation opens", func() bool {
 		return b.online("ann") != nil && p.is(`!document.getElementById('chat').hidden && document.querySelector('#chat h2').textContent === 'ann'`)
 	})
 
@@ -102,10 +106,10 @@ func TestAskKinds(t *testing.T) {
 	}
 	b.post(t, acc.Token, "/api/ask", map[string]any{"session": "s-ann", "kind": "permission", "tool": "Bash",
 		"input": map[string]any{"command": "npm test -- --watch=false"}, "remember": map[string]any{"tool": "Bash", "prefix": "npm test"}})
-	card := `#chat #asks .card[data-kind=permission]`
+	card := `#chat .card[data-kind=permission]`
 	waitUntil(t, 10*time.Second, "the card offers to allow npm test for the session", func() bool {
 		return p.is(fmt.Sprintf(`(b => !!b && b.textContent === %q && b.title.includes('until the session ends'))(document.querySelector('%s .allow-session'))`, "Allow “npm test” this session", card))
-	}, func() string { return p.js(`document.querySelector('#chat #asks').innerHTML.slice(0, 1500)`) })
+	}, func() string { return p.js(`document.querySelector('#chat .flow').innerHTML.slice(0, 1500)`) })
 	p.shot("allow-session")
 	p.check()
 	p.run(fmt.Sprintf(`document.querySelector('%s .allow-session').click()`, card))
@@ -141,12 +145,12 @@ func TestAskKinds(t *testing.T) {
 			{"name": "private", "type": "boolean"},
 			{"name": "visibility", "type": "string", "enum": []string{"public", "internal"}},
 		}})
-	form := `#chat #asks .card[data-kind=elicitation]`
+	form := `#chat .card[data-kind=elicitation]`
 	waitUntil(t, 10*time.Second, "the form's card lists the fields, with the terminal's button", func() bool {
 		return p.is(fmt.Sprintf(`(c => !!c && c.querySelector('.tool').textContent === 'github asks' && c.querySelector('.msg').textContent === 'Which repository should I open?' &&
 			c.querySelectorAll('.fields li').length === 3 && c.querySelectorAll('.fields .req').length === 1 && c.querySelector('.fields').textContent.includes('public / internal') &&
 			!c.querySelector('.allow, .deny, .submit') && !c.querySelector('.to-term').parentElement.hidden && c.querySelector('.to-term').textContent === 'Answer in the terminal')(document.querySelector('%s'))`, form))
-	}, func() string { return p.js(`document.querySelector('#chat #asks').innerHTML.slice(0, 1500)`) })
+	}, func() string { return p.js(`document.querySelector('#chat .flow').innerHTML.slice(0, 1500)`) })
 	if !p.is(fmt.Sprintf(`document.querySelector('%s .who').textContent.includes('MCP form') && document.querySelector('#chat .who .state').textContent === 'Needs an MCP form filled in'`, form)) {
 		t.Fatalf("the card should say it's an MCP form, the window what she waits for: %q / %q", p.js(fmt.Sprintf(`document.querySelector('%s .who').textContent`, form)), p.js(`document.querySelector('#chat .who .state').textContent`))
 	}
@@ -163,7 +167,7 @@ func TestAskKinds(t *testing.T) {
 	// a permission still rises over the terminal, without the form
 	b.post(t, acc.Token, "/api/ask", map[string]any{"session": "s-ann", "kind": "permission", "tool": "Bash", "input": map[string]any{"command": "ls -la"}})
 	waitUntil(t, 10*time.Second, "the permission rises over the terminal, alone", func() bool {
-		return p.is(fmt.Sprintf(`(c => !!c && document.querySelector('#chat .dock').classList.contains('asking') && getComputedStyle(document.querySelector('%s')).display === 'none' &&
+		return p.is(fmt.Sprintf(`(c => !!c && document.querySelector('#chat .dock').classList.contains('asking') && document.querySelector('%s').getClientRects().length === 0 &&
 			(r => c.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)))(c.getBoundingClientRect()))(document.querySelector('%s'))`, form, card))
 	})
 	p.run(fmt.Sprintf(`document.querySelector('%s .allow').click()`, card))
@@ -181,10 +185,10 @@ func TestAskKinds(t *testing.T) {
 	b.post(t, acc.Token, "/api/ask", map[string]any{"session": "s-ann", "kind": "elicitation", "server": "auth", "message": "Sign in", "mode": "url", "url": "https://example.com/sign-in"})
 	b.post(t, acc.Token, "/api/ask", map[string]any{"session": "s-ann", "kind": "elicitation", "server": "evil", "message": "Click", "mode": "url", "url": "javascript:alert(1)"})
 	waitUntil(t, 10*time.Second, "two link forms", func() bool {
-		return p.is(`document.querySelectorAll('#chat #asks .card[data-kind=elicitation]').length === 2`)
+		return p.is(`document.querySelectorAll('#chat .card[data-kind=elicitation]').length === 2`)
 	})
-	if !p.is(`(l => l.length === 1 && l[0].href === 'https://example.com/sign-in' && l[0].target === '_blank' && l[0].rel.includes('noopener'))(document.querySelectorAll('#chat #asks a'))`) {
-		t.Fatalf("only the https address should be a link: %s", p.js(`document.querySelector('#chat #asks').innerHTML`))
+	if !p.is(`(l => l.length === 1 && l[0].href === 'https://example.com/sign-in' && l[0].target === '_blank' && l[0].rel.includes('noopener'))(document.querySelectorAll('#chat .card a'))`) {
+		t.Fatalf("only the https address should be a link: %s", p.js(`document.querySelector('#chat .flow').innerHTML`))
 	}
 	for _, a := range b.Hub.Snapshot().Asks {
 		b.post(t, acc.Token, "/api/settle/"+a.ID, map[string]any{"action": "cancel"})
@@ -194,8 +198,8 @@ func TestAskKinds(t *testing.T) {
 	})
 	p.done()
 
-	// ---------- Coworkers: the cards in the flow ----------
-	cw, _ := clockTab(t, browser, b.URL+"/t/messenger/?lang=en", 0)
+	// ---------- a second page: the cards in the flow, the input usable, the terminal ----------
+	cw, closeCw := clockTab(t, browser, b.URL+"/t/messenger/?lang=en", 0)
 	do(t, cw, 10*time.Second, chromedp.EmulateViewport(1400, 900))
 	q := &screens{t: t, ctx: cw, lang: "asks-coworkers"}
 	waitUntil(t, 20*time.Second, "Coworkers lists ann", func() bool { return q.is(`document.querySelectorAll('#people .row').length === 1`) })
@@ -237,28 +241,33 @@ func TestAskKinds(t *testing.T) {
 		return !b.pending(askID) && q.is(fmt.Sprintf(`!document.querySelector('#chat .flow .card') && !document.querySelector('#chat .flow .it.ask[data-ask="%s"]').classList.contains('carded')`, askID))
 	})
 	q.done()
+	closeCw() // (each page holds a stream and its computer's screen another: the browser allows six connections to a host)
 
-	// ---------- a page opened later: the activity panel starts with what happened before (the bridge's lines) ----------
-	later, _ := clockTab(t, browser, b.URL+"/t/office/?lang=en", 0) // (the browser remembers Coworkers for /)
+	// ---------- a page opened later: the computer shows what happened before it opened (the bridge's activity log) ----------
+	later, _ := clockTab(t, browser, b.URL+"/t/messenger/?lang=en", 0)
+	// (the page fetches the activity log only while it shows: a tab opened behind the others is hidden)
+	front := func(ctx context.Context) {
+		do(t, ctx, 10*time.Second, chromedp.Func(func(ctx context.Context, tg *chromedp.Target) error {
+			_, err := cdp.Call(ctx, tg, page.BringToFront, cdp.Empty{})
+			return err
+		}))
+	}
+	front(later)
+	do(t, later, 10*time.Second, chromedp.EmulateViewport(1400, 900))
 	r := &screens{t: t, ctx: later, lang: "asks-later"}
-	// the button is in the page's HTML from the start; its click handler comes with office.js, which runs only once the
-	// catalogs are in (i18n.js awaits them, the load event doesn't), and a click before that does nothing
-	waitUntil(t, 20*time.Second, "the later page is up", func() bool {
-		return r.is(`typeof document.getElementById('open-log')?.onclick === 'function'`)
-	},
-		func() string {
-			return r.js(`location.href + ' | ' + document.title + ' | ' + document.body.innerText.slice(0, 300) + ' | ' + JSON.stringify(window.__errors)`)
-		})
-	r.run(`document.getElementById('open-log').click()`)
-	waitUntil(t, 10*time.Second, "its activity panel has ann's start from before it opened", func() bool {
-		return r.is(`!document.getElementById('log').hidden && [...document.querySelectorAll('#log .lines div')].some(d => d.textContent.endsWith('ann  on duty'))`)
-	}, func() string { return r.js(`document.querySelector('#log .lines').innerText`) })
-	r.run(`document.querySelector('#log .close').click()`)
+	waitUntil(t, 20*time.Second, "the later page lists ann", func() bool { return r.is(`document.querySelectorAll('#people .row').length === 1`) })
+	clickRow(t, later, acc.ID)
+	waitUntil(t, 10*time.Second, "her computer lists the asks from before the page opened", func() bool {
+		return r.is(`[...document.querySelectorAll('#profile .recent div')].some(d => d.textContent.includes('Bash'))`)
+	}, func() string {
+		return r.js(`document.visibilityState + '\n' + document.getElementById('profile').innerText`)
+	})
 	r.done()
+	front(first)
 
 	// ---------- her next start has the box ticked ----------
 	b.post(t, acc.Token, "/api/event", map[string]any{"session": "s-ann", "kind": "session.end", "reason": "prompt_input_exit"})
-	waitUntil(t, 10*time.Second, "off duty, her window offers Start work", func() bool {
+	waitUntil(t, 10*time.Second, "off duty, her conversation offers Start work", func() bool {
 		return p.is(`!!document.querySelector('#chat .btns .go-work')`)
 	}, func() string { return p.js(`document.querySelector('#chat .btns').innerHTML`) })
 	p.run(`document.querySelector('#chat .btns .go-work').click()`)

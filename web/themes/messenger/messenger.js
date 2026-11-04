@@ -138,8 +138,8 @@ const askWho = a => {
     (a.tool ? `<span class="kind">· ${esc(a.tool)}</span>` : '') + (from ? `<span class="kind from">· ${esc(from)}</span>` : '') +
     (a.created ? `<span class="since">${esc(t('msgr.askSince', { time: fmtTime(a.created) }))}</span>` : '') + `</div>`
 }
-const chat = createChat(sym, { askWho, asks: 'inline', onClose: () => { if (picked?.account) picked = null; showCenter() }, onTaskChip: id => openGroup(id) })
-const launch = createLaunchDialog(sym, { options: loadOptions, onOnline: l => openCoworker(l.account), log: () => {} })
+const chat = createChat(sym, { askWho, onClose: () => { if (picked?.account) picked = null; showCenter() }, onTaskChip: id => openGroup(id) })
+const launch = createLaunchDialog(sym, { options: loadOptions, onOnline: l => openCoworker(l.account) })
 const tasks = createTaskUI(sym, {
   options: loadOptions,
   roomLabel: task => task.title.split('\n')[0].slice(0, 48),
@@ -150,7 +150,6 @@ const tasks = createTaskUI(sym, {
   onWindowOpen: id => { picked = { group: id }; chat.el.hidden = true; placeholder.hidden = true; renderProfile(); renderSide() }, // the one way into a group chat
   onWindowClose: () => { if (picked?.group) picked = null; showCenter() },
   onDialogOpen: () => {},
-  log: () => {},
 })
 center.append(chat.el, tasks.win)
 function avatarURL(name) {
@@ -185,7 +184,7 @@ async function loadOptions() {
   return launchOpts
 }
 document.getElementById('new-emp').onclick = () => launch.open(null)
-document.getElementById('new-task').onclick = () => tasks.openDialog({})
+document.getElementById('new-task').onclick = () => tasks.openDialog()
 
 // a coworker's conversation: its desk session, or one of its task sessions (sid) from a group chat
 function openCoworker(id, sid = null, taskId = null) {
@@ -202,7 +201,7 @@ function showChat() {
   if (!picked?.account) return
   const acc = sym.accountById(picked.account)
   if (!acc) { picked = null; return showCenter() }
-  const s = picked.sid ? sym.sessionById(picked.sid) : sym.sessionOf(acc), on = online(s)
+  const s = picked.sid ? sym.sessionById(picked.sid) : deskOf(acc), on = online(s)
   const task = picked.sid ? sym.taskOfSession(picked.sid) : taskOf(acc)
   const member = task?.members.find(m => picked.sid ? m.session === picked.sid : m.account === picked.account)
   const busy = on && (s.state === 'thinking' || s.state === 'tool' || s.state === 'waiting')
@@ -375,7 +374,7 @@ function renderProfile() {
   }
   const acc = sym.accountById(picked.account)
   if (!acc) { profileEl.hidden = true; placeScreen(null); return }
-  const s = picked.sid ? sym.sessionById(picked.sid) : sym.sessionOf(acc), on = online(s), st = stateOf(s)
+  const s = picked.sid ? sym.sessionById(picked.sid) : deskOf(acc), on = online(s), st = stateOf(s)
   const task = picked.sid ? sym.taskOfSession(picked.sid) : taskOf(acc)
   const name = picked.sid ? task?.members.find(m => m.session === picked.sid)?.name || acc.name : acc.name
   const u = s?.usage, ctx = u?.context?.percent
@@ -405,7 +404,7 @@ function renderProfile() {
 }
 profileEl.addEventListener('click', async ev => {
   if (ev.target.id === 'take-over') {
-    const acc = sym.accountById(picked.account), s = picked.sid ? sym.sessionById(picked.sid) : sym.sessionOf(acc)
+    const acc = sym.accountById(picked.account), s = picked.sid ? sym.sessionById(picked.sid) : deskOf(acc)
     const r = await sym.openTerminal(s.launch)
     if (!r.ok) showError(errorText(r.data) + (r.data?.params?.command ? '\n' + r.data.params.command : ''), { title: t('errlog.oops.terminal') })
     return

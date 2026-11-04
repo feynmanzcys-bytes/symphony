@@ -67,7 +67,7 @@
   "launch.effort": "사고 강도",
   "launch.permissionMode": "권한 모드",
   "staff.noneSelected": "동료를 선택하면 함께 바꿀 수 있습니다.",
-  "task.titleNewHud": "새 그룹",
+  "task.titleNew": "새 그룹",
   "settings.staffWhat": "새 동료는 이대로 시작합니다(「기본값」은 Claude Code 자체 설정을 따릅니다). 시작 창의 「고급 설정」에서 이번 한 번만 어느 항목이든 바꿀 수 있고, 다시 출근하는 동료는 지난번 선택대로 시작합니다.",
   "settings.botHomeHint": "작업 폴더 없이 동료를 시작하면 여기에 그 이름으로 전용 폴더를 새로 만들고 git 저장소로 초기화합니다. 전용 폴더가 있는 동료는 그 폴더를 계속 씁니다.",
   "launch.fromSettings": "설정(설정 → 동료)대로 채웠습니다. 여기서 바꿔도 설정은 바뀌지 않습니다.",

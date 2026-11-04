@@ -4,8 +4,8 @@
 // and the button to end it; a failed one says why and can be dismissed). The bridge starts a session for each member
 // in a git worktree of its own and sends each the kickoff.
 //
-//   const tasks = createTaskUI(sym, { options, roomLabel, memberAvatar, youAvatar, isMemberOpen, onOpenMember, onWindowOpen, onWindowClose, onDialogOpen, log })
-//   tasks.openDialog({ room })      room: { k, name } the dialog was opened from (the theme seats the task there when it can), or null
+//   const tasks = createTaskUI(sym, { options, roomLabel, memberAvatar, youAvatar, isMemberOpen, onOpenMember, onWindowOpen, onWindowClose, onDialogOpen })
+//   tasks.openDialog()
 //   tasks.closeDialog()
 //   tasks.openWindow(id, data)      data: what the bridge answered, until the snapshot has the task; once the task ended
 //                                   and left the snapshot, the window says so until it is closed
@@ -97,14 +97,12 @@ export function createTaskUI(sym, {
   onWindowClose = () => {},
   onDialogOpen = () => {},
   mentionName = name => name, // how a member is named in the team chat (its session name, or what the theme shows)
-  log = () => {},
 } = {}) {
   const dialog = mount(DIALOG), win = mount(WINDOW)
   const form = dialog.querySelector('form')
   asDialog(dialog, form.querySelector('.title'))
   asDialog(win, win.querySelector('.top h2')) // (a region where the theme lays it out: Coworkers)
   let opts = null
-  let dialogFor = null // the room the dialog was opened from: { k, name }, or null
   let picks = [] // the members, in order: rows of the dialog (an employee ticked, or an advisor added)
   let posting = false
   const offReason = () => opts?.mod ? errorText(opts.mod) : t('error.launch_disabled')
@@ -202,7 +200,6 @@ export function createTaskUI(sym, {
     if (members.some(m => m.advisor && (!m.advisor.name || !m.advisor.dir))) { markBad('incomplete'); return setStatus(t('task.advisorIncomplete'), true) }
     markBad('')
     const body = { title, leader: form.elements.leader.checked, permissionMode: form.elements.permissionMode.value, lang, members }
-    if (dialogFor) body.room = dialogFor.k // where it was started from: the theme seats it there when it can
     posting = true
     renderPicks()
     setStatus(t('launch.starting'))
@@ -426,33 +423,15 @@ export function createTaskUI(sym, {
     if (m?.session) onOpenMember(task, m)
   })
 
-  // the activity log's lines for tasks: started, ended, failed (one dismissed just goes)
-  let seen = new Map() // task id -> { status, room } as the last snapshot had it
-  function noteTasks() {
-    const now = new Map(sym.state.tasks.map(task => [task.id, { status: task.status, room: roomLabel(task) }]))
-    if (!sym.first) {
-      for (const task of sym.state.tasks) {
-        const was = seen.get(task.id)?.status
-        if (!was) log(t('log.taskStarted', { id: task.id, room: roomLabel(task), names: task.members.map(m => m.name).join(', ') }))
-        if (task.status === 'failed' && was !== 'failed') {
-          log(t('log.taskFailed', { id: task.id, room: roomLabel(task), reason: errorText({ code: task.errorCode, params: task.errorParams, error: task.error }) }))
-        }
-      }
-      for (const [id, was] of seen) if (!now.has(id) && was.status !== 'failed') log(t('log.taskEnded', { id, room: was.room }))
-    }
-    seen = now
-  }
-
   const tasks = {
     dialog, win,
     get windowFor() { return windowFor },
     get dialogHidden() { return dialog.hidden },
-    // the dialog, from a room ({ k, name }: a hint of where to seat the task) or not: the employees not in a running task, with a folder to work in, can be picked
-    async openDialog({ room } = {}) {
+    // the dialog: the employees not in a running task, with a folder to work in, can be picked
+    async openDialog() {
       opts = await options()
       if (!opts?.enabled) return showError(opts ? offReason() : t('error.unreachable'), { title: t('errlog.oops.launchOff') })
-      dialogFor = room ? { k: room.k, name: room.name } : null
-      form.querySelector('.title').textContent = room ? t('task.titleNew', { room: room.name }) : t('task.titleNewHud')
+      form.querySelector('.title').textContent = t('task.titleNew')
       form.elements.desc.value = ''
       form.elements.leader.checked = true
       fill(form.elements.permissionMode, opts.permissionModes, opts.defaults?.permissionMode ?? '') // the settings' (Claude Code's own when they say nothing)
@@ -487,7 +466,7 @@ export function createTaskUI(sym, {
       dialog.hidden = false
       form.elements.desc.focus()
     },
-    closeDialog() { dialog.hidden = true; dialogFor = null },
+    closeDialog() { dialog.hidden = true },
     // the window; until the snapshot has a task just started, it shows what the bridge answered
     openWindow(id, data = null) {
       if (id !== chatFor) { chatFor = id; tBox.value = ''; tStatus.textContent = '' } // a draft stays with its task
@@ -503,7 +482,7 @@ export function createTaskUI(sym, {
     render,
     growBox,
   }
-  sym.on('snapshot', () => { noteTasks(); if (windowFor) render() })
+  sym.on('snapshot', () => { if (windowFor) render() })
   sym.on('message', () => { if (windowFor) render() })
   sym.on('messages', () => { if (windowFor) render() })
   return tasks

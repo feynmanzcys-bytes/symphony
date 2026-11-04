@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/chromedp/chromedp"
-	"github.com/chromedp/chromedp/kb"
 
 	"github.com/feynmanzcys-bytes/symphony/internal/i18n"
 )
@@ -26,9 +25,9 @@ var (
 	latinLangs   = map[string]bool{"en": true, "es": true, "fr": true, "de": true, "pt-BR": true}
 )
 
-// TestI18n opens Coworkers, the pixel office and the approval page in every language with made-up activity (no
-// sessions, no tokens). Every key a page asks for must exist in its language, and pages in a Latin-script language must
-// show no CJK, kana, Hangul or Cyrillic: that catches text the code shows without going through t().
+// TestI18n opens Coworkers (with the employees page) and the approval page in every language with made-up activity
+// (no sessions, no tokens). Every key a page asks for must exist in its language, and pages in a Latin-script language
+// must show no CJK, kana, Hangul or Cyrillic: that catches text the code shows without going through t().
 func TestI18n(t *testing.T) {
 	requireBrowser(t)
 	repo, _ := filepath.Abs("..")
@@ -67,96 +66,30 @@ func TestI18n(t *testing.T) {
 	}
 	for _, lang := range langs {
 		checkCoworkers(t, b, browser, lang)
-		checkOffice(t, b, browser, lang)
 		checkApprove(t, b, browser, lang)
 	}
 
 	// how the page picks a language from what the browser asks for
-	office := tab(t, browser, b.URL+"/")
-	got := get(t, office, 10*time.Second, chromedp.Evaluate[string](`import('/i18n.js').then(m =>
+	cw := tab(t, browser, b.URL+"/")
+	got := get(t, cw, 10*time.Second, chromedp.Evaluate[string](`import('/i18n.js').then(m =>
 		[['zh-HK'], ['zh'], ['zh-Hant'], ['pt'], ['it', 'de-AT'], ['xx'], [], ['ja-JP', 'en']].map(w => m.pickLang(w)).join(' '))`,
 		chromedp.EvalAwaitPromise))
 	if want := "zh-TW zh-CN zh-TW pt-BR de en en ja"; got != want {
 		t.Fatalf("pickLang: got %q, want %q", got, want)
 	}
 	// an unsupported ?lang= falls through to the browser's language (English: newBrowser pins it)
-	odd := tab(t, browser, b.URL+"/t/office/?lang=xx")
+	odd := tab(t, browser, b.URL+"/t/messenger/?lang=xx")
 	if lang := get(t, odd, 10*time.Second, chromedp.Evaluate[string](`document.documentElement.lang`)); lang != "en" {
 		t.Fatalf("?lang=xx should fall back to English, got %q", lang)
 	}
-	waitUntil(t, 10*time.Second, "the English page labels the message log button (in the settings)", func() bool { // once the catalogs are loaded
-		return strings.TrimSpace(get(t, odd, 10*time.Second, chromedp.Evaluate[string](`document.getElementById('open-msgs').textContent`))) == "Message log"
+	waitUntil(t, 10*time.Second, "the English page shows its title", func() bool { // once the catalogs are loaded
+		return strings.TrimSpace(get(t, odd, 10*time.Second, chromedp.Evaluate[string](`document.querySelector('h1[data-i18n="msgr.title"]').textContent`))) == "Symphony Coworkers"
 	})
 }
 
-// checkOffice walks the office in one language: the pending asks in the waiting employee's window, the message
-// log, an online and an offline employee's window, and the launch dialog. Its tab is closed afterwards.
-func checkOffice(t *testing.T, b *testBridge, browser context.Context, lang string) {
-	t.Helper()
-	office, closeTab := openTab(t, browser, b.URL+"/t/office/?lang="+lang)
-	defer closeTab()
-	var texts []string
-	read := func() { texts = append(texts, get(t, office, 5*time.Second, chromedp.Evaluate[string](pageText))) }
-	waitUntil(t, 20*time.Second, lang+": the office shows three employees and the red pending chip", func() bool {
-		return get(t, office, 5*time.Second, chromedp.Evaluate[bool](
-			`document.querySelectorAll('.emp-label').length === 3 && !!document.querySelector('#stats .chip.hot[data-group=waiting]')`))
-	})
-	// the red chip opens the waiting employee's window, with her three asks' cards over the input
-	do(t, office, 10*time.Second, chromedp.Click(chromedp.CSS(`#stats .chip.hot[data-group=waiting]`)))
-	waitUntil(t, 10*time.Second, lang+": alice's window shows her three asks", func() bool {
-		return get(t, office, 5*time.Second, chromedp.Evaluate[bool](
-			`!document.getElementById('chat').hidden && document.querySelector('#chat h2').textContent === 'alice' && document.querySelectorAll('#chat .dock.asking #asks .card').length === 3 && !!document.querySelector('#chat #asks .allow-session')`))
-	})
-	if got := get(t, office, 5*time.Second, chromedp.Evaluate[string](`document.documentElement.lang`)); got != lang {
-		t.Fatalf("%s: the page says lang=%q", lang, got)
-	}
-	read()
-	screenshot(t, office, "i18n-"+lang+"-asks.png")
-	// the window closes; the message log and the activity log open from the settings, which close
-	do(t, office, 10*time.Second, chromedp.Click(chromedp.CSS(`#chat .close`)), chromedp.WaitNotVisible(chromedp.CSS(`#chat`)),
-		chromedp.Click(chromedp.CSS(`#open-settings`)), chromedp.Click(chromedp.CSS(`#open-msgs`)), chromedp.WaitVisible(chromedp.CSS(`#msgs-panel`)),
-		chromedp.WaitNotVisible(chromedp.CSS(`#settings`)),
-		chromedp.Click(chromedp.CSS(`#open-settings`)), chromedp.Click(chromedp.CSS(`#open-log`)), chromedp.WaitVisible(chromedp.CSS(`#log`)),
-		chromedp.WaitNotVisible(chromedp.CSS(`#settings`)))
-	read()
-	do(t, office, 10*time.Second, chromedp.Click(chromedp.CSS(`#msgs-panel .close`)), chromedp.Click(chromedp.CSS(`#log .close`)))
-	for _, name := range []string{"bob", "carol"} { // an online employee's window (with the chat) and an offline one's
-		clickLabel(t, office, b.account(name).ID)
-		do(t, office, 10*time.Second, chromedp.WaitVisible(chromedp.CSS(`#chat`)))
-		if name == "bob" {
-			waitUntil(t, 10*time.Second, lang+": bob's chat shows alice's message in purple", func() bool {
-				return get(t, office, 5*time.Second, chromedp.Evaluate[bool](`!!document.querySelector('#chat .flow .it.message')`))
-			})
-		}
-		read()
-		do(t, office, 10*time.Second, chromedp.Click(chromedp.CSS(`#chat .close`)))
-	}
-	// the search box: "bo" finds bob alone, and Enter opens his window
-	do(t, office, 10*time.Second, chromedp.SendKeys(chromedp.CSS(`#find`), "bo"))
-	waitUntil(t, 10*time.Second, lang+": the search lists bob alone", func() bool {
-		return get(t, office, 5*time.Second, chromedp.Evaluate[bool](
-			`(h => h.length === 1 && h[0].textContent.includes('bob'))(document.querySelectorAll('#find-list:not([hidden]) .hit'))`))
-	})
-	read()
-	do(t, office, 10*time.Second, chromedp.SendKeys(chromedp.CSS(`#find`), kb.Enter), chromedp.WaitVisible(chromedp.CSS(`#chat`)))
-	if got := get(t, office, 5*time.Second, chromedp.Evaluate[string](`document.querySelector('#chat h2').textContent`)); got != "bob" {
-		t.Fatalf("%s: Enter in the search box should open bob's window, got %q", lang, got)
-	}
-	do(t, office, 10*time.Second, chromedp.Click(chromedp.CSS(`#chat .close`)),
-		chromedp.Click(chromedp.CSS(`#new-emp`)), chromedp.WaitVisible(chromedp.CSS(`#launch form`)))
-	read() // folded: the line that says what the start will use
-	do(t, office, 10*time.Second, chromedp.Click(chromedp.CSS(`#launch .adv > summary`)), chromedp.WaitVisible(chromedp.CSS(`#launch .preview`)))
-	read() // unfolded: the fields
-	screenshot(t, office, "i18n-"+lang+"-launch.png")
-	checkTexts(t, lang, "office", texts)
-	if miss := get(t, office, 5*time.Second, chromedp.Evaluate[[]string](`window.__i18nMissing`)); len(miss) > 0 {
-		t.Errorf("%s: the office asked for keys its catalog lacks: %v", lang, miss)
-	}
-}
-
-// checkCoworkers walks Coworkers, the main theme, in one language: the waiting coworker's conversation with her cards
-// in it, the settings and the employees page (a row being edited, two selected, the import saying what it would do,
-// entry by entry). Its tab is closed afterwards.
+// checkCoworkers walks Coworkers in one language: the waiting coworker's conversation with her cards in it, an online
+// and an offline coworker's conversation, the launch dialog (folded and unfolded), the settings and the employees page
+// (a row being edited, two selected, the import saying what it would do, entry by entry). Its tab is closed afterwards.
 func checkCoworkers(t *testing.T, b *testBridge, browser context.Context, lang string) {
 	t.Helper()
 	cw, closeTab := openTab(t, browser, b.URL+"/t/messenger/?lang="+lang)
@@ -173,11 +106,37 @@ func checkCoworkers(t *testing.T, b *testBridge, browser context.Context, lang s
 	}
 	run(fmt.Sprintf(`document.querySelector('#people .row[data-account=%q]').click()`, b.account("alice").ID))
 	waitUntil(t, 10*time.Second, lang+": alice's conversation shows her asks' cards", func() bool {
-		return is(`!document.getElementById('chat').hidden && document.querySelectorAll('#chat .flow .it.ask.carded .card').length >= 2`)
+		return is(`!document.getElementById('chat').hidden && document.querySelectorAll('#chat .flow .it.ask.carded .card').length >= 2 && !!document.querySelector('#chat .allow-session')`)
 	})
 	read()
+	screenshot(t, cw, "i18n-"+lang+"-asks.png")
+	for _, name := range []string{"bob", "carol"} { // an online coworker's conversation (with the chat) and an offline one's
+		run(fmt.Sprintf(`document.querySelector('#people .row[data-account=%q]').click()`, b.account(name).ID))
+		waitUntil(t, 10*time.Second, lang+": "+name+"'s conversation opens", func() bool {
+			return is(fmt.Sprintf(`!document.getElementById('chat').hidden && document.querySelector('#chat h2').textContent === %q`, name))
+		})
+		if name == "bob" {
+			waitUntil(t, 10*time.Second, lang+": bob's chat shows alice's message in purple", func() bool {
+				return is(`!!document.querySelector('#chat .flow .it.message')`)
+			})
+		}
+		read()
+	}
+	// the launch dialog: folded, the line that says what the start will use; unfolded, the fields
+	run(`document.getElementById('new-emp').click()`)
+	waitUntil(t, 10*time.Second, lang+": the launch dialog opens", func() bool {
+		return is(`!document.getElementById('launch').hidden && !!document.querySelector('#launch form')`)
+	})
+	read()
+	run(`document.querySelector('#launch .adv').open = true`)
+	waitUntil(t, 10*time.Second, lang+": the fields unfold", func() bool { return is(`document.querySelector('#launch .preview').getClientRects().length > 0`) })
+	read()
+	screenshot(t, cw, "i18n-"+lang+"-launch.png")
+	run(`document.querySelector('#launch .cancel').click()`)
+	// the settings and the employees page
 	run(`document.querySelector('.open-settings').click()`)
 	waitUntil(t, 10*time.Second, lang+": the settings open", func() bool { return is(`!document.getElementById('settings').hidden`) })
+	read()
 	run(`document.querySelector('#settings .people .all').click()`)
 	waitUntil(t, 10*time.Second, lang+": the employees page lists the three", func() bool {
 		return is(`!document.getElementById('staff').hidden && document.querySelectorAll('#staff .emp').length === 3 && document.querySelectorAll('#staff .batch select[name=model] option').length > 2`)

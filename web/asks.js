@@ -1,4 +1,4 @@
-// Cards for pending asks (permission requests / AskUserQuestion / an MCP server's form), shared by the office popup and
+// Cards for pending asks (permission requests / AskUserQuestion / an MCP server's form), shared by the employee window and
 // the approval page. A card submits its own answer to the bridge; the page styles .card and friends.
 //
 // A permission the mod could keep for the rest of the session (a.remember, the rule it proposes) gets a third button,

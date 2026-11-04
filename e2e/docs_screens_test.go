@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"image/png"
-	"math"
 	"math/rand/v2"
 	"net/http"
 	"os"
@@ -28,11 +27,11 @@ import (
 
 // TestDocsScreens remakes the README's screenshots in docs/ from made-up activity (no tokens: claude is a script that
 // sits there, and the sessions are reported in as the mod would): a team of nine in every state, two of them waiting
-// for you, two idle ones wandering, a running task of three in a small meeting room, the others off duty or at work.
+// for you, two idle ones, a running task of three, the others off duty or at work.
 // It writes docs/coworkers.png (Coworkers, the default theme, with a conversation open), docs/social-preview.png (the
 // same at 1280x640, for GitHub's social preview), docs/approve.png (a conversation with a question card and a
-// permission card where they came up), docs/staff.png (Settings → All employees, two selected to change together) and
-// docs/office.png (the pixel office), all at 1400x860 CSS pixels unless named otherwise. It writes into the
+// permission card where they came up) and docs/staff.png (Settings → All employees, two selected to change together),
+// all at 1400x860 CSS pixels unless named otherwise. It writes into the
 // repository, so it runs only with SYMPHONY_E2E=1 and SYMPHONY_E2E_DOCS=1. It fails on a page error, a key a catalog
 // lacks, a raw key on screen, or the test's temporary folder showing anywhere: the folders on screen read like a
 // user's (the task's must exist for git, so they are temporary, but they are named like projects and kept off screen:
@@ -353,35 +352,18 @@ func TestDocsScreens(t *testing.T) {
 		do(t, ctx, 10*time.Second, light, chromedp.EmulateViewport(1400, 860))
 		return &screens{t: t, ctx: ctx, lang: "en"}, cancel
 	}
-	office, _ := open("/t/office/?lang=en") // (not /: that serves the theme last picked, a cookie)
-	waitUntil(t, 20*time.Second, "the office shows the team and the rooms' nameplates", func() bool {
-		return office.is(`document.querySelectorAll('.emp-label').length >= 8 && document.querySelectorAll('.room-plate.click').length >= 4`)
+	coworkers, closeCoworkers := open("/t/messenger/?lang=en") // (not /: that serves the theme last picked, a cookie)
+	waitUntil(t, 20*time.Second, "Coworkers lists the nine", func() bool {
+		return coworkers.is(`document.querySelectorAll('#people .row').length === 9`)
 	}, func() string {
-		return office.js(`document.querySelectorAll('.emp-label').length + ' tags, ' + document.querySelectorAll('.room-plate.click').length + ' clickable plates; errors: ' + JSON.stringify(window.__errors)`)
+		return coworkers.js(`document.querySelectorAll('#people .row').length + ' rows; errors: ' + JSON.stringify(window.__errors)`)
 	})
-	var plates []struct {
-		Name, Seats string
-		X, Y        float64
-	}
-	if err := json.Unmarshal([]byte(office.js(`[...document.querySelectorAll('.room-plate')].map(p => ({ Name:p.textContent, Seats:p.dataset.seats, X:p.getBoundingClientRect().left, Y:p.getBoundingClientRect().top }))`)), &plates); err != nil {
-		t.Fatal(err)
-	}
-	t.Logf("rooms: %+v", plates)
-	room := -1 // the room for 3 nearest the middle of the window's height, clear of the HUD and roomy for the tags
-	for i, p := range plates {
-		if p.Seats == "3" && (room < 0 || math.Abs(p.Y-430) < math.Abs(plates[room].Y-430)) {
-			room = i
-		}
-	}
-	if room < 0 {
-		t.Fatalf("no small meeting room for 3: %+v", plates)
-	}
-	body, _ := json.Marshal(map[string]any{"room": room, "title": "Add retries and idempotency keys to the payment webhooks", "leader": true,
+	body, _ := json.Marshal(map[string]any{"title": "Add retries and idempotency keys to the payment webhooks", "leader": true,
 		"permissionMode": "acceptEdits", "lang": "en", "members": []map[string]any{
 			{"account": ids["grace"], "model": "opus", "effort": "high"}, {"account": ids["heidi"], "model": "sonnet", "effort": "xhigh"},
 			{"advisor": map[string]string{"name": "judy", "dir": payments}, "model": "opus", "effort": "max"}}})
 	var task bridge.Task
-	if res := office.fetch("POST", "/api/tasks", string(body)); json.Unmarshal([]byte(res), &task) != nil || task.ID == "" {
+	if res := coworkers.fetch("POST", "/api/tasks", string(body)); json.Unmarshal([]byte(res), &task) != nil || task.ID == "" {
 		t.Fatalf("creating the task failed: %s", res)
 	}
 	var list []struct{ Name, Token string }
@@ -468,7 +450,6 @@ func TestDocsScreens(t *testing.T) {
 	}
 
 	// ---------- coworkers.png: alice's conversation in the Coworkers theme ----------
-	coworkers, closeCoworkers := open("/t/messenger/?lang=en")
 	waitUntil(t, 20*time.Second, "Coworkers lists the nine and the task's group", func() bool {
 		return coworkers.is(`document.querySelectorAll('#people .row').length === 9 && document.querySelectorAll('#groups .row').length === 1 && !document.documentElement.hasAttribute('data-dark')`)
 	})
@@ -511,41 +492,4 @@ func TestDocsScreens(t *testing.T) {
 	coworkers.done()
 	closeCoworkers()
 
-	// ---------- office.png: the pixel office, the idle ones wandering (the page's clock moved on) ----------
-	idleFor := func() time.Duration {
-		for _, s := range b.Hub.Snapshot().Sessions {
-			if s.ID == "s-erin" {
-				return time.Since(s.StateSince)
-			}
-		}
-		t.Fatal("erin has no session")
-		return 0
-	}
-	office.run(fmt.Sprintf(`window.__warp = %d`, (70*time.Second - idleFor()).Milliseconds()))
-	settled := func() bool {
-		return office.is(fmt.Sprintf(`(() => {
-			const tags = [...document.querySelectorAll('.emp-label')]
-			const seated = tags.filter(l => l.classList.contains('member') && l.dataset.task === %q && l.dataset.moving === '0' && (l.dataset.spot || '').startsWith('room')).length
-			const idle = [%q, %q].map(id => tags.find(l => !l.classList.contains('member') && l.dataset.account === id))
-			const still = idle.every(l => l && (l.dataset.moving === '0' || l.dataset.act === 'chase'))
-			const away = idle.filter(l => l && l.dataset.room && l.dataset.room !== 'desk').length
-			return seated === 3 && still && away === 2 && !!document.querySelector('#stats .chip.hot') && !document.getElementById('hud').classList.contains('up')
-		})()`, task.ID, ids["erin"], ids["frank"]))
-	}
-	wander := func() {
-		t.Helper()
-		for try := 0; ; try++ {
-			if eventually(30*time.Second, settled) {
-				time.Sleep(time.Second) // the tags settle
-				return
-			}
-			if try == 3 {
-				t.Fatalf("the idle ones never left their desks:\n%s", office.js(`[...document.querySelectorAll('.emp-label')].map(l => l.querySelector('.nm').textContent + ' ' + JSON.stringify(l.dataset)).join('\n')`))
-			}
-			office.run(`window.__warp += 30000`) // a new half minute: each picks again where to go
-		}
-	}
-	wander()
-	shot(office, "office.png", 1400, 860)
-	office.done()
 }

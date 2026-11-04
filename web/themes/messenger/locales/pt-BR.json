@@ -67,7 +67,7 @@
   "launch.effort": "Esforço de raciocínio",
   "launch.permissionMode": "Modo de permissões",
   "staff.noneSelected": "Selecione colegas para alterá-los juntos.",
-  "task.titleNewHud": "Novo grupo",
+  "task.titleNew": "Novo grupo",
   "settings.staffWhat": "Com isto começa um colega novo (“Padrão”: as configurações do próprio Claude Code). As configurações avançadas da janela de início podem mudar qualquer uma para um só início; um colega que volta ao trabalho começa como da última vez.",
   "settings.botHomeHint": "Um colega iniciado sem pasta de trabalho ganha aqui uma pasta nova só dele, com o nome dele e iniciada como repositório git. Quem já tem uma continua com ela.",
   "launch.fromSettings": "Preenchido com as configurações (Configurações → Colegas). Mudar aqui não muda as configurações.",

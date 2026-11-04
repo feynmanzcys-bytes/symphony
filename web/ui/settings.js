@@ -1,6 +1,6 @@
 // The settings, shared by every theme: a dialog (#settings) that a button of the theme's opens, with what one sets
 // rarely. How the page looks: the language, the theme, light or dark where the theme has both, the theme's own settings
-// (the pixel office's pixel size), motion paused or not. The conversation: the steps between answers shown unfolded.
+// (extra, none in Coworkers), motion paused or not. The conversation: the steps between answers shown unfolded.
 // The employees: what a new one starts with, the bridge's settings (the launch dialog's Advanced settings fill them
 // in): the default folder, where one started without a working folder gets a folder of its own, the model, the
 // thinking effort, the permission mode, and whether it hears who else is in the office; and every employee on a page
@@ -12,8 +12,8 @@
 //
 //   const settings = createSettings(sym, { scheme, extra, records })
 //     scheme:  { get() → 'system' | 'light' | 'dark', set(value) } for a theme with light and dark (Coworkers)
-//     extra:   [{ label, el, hint }] rows of the theme's own, under how the page looks (the office's pixel size)
-//     records: [{ id, label, icon, open() }] the theme's logs (the office's message and activity logs): a button each,
+//     extra:   [{ label, el, hint }] rows of the theme's own, under how the page looks
+//     records: [{ id, label, icon, open() }] the theme's logs, if it keeps any: a button each,
 //              which closes the settings and shows that log
 //   settings.open() · settings.close() · settings.hidden · settings.el · settings.staff (the employees page)
 //   settingsButton(sym, settings, { cls, icon }) → the theme's button: "Settings", marked while the error log has
@@ -96,7 +96,7 @@ export function createSettings(sym, { scheme = null, extra = [], records = [] } 
   langSel.id = 'set-lang'
   $('.ctl.lang').append(langSel)
   $('label[for=set-theme]').textContent = t('common.theme')
-  themePicker(sym).then(sel => { sel.id = 'set-theme'; $('.ctl.theme').append(sel) })
+  themePicker(sym).then(sel => { sel.id = 'set-theme'; $('.ctl.theme').append(sel); sel.closest('.row').hidden = sel.options.length < 2 }) // (one theme: nothing to pick)
   if (scheme) {
     const box = $('.scheme')
     box.hidden = false

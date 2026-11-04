@@ -52,7 +52,6 @@ var (
 
 type Task struct {
 	ID             string            `json:"id"`
-	Room           *int              `json:"room,omitempty"`   // the page's hint of the small room the task was started from; nil for none (the page seats tasks itself)
 	Title          string            `json:"title"`            // the user's task description
 	Leader         string            `json:"leader,omitempty"` // the lead's account id; empty when everyone gets the task alike
 	PermissionMode string            `json:"permissionMode"`

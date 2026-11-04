@@ -20,6 +20,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/chromedp/cdproto/cdp"
+	"github.com/chromedp/cdproto/page"
 	"github.com/chromedp/chromedp"
 
 	"github.com/feynmanzcys-bytes/symphony/internal/bridge"
@@ -430,17 +432,6 @@ func openTab(t *testing.T, browser context.Context, url string) (context.Context
 	return ctx, cancel
 }
 
-// clickLabel clicks an employee's name tag from inside the page: tags move with their employees and may pass in
-// front of each other, so a mouse click at a tag's position could land on another one.
-func clickLabel(t *testing.T, ctx context.Context, account string) {
-	t.Helper()
-	ok := get(t, ctx, 10*time.Second, chromedp.Evaluate[bool](fmt.Sprintf(
-		`(l => l ? (l.click(), true) : false)(document.querySelector('.emp-label[data-account=%q]'))`, account)))
-	if !ok {
-		t.Fatalf("no name tag for account %s", account)
-	}
-}
-
 // do runs browser actions in order and fails the test on an error or a timeout.
 func do(t *testing.T, ctx context.Context, timeout time.Duration, steps ...chromedp.Action[chromedp.Void]) {
 	t.Helper()
@@ -500,4 +491,39 @@ func sleeper(t *testing.T) string {
 		t.Fatalf("building the stand-in for claude: %v\n%s", err, out)
 	}
 	return exe
+}
+
+// clickRow opens an account's conversation in Coworkers from inside the page: a click on its row in the sidebar's
+// list (#people), which the theme redraws as the office changes, so a mouse click at a row's position could land on
+// another one. It waits for the employee window to show.
+func clickRow(t *testing.T, ctx context.Context, account string) {
+	t.Helper()
+	ok := get(t, ctx, 10*time.Second, chromedp.Evaluate[bool](fmt.Sprintf(
+		`(r => r ? (r.click(), true) : false)(document.querySelector('#people .row[data-account=%q]'))`, account)))
+	if !ok {
+		t.Fatalf("no row for account %s", account)
+	}
+	do(t, ctx, 10*time.Second, chromedp.WaitVisible(chromedp.CSS(`#chat:not([hidden])`)))
+}
+
+// clockTab opens url in a new tab whose clock runs window.__warp milliseconds ahead (warp at first), and which
+// records uncaught errors, and what the bridge's content security policy blocks, in window.__errors; cancel closes it.
+func clockTab(t *testing.T, browser context.Context, url string, warp int64) (context.Context, context.CancelFunc) {
+	t.Helper()
+	ctx, cancel := chromedp.NewContext(browser)
+	t.Cleanup(cancel)
+	if err := chromedp.Do(ctx); err != nil { // creates the tab
+		t.Fatalf("opening a tab failed: %v", err)
+	}
+	script := fmt.Sprintf(`window.__warp = %d`, warp) + `
+		window.__errors = []
+		addEventListener('error', e => window.__errors.push(String(e.message)))
+		addEventListener('unhandledrejection', e => window.__errors.push(String(e.reason)))
+		addEventListener('securitypolicyviolation', e => window.__errors.push('csp: ' + e.violatedDirective + ' ' + e.blockedURI))
+		Date.now =(now => () => now() + window.__warp)(Date.now.bind(Date))`
+	do(t, ctx, 30*time.Second, chromedp.Func(func(ctx context.Context, tg *chromedp.Target) error {
+		_, err := cdp.Call(ctx, tg, page.AddScriptToEvaluateOnNewDocument, page.AddScriptToEvaluateOnNewDocumentParams{Source: script})
+		return err
+	}), chromedp.Navigate(url))
+	return ctx, cancel
 }

@@ -22,7 +22,7 @@ for os in windows darwin linux; do GOOS=$os go vet ./internal/... ./cmd/... && G
 claude plugin validate .
 claude plugin validate mods/symphony-bridge
 claude plugin test mods/symphony-bridge       # the mod's unit tests
-go test -tags e2e -count=1 -v -run 'TestI18n|TestIdle|TestLayout|TestAsksDock|TestTask$|TestScreens|TestThemesLoad|TestMessenger|TestReconnect|TestTerminalView|TestContrast|TestNarrow|TestA11y|TestAskKinds|TestMotion|TestChatSteps|TestSettings|TestMarkdown' ./e2e/   # the pages in a browser, no tokens
+go test -tags e2e -count=1 -v -run 'TestI18n|TestAsksCards|TestTask$|TestScreens|TestThemesLoad|TestMessenger|TestReconnect|TestTerminalView|TestContrast|TestNarrow|TestA11y|TestAskKinds|TestMotion|TestChatSteps|TestSettings|TestMarkdown' ./e2e/   # the pages in a browser, no tokens
 ```
 
 `TestOffice` and `TestModStartsBridge` start real Claude sessions and spend tokens, so CI doesn't run them; they need `SYMPHONY_E2E=1`. Run them when you change the mod or how sessions start: `SYMPHONY_E2E=1 go test -tags e2e -v -count=1 -timeout 20m ./e2e/` runs everything.

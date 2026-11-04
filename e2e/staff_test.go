@@ -32,7 +32,7 @@ import (
 // Export gives every employee as the import reads it (no advisor, no token), and read back it changes nothing. Delete
 // deletes the selected ones off duty and says why one on duty stays. Esc closes the row being edited, then the page,
 // back on the settings' button. The launch dialog starts an employee as the page says (its own folder, not where its
-// session went). The pixel office's settings open the same page.
+// session went).
 func TestStaff(t *testing.T) {
 	requireBrowser(t)
 	repo, _ := filepath.Abs("..")
@@ -368,15 +368,4 @@ func TestStaff(t *testing.T) {
 	}
 	p.done()
 
-	// ---------- the pixel office's settings open the same page ----------
-	office, _ := clockTab(t, browser, b.URL+"/t/office/?lang=en", 0)
-	do(t, office, 10*time.Second, chromedp.EmulateViewport(1400, 900))
-	o := &screens{t: t, ctx: office, lang: "staff-office"}
-	waitUntil(t, 20*time.Second, "the office shows the six", func() bool { return o.is(`document.querySelectorAll('.emp-label').length === 6`) })
-	o.run(`document.getElementById('open-settings').click(); document.querySelector('#settings .people .all').click()`)
-	waitUntil(t, 10*time.Second, "the employees page lists the six", func() bool {
-		return o.is(`!document.getElementById('staff').hidden && [...document.querySelectorAll('#staff .emp .nm')].map(n => n.textContent).join() === 'alice,bob,carol,dave,erin,frank'`)
-	})
-	o.shot("list")
-	o.done()
 }

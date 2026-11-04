@@ -8,7 +8,7 @@
 // one made for it before, else a new one in the bridge's default folder (the settings), named after it and made a git
 // repository; the folded line, the field's placeholder and the preview say which.
 //
-//   const launch = createLaunchDialog(sym, { options, onOnline, log })
+//   const launch = createLaunchDialog(sym, { options, onOnline })
 //   launch.open(accountId | null)    the dialog for an existing employee, or a new one
 //   launch.close()
 //   launch.watch()                   on every snapshot: closes once the launch is online, shows why it failed
@@ -50,7 +50,7 @@ const MARKUP = `
 
 // options: the theme's loader of /api/launch/options (it may show in its own UI why starting is off); onOnline: the
 // launch came online (the theme opens the new employee's window); onOpen: the dialog opens (the theme closes its others)
-export function createLaunchDialog(sym, { options = () => sym.launchOptions(true), onOnline = () => {}, onOpen = () => {}, log = () => {} } = {}) {
+export function createLaunchDialog(sym, { options = () => sym.launchOptions(true), onOnline = () => {}, onOpen = () => {} } = {}) {
   const tpl = document.createElement('template')
   tpl.innerHTML = MARKUP.trim()
   const dlg = tpl.content.firstElementChild
@@ -237,7 +237,6 @@ export function createLaunchDialog(sym, { options = () => sym.launchOptions(true
       const l = (sym.state.launches || []).find(x => x.id === pending)
       if (!l) return
       if (l.status === 'online' || l.status === 'ended') { // ended: it came online and its process exited since
-        log(t('log.started', { name: l.name }))
         launch.close()
         onOnline(l)
       } else if (l.status === 'failed') {

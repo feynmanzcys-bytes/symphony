@@ -117,7 +117,7 @@ func a11yTeam(t *testing.T) (*testBridge, *bridge.Task, map[string]string) {
 	waitUntil(t, 10*time.Second, "the asks are pending", func() bool { return len(b.Hub.Snapshot().Asks) == 2 })
 
 	// the task: alice leads, bob helps; they talk, and you say something too
-	body, _ := json.Marshal(map[string]any{"title": "Write the CHANGELOG", "leader": true, "permissionMode": "", "lang": "en", "room": 0,
+	body, _ := json.Marshal(map[string]any{"title": "Write the CHANGELOG", "leader": true, "permissionMode": "", "lang": "en",
 		"members": []map[string]any{{"account": b.account("alice").ID, "model": "opus", "effort": "max"}, {"account": b.account("bob").ID, "model": "sonnet", "effort": "high"}}})
 	res, err := httpPost(b, "/api/tasks", string(body))
 	if err != nil {
@@ -177,8 +177,8 @@ func httpPost(b *testBridge, path, body string) ([]byte, error) {
 }
 
 // contrastJS measures, under root, the colors the way WCAG 2.1 AA asks, from the computed styles: what lies behind an
-// element is the backgrounds of it and its ancestors composed with their alpha and opacity (over the office's canvas for
-// what floats on it). pass says what it measures:
+// element is the backgrounds of it and its ancestors composed with their alpha and opacity, over the browser's white.
+// pass says what it measures:
 //   - "colors": every piece of text against what it sits on (4.5:1, 3:1 for large text, by the font's size and
 //     weight), the marks in the state colors against theirs (3:1), and the edge of every text field and select (3:1:
 //     its border, a ring of its box-shadow or its own fill against what lies around it, the best of them), with the
@@ -220,16 +220,9 @@ const contrastJS = `((root, pass) => {
     const lum = c => 0.2126 * lin(c[0]) + 0.7152 * lin(c[1]) + 0.0722 * lin(c[2])
     const ratio = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05) }
     const hex = c => '#' + c.slice(0, 3).map(v => Math.round(v).toString(16).padStart(2, '0')).join('')
-    // what lies behind the page's own backgrounds: the office's canvas under what floats on it (name tags, nameplates),
-    // a few points of it; else the browser's white
-    const office = document.getElementById('office'), octx = office && office.getContext('2d')
-    function base(el) {
-      const layer = octx && el.closest('#labels')
-      if (!layer) return { from: null, under: [[255, 255, 255, 1]] }
-      const r = el.getBoundingClientRect(), k = devicePixelRatio || 1
-      const at = (x, y) => { const d = octx.getImageData(Math.max(0, Math.min(office.width - 1, Math.round(x * k))), Math.max(0, Math.min(office.height - 1, Math.round(y * k))), 1, 1).data; return [d[0], d[1], d[2], 1] }
-      return { from: layer, under: [at(r.left + 1, r.top + 1), at(r.right - 2, r.top + 1), at(r.left + 1, r.bottom - 2), at(r.right - 2, r.bottom - 2), at((r.left + r.right) / 2, (r.top + r.bottom) / 2)] }
-    }
+    // what lies behind the page's own backgrounds: the browser's white (from: where the chain of backgrounds starts;
+    // null for the root)
+    function base(el) { return { from: null, under: [[255, 255, 255, 1]] } }
     // the backgrounds from the top down to el (its own included), each with its opacity. An ancestor's background is
     // behind el only where its box is: one el lies outside of (a label hanging beside its stripe) is left out, unless
     // it scrolls (what it scrolls comes into its box); one without a box (display: contents) paints nothing at all
@@ -335,8 +328,7 @@ const contrastJS = `((root, pass) => {
     }
     // the marks in the state colors: [selector, the property with the color, what it sits on: its parent's background
     // ('parent') or its own (a band of its border: 'self')]
-    const MARKS = [['.dot', 'backgroundColor', 'parent'], ['#hud .chip:not(.hot) .lamp', 'backgroundColor', 'parent'], ['#hud .chip.hot', 'backgroundColor', 'parent'],
-      ['.emp-label .lamp', 'backgroundColor', 'parent'], ['.room-plate i', 'backgroundColor', 'parent'], ['#taskwin .top .status .lamp', 'backgroundColor', 'parent']]
+    const MARKS = [['.dot', 'backgroundColor', 'parent'], ['#taskwin .top .status .lamp', 'backgroundColor', 'parent']]
     function mark(el, prop, against) {
       if (!shown(el) || el.closest(EXEMPT)) return
       const c = parse(cs(el)[prop])
@@ -524,15 +516,15 @@ func audit(t *testing.T, p *screens, label string, v contrastView, seen map[stri
 	return total, out
 }
 
-// TestContrast measures the colors of every theme in each of its schemes the way WCAG 2.1 AA asks (no tokens): with
-// the made-up office of a11yTeam, it opens the pixel office, Coworkers light and dark, and the approval page, and in each the views that show text: the page, the employee window (a chat with every
-// kind of item, the asks' cards, an employee off duty), the task window and a member's window, the launch and task
-// dialogs, the search list and the logs. Every piece of text must reach 4.5:1 against what it sits on (3:1 when large)
-// and every mark in a state color 3:1 (contrastJS). It fails naming each that falls short, with its colors.
+// TestContrast measures the colors of Coworkers, light and dark, and of the approval page the way WCAG 2.1 AA asks
+// (no tokens): with the made-up office of a11yTeam, it opens the views that show text: the page, the employee window
+// (a chat with every kind of item, the asks' cards, an employee off duty), the task window and a member's window, the
+// launch and task dialogs, the settings and the employees page. Every piece of text must reach 4.5:1 against what it
+// sits on (3:1 when large) and every mark in a state color 3:1 (contrastJS). It fails naming each that falls short,
+// with its colors.
 func TestContrast(t *testing.T) {
 	b, _, _ := a11yTeam(t)
 	browser := newBrowser(t)
-	id := func(name string) string { return b.account(name).ID }
 	var fails []string
 	total := 0
 	seen := map[string]float64{}
@@ -543,7 +535,6 @@ func TestContrast(t *testing.T) {
 			fails = append(fails, f...)
 		}
 	}
-	closeAll := `for (const s of ['#chat .close', '#taskwin .close', '#launch .cancel', '#task .cancel']) { const e = document.querySelector(s); if (e && e.closest('.modal, #chat, #taskwin') && !e.closest('[hidden]')) e.click() }`
 	dialogs := []contrastView{
 		{"launch dialog", `document.getElementById('new-emp').click()`, `!document.getElementById('launch').hidden && document.querySelectorAll('#launch select option').length > 1`, `#launch`, ``},
 		// folded, the bypassPermissions warning under its line; unfolded, the fields, the warning under the select
@@ -582,32 +573,6 @@ func TestContrast(t *testing.T) {
 			`#chat`, `localStorage.removeItem('symphony.steps')`}
 	}
 
-	// ---------- the pixel office ----------
-	office, _ := clockTab(t, browser, b.URL+"/t/office/?lang=en", 0)
-	do(t, office, 10*time.Second, chromedp.EmulateViewport(1400, 860))
-	p := &screens{t: t, ctx: office, lang: "a11y-office"}
-	waitUntil(t, 20*time.Second, "the office shows the team", func() bool {
-		return p.is(`document.querySelectorAll('.emp-label').length >= 5 && document.querySelectorAll('.room-plate').length > 0 && !!document.querySelector('.room-plate[data-task]')`)
-	})
-	time.Sleep(time.Second) // the figures find their places
-	label := func(name string) string {
-		return fmt.Sprintf(`document.querySelector('.emp-label:not(.member)[data-account=%q]').click()`, id(name))
-	}
-	run(p, "office", append([]contrastView{
-		{"page", ``, ``, `body`, ``},
-		{"roster", `document.querySelector('#roster button').focus()`, `getComputedStyle(document.getElementById('roster')).position === 'fixed'`, `#roster`, `document.activeElement.blur()`},
-		{"logs", `document.getElementById('open-log').click(); document.getElementById('open-msgs').click()`, `!document.getElementById('log').hidden && !document.getElementById('msgs-panel').hidden`, `body`,
-			`document.querySelector('#log .close').click(); document.querySelector('#msgs-panel .close').click()`},
-		{"search", `(f => { f.focus(); f.value = 'a'; f.dispatchEvent(new Event('input')) })(document.getElementById('find'))`, `!document.getElementById('find-list').hidden`, `#hud`,
-			`(f => { f.value = ''; f.dispatchEvent(new Event('input')); f.blur() })(document.getElementById('find'))`},
-		{"chat", label("alice"), `!document.getElementById('chat').hidden && document.querySelectorAll('#chat .flow .it').length >= 8`, `#chat`, closeAll},
-		withTeardown(steps(label("alice")), closeAll),
-		{"asks", label("carol"), `document.querySelectorAll('#chat #asks .card').length === 2`, `#chat`, closeAll},
-		{"off duty", label("erin"), `!document.getElementById('chat').hidden && !document.querySelector('#chat .offline').hidden`, `#chat`, closeAll},
-		{"task window", `document.querySelector('.room-plate[data-task]').click()`, `!document.getElementById('taskwin').hidden && document.querySelectorAll('#taskwin .tmsg').length >= 3`, `#taskwin`, ``},
-		{"member", `document.querySelector('#taskwin .mrow').click()`, `!document.getElementById('chat').hidden`, `#taskwin`, closeAll},
-	}, dialogs...))
-
 	// ---------- Coworkers: light and dark (picked in its settings) ----------
 	scheme := func(p *screens, dark bool) bool {
 		if !p.is(`!!document.getElementById('set-scheme-dark')`) {
@@ -627,6 +592,7 @@ func TestContrast(t *testing.T) {
 			{"asks", `[...document.querySelectorAll('#people .row')].find(r => r.textContent.includes('carol')).click()`, `document.querySelectorAll('#chat .flow .it.ask.carded .card').length === 2`, `body`, ``},
 			{"off duty", `[...document.querySelectorAll('#people .row')].find(r => r.textContent.includes('erin')).click()`, `!document.getElementById('chat').hidden && !document.querySelector('#chat .offline').hidden`, `body`, ``},
 			{"group", `document.querySelector('#groups .row').click()`, `!document.getElementById('taskwin').hidden && document.querySelectorAll('#taskwin .tmsg').length >= 3`, `body`, ``},
+			{"member", `document.querySelector('#taskwin .mrow').click()`, `!document.getElementById('chat').hidden && !!document.querySelector('#profile .link[data-group]')`, `body`, ``},
 		}, dialogs...)},
 	}
 	for _, th := range themes {
@@ -712,14 +678,12 @@ const fitsJS = `(() => {
   return out.join('\n')
 })()`
 
-// TestNarrow opens every theme in a window 800 pixels wide (and the approval page in one 400 wide, a phone's) with the
-// made-up office of a11yTeam (no tokens): the page doesn't scroll sideways, and the windows and dialogs fit in it,
-// scrolling inside (a member's window stacks over its task window, as below 1250 pixels). Screenshots into
-// e2e/artifacts/screens/narrow-*.
+// TestNarrow opens Coworkers in a window 800 pixels wide and in one 320 wide (and the approval page in one 400 wide, a
+// phone's, and one 320 wide) with the made-up office of a11yTeam (no tokens): the page doesn't scroll sideways, and
+// the windows and dialogs fit in it, scrolling inside. Screenshots into e2e/artifacts/screens/narrow-*.
 func TestNarrow(t *testing.T) {
 	b, _, _ := a11yTeam(t)
 	browser := newBrowser(t)
-	id := func(name string) string { return b.account(name).ID }
 	check := func(p *screens, where string) {
 		t.Helper()
 		time.Sleep(200 * time.Millisecond)
@@ -727,7 +691,6 @@ func TestNarrow(t *testing.T) {
 			t.Errorf("%s %s:\n%s", p.lang, where, bad)
 		}
 	}
-	closeAll := `for (const s of ['#chat .close', '#taskwin .close', '#launch .cancel', '#task .cancel']) { const e = document.querySelector(s); if (e && !e.closest('[hidden]')) e.click() }`
 	// the employees page over the settings: its list, a row being edited, the import with what it would do
 	staffOpen, staffReady := `document.querySelector('#settings .people .all').click()`, `!document.getElementById('staff').hidden && document.querySelectorAll('#staff .emp').length === 5`
 	staffImport := `document.querySelector('#staff-editor .cancel').click(); document.querySelector('#staff .tools .import').click(); (x => { x.value = 'zed\nalice'; x.dispatchEvent(new Event('input')) })(document.getElementById('staff-import-text'))`
@@ -738,36 +701,23 @@ func TestNarrow(t *testing.T) {
 		ready string
 		steps []step
 	}{
-		{"office", 800, 600, `document.querySelectorAll('.emp-label').length >= 5`, []step{
-			{"page", ``, ``},
-			{"chat", fmt.Sprintf(`document.querySelector('.emp-label:not(.member)[data-account=%q]').click()`, id("alice")), `!document.getElementById('chat').hidden`},
-			{"asks", closeAll + fmt.Sprintf(`; document.querySelector('.emp-label:not(.member)[data-account=%q]').click()`, id("carol")), `document.querySelectorAll('#chat #asks .card').length === 2`},
-			{"task window", closeAll + `; document.querySelector('.room-plate[data-task]').click()`, `!document.getElementById('taskwin').hidden`},
-			{"member", `document.querySelector('#taskwin .mrow').click()`, `!document.getElementById('chat').hidden && document.getElementById('chat').classList.contains('stacked')`},
-			{"launch", closeAll + `; document.getElementById('new-emp').click()`, `!document.getElementById('launch').hidden`},
-			{"launch advanced", `document.querySelector('#launch .adv').open = true`, `document.querySelector('#launch .preview').getClientRects().length > 0`},
-			{"task dialog", closeAll + `; document.getElementById('new-task').click()`, `!document.getElementById('task').hidden`},
-			{"logs", closeAll + `; document.getElementById('open-log').click(); document.getElementById('open-msgs').click()`, `!document.getElementById('msgs-panel').hidden`},
-			{"settings", `document.querySelector('#log .close').click(); document.querySelector('#msgs-panel .close').click(); document.getElementById('open-settings').click()`, `!document.getElementById('settings').hidden && !!document.querySelector('#settings .about dd')`},
-			{"employees", staffOpen, staffReady},
-			{"employees edited", `document.querySelector('#staff .emp .edit').click()`, `!!document.getElementById('staff-editor')`},
-			{"employees import", staffImport, `document.querySelectorAll('#staff .importer .preview li').length === 2`},
-		}},
 		{"messenger", 800, 600, `document.querySelectorAll('#people .row').length === 5`, []step{
 			{"sidebar", ``, ``},
 			{"chat", `[...document.querySelectorAll('#people .row')].find(r => r.textContent.includes('alice')).click()`, `!document.getElementById('chat').hidden`},
 			{"asks", `[...document.querySelectorAll('#people .row')].find(r => r.textContent.includes('carol')).click()`, `document.querySelectorAll('#chat .flow .it.ask.carded .card').length === 2`},
 			{"group", `document.querySelector('#groups .row').click()`, `!document.getElementById('taskwin').hidden`},
+			{"member", `document.querySelector('#taskwin .mrow').click()`, `!document.getElementById('chat').hidden && !!document.querySelector('#profile .link[data-group]')`},
 			{"launch", `document.getElementById('new-emp').click()`, `!document.getElementById('launch').hidden`},
 			{"launch advanced", `document.querySelector('#launch .adv').open = true`, `document.querySelector('#launch .preview').getClientRects().length > 0`},
-			{"settings", `document.querySelector('#launch .cancel').click(); document.querySelector('.open-settings').click()`, `!document.getElementById('settings').hidden && !!document.querySelector('#settings .about dd')`},
+			{"task dialog", `document.querySelector('#launch .cancel').click(); document.getElementById('new-task').click()`, `!document.getElementById('task').hidden`},
+			{"settings", `document.querySelector('#task .cancel').click(); document.querySelector('.open-settings').click()`, `!document.getElementById('settings').hidden && !!document.querySelector('#settings .about dd')`},
 			{"employees", staffOpen, staffReady},
 			{"employees edited", `document.querySelector('#staff .emp .edit').click()`, `!!document.getElementById('staff-editor')`},
 			{"employees import", staffImport, `document.querySelectorAll('#staff .importer .preview li').length === 2`},
 		}},
 	}
 	for _, pg := range pages {
-		// the theme's narrow window, then 320 pixels: a phone, or a window of 1280 zoomed to 400% (WCAG 2.1's reflow)
+		// a narrow window, then 320 pixels: a phone, or a window of 1280 zoomed to 400% (WCAG 2.1's reflow)
 		for _, size := range [][2]int64{{pg.w, pg.h}, {320, 640}} {
 			ctx, closeTab := clockTab(t, browser, b.URL+"/t/"+pg.theme+"/?lang=en", 0)
 			do(t, ctx, 10*time.Second, chromedp.EmulateViewport(size[0], size[1]))
@@ -889,14 +839,16 @@ func unnamed(t *testing.T, ctx context.Context, expr string) []string {
 	}))
 }
 
-// TestA11y walks the pages with the keyboard and asks the accessibility tree what a screen reader hears, with the
-// made-up office of a11yTeam (no tokens). The pixel office: "/" and the search box (a combobox) open an employee's
-// window, a modal dialog named by the employee, where Tab and Shift+Tab stay and from which Esc goes back to the search
-// box; Esc leaves a window whose asks wait alone; the roster (out of sight until it has the focus) reaches every
-// employee and room, the task window's members open their windows docked beside it (a region), and closing each puts
-// the focus back where it was; the launch dialog's fields are named by their labels; a new ask is announced; the
-// connection banner is a polite status. Coworkers: its switches say whether they're on, its rows open with Enter,
-// and it lays its windows out as regions. Every control on every view has a name.
+// TestA11y walks Coworkers and the approval page with the keyboard and asks the accessibility tree what a screen
+// reader hears, with the made-up office of a11yTeam (no tokens). The settings' gear is named and opens a dialog named
+// Settings, where Tab stays and the colors are a named group, and Esc goes back to the gear; a coworker's row opens
+// with Enter into a region named by the coworker, the conversation a region named after her, a subagent's tool call
+// read apart from its tool, and the window keeps the focus when the button it was on goes; an ask's card is a group
+// named by its top line; the group's window is a region named by its task, its team chat's mention picker a named
+// listbox the box points into, and a member's row opens a region named by the member; the launch dialog opens on its
+// name field, its fields named by their labels, Advanced settings a disclosure that says what the start will use, and
+// Esc puts the focus back on its button; a new ask is announced; the connection banner is a polite status. Every
+// control on every view has a name.
 func TestA11y(t *testing.T) {
 	b, task, tokens := a11yTeam(t)
 	browser := newBrowser(t)
@@ -920,307 +872,182 @@ func TestA11y(t *testing.T) {
 		return p.is(fmt.Sprintf(`!!document.activeElement && !!document.activeElement.closest(%q)`, sel))
 	}
 
-	// ---------- the pixel office ----------
-	office, _ := clockTab(t, browser, b.URL+"/t/office/?lang=en", 0)
-	do(t, office, 10*time.Second, chromedp.EmulateViewport(1400, 860))
-	p := &screens{t: t, ctx: office, lang: "a11y-office"}
-	waitUntil(t, 20*time.Second, "the office shows the team", func() bool {
-		return p.is(`document.querySelectorAll('.emp-label').length >= 5 && !!document.querySelector('.room-plate[data-task]') && document.querySelectorAll('#roster button').length >= 6`)
+	// ---------- Coworkers ----------
+	ctx, closeTab := clockTab(t, browser, b.URL+"/t/messenger/?lang=en", 0)
+	do(t, ctx, 10*time.Second, chromedp.EmulateViewport(1400, 860))
+	q := &screens{t: t, ctx: ctx, lang: "a11y-messenger"}
+	waitUntil(t, 20*time.Second, "the page shows the team and the group", func() bool {
+		return q.is(`document.querySelectorAll('#people .row').length === 5 && document.querySelectorAll('#groups .row').length === 1`)
 	})
-	named(p, "page", `document.body`)
-	if !p.is(`(c => c.getAttribute('role') === 'status' && c.getAttribute('aria-live') === 'polite')(document.getElementById('conn'))`) {
+	named(q, "page", `document.body`)
+	if !q.is(`(c => c.getAttribute('role') === 'status' && c.getAttribute('aria-live') === 'polite')(document.getElementById('conn'))`) {
 		t.Error("the connection banner should be a polite status")
 	}
-	if n := ax(t, office, `document.getElementById('hud-tab')`); n.Name == "" || n.Role != "button" {
-		t.Errorf("the HUD's tab should be a named button: %+v", n)
+	// the gear: named, it opens the settings, a dialog named by its heading, where Tab stays, the colors a named group
+	// of named choices, and Esc goes back to the gear
+	if n := ax(t, ctx, `document.querySelector('.open-settings')`); !strings.HasPrefix(n.Name, "Settings") { // (and says when the error log has news)
+		t.Errorf("the settings' gear should be named Settings: %+v", n)
 	}
-
-	// "/", the search box, Enter: bob's window, a modal dialog named bob
-	key(office, "/", false)
-	if !p.is(`document.activeElement === document.getElementById('find')`) {
-		t.Fatal(`"/" should focus the search box`)
+	q.run(`document.querySelector('.open-settings').focus()`)
+	key(ctx, kb.Enter, false)
+	waitUntil(t, 5*time.Second, "the settings open, the focus in them", func() bool { return focusIn(q, "#settings") })
+	if n := ax(t, ctx, `document.getElementById('settings')`); n.Role != "dialog" || n.Name != "Settings" {
+		t.Errorf("the settings should be a dialog named Settings: %+v", n)
 	}
-	if n := ax(t, office, `document.getElementById('find')`); n.Role != "combobox" || n.Name == "" {
-		t.Errorf("the search box should be a named combobox: %+v", n)
+	if n := ax(t, ctx, `document.querySelector('#settings .scheme')`); n.Role != "radiogroup" || n.Name != "Colors" {
+		t.Errorf("light or dark should be a group named Colors: %+v", n)
 	}
-	p.run(`document.getElementById('find').value = ''`) // (CDP types the "/" as a char event of its own, which a real keyboard wouldn't)
-	key(office, "bob", false)
-	waitUntil(t, 5*time.Second, "the search lists bob, the box points at him", func() bool {
-		return p.is(`!document.getElementById('find-list').hidden && document.getElementById('find').getAttribute('aria-expanded') === 'true' && document.getElementById(document.getElementById('find').getAttribute('aria-activedescendant'))?.getAttribute('aria-selected') === 'true'`)
-	}, func() string {
-		return p.js(`JSON.stringify({ value: document.getElementById('find').value, active: document.activeElement.id, hidden: document.getElementById('find-list').hidden, list: document.getElementById('find-list').innerHTML.slice(0, 300), expanded: document.getElementById('find').getAttribute('aria-expanded'), ad: document.getElementById('find').getAttribute('aria-activedescendant') })`)
-	})
-	key(office, kb.Enter, false)
-	waitUntil(t, 5*time.Second, "Enter opens bob's window with the focus in it", func() bool {
-		return p.is(`!document.getElementById('chat').hidden`) && focusIn(p, "#chat")
-	})
-	if n := ax(t, office, `document.getElementById('chat')`); n.Role != "dialog" || n.Name != "bob" || !p.is(`document.getElementById('chat').getAttribute('aria-modal') === 'true'`) {
-		t.Errorf("bob's window should be a modal dialog named bob: %+v", n)
-	}
-	named(p, "chat", `document.getElementById('chat')`)
-	for i := 0; i < 14; i++ { // round and round, never out
-		key(office, kb.Tab, i >= 7)
-		if !focusIn(p, "#chat") {
-			t.Fatalf("Tab %d left the window: the focus is on %s", i, p.js(`document.activeElement.outerHTML.slice(0, 80)`))
+	for i := 0; i < 40; i++ {
+		key(ctx, kb.Tab, false)
+		if !focusIn(q, "#settings") {
+			t.Errorf("Tab left the settings at its %d. press", i+1)
+			break
 		}
 	}
-	key(office, kb.Escape, false)
-	if !p.is(`document.getElementById('chat').hidden && document.activeElement === document.getElementById('find')`) {
-		t.Errorf("Esc should close bob's window and put the focus back on the search box: %s", p.js(`document.activeElement.outerHTML.slice(0, 80)`))
+	named(q, "settings", `document.getElementById('settings')`)
+	key(ctx, kb.Escape, false)
+	waitUntil(t, 5*time.Second, "Esc closes the settings, back on the gear", func() bool {
+		return q.is(`document.getElementById('settings').hidden && document.activeElement === document.querySelector('.open-settings')`)
+	})
+	if n := ax(t, ctx, `document.getElementById('groups-count').parentElement`); n.Name != "Group chats 1" {
+		t.Errorf("the group chats' heading should read its count apart: %q", n.Name)
 	}
 
-	// a window whose asks wait stays on Esc
-	p.run(`document.querySelector('#stats .chip.hot').focus()`)
-	key(office, kb.Enter, false)
-	waitUntil(t, 5*time.Second, "the pending chip opens carol's window, the focus on her first card", func() bool {
-		return p.is(`document.querySelectorAll('#chat #asks .card').length === 2`) && focusIn(p, "#chat #asks")
-	}, func() string {
-		return p.js(`document.querySelectorAll('#chat #asks .card').length + ' cards; active: ' + document.activeElement.outerHTML.slice(0, 120) + '; asking: ' + document.querySelector('#chat .dock').className`)
+	// a row opens with Enter: alice's conversation, a region named by her; the conversation a region named after her
+	// (the keyboard reaches it as it scrolls); a subagent's tool call read apart from its tool
+	row := func(name string) string {
+		return fmt.Sprintf(`document.querySelector('#people .row[data-account=%q]')`, id(name))
+	}
+	q.run(row("alice") + `.focus()`)
+	key(ctx, kb.Enter, false)
+	waitUntil(t, 5*time.Second, "Enter on alice's row opens her conversation", func() bool {
+		return q.is(`!document.getElementById('chat').hidden && document.querySelector('#chat h2').textContent === 'alice'`)
 	})
-	if n := ax(t, office, `document.querySelector('#chat #asks .card')`); n.Role != "group" || !strings.Contains(n.Name, "Permission") {
-		t.Errorf("an ask's card should be a group named by its top line: %+v", n)
+	if n := ax(t, ctx, `document.getElementById('chat')`); n.Role != "region" || n.Name != "alice" {
+		t.Errorf("the employee window should be a region named by the employee: %+v", n)
 	}
-	named(p, "asks", `document.getElementById('chat')`)
-	key(office, kb.Escape, false)
-	if p.is(`document.getElementById('chat').hidden`) {
-		t.Error("Esc shouldn't close a window whose asks wait for an answer")
+	named(q, "chat", `document.getElementById('chat')`)
+	if n := ax(t, ctx, `document.querySelector('#chat .flow')`); n.Role != "region" || n.Name != "Conversation with alice" {
+		t.Errorf("the conversation should be a region named after the employee (the keyboard reaches it): %+v", n)
 	}
-	p.run(`document.querySelector('#chat .close').click()`)
-
-	// the roster: Tab from the HUD's tab, out of sight until then
-	if p.is(`getComputedStyle(document.getElementById('roster')).position === 'fixed'`) {
-		t.Error("the roster should be out of sight until it has the focus")
+	if !q.is(`[...document.querySelectorAll('#chat .flow .it.tool')].some(r => r.textContent.includes('subagent Grep'))`) {
+		t.Errorf("a subagent's tool call should read its badge apart from the tool: %s", q.js(`[...document.querySelectorAll('#chat .flow .it.tool')].map(r => r.textContent).join(' | ')`))
 	}
-	p.run(`document.getElementById('hud-tab').focus()`)
-	key(office, kb.Tab, false)
-	first := fmt.Sprintf(`#roster button[data-account=%q]`, id("alice"))
-	if !p.is(fmt.Sprintf(`document.activeElement === document.querySelector(%q) && getComputedStyle(document.getElementById('roster')).position === 'fixed'`, first)) {
-		t.Fatalf("Tab after the HUD should reach the roster's first employee, and show the roster: %s", p.js(`document.activeElement.outerHTML.slice(0, 80)`))
-	}
-	if n := ax(t, office, `document.querySelector('`+first+`')`); !strings.HasPrefix(n.Name, "alice") || !strings.Contains(n.Name, "Working") {
-		t.Errorf("alice's button should say who and what she does: %+v", n)
-	}
-	p.shot("roster")
-	key(office, kb.Enter, false)
-	waitUntil(t, 5*time.Second, "Enter on alice opens her window", func() bool {
-		return p.is(`!document.getElementById('chat').hidden && document.querySelector('#chat h2').textContent === 'alice'`) && focusIn(p, "#chat")
-	})
-	key(office, kb.Escape, false)
-	if !p.is(fmt.Sprintf(`document.getElementById('chat').hidden && document.activeElement === document.querySelector(%q)`, first)) {
-		t.Errorf("closing alice's window should put the focus back on her button: %s", p.js(`document.activeElement.outerHTML.slice(0, 80)`))
-	}
-	// the room with the task: its window (a dialog), a member's window docked beside it (a region), back step by step
-	room := `#roster button[data-room]:not([aria-disabled])`
-	p.run(fmt.Sprintf(`[...document.querySelectorAll(%q)].find(b => b.textContent.includes(%q)).focus()`, room, task.ID))
-	key(office, kb.Enter, false)
-	waitUntil(t, 5*time.Second, "Enter on the room opens its task window, the focus in it", func() bool {
-		return p.is(`!document.getElementById('taskwin').hidden`) && focusIn(p, "#taskwin")
-	})
-	if n := ax(t, office, `document.getElementById('taskwin')`); n.Role != "dialog" || !strings.HasPrefix(n.Name, task.ID) {
-		t.Errorf("the task window should be a dialog named by its task: %+v", n)
-	}
-	named(p, "task window", `document.getElementById('taskwin')`)
-	// the team chat's mention picker: "@" lists the members, the box points at the one picked, the arrows move it, Esc
-	// closes the picker alone
-	box := `document.querySelector('#taskwin .tsay textarea')`
-	p.run(box + `.focus()`)
-	key(office, "@", false)
-	waitUntil(t, 5*time.Second, "@ opens the mention picker, the box pointing at its first member", func() bool {
-		return p.is(`(box => { const list = document.getElementById(box.getAttribute('aria-controls')), at = document.getElementById(box.getAttribute('aria-activedescendant'));` +
-			` return !!list && !list.hidden && box.getAttribute('aria-autocomplete') === 'list' && box.getAttribute('aria-haspopup') === 'listbox' &&` +
-			` !!at && list.contains(at) && at.getAttribute('role') === 'option' && at.getAttribute('aria-selected') === 'true' })(` + box + `)`)
-	}, func() string {
-		return p.js(`(box => JSON.stringify({ attrs: [...box.attributes].map(a => a.name + '=' + a.value), list: document.querySelector('#taskwin .tpick').outerHTML.slice(0, 400) }))(` + box + `)`)
-	})
-	if n := ax(t, office, `document.querySelector('#taskwin .tpick')`); n.Role != "listbox" || n.Name == "" {
-		t.Errorf("the mention picker should be a named listbox: %+v", n)
-	}
-	if n := ax(t, office, box); n.Role != "textbox" || n.Name == "" {
-		t.Errorf("the team chat's box should stay a named textbox: %+v", n)
-	}
-	picked := p.js(box + `.getAttribute('aria-activedescendant')`)
-	key(office, kb.ArrowDown, false)
-	if !p.is(fmt.Sprintf(`(box => box.getAttribute('aria-activedescendant') !== %q && document.getElementById(box.getAttribute('aria-activedescendant'))?.getAttribute('aria-selected') === 'true' && document.querySelectorAll('#taskwin .tpick [aria-selected=true]').length === 1)(`+box+`)`, picked)) {
-		t.Errorf("ArrowDown should move the picker's choice, and the box's aria-activedescendant with it: %s", p.js(`document.querySelector('#taskwin .tpick').outerHTML.slice(0, 400)`))
-	}
-	key(office, kb.Escape, false)
-	if !p.is(`document.querySelector('#taskwin .tpick').hidden && !` + box + `.hasAttribute('aria-activedescendant') && !document.getElementById('taskwin').hidden`) {
-		t.Error("Esc should close the mention picker alone, the box pointing at nothing")
-	}
-	p.run(`(b => { b.value = ''; b.dispatchEvent(new Event('input')) })(` + box + `)`)
-	for i := 0; i < 20 && !p.is(`document.activeElement.classList.contains('mrow')`); i++ {
-		key(office, kb.Tab, false)
-	}
-	if !p.is(`document.activeElement.classList.contains('mrow')`) {
-		t.Fatal("Tab should reach the task's members")
-	}
-	member := p.js(`document.activeElement.querySelector('b').textContent`)
-	key(office, kb.Enter, false)
-	waitUntil(t, 5*time.Second, "Enter on a member opens its window docked beside the task window", func() bool {
-		return p.is(fmt.Sprintf(`!document.getElementById('chat').hidden && document.getElementById('chat').classList.contains('docked') && document.querySelector('#chat h2').textContent === %q`, member)) && focusIn(p, "#chat")
-	})
-	if n := ax(t, office, `document.getElementById('chat')`); n.Role != "region" || n.Name != member {
-		t.Errorf("a docked member's window should be a region named by the member: %+v", n)
-	}
-	key(office, kb.Escape, false)
-	if !p.is(fmt.Sprintf(`document.getElementById('chat').hidden && !document.getElementById('taskwin').hidden && document.activeElement.classList.contains('mrow') && document.activeElement.querySelector('b').textContent === %q`, member)) {
-		t.Errorf("Esc should close the member's window and put the focus back on its row: %s", p.js(`document.activeElement.outerHTML.slice(0, 80)`))
-	}
-	key(office, kb.Escape, false)
-	if !p.is(fmt.Sprintf(`document.getElementById('taskwin').hidden && document.activeElement?.dataset.room !== undefined && document.activeElement.textContent.includes(%q)`, task.ID)) {
-		t.Errorf("Esc should close the task window and put the focus back on the room's button: %s", p.js(`document.activeElement.outerHTML.slice(0, 80)`))
-	}
-
-	// the launch dialog: its fields named by their labels, back to its button
-	p.run(`document.getElementById('new-emp').focus()`)
-	key(office, kb.Enter, false)
-	waitUntil(t, 10*time.Second, "the launch dialog opens on its name field", func() bool {
-		return p.is(`!document.getElementById('launch').hidden && document.activeElement === document.getElementById('launch-name')`)
-	})
-	if n := ax(t, office, `document.getElementById('launch-name')`); !strings.HasPrefix(n.Name, "Name") {
-		t.Errorf("the name field should be named by its label: %+v", n)
-	}
-	named(p, "launch", `document.getElementById('launch')`)
-	// Advanced settings: the next stop, a disclosure named by what it is and what the start will use; Enter unfolds it
-	// and Tab goes on into its fields
-	key(office, kb.Tab, false)
-	if n := ax(t, office, `document.querySelector('#launch .adv > summary')`); !p.is(`document.activeElement === document.querySelector('#launch .adv > summary')`) ||
-		!strings.HasPrefix(n.Name, "Advanced settings own folder") {
-		t.Errorf("Tab from the name should reach Advanced settings, named with what the start will use: %+v, %s", n, p.js(`document.activeElement.outerHTML.slice(0, 80)`))
-	}
-	key(office, kb.Enter, false)
-	key(office, kb.Tab, false)
-	if n := ax(t, office, `document.activeElement`); !p.is(`document.querySelector('#launch .adv').open && document.activeElement === document.getElementById('launch-dir')`) || !strings.HasPrefix(n.Name, "Working folder") {
-		t.Errorf("Enter should unfold it, and Tab go on to the folder, named by its label: %+v, %s", n, p.js(`document.activeElement.outerHTML.slice(0, 80)`))
-	}
-	p.run(`document.getElementById('launch-name').focus()`)
-	key(office, kb.Tab, true)
-	if !focusIn(p, "#launch") {
-		t.Error("Shift+Tab from the first field should stay in the dialog")
-	}
-	key(office, kb.Escape, false)
-	if !p.is(`document.getElementById('launch').hidden && document.activeElement === document.getElementById('new-emp')`) {
-		t.Errorf("Esc should close the launch dialog and put the focus back on its button: %s", p.js(`document.activeElement.outerHTML.slice(0, 80)`))
-	}
-	p.run(`document.getElementById('new-task').click()`)
-	waitUntil(t, 10*time.Second, "the task dialog opens", func() bool { return p.is(`!document.getElementById('task').hidden`) })
-	p.run(`document.querySelector('#task .add-adv').click()`)
-	named(p, "task dialog", `document.getElementById('task')`)
-	p.run(`document.querySelector('#task .cancel').click()`)
-
-	// redraws under the keyboard (a screen reader read the same row again at every one, and lost its place when a button
-	// went): the roster's button and the search's hit stay the elements they were as their words change, the name and
-	// the line of a hit are words apart, and the employee window keeps the focus when the button it was on goes
+	// the window keeps the focus when the button it was on goes (a screen reader lost its place when the Stop button went)
 	say := func(name, session string, body map[string]any) {
 		t.Helper()
 		body["session"] = session
 		b.post(t, tokens[name], "/api/event", body)
 	}
-	bobBtn := fmt.Sprintf(`document.querySelector('#roster button[data-account=%q]')`, id("bob"))
-	p.run(bobBtn + `.focus(); window.__kept = document.activeElement`)
-	say("bob", "s-bob", map[string]any{"kind": "tool.start", "tool": "Bash", "summary": "npm test", "toolUseId": "tb1"})
-	waitUntil(t, 5*time.Second, "bob's roster button says he works", func() bool { return p.is(bobBtn + `.textContent.includes('Bash')`) })
-	if !p.is(`document.activeElement === window.__kept && window.__kept.isConnected`) {
-		t.Errorf("bob's roster button was drawn anew under the focus: %s", p.js(`document.activeElement.outerHTML.slice(0, 80)`))
-	}
-	said := false // (polled, not waited for: the checks after this run either way)
-	for end := time.Now().Add(5 * time.Second); !said && time.Now().Before(end); time.Sleep(100 * time.Millisecond) {
-		said = p.is(`(a => !!a && a.textContent.startsWith('bob · Working'))(document.getElementById('announce'))`)
-	}
-	if !said {
-		t.Errorf("the change of bob's state should be said, his button having the focus: %s", p.js(`document.getElementById('announce')?.textContent ?? 'no #announce'`))
-	}
-	p.run(`(f => { f.focus(); f.value = 'bob'; f.dispatchEvent(new Event('input')) })(document.getElementById('find')); window.__kept = document.getElementById(document.getElementById('find').getAttribute('aria-activedescendant'))`)
-	if n := ax(t, office, `window.__kept`); !strings.HasPrefix(n.Name, "bob ") || n.Role != "option" {
-		t.Errorf("the search's hit should be an option named by the name, then its line: %+v", n)
-	}
-	say("bob", "s-bob", map[string]any{"kind": "tool.end", "tool": "Bash", "summary": "npm test", "toolUseId": "tb1", "durationMs": 900})
-	say("bob", "s-bob", map[string]any{"kind": "turn.complete", "turnId": "b2"})
-	waitUntil(t, 5*time.Second, "bob's hit says he idles", func() bool {
-		return p.is(`document.getElementById(document.getElementById('find').getAttribute('aria-activedescendant'))?.textContent.includes('Idle')`)
-	})
-	if !p.is(`document.getElementById(document.getElementById('find').getAttribute('aria-activedescendant')) === window.__kept`) {
-		t.Error("the search's hit was drawn anew while the box pointed at it")
-	}
-	p.run(`(f => { f.value = ''; f.dispatchEvent(new Event('input')); f.blur() })(document.getElementById('find'))`)
-	p.run(fmt.Sprintf(`document.querySelector('#roster button[data-account=%q]').click()`, id("alice")))
-	waitUntil(t, 5*time.Second, "alice's window shows her Stop button", func() bool { return p.is(`!!document.querySelector('#chat .head .btns .stop')`) })
-	if n := ax(t, office, `document.querySelector('#chat .flow')`); n.Role != "region" || n.Name != "Conversation with alice" {
-		t.Errorf("the conversation should be a region named after the employee (the keyboard reaches it): %+v", n)
-	}
-	if !p.is(`[...document.querySelectorAll('#chat .flow .it.tool')].some(r => r.textContent.includes('subagent Grep'))`) {
-		t.Errorf("a subagent's tool call should read its badge apart from the tool: %s", p.js(`[...document.querySelectorAll('#chat .flow .it.tool')].map(r => r.textContent).join(' | ')`))
-	}
-	p.run(`document.querySelector('#chat .head .btns .stop').focus()`)
+	waitUntil(t, 5*time.Second, "alice's window shows her Stop button", func() bool { return q.is(`!!document.querySelector('#chat .head .btns .stop')`) })
+	q.run(`document.querySelector('#chat .head .btns .stop').focus()`)
 	say("alice", "s-alice", map[string]any{"kind": "tool.end", "tool": "Bash", "summary": "make test", "toolUseId": "tu9", "durationMs": 1200})
 	say("alice", "s-alice", map[string]any{"kind": "turn.complete", "turnId": "a2"})
-	waitUntil(t, 5*time.Second, "alice's turn ends, her Stop button goes", func() bool { return p.is(`!document.querySelector('#chat .head .btns .stop')`) })
-	if !p.is(`document.activeElement !== document.body && document.getElementById('chat').contains(document.activeElement)`) {
-		t.Errorf("the focus fell out of alice's window when her Stop button went: %s", p.js(`document.activeElement.outerHTML.slice(0, 80)`))
+	waitUntil(t, 5*time.Second, "alice's turn ends, her Stop button goes", func() bool { return q.is(`!document.querySelector('#chat .head .btns .stop')`) })
+	if !q.is(`document.activeElement !== document.body && document.getElementById('chat').contains(document.activeElement)`) {
+		t.Errorf("the focus fell out of alice's window when her Stop button went: %s", q.js(`document.activeElement.outerHTML.slice(0, 80)`))
 	}
-	p.run(`document.querySelector('#chat .close').click()`)
-	if !p.is(`document.getElementById('find').getAttribute('aria-keyshortcuts') === '/'`) {
-		t.Error(`the search box should say "/" reaches it (aria-keyshortcuts)`)
+
+	// an ask's card: a group named by its top line
+	q.run(row("carol") + `.click()`)
+	waitUntil(t, 5*time.Second, "carol's conversation shows her two cards", func() bool {
+		return q.is(`document.querySelectorAll('#chat .flow .it.ask.carded .card').length === 2`)
+	})
+	if n := ax(t, ctx, `document.querySelector('#chat .flow .card')`); n.Role != "group" || !strings.Contains(n.Name, "Permission") {
+		t.Errorf("an ask's card should be a group named by its top line: %+v", n)
 	}
+	named(q, "asks", `document.getElementById('chat')`)
+
+	// the group: Enter on its row opens its window, a region named by the task; the team chat's mention picker: "@"
+	// lists the members, the box points at the one picked, the arrows move it, Esc closes the picker alone; a member's
+	// row opens its conversation, a region named by the member
+	q.run(fmt.Sprintf(`document.querySelector('#groups .row[data-group=%q]').focus()`, task.ID))
+	key(ctx, kb.Enter, false)
+	waitUntil(t, 5*time.Second, "Enter on the group opens its window", func() bool { return q.is(`!document.getElementById('taskwin').hidden`) })
+	if n := ax(t, ctx, `document.getElementById('taskwin')`); n.Role != "region" || !strings.HasPrefix(n.Name, task.ID) {
+		t.Errorf("the group's window should be a region named by its task: %+v", n)
+	}
+	named(q, "task window", `document.getElementById('taskwin')`)
+	box := `document.querySelector('#taskwin .tsay textarea')`
+	q.run(box + `.focus()`)
+	key(ctx, "@", false)
+	waitUntil(t, 5*time.Second, "@ opens the mention picker, the box pointing at its first member", func() bool {
+		return q.is(`(box => { const list = document.getElementById(box.getAttribute('aria-controls')), at = document.getElementById(box.getAttribute('aria-activedescendant'));` +
+			` return !!list && !list.hidden && box.getAttribute('aria-autocomplete') === 'list' && box.getAttribute('aria-haspopup') === 'listbox' &&` +
+			` !!at && list.contains(at) && at.getAttribute('role') === 'option' && at.getAttribute('aria-selected') === 'true' })(` + box + `)`)
+	}, func() string {
+		return q.js(`(box => JSON.stringify({ attrs: [...box.attributes].map(a => a.name + '=' + a.value), list: document.querySelector('#taskwin .tpick').outerHTML.slice(0, 400) }))(` + box + `)`)
+	})
+	if n := ax(t, ctx, `document.querySelector('#taskwin .tpick')`); n.Role != "listbox" || n.Name == "" {
+		t.Errorf("the mention picker should be a named listbox: %+v", n)
+	}
+	if n := ax(t, ctx, box); n.Role != "textbox" || n.Name == "" {
+		t.Errorf("the team chat's box should stay a named textbox: %+v", n)
+	}
+	picked := q.js(box + `.getAttribute('aria-activedescendant')`)
+	key(ctx, kb.ArrowDown, false)
+	if !q.is(fmt.Sprintf(`(box => box.getAttribute('aria-activedescendant') !== %q && document.getElementById(box.getAttribute('aria-activedescendant'))?.getAttribute('aria-selected') === 'true' && document.querySelectorAll('#taskwin .tpick [aria-selected=true]').length === 1)(`+box+`)`, picked)) {
+		t.Errorf("ArrowDown should move the picker's choice, and the box's aria-activedescendant with it: %s", q.js(`document.querySelector('#taskwin .tpick').outerHTML.slice(0, 400)`))
+	}
+	key(ctx, kb.Escape, false)
+	if !q.is(`document.querySelector('#taskwin .tpick').hidden && !` + box + `.hasAttribute('aria-activedescendant') && !document.getElementById('taskwin').hidden`) {
+		t.Error("Esc should close the mention picker alone, the box pointing at nothing")
+	}
+	q.run(`(b => { b.value = ''; b.dispatchEvent(new Event('input')) })(` + box + `)`)
+	q.run(`document.querySelector('#taskwin .mrow').focus()`)
+	member := q.js(`document.activeElement.querySelector('b').textContent`)
+	key(ctx, kb.Enter, false)
+	waitUntil(t, 5*time.Second, "Enter on a member opens its conversation", func() bool {
+		return q.is(fmt.Sprintf(`!document.getElementById('chat').hidden && document.querySelector('#chat h2').textContent === %q`, member))
+	})
+	if n := ax(t, ctx, `document.getElementById('chat')`); n.Role != "region" || n.Name != member {
+		t.Errorf("a member's window should be a region named by the member: %+v", n)
+	}
+
+	// the launch dialog: its fields named by their labels, back to its button
+	q.run(`document.getElementById('new-emp').focus()`)
+	key(ctx, kb.Enter, false)
+	waitUntil(t, 10*time.Second, "the launch dialog opens on its name field", func() bool {
+		return q.is(`!document.getElementById('launch').hidden && document.activeElement === document.getElementById('launch-name')`)
+	})
+	if n := ax(t, ctx, `document.getElementById('launch-name')`); !strings.HasPrefix(n.Name, "Name") {
+		t.Errorf("the name field should be named by its label: %+v", n)
+	}
+	named(q, "launch", `document.getElementById('launch')`)
+	// Advanced settings: the next stop, a disclosure named by what it is and what the start will use; Enter unfolds it
+	// and Tab goes on into its fields
+	key(ctx, kb.Tab, false)
+	if n := ax(t, ctx, `document.querySelector('#launch .adv > summary')`); !q.is(`document.activeElement === document.querySelector('#launch .adv > summary')`) ||
+		!strings.HasPrefix(n.Name, "Advanced settings own folder") {
+		t.Errorf("Tab from the name should reach Advanced settings, named with what the start will use: %+v, %s", n, q.js(`document.activeElement.outerHTML.slice(0, 80)`))
+	}
+	key(ctx, kb.Enter, false)
+	key(ctx, kb.Tab, false)
+	if n := ax(t, ctx, `document.activeElement`); !q.is(`document.querySelector('#launch .adv').open && document.activeElement === document.getElementById('launch-dir')`) || !strings.HasPrefix(n.Name, "Working folder") {
+		t.Errorf("Enter should unfold it, and Tab go on to the folder, named by its label: %+v, %s", n, q.js(`document.activeElement.outerHTML.slice(0, 80)`))
+	}
+	q.run(`document.getElementById('launch-name').focus()`)
+	key(ctx, kb.Tab, true)
+	if !focusIn(q, "#launch") {
+		t.Error("Shift+Tab from the first field should stay in the dialog")
+	}
+	key(ctx, kb.Escape, false)
+	if !q.is(`document.getElementById('launch').hidden && document.activeElement === document.getElementById('new-emp')`) {
+		t.Errorf("Esc should close the launch dialog and put the focus back on its button: %s", q.js(`document.activeElement.outerHTML.slice(0, 80)`))
+	}
+	q.run(`document.getElementById('new-task').click()`)
+	waitUntil(t, 10*time.Second, "the task dialog opens", func() bool { return q.is(`!document.getElementById('task').hidden`) })
+	q.run(`document.querySelector('#task .add-adv').click()`)
+	named(q, "task dialog", `document.getElementById('task')`)
+	q.run(`document.querySelector('#task .cancel').click()`)
 
 	// a new ask is said out loud
 	b.post(t, tokens["bob"], "/api/ask", map[string]any{"session": "s-bob", "kind": "permission", "tool": "Bash", "input": map[string]any{"command": "make release"}})
 	waitUntil(t, 10*time.Second, "the third ask is announced", func() bool {
-		return p.is(`(a => !!a && a.getAttribute('aria-live') === 'polite' && a.textContent.includes('3'))(document.getElementById('announce'))`)
+		return q.is(`(a => !!a && a.getAttribute('aria-live') === 'polite' && a.textContent.includes('3'))(document.getElementById('announce'))`)
 	})
-	p.done()
-
-	// ---------- Coworkers ----------
-	for _, th := range []struct{ name, ready, row, opened string }{
-		{"messenger", `document.querySelectorAll('#people .row').length === 5`, `[...document.querySelectorAll('#people .row')].find(r => r.textContent.includes('alice'))`, `!document.getElementById('chat').hidden`},
-	} {
-		ctx, closeTab := clockTab(t, browser, b.URL+"/t/"+th.name+"/?lang=en", 0)
-		do(t, ctx, 10*time.Second, chromedp.EmulateViewport(1400, 860))
-		q := &screens{t: t, ctx: ctx, lang: "a11y-" + th.name}
-		waitUntil(t, 20*time.Second, th.name+": the page shows the team", func() bool { return q.is(th.ready) })
-		named(q, "page", `document.body`)
-		// the gear: named, it opens the settings, a dialog named by its heading, where Tab stays, the colors a named group
-		// of named choices, and Esc goes back to the gear
-		if n := ax(t, ctx, `document.querySelector('.open-settings')`); !strings.HasPrefix(n.Name, "Settings") { // (and says when the error log has news)
-			t.Errorf("%s: the settings' gear should be named Settings: %+v", th.name, n)
-		}
-		q.run(`document.querySelector('.open-settings').focus()`)
-		key(ctx, kb.Enter, false)
-		waitUntil(t, 5*time.Second, th.name+": the settings open, the focus in them", func() bool { return focusIn(q, "#settings") })
-		if n := ax(t, ctx, `document.getElementById('settings')`); n.Role != "dialog" || n.Name != "Settings" {
-			t.Errorf("%s: the settings should be a dialog named Settings: %+v", th.name, n)
-		}
-		if n := ax(t, ctx, `document.querySelector('#settings .scheme')`); n.Role != "radiogroup" || n.Name != "Colors" {
-			t.Errorf("%s: light or dark should be a group named Colors: %+v", th.name, n)
-		}
-		for i := 0; i < 40; i++ {
-			key(ctx, kb.Tab, false)
-			if !focusIn(q, "#settings") {
-				t.Errorf("%s: Tab left the settings at its %d. press", th.name, i+1)
-				break
-			}
-		}
-		named(q, "settings", `document.getElementById('settings')`)
-		key(ctx, kb.Escape, false)
-		waitUntil(t, 5*time.Second, th.name+": Esc closes the settings, back on the gear", func() bool {
-			return q.is(`document.getElementById('settings').hidden && document.activeElement === document.querySelector('.open-settings')`)
-		})
-		if th.name == "messenger" {
-			if n := ax(t, ctx, `document.getElementById('groups-count').parentElement`); n.Name != "Group chats 1" {
-				t.Errorf("messenger: the group chats' heading should read its count apart: %q", n.Name)
-			}
-		}
-		// a row or a tile opens with Enter
-		q.run(th.row + `.focus()`)
-		key(ctx, kb.Enter, false)
-		waitUntil(t, 5*time.Second, th.name+": Enter on "+th.row+" opens it", func() bool { return q.is(th.opened) })
-		if n := ax(t, ctx, `document.getElementById('chat')`); n.Role != "region" {
-			t.Errorf("%s: the employee window should be a region: %+v", th.name, n)
-		}
-		named(q, "chat", `document.getElementById('chat')`)
-		q.done()
-		closeTab()
-	}
+	q.done()
+	closeTab()
 
 	// ---------- the approval page ----------
 	approve, closeApprove := clockTab(t, browser, b.URL+"/approve?lang=en", 0)

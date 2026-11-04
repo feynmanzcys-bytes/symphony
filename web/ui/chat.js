@@ -1,17 +1,16 @@
 // The employee window (#chat), shared by every theme: who they are at the top (the name, the state dot and line, chips,
 // buttons: the theme says what), below it the session as a chat (the prompts, the answers as they stream, the messages
 // between sessions; what the model does between two pieces of its answer, its thinking, the tool calls, the commands,
-// the asks once settled, folded into one line that unfolds: "the steps"), and the dock at the bottom: the input, over
-// which the pending asks' cards rise until they're handled. The log comes from the
+// the asks once settled, folded into one line that unfolds: "the steps"), and the dock at the bottom: the input. A
+// pending ask's card sits in the flow under its own line, and the input stays usable for a message that doesn't
+// answer it; while the terminal shows, the cards rise over it from the dock. The log comes from the
 // bridge when the window shows a session; each change comes as a chat push. Hidden, the window lets the pushes go by
 // and fetches the log again when it shows; it fetches it again too after a resync (pushes may have been missed), and
 // keeps as many items as the bridge does.
 //
-//   const chat = createChat(sym, { askWho, onClose, onTaskChip, asks })
-//   asks: 'overlay' (the cards rise over the input from the dock) or 'inline' (each card sits in the flow, under its own
-//   line, and the input stays usable for a message that doesn't answer it: Coworkers)
+//   const chat = createChat(sym, { askWho, onClose, onTaskChip })
 //   chat.show({ name, state, line, chips, taskChip, buttons, session, online, offText, terminal, avatar, emptyAction })   draw it for a session (again on every change); emptyAction {text, onclick}: a button under an empty flow
-//     avatar: a CSS url() of the employee's picture before its name (the pixel office's figure), or none
+//     avatar: a CSS url() of the employee's picture before its name, or none
 //   chat.setLine(text)      the status line alone (it follows what the employee does, every frame)
 //   chat.close()            hide it (onClose is told)
 //   chat.el                 the modal, for a theme that docks it beside another window
@@ -21,7 +20,7 @@
 // (ui/terminal.js), interactive, with a button of its own beside the theme's "terminal" button (the one that opens a
 // window on this machine), or first; the button, or Ctrl+], brings the chat back, and so does another session.
 import { t, esc, errorText, richText, timeOf, STATE_MARK, GRAY_MARK, button, askKind } from '/ui/common.js'
-import { askCard, syncCards, onAskFailure } from '/asks.js'
+import { askCard, onAskFailure } from '/asks.js'
 import { createTerminal } from '/ui/terminal.js'
 import { dialog } from '/ui/a11y.js'
 import { motion } from '/ui/motion.js'
@@ -86,9 +85,8 @@ const MARKUP = `
 // the first control of a card one can reach: an input or a button that is shown (a reason's input waits folded away)
 const firstControl = root => root && [...root.querySelectorAll('input, button, textarea, select')].find(el => !el.disabled && !el.closest('details:not([open])'))
 
-export function createChat(sym, { askWho, onClose = () => {}, onTaskChip = () => {}, asks: asksMode = 'overlay' } = {}) {
-  const inline = asksMode === 'inline'
-  const cards = new Map() // (inline) ask id -> its card: one element, moved into its line whenever the flow is drawn
+export function createChat(sym, { askWho, onClose = () => {}, onTaskChip = () => {} } = {}) {
+  const cards = new Map() // ask id -> its card: one element, moved into its line whenever the flow is drawn
   const tpl = document.createElement('template')
   tpl.innerHTML = MARKUP.trim()
   const el = tpl.content.firstElementChild
@@ -171,7 +169,7 @@ export function createChat(sym, { askWho, onClose = () => {}, onTaskChip = () =>
     }
     labelSteps()
     ghost()
-    if (inline) drawAsks()
+    drawAsks()
     flow.scrollTop = atEnd ? flow.scrollHeight : top // it follows the end only if it was there
   }
   // as many items as the bridge keeps of a session (keepChat): the oldest go, and a fold they leave empty
@@ -381,27 +379,24 @@ export function createChat(sym, { askWho, onClose = () => {}, onTaskChip = () =>
   // the session has none (termButtons, on every show: the terminal may come after the card)
   const cardOpts = { onTerminal: () => showTerminal(true) }
   function termButtons() { for (const b of el.querySelectorAll('.card .to-term')) b.parentElement.hidden = !termFor }
-  // Where the cards go. Overlay: all in the dock, which rises over the input. Inline: each in its line of the flow (at
-  // the end while its line hasn't come), drawn again after the flow is (render). While the terminal shows, the dock
-  // rises over it with the cards the page answers (inline: they move there, and back to their lines with the chat); an
-  // MCP server's form, which is answered in the terminal itself, stays out of its way.
+  // Where the cards go: each in its line of the flow (at the end while its line hasn't come), drawn again after the
+  // flow is (render). While the terminal shows, the dock rises over it with the cards the page answers (they move
+  // there, and back to their lines with the chat); an MCP server's form, which is answered in the terminal itself,
+  // stays out of its way.
   function drawAsks() {
-    if (!inline) syncCards(asksEl, pending, askWho, '', cardOpts)
-    else {
-      const ids = new Set(pending.map(a => a.id))
-      for (const [id, card] of cards) if (!ids.has(id)) { card.remove(); cards.delete(id) }
-      for (const a of pending) {
-        let card = cards.get(a.id)
-        if (!card) { card = askCard(a, askWho(a), cardOpts); cards.set(a.id, card) }
-        const line = flow.querySelector(`.it.ask[data-ask="${CSS.escape(String(a.id))}"]`)
-        if (termOn && a.kind !== 'elicitation') { if (card.parentNode !== asksEl) asksEl.appendChild(card) }
-        else if (line) { if (card.parentNode !== line) { line.classList.add('carded'); line.appendChild(card) } }
-        else if (card.parentNode !== flow) flow.appendChild(card)
-      }
-      for (const line of flow.querySelectorAll('.it.ask.carded')) if (!line.querySelector('.card')) line.classList.remove('carded')
+    const ids = new Set(pending.map(a => a.id))
+    for (const [id, card] of cards) if (!ids.has(id)) { card.remove(); cards.delete(id) }
+    for (const a of pending) {
+      let card = cards.get(a.id)
+      if (!card) { card = askCard(a, askWho(a), cardOpts); cards.set(a.id, card) }
+      const line = flow.querySelector(`.it.ask[data-ask="${CSS.escape(String(a.id))}"]`)
+      if (termOn && a.kind !== 'elicitation') { if (card.parentNode !== asksEl) asksEl.appendChild(card) }
+      else if (line) { if (card.parentNode !== line) { line.classList.add('carded'); line.appendChild(card) } }
+      else if (card.parentNode !== flow) flow.appendChild(card)
     }
+    for (const line of flow.querySelectorAll('.it.ask.carded')) if (!line.querySelector('.card')) line.classList.remove('carded')
     const over = pending.filter(a => !termOn || a.kind !== 'elicitation')
-    dock.classList.toggle('asking', over.length > 0 && (!inline || termOn))
+    dock.classList.toggle('asking', over.length > 0 && termOn)
     asking = pending.length > 0
     termButtons()
   }
@@ -466,8 +461,8 @@ export function createChat(sym, { askWho, onClose = () => {}, onTaskChip = () =>
         node.innerHTML = `<span class="line">${sub}${esc(askKind(it.askKind))}${esc(t('common.colon'))}` +
           `${esc(it.tool ? it.tool + ' ' : '')}${esc(it.summary || '')} · ${esc(t('chat.ask.' + (it.status || 'pending')))}${it.text ? esc(' · ' + it.text) : ''}</span>`
         node.title = (it.summary || '') + (it.text ? '\n' + it.text : '')
-        // (inline) a pending ask's card, under its line
-        const card = inline && (it.status || 'pending') === 'pending' ? cards.get(it.ask) : null
+        // a pending ask's card, under its line
+        const card = (it.status || 'pending') === 'pending' ? cards.get(it.ask) : null
         if (card) { node.classList.add('carded'); node.appendChild(card) }
         break
       }
@@ -542,7 +537,7 @@ export function createChat(sym, { askWho, onClose = () => {}, onTaskChip = () =>
         session = sid
         items.clear()
         flow.innerHTML = ''
-        for (const c of cards.values()) c.remove() // (inline) another session's cards
+        for (const c of cards.values()) c.remove() // another session's cards
         cards.clear()
         pending = []
         shown.asks = undefined
@@ -574,7 +569,7 @@ export function createChat(sym, { askWho, onClose = () => {}, onTaskChip = () =>
       if (el.hidden) return
       if (termOn) term.focus()
       else if (dock.classList.contains('asking')) firstControl(dock.querySelector('#asks'))?.focus()
-      else if (inline && asking) firstControl(flow.querySelector('.card'))?.focus()
+      else if (asking) firstControl(flow.querySelector('.card'))?.focus()
       else if (!sayBox.disabled) sayBox.focus()
     },
     close() {

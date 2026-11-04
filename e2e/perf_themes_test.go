@@ -26,11 +26,10 @@ import (
 	"github.com/chromedp/chromedp"
 )
 
-// TestPerfThemes (no tokens) measures the DOM theme, Coworkers (/t/messenger/), under the made-up load of TestPerf and
-// TestPerfTasks: claude is a script that sits there, and the test reports every session in and streams for it the way
-// the mod would. In a tab of its own:
-//   - one busy session with its employee window open, opened from the theme's own list: TestPerf's 12 turns of 40
-//     pieces of thinking and text (1.2 KiB each) and a tool call each, posted as fast as they go;
+// TestPerfThemes (no tokens) measures Coworkers (/t/messenger/) under a made-up load: claude is a script that sits
+// there, and the test reports every session in and streams for it the way the mod would. In a tab of its own:
+//   - one busy session with its employee window open, opened from the theme's own list: 12 turns of 40 pieces of
+//     thinking and text (1.2 KiB each) and a tool call each, posted as fast as they go;
 //   - then the team: 31 employees with a desk session each, 15 of them streaming, 8 tasks with 36 members streaming and
 //     messaging their teammates (TestPerfTasks's streamer), the usage figures every 2 s, two asks waiting all along and
 //     one that comes and goes every 3 s. The theme's heaviest views are measured one after the other: a task's group
@@ -64,8 +63,7 @@ func TestPerfThemes(t *testing.T) {
 const (
 	themeFreeze = 1000.0 // ms: a frame that waited longer means a frozen page
 	// ms: the same in the busy window, whose burst (2.4 MB in a quarter of a second, far beyond what the mod sends) the
-	// shared employee window takes in with long tasks of a few hundred ms, 600 to 700 in the pixel office too (TestPerf);
-	// more on a busy machine
+	// shared employee window takes in with long tasks of a few hundred ms; more on a busy machine
 	themeBurstFreeze = 2000.0
 	themeMinFPS      = 20.0 // frames a second at least, over a window (a page with time to spare draws 60)
 	themeDrawP95     = 25.0 // ms: a theme's draw (one a frame at most) may take a frame and a half, at p95, in a steady window
@@ -155,7 +153,7 @@ func newThemeLoad(t *testing.T) *themeLoad {
 				advs = append(advs, fmt.Sprintf("adv%d%d", k, j))
 			}
 		}
-		_, ms, _ := makeTask(t, b, k, accs, advs, app)
+		_, ms, _ := makeTask(t, b, accs, advs, app)
 		for _, m := range ms {
 			reportIn(t, b, m)
 		}
@@ -676,7 +674,7 @@ func (p *themePage) profile(what string) {
 
 // ---------- what every theme goes through ----------
 
-// busyWindow is TestPerf's busy session in a theme: the window of the theme's busy employee, opened by open through the
+// busyWindow is the busy session in a theme: the window of the theme's busy employee, opened by open through the
 // theme's own list, then 12 turns of 40 pieces of thinking and text (1.2 KiB each) and a tool call each, posted as fast
 // as they go; it waits until the window shows the 48 items.
 //

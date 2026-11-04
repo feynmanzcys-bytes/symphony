@@ -3,7 +3,6 @@
 package e2e
 
 import (
-	"fmt"
 	"testing"
 	"time"
 
@@ -15,8 +14,8 @@ import (
 // into it, folded away; the line counting up ("Thinking… 2m 38s", the page's clock moved on) with a screen reader's
 // name that has no time in it; the answer's text ending the fold ("Thought for …"); a pending ask staying out of the
 // next fold until it's settled, then joining it; the turn's end finishing the last fold; a click unfolding it; the
-// settings unfolding every fold, new ones too, after a reload as well. In Coworkers, where the asks' cards sit in the
-// flow, a pending ask's card stays outside the folds, and motion paused stops the count.
+// settings unfolding every fold, new ones too, after a reload as well; all in Coworkers, where the asks' cards sit in
+// the flow, so a pending ask's card stays outside the folds too, and motion paused stops the count.
 func TestChatSteps(t *testing.T) {
 	requireBrowser(t)
 	b := startBridge(t, "")
@@ -31,15 +30,13 @@ func TestChatSteps(t *testing.T) {
 	}
 	ev(map[string]any{"kind": "session.start", "cwd": "/work/app", "model": "claude-opus-5-5"})
 	browser := newBrowser(t)
-	ctx, _ := clockTab(t, browser, b.URL+"/t/office/?lang=en", 0)
+	ctx, _ := clockTab(t, browser, b.URL+"/t/messenger/?lang=en", 0)
 	do(t, ctx, 10*time.Second, chromedp.EmulateViewport(1400, 900))
 	p := &screens{t: t, ctx: ctx, lang: "steps"}
-	label := fmt.Sprintf(`document.querySelector('.emp-label[data-account=%q]')`, alice.ID)
 	open := func() {
 		t.Helper()
-		waitUntil(t, 20*time.Second, "the office shows alice", func() bool { return p.is(`!!` + label) })
-		p.run(label + `.click()`)
-		waitUntil(t, 10*time.Second, "alice's window opens", func() bool { return p.is(`!document.getElementById('chat').hidden`) })
+		waitUntil(t, 20*time.Second, "Coworkers lists alice", func() bool { return p.is(`document.querySelectorAll('#people .row').length === 1`) })
+		clickRow(t, ctx, alice.ID)
 	}
 	open()
 	flow := func() string { return p.js(`document.querySelector('#chat .flow').innerText`) }
@@ -85,7 +82,7 @@ func TestChatSteps(t *testing.T) {
 	ev(map[string]any{"kind": "tool.start", "tool": "Bash", "summary": "npm ci", "toolUseId": "tu2"})
 	b.post(t, alice.Token, "/api/ask", map[string]any{"session": "s-a", "kind": "permission", "tool": "Bash", "input": map[string]any{"command": "npm ci"}})
 	waitUntil(t, 10*time.Second, "the pending ask is a line of its own, after the second fold, which waits with it", func() bool {
-		return p.is(`document.querySelectorAll('#chat .steps').length === 2 && !!document.querySelector('#chat .flow > .it.ask.pending') && document.querySelectorAll('#chat #asks .card').length === 1`) &&
+		return p.is(`document.querySelectorAll('#chat .steps').length === 2 && !!document.querySelector('#chat .flow > .it.ask.pending') && document.querySelectorAll('#chat .card').length === 1`) &&
 			p.is(`(f => !f.classList.contains('running') && /^Thought for /.test(f.querySelector('.lbl').textContent))(document.querySelectorAll('#chat .steps')[1])`)
 	}, flow)
 	asks := b.Hub.Snapshot().Asks
@@ -111,7 +108,7 @@ func TestChatSteps(t *testing.T) {
 	p.shot("unfolded")
 
 	// ---------- the settings unfold them all, new ones too, after a reload as well ----------
-	p.run(`document.getElementById('open-settings').click()`)
+	p.run(`document.querySelector('.open-settings').click()`)
 	waitUntil(t, 5*time.Second, "the settings open", func() bool { return p.is(`!document.getElementById('settings').hidden`) })
 	p.run(`document.getElementById('set-steps').click()`)
 	waitUntil(t, 5*time.Second, "every fold unfolds", func() bool {
@@ -123,13 +120,13 @@ func TestChatSteps(t *testing.T) {
 	waitUntil(t, 10*time.Second, "after a reload the folds start unfolded", func() bool {
 		return p.is(`document.querySelectorAll('#chat .steps').length === 2 && [...document.querySelectorAll('#chat .steps > details')].every(d => d.open)`)
 	}, flow)
-	p.run(`document.getElementById('open-settings').click(); document.getElementById('set-steps').click(); document.querySelector('#settings .close').click()`)
+	p.run(`document.querySelector('.open-settings').click(); document.getElementById('set-steps').click(); document.querySelector('#settings .close').click()`)
 	waitUntil(t, 5*time.Second, "unticked, they fold again", func() bool {
 		return p.is(`[...document.querySelectorAll('#chat .steps > details')].every(d => !d.open)`)
 	})
 	p.done()
 
-	// ---------- Coworkers: a pending ask's card stays out of the folds; paused, the count goes by the minute ----------
+	// ---------- a fresh page: a pending ask's card stays out of the folds; paused, the count goes by the minute ----------
 	mctx, _ := clockTab(t, browser, b.URL+"/t/messenger/?lang=en", 0)
 	do(t, mctx, 10*time.Second, chromedp.EmulateViewport(1400, 900))
 	m := &screens{t: t, ctx: mctx, lang: "steps-coworkers"}

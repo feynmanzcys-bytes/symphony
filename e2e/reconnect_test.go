@@ -17,7 +17,7 @@ import (
 //     unreachable); when the bridge is back the banner goes, and the open employee window fetches its log again, with
 //     what happened meanwhile;
 //   - a page hidden for 10 seconds lets its stream go, and catches up when it shows again;
-//   - a row of the roster redrawn while it is pressed still opens its window on the release.
+//   - a row of the sidebar's list redrawn while it is pressed still opens its window on the release.
 func TestReconnect(t *testing.T) {
 	requireBrowser(t)
 	b := startBridge(t, "")
@@ -46,7 +46,7 @@ func TestReconnect(t *testing.T) {
 	}
 	is := func(expr string) bool { t.Helper(); return js(`String(!!(`+expr+`))`) == "true" }
 	row := fmt.Sprintf(`#people .row[data-account=%q]`, alice.ID)
-	waitUntil(t, 20*time.Second, "the roster lists alice", func() bool { return is(`document.querySelector('` + row + `')`) })
+	waitUntil(t, 20*time.Second, "the sidebar lists alice", func() bool { return is(`document.querySelector('` + row + `')`) })
 
 	// ---------- the message log, kept as the bridge keeps it ----------
 	trim := js(`(async () => {
@@ -131,7 +131,7 @@ func TestReconnect(t *testing.T) {
 		time.Sleep(80 * time.Millisecond) // (the press stays well under the page's 500 ms hold)
 	}
 	do(t, pg, 10*time.Second, chromedp.MouseEvent(chromedp.MouseReleased, box.X, box.Y, chromedp.ButtonLeft, chromedp.ClickCount(1)))
-	waitUntil(t, 10*time.Second, "the press opened alice's window, and the roster caught up after it", func() bool {
+	waitUntil(t, 10*time.Second, "the press opened alice's window, and the list caught up after it", func() bool {
 		return is(`!document.getElementById('chat').hidden && document.querySelector('#chat h2').textContent === 'alice' && document.querySelector('` + row + `').textContent.includes('Write')`)
 	})
 	if missing := get(t, pg, 5*time.Second, chromedp.Evaluate[[]string](`window.__i18nMissing || []`)); len(missing) > 0 {
@@ -162,7 +162,7 @@ func TestPageKeyChanged(t *testing.T) {
 		return get(t, tab, 10*time.Second, chromedp.Evaluate[string](expr, chromedp.EvalAwaitPromise))
 	}
 	is := func(expr string) bool { t.Helper(); return js(`String(!!(`+expr+`))`) == "true" }
-	waitUntil(t, 20*time.Second, "the roster lists alice", func() bool { return is(`document.querySelector('#people .row[data-account]')`) })
+	waitUntil(t, 20*time.Second, "the sidebar lists alice", func() bool { return is(`document.querySelector('#people .row[data-account]')`) })
 	banner := `(e => e && !e.hidden && e.textContent)(document.getElementById('conn')) || ''`
 
 	key := b.rekey(t)

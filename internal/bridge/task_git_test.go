@@ -69,7 +69,7 @@ func TestTaskMergesWhateverTheGitConfig(t *testing.T) {
 			_, aliceAcc := as(t, e.srv, e.base, "alice")
 			e.srv.Hub.setLast(bobAcc.ID, LaunchRequest{Dir: plain})
 			e.srv.Hub.setLast(aliceAcc.ID, LaunchRequest{Dir: plain})
-			task := asTask(t, e.page.ok("POST", "/api/tasks", TaskRequest{Room: hint(1), Title: "t",
+			task := asTask(t, e.page.ok("POST", "/api/tasks", TaskRequest{Title: "t",
 				Members: []TaskMemberRequest{{Account: bobAcc.ID}, {Account: aliceAcc.ID}}}))
 			writeFile(t, filepath.Join(task.Members[0].Worktree, "bob.txt"), "bob's\n")
 			writeFile(t, filepath.Join(task.Members[1].Worktree, "alice.txt"), "alice's\n")
@@ -194,7 +194,7 @@ func TestTaskEndKeepsEveryFailure(t *testing.T) {
 	_, aliceAcc := as(t, e.srv, e.base, "alice")
 	e.srv.Hub.setLast(bobAcc.ID, LaunchRequest{Dir: one})
 	e.srv.Hub.setLast(aliceAcc.ID, LaunchRequest{Dir: two})
-	task := asTask(t, e.page.ok("POST", "/api/tasks", TaskRequest{Room: hint(1), Title: "t",
+	task := asTask(t, e.page.ok("POST", "/api/tasks", TaskRequest{Title: "t",
 		Members: []TaskMemberRequest{{Account: bobAcc.ID}, {Account: aliceAcc.ID}}}))
 	for _, m := range task.Members {
 		// work left uncommitted, and a lock left behind by a git that was killed: the work can't be saved
@@ -271,7 +271,7 @@ func TestTaskInBrokenRepository(t *testing.T) {
 	web := e.folder(t, "project/web")
 	writeFile(t, filepath.Join(project, ".git"), "gitdir: "+filepath.Join(e.root, "gone", ".git")+"\n")
 	writeFile(t, filepath.Join(web, "index.html"), "hi\n")
-	st, body := e.page.do("POST", "/api/tasks", TaskRequest{Room: hint(1), Title: "t", Members: []TaskMemberRequest{
+	st, body := e.page.do("POST", "/api/tasks", TaskRequest{Title: "t", Members: []TaskMemberRequest{
 		{Advisor: &AdvisorRequest{Name: "x", Dir: web}}, {Advisor: &AdvisorRequest{Name: "y", Dir: web}}}})
 	if params, _ := body["params"].(map[string]any); st != 500 || body["code"] != "task_git_failed" || params["dir"] != web ||
 		!strings.Contains(params["detail"].(string), filepath.Join(project, ".git")) {
@@ -335,7 +335,7 @@ func TestTaskUndoAfterFailedWorktreeAdd(t *testing.T) {
 	_, aliceAcc := as(t, e.srv, e.base, "alice")
 	e.srv.Hub.setLast(bobAcc.ID, LaunchRequest{Dir: repo})
 	e.srv.Hub.setLast(aliceAcc.ID, LaunchRequest{Dir: repo})
-	st, body := e.page.do("POST", "/api/tasks", TaskRequest{Room: hint(1), Title: "t",
+	st, body := e.page.do("POST", "/api/tasks", TaskRequest{Title: "t",
 		Members: []TaskMemberRequest{{Account: bobAcc.ID}, {Account: aliceAcc.ID}}})
 	if st != 500 || body["code"] != "task_git_failed" || !strings.Contains(fmt.Sprint(body["params"]), "post-checkout") {
 		t.Fatalf("want 500 task_git_failed from the hook, got %d %v", st, body)
