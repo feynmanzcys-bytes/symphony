@@ -35,7 +35,7 @@ symphony has two parts and needs both:
 uname -sm                 # Linux/macOS: picks the archive below (x86_64 → amd64; arm64/aarch64 → arm64)
 claude --version          # needs Claude Code 2.1.x (tested with 2.1.317)
 git --version             # only for collaborative tasks; note it in the report if missing, don't stop
-symphony -version         # already installed? prints "symphony v1.4.0 (darwin/arm64)"
+symphony -version         # already installed? prints "symphony v1.5.0 (darwin/arm64)"
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:7788/api/state   # a bridge running? 401: symphony 1.x; 200: an older one; 000: none
 claude plugin list --json # the mod already installed? look for an entry with "id": "symphony-bridge@symphony"
 brew --version            # Homebrew there (macOS, Linux)? step 2 can install with it
@@ -132,7 +132,7 @@ Install the program from step 2, `$d/symphony` (if your shell doesn't keep varia
 ```bash
 install -m 755 "$d/symphony" ~/.local/bin/symphony
 xattr -d com.apple.quarantine ~/.local/bin/symphony 2>/dev/null || true   # macOS: the binary isn't signed
-symphony -version          # prints "symphony v1.4.0 (linux/amd64)": the version and the platform
+symphony -version          # prints "symphony v1.5.0 (linux/amd64)": the version and the platform
 ```
 
 If none of these folders is on `PATH`, ask the user before you change anything. With their yes, create `~/.local/bin`, add it to the shell's rc file (`~/.zshrc` or `~/.bashrc`) and say so in the report; with their no, install the program where they say and tell them that the mod can't start the bridge by itself while `symphony` isn't on the `PATH` of their Claude Code sessions (starting at login, in step 5, still works).
@@ -142,7 +142,7 @@ On Windows, unpack it into a folder of its own (`$d` and `$zip` are from step 2;
 ```powershell
 $dest = Join-Path $env:LOCALAPPDATA 'Programs\symphony'
 Expand-Archive -LiteralPath (Join-Path $d $zip) -DestinationPath $dest -Force
-& (Join-Path $dest 'symphony.exe') -version   # prints "symphony v1.4.0 (windows/amd64)"
+& (Join-Path $dest 'symphony.exe') -version   # prints "symphony v1.5.0 (windows/amd64)"
 ```
 
 Adding that folder to the user's `Path` is a lasting change: ask the user first. With their yes, run the line below and open a new shell; with their no, use the full path. Unpacked with `Expand-Archive`, the program carries no mark of the download, so SmartScreen lets it run; a copy unpacked with Explorer's "Extract all" may be stopped when double-clicked: "More info", then "Run anyway".

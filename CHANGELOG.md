@@ -2,6 +2,16 @@
 
 What changed in each release of symphony. The program (the bridge) and the mod share one version number. A release's notes start with its section here: the release workflow stops before building when the section is missing. Releases before v1.0.0 came out before the repository was public; their notes are kept below.
 
+## v1.5.0 (2026-11-04)
+
+Update the program (`brew upgrade symphony`, `scoop update symphony`, or the archive) and, as before, the mod with `claude plugin update symphony-bridge@symphony` (only its version changed). A browser that never picked a theme opens Coworkers now; Settings → Theme brings the pixel office back.
+
+- **Coworkers is the page symphony opens**: the sessions as coworkers in a messaging app, their conversations in the middle, the teams as group chats. The pixel office is the other theme: pick it in Settings → Theme, and the bridge remembers it as before (a browser that picked a theme keeps it).
+- **Every employee on one page**: Settings → Employees → "All employees" lists every employee with its state, its folder and what it starts with from the page: the model, the thinking effort, the permission mode and the office context (one never started from the page goes by the settings until it is). Edit one in its row, change the selected ones together, or delete the selected ones that are off duty. "Import…" takes a list, pasted or from a file (a name on each line, or the JSON that "Export" gives), says what each entry would do, then makes the new employees and changes the others in one go, or nothing while an entry is wrong (at most 100 at a time); "Export" saves the list, which Import reads back. A change takes effect at the employee's next start; names stay as they are, and no token shows on the page.
+- An employee whose last choices name no folder goes back to its own folder at "Start work", wherever its session went since (as the employees page may have said).
+- The README leads with Coworkers in every language, with new screenshots (the social preview too) and one of the employees page; the translations also catch up with v1.4.0's Advanced settings and what a new employee starts with.
+- `docs/protocol.md` has what's new for the pages: `POST /api/accounts/import`, what an account's `last` stands for now, and `GET /` serving `messenger` when no theme was picked (additions: the protocol stays 2).
+
 ## v1.4.0 (2026-11-04)
 
 Update the program (`brew upgrade symphony`, `scoop update symphony`, or the archive) and, as before, the mod with `claude plugin update symphony-bridge@symphony` (only its version changed).

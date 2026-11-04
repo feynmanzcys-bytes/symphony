@@ -35,7 +35,7 @@ symphony 由兩個部分組成，兩個都要裝：
 uname -sm                 # Linux/macOS：決定下面用哪個壓縮檔（x86_64 → amd64；arm64/aarch64 → arm64）
 claude --version          # 需要 Claude Code 2.1.x（在 2.1.317 上測試過）
 git --version             # 只有協作任務需要；沒有的話在回報裡註明，不要停下來
-symphony -version         # 已經裝了？會印出 "symphony v1.4.0 (darwin/arm64)"
+symphony -version         # 已經裝了？會印出 "symphony v1.5.0 (darwin/arm64)"
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:7788/api/state   # 有 bridge 在執行嗎？401：symphony 1.x；200：比較舊的版本；000：沒有
 claude plugin list --json # mod 已經裝了？找有 "id": "symphony-bridge@symphony" 的那一筆
 brew --version            # 有 Homebrew 嗎（macOS、Linux）？有的話第 2 步可以用它安裝
@@ -132,7 +132,7 @@ cd "$d/src" && go build -o "$d/symphony" ./cmd/bridge   # 程式現在是 "$d/sy
 ```bash
 install -m 755 "$d/symphony" ~/.local/bin/symphony
 xattr -d com.apple.quarantine ~/.local/bin/symphony 2>/dev/null || true   # macOS：這個執行檔沒有簽章
-symphony -version          # 會印出 "symphony v1.4.0 (linux/amd64)"：版本和平台
+symphony -version          # 會印出 "symphony v1.5.0 (linux/amd64)"：版本和平台
 ```
 
 如果這些資料夾都不在 `PATH` 裡，先問過使用者再做任何修改。使用者同意的話，就建立 `~/.local/bin`，把它加進 shell 的 rc 檔（`~/.zshrc` 或 `~/.bashrc`），並在回報裡說明；不同意的話，就把程式裝在使用者指定的地方，並告訴他們：只要 `symphony` 不在他們 Claude Code 工作階段的 `PATH` 裡，mod 就沒辦法自己啟動 bridge（第 5 步的隨登入啟動仍然可以用）。
@@ -142,7 +142,7 @@ symphony -version          # 會印出 "symphony v1.4.0 (linux/amd64)"：版本�
 ```powershell
 $dest = Join-Path $env:LOCALAPPDATA 'Programs\symphony'
 Expand-Archive -LiteralPath (Join-Path $d $zip) -DestinationPath $dest -Force
-& (Join-Path $dest 'symphony.exe') -version   # 會印出 "symphony v1.4.0 (windows/amd64)"
+& (Join-Path $dest 'symphony.exe') -version   # 會印出 "symphony v1.5.0 (windows/amd64)"
 ```
 
 把那個資料夾加進使用者的 `Path` 是會一直留著的改動：要先問使用者。使用者同意的話，執行下面這行，再開一個新的 shell；不同意的話，就用完整路徑。用 `Expand-Archive` 解壓縮出來的程式不帶下載標記，SmartScreen 不會攔；用檔案總管「全部解壓縮」解出來、再按兩下執行的，可能會被攔：按「其他資訊」，再按「仍要執行」。
