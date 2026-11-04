@@ -589,13 +589,28 @@ func (h *Hub) SayTask(id, text string) (*Message, error) {
 		return nil, newError("say_empty", "nothing to send")
 	}
 	m := &Message{ID: newID(), Text: text, Origin: "page", Task: id, Delivered: true, Received: true, Time: h.now()}
-	memberNames := make([]string, len(t.Members))
-	for i, mb := range t.Members {
-		memberNames[i] = mb.Name
+	// a member is reached by its session name ("bob-T7") or by its account's ("bob", as the page shows it)
+	memberNames := make([]string, 0, 2*len(t.Members))
+	byShort := map[string]string{}
+	for _, mb := range t.Members {
+		memberNames = append(memberNames, mb.Name)
+		if short := strings.TrimSuffix(mb.Name, "-"+id); short != mb.Name && short != "" {
+			memberNames = append(memberNames, short)
+			byShort[short] = mb.Name
+		}
 	}
-	names, unknown, rest := splitMentions(text, memberNames, "-"+id)
+	mentioned, unknown, rest := splitMentions(text, memberNames, "-"+id)
 	if unknown != "" {
 		return nil, newError("task_say_unknown_member", "no member named "+unknown+" in this task", "name", unknown)
+	}
+	var names []string // the members' session names, each once
+	for _, n := range mentioned {
+		if full, ok := byShort[n]; ok {
+			n = full
+		}
+		if !slices.Contains(names, n) {
+			names = append(names, n)
+		}
 	}
 	var targets []*Session
 	if len(names) > 0 {
@@ -603,7 +618,7 @@ func (h *Hub) SayTask(id, text string) (*Message, error) {
 			return nil, newError("say_empty", "nothing to send")
 		}
 		for _, name := range names {
-			mb := t.Members[slices.Index(memberNames, name)]
+			mb := t.Members[slices.IndexFunc(t.Members, func(mb *Member) bool { return mb.Name == name })]
 			if s := h.onlineTaskLocked(mb.Account, id); s != nil {
 				targets = append(targets, s)
 			} else {

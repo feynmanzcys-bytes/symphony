@@ -169,6 +169,7 @@
   "launch.failed": "启动失败：{reason}",
   "launch.previewNote": "示意：bridge 还会带上这位员工的令牌和自己的地址，在 bridge 内部的独立终端里运行（不会弹出任何窗口）",
   "launch.previewNoteDev": "示意：bridge 还会带上 --plugin-dir（开发模式）、这位员工的令牌和自己的地址，在 bridge 内部的独立终端里运行（不会弹出任何窗口）",
+  "launch.showCommand": "它运行的命令",
   "launch.off": "页面启动会话没开：{reason}",
   "launch.offWithFix": "页面启动会话没开：{reason}。运行下面的命令，然后刷新页面：",
   "option.default": "Claude Code 默认",

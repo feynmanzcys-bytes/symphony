@@ -169,6 +169,7 @@
   "launch.failed": "Start fehlgeschlagen: {reason}",
   "launch.previewNote": "Zur Veranschaulichung: die Bridge übergibt auch das Token dieses Mitarbeiters und ihre eigene Adresse und führt ihn auf einem eigenen Terminal innerhalb der Bridge aus (es öffnet sich nichts)",
   "launch.previewNoteDev": "Zur Veranschaulichung: die Bridge übergibt auch --plugin-dir (Entwicklungsmodus), das Token dieses Mitarbeiters und ihre eigene Adresse und führt ihn auf einem eigenen Terminal innerhalb der Bridge aus (es öffnet sich nichts)",
+  "launch.showCommand": "Der Befehl, der läuft",
   "launch.off": "Sitzungsstart über die Seite ist deaktiviert: {reason}",
   "launch.offWithFix": "Sitzungsstart über die Seite ist deaktiviert: {reason}. Führe Folgendes aus und lade dann die Seite neu:",
   "option.default": "Standard",

@@ -96,6 +96,7 @@ export function createTaskUI(sym, {
   onWindowOpen = () => {},
   onWindowClose = () => {},
   onDialogOpen = () => {},
+  mentionName = name => name, // how a member is named in the team chat (its session name, or what the theme shows)
   log = () => {},
 } = {}) {
   const dialog = mount(DIALOG), win = mount(WINDOW)
@@ -291,7 +292,7 @@ export function createTaskUI(sym, {
     const me = fromYou(m), who = me ? null : task.members.find(x => (x.session && x.session === m.from) || x.name === m.fromName)
     const names = m.toNames?.length ? m.toNames : m.toName ? [m.toName] : [] // one or several members, or everyone
     const missed = m.missed || [] // of those, the ones that were offline: struck through
-    const to = names.length ? `<b class="to">${names.map(n => missed.includes(n) ? `<s title="${esc(t('task.missed', { name: n }))}">@${esc(n)}</s>` : '@' + esc(n)).join(' ')}</b> ` : ''
+    const to = names.length ? `<b class="to">${names.map(n => missed.includes(n) ? `<s title="${esc(t('task.missed', { name: n }))}">@${esc(mentionName(n, task))}</s>` : '@' + esc(mentionName(n, task))).join(' ')}</b> ` : ''
     return `<div class="tmsg${me ? ' me' : ''}"><span class="av" style="background-image:${esc(me ? youAvatar() : memberAvatar(who))}"></span>` +
       `<div class="bub"><div class="hd"><b>${esc(msgFrom(m))}</b></div>` +
       `<div class="body${me ? '' : ' md'}">${withMentions(to, me ? richText(m.text) : markdown(m.text))}</div><time>${esc(new Date(m.time).toLocaleTimeString(lang))}</time></div></div>`
@@ -328,7 +329,7 @@ export function createTaskUI(sym, {
     if (!running) closePick()
     tBox.disabled = !running
     tSay.querySelector('button').disabled = !running
-    const ph = running ? t('task.chatPlaceholder', { name: task.members[0]?.name || '' }) : t('task.chatOff')
+    const ph = running ? t('task.chatPlaceholder', { name: task.members[0] ? mentionName(task.members[0].name, task) : '' }) : t('task.chatOff')
     if (tBox.placeholder !== ph) { tBox.placeholder = ph; shown.grow = true }
     return stick
   }
@@ -347,7 +348,7 @@ export function createTaskUI(sym, {
   function pickNames() {
     const task = sym.taskById(windowFor) ?? windowData
     const q = pick ? lower(pick.q) : ''
-    return (task?.members ?? []).filter(m => lower(m.name).startsWith(q))
+    return (task?.members ?? []).filter(m => lower(m.name).startsWith(q) || lower(mentionName(m.name, task)).startsWith(q))
   }
   function closePick() { pick = null; tPick.hidden = true; pointAt(tBox, null) }
   function markPick() { // the highlighted member, for the eye and for screen readers
@@ -363,17 +364,18 @@ export function createTaskUI(sym, {
     const names = pickNames()
     if (!names.length) return closePick()
     pick.sel = Math.max(0, Math.min(pick.sel, names.length - 1))
+    const task = sym.taskById(windowFor) ?? windowData
     setHTML(tPick, names.map((m, i) => { // (in place, and the name apart from its line: as the search boxes' lists)
       const s = sym.sessionById(m.session), online = sym.isOnline(s)
-      return `<div class="hit${i === pick.sel ? ' on' : ''}" data-name="${esc(m.name)}" role="option" id="task-pick-${i}" aria-selected="${i === pick.sel}">${dot(online ? s.state : 'ended')}<b>${esc(m.name)}</b> ` +
+      return `<div class="hit${i === pick.sel ? ' on' : ''}" data-name="${esc(m.name)}" role="option" id="task-pick-${i}" aria-selected="${i === pick.sel}"><i class="av" style="background-image:${esc(memberAvatar(m))}" aria-hidden="true"></i>${dot(online ? s.state : 'ended')}<b>${esc(mentionName(m.name, task))}</b> ` +
         `<small>${esc(!m.session ? t('task.memberStarting') : online ? statusText(sym, s) : t('task.memberEnded'))}</small></div>`
     }).join(''), true)
     tPick.hidden = false
     markPick()
   }
   function putPick(name) {
-    const end = tBox.selectionStart, at = pick.at
-    tBox.setRangeText('@' + name + ' ', at, end, 'end')
+    const end = tBox.selectionStart, at = pick.at, task = sym.taskById(windowFor) ?? windowData
+    tBox.setRangeText('@' + mentionName(name, task) + ' ', at, end, 'end')
     closePick(); growBox()
   }
   tPick.addEventListener('mousedown', ev => { // mousedown, so the box keeps its focus

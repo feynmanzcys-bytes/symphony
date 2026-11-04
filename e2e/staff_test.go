@@ -194,7 +194,7 @@ func TestStaff(t *testing.T) {
 	}
 
 	// ---------- the selected ones, together ----------
-	if !p.is(`document.querySelector('#staff-batch-n').textContent === 'Select employees to change them together.' && document.querySelector('#staff .batch .apply').disabled && document.querySelector('#staff .batch select').disabled`) {
+	if !p.is(`document.querySelector('#staff-batch-n').textContent === 'Select coworkers to change them together.' && document.querySelector('#staff .batch .apply').disabled && document.querySelector('#staff .batch select').disabled`) {
 		t.Error("with nobody selected the drop-downs and buttons wait")
 	}
 	p.run(row("alice") + `.querySelector('.pick').click(); ` + row("carol") + `.querySelector('.pick').click()`)
@@ -302,6 +302,8 @@ func TestStaff(t *testing.T) {
 	p.run(`document.querySelector('#staff .tools .export').click()`)
 	waitUntil(t, 10*time.Second, "the list is saved as a file, and the page says where", func() bool {
 		return p.is(`!!window.__saved && /^symphony-employees-\d{8}-\d{6}\.json$/.test(window.__saved.name) && document.querySelector('#staff .said.main').textContent.includes(window.__saved.name)`)
+	}, func() string {
+		return p.js(`JSON.stringify(window.__saved) + ' | ' + document.querySelector('#staff .said.main').textContent`)
 	})
 	exported := get(t, ctx, 10*time.Second, chromedp.Evaluate[string](`window.__blob.text()`, chromedp.EvalAwaitPromise))
 	var file struct {

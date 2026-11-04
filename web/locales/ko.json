@@ -169,6 +169,7 @@
   "launch.failed": "시작하지 못했습니다: {reason}",
   "launch.previewNote": "참고: bridge는 이 직원의 토큰과 자신의 주소도 전달하며, bridge 안의 전용 터미널에서 실행합니다(창이 열리지 않음)",
   "launch.previewNoteDev": "참고: bridge는 --plugin-dir(개발 모드), 이 직원의 토큰과 자신의 주소도 전달하며, bridge 안의 전용 터미널에서 실행합니다(창이 열리지 않음)",
+  "launch.showCommand": "실행되는 명령",
   "launch.off": "페이지에서 세션 시작 기능이 꺼져 있습니다: {reason}",
   "launch.offWithFix": "페이지에서 세션 시작 기능이 꺼져 있습니다: {reason}. 아래 명령을 실행한 뒤 페이지를 새로고침하세요:",
   "option.default": "기본값",

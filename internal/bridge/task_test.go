@@ -1222,6 +1222,14 @@ func TestTaskChat(t *testing.T) {
 	if got := e.srv.Hub.Chat("a"); got[len(got)-1].Kind != ChatUser || got[len(got)-1].Text != "hello" || got[len(got)-1].Origin != "page" {
 		t.Fatalf("alice's chat should show the prompt: %+v", got[len(got)-1])
 	}
+	// a member by its short name, as the page shows it ("alice" for "alice-T1"): the same member
+	m = e.page.ok("POST", say, map[string]any{"text": "@" + strings.TrimSuffix(a.Name, "-"+task.ID) + " short"})
+	if m["text"] != "short" || m["to"] != "a" || m["toName"] != a.Name || !slices.Equal(m["toNames"].([]any), []any{a.Name}) {
+		t.Fatalf("say to a member by its short name: %v", m)
+	}
+	if got := inbox(alice, "a"); !slices.Equal(got, []string{"short"}) {
+		t.Fatalf("alice should get short: %v", got)
+	}
 	waitFor(t, "the message event", func() bool {
 		for {
 			select {
@@ -1260,11 +1268,11 @@ func TestTaskChat(t *testing.T) {
 		t.Fatalf("alice should get it: %v", got)
 	}
 	msgs = e.srv.Hub.Snapshot().Messages
-	if len(msgs) != 5 || msgs[2].ToName != a.Name || msgs[3].Text != "status, everyone" || msgs[4].Text != "please sync" {
+	if len(msgs) != 6 || msgs[2].ToName != a.Name || msgs[3].Text != "short" || msgs[4].Text != "status, everyone" || msgs[5].Text != "please sync" {
 		t.Fatalf("the log should keep one message per say: %+v", msgs)
 	}
-	if got := e.page.ok("GET", "/api/tasks/"+task.ID+"/chat", nil)["messages"].([]any); len(got) != 4 {
-		t.Fatalf("the task's chat has the pair and the two says: %v", got)
+	if got := e.page.ok("GET", "/api/tasks/"+task.ID+"/chat", nil)["messages"].([]any); len(got) != 5 {
+		t.Fatalf("the task's chat has the pair and the three says: %v", got)
 	}
 
 	// what goes wrong

@@ -62,5 +62,15 @@
   "staff.count": "Kollegen: {n}",
   "task.end": "Gruppe beenden",
   "task.go": "Gruppe starten",
-  "launch.name": "Name (so erreichen ihn die anderen Sitzungen; zugleich der Name der Sitzung)"
+  "launch.name": "Name (so erreichen ihn die anderen Sitzungen; zugleich der Name der Sitzung)",
+  "launch.model": "Modell",
+  "launch.effort": "Denkaufwand",
+  "launch.permissionMode": "Berechtigungsmodus",
+  "staff.noneSelected": "Kollegen auswählen, um sie gemeinsam zu ändern.",
+  "task.titleNewHud": "Neue Gruppe",
+  "settings.staffWhat": "Damit startet ein neuer Kollege („Standard“: Claude Codes eigene Einstellungen). Die erweiterten Einstellungen im Startdialog können jede davon für einen Start ändern; ein Kollege, der wieder an die Arbeit geht, startet wie zuletzt.",
+  "settings.botHomeHint": "Ein Kollege, der ohne Arbeitsordner startet, bekommt hier einen neuen eigenen Ordner mit seinem Namen, als git-Repository angelegt. Wer schon einen hat, behält ihn.",
+  "launch.fromSettings": "Aus den Einstellungen übernommen (Einstellungen → Kollegen). Änderungen hier ändern die Einstellungen nicht.",
+  "task.members": "Mitglieder: der Reihe nach anhaken, die Reihenfolge gilt für die Gruppe (2 bis 5)",
+  "error.unreachable": "Bridge nicht erreichbar, verbinde neu. Senden und Freigaben warten, bis sie zurück ist."
 }

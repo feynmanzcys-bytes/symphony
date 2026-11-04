@@ -114,7 +114,7 @@ Every call shows the page key (§1.1).
 | `GET /api/tasks` | | `{tasks: [Task]}` |
 | `POST /api/tasks` | `{room?, title, leader, permissionMode, lang?, members: [{account} \| {advisor: {name, dir}}, model, effort]}` (2 to 5 members) | the Task |
 | `POST /api/tasks/{id}/end`, `DELETE /api/tasks/{id}` (a failed one) | | `{ok}` |
-| `POST /api/tasks/{id}/say` | `{text}`, leading `@<member name>`s pick the members | `{ok, missed}` |
+| `POST /api/tasks/{id}/say` | `{text}`, leading `@<member name>`s pick the members (`@bob-T7`, or the short name `@bob`) | `{ok, missed}` |
 | `GET /api/tasks/{id}/chat` | | `{messages: [Message]}` |
 | `GET /api/activity` | | `{items: [Activity]}` (the last 500) |
 | `GET /api/ledger` | | `{rows: [LedgerRow]}` |

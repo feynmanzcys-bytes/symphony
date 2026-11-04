@@ -39,7 +39,7 @@ const MARKUP = `
           <div class="warn" id="launch-warn" data-i18n="launch.bypassWarning" hidden></div>
         </div>
         <label class="check context"><input type="checkbox" name="context"><span data-i18n="launch.context"></span></label>
-        <pre class="preview"></pre>
+        <details class="cmd"><summary data-i18n="launch.showCommand"></summary><pre class="preview"></pre></details>
       </div>
     </details>
     <div class="warn out" data-i18n="launch.bypassWarning" hidden></div>

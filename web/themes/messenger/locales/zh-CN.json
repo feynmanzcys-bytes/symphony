@@ -62,5 +62,15 @@
   "staff.count": "同事：{n} 位",
   "task.end": "结束群",
   "task.go": "开始群",
-  "launch.name": "名字（其他会话靠它找到这位同事，也是会话名）"
+  "launch.name": "名字（其他会话靠它找到这位同事，也是会话名）",
+  "launch.model": "模型",
+  "launch.effort": "思考强度",
+  "launch.permissionMode": "权限模式",
+  "staff.noneSelected": "勾选同事后可以一起改。",
+  "task.titleNewHud": "新群",
+  "settings.staffWhat": "新同事按这些上班（「Claude Code 默认」就是交给 Claude Code 自己的设置）。新建时，对话框的「高级设置」可以只为这一次改任意几项；老同事回来上班按它上次的选择。",
+  "settings.botHomeHint": "启动同事时不填工作目录，就在这里新建一个以它名字命名的专属目录，并初始化成 git 仓库。已有专属目录的同事继续用原来的。",
+  "launch.fromSettings": "已按全局设置填好（设置 → 同事）。在这里改不会动全局设置。",
+  "task.members": "成员：按顺序勾选，勾选的顺序就是群里的顺序（2 到 5 人）",
+  "error.unreachable": "连不上 bridge，正在重连。恢复前发不了消息、批不了审批。"
 }

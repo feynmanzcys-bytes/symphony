@@ -169,6 +169,7 @@
   "launch.failed": "Couldn't start: {reason}",
   "launch.previewNote": "Illustration: the bridge also passes this employee's token and its own address, and runs it on a terminal of its own inside the bridge (nothing opens)",
   "launch.previewNoteDev": "Illustration: the bridge also passes --plugin-dir (development mode), this employee's token and its own address, and runs it on a terminal of its own inside the bridge (nothing opens)",
+  "launch.showCommand": "The command it runs",
   "launch.off": "Starting sessions from the page is off: {reason}",
   "launch.offWithFix": "Starting sessions from the page is off: {reason}. Run this, then reload the page:",
   "option.default": "Default",

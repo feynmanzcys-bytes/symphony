@@ -169,6 +169,7 @@
   "launch.failed": "啟動失敗：{reason}",
   "launch.previewNote": "示意：bridge 還會帶上這位員工的權杖和自己的位址，在 bridge 內部的獨立終端機裡執行（不會彈出任何視窗）",
   "launch.previewNoteDev": "示意：bridge 還會帶上 --plugin-dir（開發模式）、這位員工的權杖和自己的位址，在 bridge 內部的獨立終端機裡執行（不會彈出任何視窗）",
+  "launch.showCommand": "它執行的指令",
   "launch.off": "從頁面啟動工作階段的功能已關閉：{reason}",
   "launch.offWithFix": "從頁面啟動工作階段的功能已關閉：{reason}。請執行下面的指令，然後重新整理頁面：",
   "option.default": "預設",

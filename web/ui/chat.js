@@ -10,7 +10,7 @@
 //   const chat = createChat(sym, { askWho, onClose, onTaskChip, asks })
 //   asks: 'overlay' (the cards rise over the input from the dock) or 'inline' (each card sits in the flow, under its own
 //   line, and the input stays usable for a message that doesn't answer it: Coworkers)
-//   chat.show({ name, state, line, chips, taskChip, buttons, session, online, offText, terminal, avatar })   draw it for a session (again on every change)
+//   chat.show({ name, state, line, chips, taskChip, buttons, session, online, offText, terminal, avatar, emptyAction })   draw it for a session (again on every change); emptyAction {text, onclick}: a button under an empty flow
 //     avatar: a CSS url() of the employee's picture before its name (the pixel office's figure), or none
 //   chat.setLine(text)      the status line alone (it follows what the employee does, every frame)
 //   chat.close()            hide it (onClose is told)
@@ -101,7 +101,8 @@ export function createChat(sym, { askWho, onClose = () => {}, onTaskChip = () =>
   sayForm.querySelector('button').textContent = t('chat.send')
 
   let session = null // the session whose log the flow shows and pushes keep up (null while it is closed)
-  let name = '' // who the window is for: the account's name, a member's name (bob-T7) for a task session
+  let name = ''
+  let emptyAction = null // show's emptyAction: what an empty flow offers // who the window is for: the account's name, a member's name (bob-T7) for a task session
   const items = new Map() // item id -> item, of session
   const shown = { meta: '', btns: '', asks: '', avatar: '' }
   let inflight = null // the log's fetch on its way: { sid, again } (again: asked for once more meanwhile)
@@ -147,6 +148,12 @@ export function createChat(sym, { askWho, onClose = () => {}, onTaskChip = () =>
     if (items.size) return
     flow.innerHTML = `<div class="empty err">${esc(t('chat.loadFailed', { reason }))}</div>`
   }
+  // an empty flow: the words, and under them the action the theme offers (show's emptyAction: a button, such as
+  // "Start work" under an off-duty coworker's "No session yet")
+  function emptyFlow(words) {
+    flow.innerHTML = `<div class="empty">${esc(words)}</div>`
+    if (emptyAction) flow.querySelector('.empty').appendChild(button(emptyAction.text, 'primary go-work', emptyAction.onclick))
+  }
   function render() {
     const atEnd = flow.scrollTop + flow.clientHeight >= flow.scrollHeight - 40, top = flow.scrollTop
     // what was unfolded stays so: an item's own fold, and the steps by their first item
@@ -154,7 +161,7 @@ export function createChat(sym, { askWho, onClose = () => {}, onTaskChip = () =>
     trim()
     flow.innerHTML = ''
     const list = [...items.values()].sort((a, b) => a.seq - b.seq)
-    if (!list.length) flow.innerHTML = `<div class="empty">${esc(t('chat.empty'))}</div>`
+    if (!list.length) emptyFlow(t('chat.empty'))
     let fold = null
     for (const it of list) {
       const node = itemEl(it, old.get(it.id))
@@ -493,6 +500,7 @@ export function createChat(sym, { askWho, onClose = () => {}, onTaskChip = () =>
       const had = el.contains(document.activeElement) ? document.activeElement : null
       const hadKey = had?.closest('.btns') ? had.dataset.key || had.textContent : null
       name = p.name
+      emptyAction = p.emptyAction || null
       head.querySelector('h2').textContent = p.name
       if ((p.avatar || '') !== shown.avatar) {
         const av = head.querySelector('.who .av')
@@ -539,7 +547,7 @@ export function createChat(sym, { askWho, onClose = () => {}, onTaskChip = () =>
         pending = []
         shown.asks = undefined
         if (sid) load(sid)
-        else flow.innerHTML = `<div class="empty">${esc(t('chat.noSession'))}</div>`
+        else emptyFlow(t('chat.noSession'))
       }
       const mine = sym.state.asks.filter(a => a.session === sid)
       const askKey = mine.map(a => a.id).join(',')

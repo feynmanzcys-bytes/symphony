@@ -169,6 +169,7 @@
   "launch.failed": "起動できませんでした：{reason}",
   "launch.previewNote": "参考：bridge はこの社員のトークンと自身のアドレスも渡し、bridge 内の専用ターミナルで実行します（ウィンドウは開きません）",
   "launch.previewNoteDev": "参考：bridge は --plugin-dir（開発モード）、この社員のトークンと自身のアドレスも渡し、bridge 内の専用ターミナルで実行します（ウィンドウは開きません）",
+  "launch.showCommand": "実行されるコマンド",
   "launch.off": "ページからのセッション起動はオフです：{reason}",
   "launch.offWithFix": "ページからのセッション起動はオフです：{reason}。次のコマンドを実行してから、ページを再読み込みしてください：",
   "option.default": "デフォルト",

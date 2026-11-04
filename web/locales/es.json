@@ -169,6 +169,7 @@
   "launch.failed": "No se pudo iniciar: {reason}",
   "launch.previewNote": "Ilustración: el bridge también pasa el token de este empleado y su propia dirección, y lo ejecuta en un terminal propio dentro del bridge (no se abre nada)",
   "launch.previewNoteDev": "Ilustración: el bridge también pasa --plugin-dir (modo de desarrollo), el token de este empleado y su propia dirección, y lo ejecuta en un terminal propio dentro del bridge (no se abre nada)",
+  "launch.showCommand": "El comando que ejecuta",
   "launch.off": "Abrir sesiones desde la página está desactivado: {reason}",
   "launch.offWithFix": "Abrir sesiones desde la página está desactivado: {reason}. Ejecuta esto y luego recarga la página:",
   "option.default": "Predeterminado",

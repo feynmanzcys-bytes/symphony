@@ -380,3 +380,69 @@ button.px.primary, button.px.alert, :is(#asks, .flow .card) :is(button, button.a
 #taskwin .tmsg time { display: none; }
 #taskwin .tpick { border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 24px rgba(21,23,28,.12); padding: 4px; }
 #taskwin .tpick .hit { border-radius: 6px; padding: 6px 8px; }
+
+/* the settings as a page: a wide dialog, its sections listed down the left (settingsNav in messenger.js), the body
+   on the right with each section a card; on a narrow window the list goes and the sections stack */
+#settings .panel { width: min(1100px, calc(100vw - 32px)); height: min(88vh, 900px); max-height: none; display: grid; grid-template-columns: 200px minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+#settings .top { grid-column: 1 / -1; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+#settings .set-nav { display: flex; flex-direction: column; gap: 2px; padding: 14px 10px; border-right: 1px solid var(--line); background: var(--pane); overflow: auto; }
+#settings .set-nav button { text-align: left; padding: 8px 12px; border: 0; border-radius: 8px; background: transparent; color: var(--ink); font: inherit; cursor: pointer; }
+#settings .set-nav button:hover { background: var(--pane-2); }
+#settings .set-nav button.on { background: var(--card); box-shadow: inset 0 0 0 1px var(--line); font-weight: 600; }
+#settings .body { padding: 16px 20px 24px; background: var(--pane); }
+#settings section { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px 20px; margin-bottom: 14px; }
+#settings section:last-child { border-bottom: 1px solid var(--line); }
+#settings h3 { font-size: 15px; margin-bottom: 10px; }
+#settings .what { font-size: 13px; color: var(--muted); }
+#settings .errlog .acts .report { background: var(--paper); border-color: var(--field-line); color: var(--ink); } /* (a report is not the day's main action) */
+#settings .errlog .acts .report:hover:not(:disabled) { background: var(--pane-2); border-color: var(--field-line); }
+@media (max-width: 700px) {
+  #settings .panel { grid-template-columns: minmax(0, 1fr); }
+  #settings .set-nav { display: none; }
+}
+
+/* all coworkers: a table (the pick, who and its state, the folder and what it starts with, Edit), the batch bar only
+   once someone is picked, the import a card over the table; the page's long explanation goes (the table says it) */
+#staff .panel { width: min(1100px, calc(100vw - 32px)); }
+#staff .body { background: var(--pane); padding: 14px 20px 20px; }
+#staff > .panel > .body > .what { display: none; }
+#staff .tools { gap: 8px; }
+#staff .importer { border: 1px solid var(--line); border-radius: 12px; background: var(--card); }
+#staff:not(:has(.pick:checked)) .batch { display: none; }
+#staff .batch { align-items: center; border: 1px solid var(--accent); border-radius: 10px; background: var(--card); } /* (white under its selects: their edge must keep 3:1) */
+#staff .batch .n { flex: 0 0 auto; }
+#staff .batch label { flex-direction: row; align-items: center; gap: 6px; font-size: 13px; color: var(--ink); }
+#staff .head { margin: 12px 0 4px; }
+#staff .list { border: 1px solid var(--line); border-radius: 12px; background: var(--card); overflow: hidden; }
+#staff .list > li + li { border-top: 1px solid var(--pane-2); }
+#staff .emp { grid-template-columns: 28px minmax(0, 1fr) minmax(0, 1.4fr) auto; gap: 4px 12px; padding: 9px 14px; }
+#staff .emp .info { display: contents; }
+#staff .emp .who { flex-wrap: nowrap; align-items: center; gap: 8px; min-width: 0; }
+#staff .emp .nm { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#staff .emp .st { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#staff .emp .tag { border-radius: 999px; padding: 0 7px; flex: none; }
+#staff .emp .cfg { flex-direction: column; gap: 1px; margin: 0; min-width: 0; }
+#staff .emp .dir { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12px; }
+#staff .emp .opts { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#staff .emp.open { background: var(--hl); box-shadow: none; }
+#staff .editing { background: var(--pane); padding: 10px 14px 12px 54px; }
+@media (max-width: 640px) {
+  #staff .emp { grid-template-columns: 28px minmax(0, 1fr); }
+  #staff .emp .edit { grid-column: 2; justify-self: start; }
+  #staff .editing { padding-left: 14px; }
+}
+
+/* the launch and group dialogs: the folded command, the warning tight under its select */
+#launch details.cmd { color: var(--muted); }
+#launch details.cmd > summary { color: var(--accent); list-style: none; }
+#launch details.cmd > summary::-webkit-details-marker { display: none; }
+#launch details.cmd > summary::before { content: '+ '; }
+
+/* an empty conversation: its words and, for a coworker off duty, the start under them */
+.chat .flow .empty { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.chat .flow .empty button { font-size: 14px; padding: 8px 18px; }
+/* the connection banner: a strip across the top, not a floating box */
+#conn { top: 0 !important; left: 0 !important; right: 0 !important; transform: none !important; max-width: none !important; border: 0 !important; box-shadow: none !important; padding: 8px 16px !important; font: 600 13px/1.5 var(--sans) !important; }
+#taskwin .tpick .hit { display: flex; align-items: center; gap: 8px; }
+#taskwin .tpick .hit .av { width: 22px; height: 22px; margin: 0; border-radius: 50%; background-size: cover; image-rendering: auto; }
+#taskwin .tpick .hit .dot { display: none; } /* (the face says who; its state is in the words) */

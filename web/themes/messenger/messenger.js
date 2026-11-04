@@ -43,6 +43,43 @@ applyScheme(false)
 // the settings: light or dark is Coworkers' own; the sidebar's button opens them
 const settings = createSettings(sym, { scheme })
 document.querySelector('.side-actions').append(settingsButton(settings, { cls: 'px', icon: gearIcon() }))
+settingsNav()
+// the settings read like a page: their sections listed down the left of the dialog, a click scrolls to one and puts
+// the focus on its heading, the one in sight marked as the body scrolls (the list's words come from the headings, so
+// they follow the language; a section the theme hides is left out)
+function settingsNav() {
+  const panel = settings.el.querySelector('.panel'), body = panel.querySelector('.body')
+  const sections = [...body.querySelectorAll(':scope > section')]
+  const nav = document.createElement('nav')
+  nav.className = 'set-nav'
+  nav.setAttribute('aria-label', t('settings.title'))
+  const buttons = sections.map(s => {
+    const b = nav.appendChild(document.createElement('button'))
+    b.type = 'button'
+    const h = s.querySelector('h3')
+    if (h) h.tabIndex = -1 // reachable from the list, so a screen reader lands on the section's name
+    b.onclick = () => { s.scrollIntoView({ block: 'start' }); h?.focus({ preventScroll: true }); mark(s) }
+    return b
+  })
+  panel.insertBefore(nav, body)
+  function mark(cur) {
+    buttons.forEach((b, i) => b.classList.toggle('on', sections[i] === cur))
+  }
+  function inSight() {
+    const top = body.scrollTop + 48
+    let cur = sections.find(s => !s.hidden) ?? null
+    for (const s of sections) if (!s.hidden && s.offsetTop <= top) cur = s
+    mark(cur)
+  }
+  function sync() {
+    // (written only when changed: setting an attribute to what it is still wakes the observer, and that would loop)
+    buttons.forEach((b, i) => { if (b.hidden !== sections[i].hidden) b.hidden = sections[i].hidden; const words = sections[i].querySelector('h3')?.textContent || ''; if (b.textContent !== words) b.textContent = words })
+    inSight()
+  }
+  body.addEventListener('scroll', inSight, { passive: true })
+  new MutationObserver(sync).observe(settings.el, { attributes: true, attributeFilter: ['hidden'], subtree: true })
+  sync()
+}
 function gearIcon() {
   const tpl = document.createElement('template')
   tpl.innerHTML = `<svg class="gear" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4Z M19.4 13.5a7.6 7.6 0 0 0 0-3l2-1.5-2-3.4-2.3 1a7.4 7.4 0 0 0-2.6-1.5L14.2 2.6h-4l-.3 2.5a7.4 7.4 0 0 0-2.6 1.5l-2.3-1-2 3.4 2 1.5a7.6 7.6 0 0 0 0 3l-2 1.5 2 3.4 2.3-1a7.4 7.4 0 0 0 2.6 1.5l.3 2.5h4l.3-2.5a7.4 7.4 0 0 0 2.6-1.5l2.3 1 2-3.4Z"/></svg>`
@@ -109,6 +146,7 @@ const tasks = createTaskUI(sym, {
   memberAvatar: m => avatarURL(m?.name || '?'), youAvatar: () => avatarURL(t('task.you')),
   isMemberOpen: (task, m) => !!picked?.sid && picked.sid === m.session,
   onOpenMember: (task, m) => openCoworker(m.account, m.session, task.id),
+  mentionName: (name, task) => task && name.endsWith('-' + task.id) ? name.slice(0, -(task.id.length + 1)) : name, // grace, not grace-T1 (the bridge takes both)
   onWindowOpen: id => { picked = { group: id }; chat.el.hidden = true; placeholder.hidden = true; renderProfile(); renderSide() }, // the one way into a group chat
   onWindowClose: () => { if (picked?.group) picked = null; showCenter() },
   onDialogOpen: () => {},
@@ -189,6 +227,8 @@ function showChat() {
     terminal: on && s.launch ? s.launch : null, // its terminal in the conversation, as the computer's screen shows it small
     session: picked.sid || s?.id || null, online: on,
     offText: picked.sid ? t('task.offline') : task && member ? t('chat.awayInTask', { id: task.id, name: member.name }) : t('chat.offline'),
+    // an off-duty coworker's empty conversation offers the start in the middle, where the eye lands
+    emptyAction: !on && !picked.sid && !task && launchOpts?.enabled ? { text: t('launch.go'), onclick: () => launch.open(acc.id) } : null,
   })
 }
 

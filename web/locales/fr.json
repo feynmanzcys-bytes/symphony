@@ -169,6 +169,7 @@
   "launch.failed": "Impossible de démarrer : {reason}",
   "launch.previewNote": "Illustration : le bridge passe aussi le jeton de cet employé et sa propre adresse, et l'exécute sur un terminal à lui au sein du bridge (rien ne s'ouvre)",
   "launch.previewNoteDev": "Illustration : le bridge passe aussi --plugin-dir (mode développement), le jeton de cet employé et sa propre adresse, et l'exécute sur un terminal à lui au sein du bridge (rien ne s'ouvre)",
+  "launch.showCommand": "La commande lancée",
   "launch.off": "Le démarrage de sessions depuis la page est désactivé : {reason}",
   "launch.offWithFix": "Le démarrage de sessions depuis la page est désactivé : {reason}. Lancez cette commande, puis rechargez la page :",
   "option.default": "Par défaut",

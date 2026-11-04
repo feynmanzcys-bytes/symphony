@@ -62,5 +62,15 @@
   "staff.count": "同事：{n} 位",
   "task.end": "結束群",
   "task.go": "開始群",
-  "launch.name": "名字（其他工作階段靠它找到這位同事，也是工作階段名）"
+  "launch.name": "名字（其他工作階段靠它找到這位同事，也是工作階段名）",
+  "launch.model": "模型",
+  "launch.effort": "思考強度",
+  "launch.permissionMode": "權限模式",
+  "staff.noneSelected": "勾選同事後可以一起改。",
+  "task.titleNewHud": "新群",
+  "settings.staffWhat": "新同事依這些上班（「預設」就是交給 Claude Code 自己的設定）。新增時，對話框的「進階設定」可以只為這一次修改任意幾項；老同事回來上班時依它上次的選擇。",
+  "settings.botHomeHint": "啟動同事時不填工作資料夾，就在這裡新建一個以它名字命名的專屬資料夾，並初始化成 git 儲存庫。已有專屬資料夾的同事繼續用原來的。",
+  "launch.fromSettings": "已依全域設定填好（設定 → 同事）。在這裡修改不會變更全域設定。",
+  "task.members": "成員：依序勾選，勾選的順序就是群裡的順序（2 到 5 人）",
+  "error.unreachable": "無法連線到 bridge，正在重新連線。恢復前無法傳送訊息或審批。"
 }
