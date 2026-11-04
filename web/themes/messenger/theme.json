@@ -16,7 +16,7 @@
     "pt-BR": "As sessões como colegas em um app de mensagens: a lista à esquerda, os rostos mostrando o que fazem, a conversa no meio, o perfil e o computador à direita; as tarefas como chats em grupo.",
     "ru": "Сессии как коллеги в чат-приложении: список слева, их лица показывают, чем они заняты, разговор в центре, профиль и компьютер справа; задачи — групповые чаты."
   },
-  "version": "0.12.0",
+  "version": "0.13.0",
   "since": 3,
   "icon": "chat"
 }

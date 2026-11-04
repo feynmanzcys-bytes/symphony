@@ -30,8 +30,8 @@ export function lookOf(name, look) {
 }
 export function faceHTML(name, state, cls = '', look) {
   const { shape, hue } = lookOf(name, look), mouth = (hash(name) >>> 12) % 2
-  // (one lightness for both schemes: the sidebar is graphite in either, and the profile's and the group's faces
-  // sit on paper that is light or dark; --d puts the faces' motion out of step)
+  // (one lightness for both schemes: the faces sit on ivory or on charcoal, in the sidebar, the profile and the
+  // group alike; --d puts the faces' motion out of step)
   return `<div class="face ${cls}" data-state="${esc(state)}" aria-hidden="true" style="--c:hsl(${hue} 50% 50%);--d:${(hue % 7) + (hash(name) % 3)}"><svg viewBox="0 0 44 44">` +
     `${BODY[shape]}` +
     `<ellipse class="eye" cx="15.5" cy="19" rx="3.1" ry="3.6"/><ellipse class="eye" cx="28.5" cy="19" rx="3.1" ry="3.6"/>` +
