@@ -1,6 +1,6 @@
 {
   "name": "symphony-bridge",
-  "version": "1.7.1",
+  "version": "1.7.2",
   "description": "Unofficial: brings Claude Code sessions into the symphony office: each session shows as a chat in the office web page, which also takes prompts and handles permission requests and AskUserQuestion, and session activity is reported there. Only affects sessions started with SYMPHONY_TOKEN.",
   "author": {
     "name": "feynmanzcys-bytes",

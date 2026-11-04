@@ -2,9 +2,9 @@
 
 What changed in each release of symphony. The program (the bridge) and the mod share one version number. A release's notes start with its section here: the release workflow stops before building when the section is missing. Releases before v1.0.0 came out before the repository was public; their notes are kept below.
 
-## v1.7.1 (2026-11-04)
+## v1.7.2 (2026-11-04)
 
-Update the program (`brew upgrade symphony`, `scoop update symphony`, or the archive) and the mod with `claude plugin update symphony-bridge@symphony`: this time the mod changed too (a session that types `/clear` carries on). (v1.7.0 was tagged with the same code, but its release was never published: the workflow took the `{id}` in these notes for a placeholder it had left, and release tags can't be moved. v1.7.1 is that release.)
+Update the program (`brew upgrade symphony`, `scoop update symphony`, or the archive) and the mod with `claude plugin update symphony-bridge@symphony`: this time the mod changed too (a session that types `/clear` carries on). (v1.7.0 and v1.7.1 were tagged with the same code, but their releases were never published: a check in the workflow took braces in these notes for a placeholder it had left, and release tags can't be moved. v1.7.2 is that release.)
 
 - **Coworkers is the one page**: the pixel office is out of the repository (its theme, its tests, its keys; the protocol is at 3). `/t/office/` answers with Coworkers.
 - **Groups work like chat groups**: 2 to 20 members; a group has a name (the number shows without one) and its description is optional (without one the members are only introduced to each other, and you hand out the work in the team chat); an employee can be in several groups at once, each with a session of its own; "+ Add members" and the × on a member's card add and remove members while the group runs (one removed stays listed as left and can come back as the same member; the team is told, in the team chat too); a member whose session ended has "Start again"; a group no longer ends by itself when nobody is at it, and the groups a bridge finds running when it starts stay, their members off duty.
@@ -14,7 +14,7 @@ Update the program (`brew upgrade symphony`, `scoop update symphony`, or the arc
 - **The sidebar**: no state words; each row shows the newest line of its conversation, or, waiting for you, the kind of answer it needs; names shown short everywhere (`grace` for `grace-T1`); the group rows by name.
 - **The profile**: its Model row is two drop-downs while the session is online, which switch the running session's model and thinking effort (`POST /api/sessions/<id>/model`, run as `/model` and `/effort` in the session); its small screen is told apart from "Take over".
 - **Readable**: the settings have the text size (a zoom of the whole page, the layouts following) and the typeface (the system's, serif, rounded, monospace).
-- **The mod (1.7.1)**: a session that types `/clear` (or resumes or forks) carries on under its new id even when the engine says the new session's start before the old one's end; the problem report carries the activity log.
+- **The mod (1.7.2)**: a session that types `/clear` (or resumes or forks) carries on under its new id even when the engine says the new session's start before the old one's end; the problem report carries the activity log.
 - `TestScreens` exceeds the cap with 21 members; `TestTask` walks through a git group and a plain, named one with a member added, one removed, one started again and the dissolution; unit tests for members coming and going, an employee in two groups, a group outliving its members and a bridge restart.
 
 ## v1.6.0 (2026-11-04)
