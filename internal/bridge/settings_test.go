@@ -16,9 +16,16 @@ import (
 // defaults.
 func TestSettings(t *testing.T) {
 	data, def := t.TempDir(), filepath.Join(t.TempDir(), "bots")
-	h := NewHub()
-	h.BotHomeDefault = def
-	if err := h.Open(data); err != nil {
+	// a bridge on the data folder, flushed before the folders go: what it warns of (the damaged file below) goes to
+	// its error log, errors.json in there, which is written in the background
+	open := func() (*Hub, error) {
+		h := NewHub()
+		h.BotHomeDefault = def
+		t.Cleanup(func() { _ = h.Flush() })
+		return h, h.Open(data)
+	}
+	h, err := open()
+	if err != nil {
 		t.Fatal(err)
 	}
 	if v := h.Settings(); v.BotHome != def || v.BotHomeDefault != def {
@@ -47,9 +54,8 @@ func TestSettings(t *testing.T) {
 	if exists(mine) {
 		t.Fatal("setting it makes nothing yet")
 	}
-	again := NewHub()
-	again.BotHomeDefault = def
-	if err := again.Open(data); err != nil {
+	again, err := open()
+	if err != nil {
 		t.Fatal(err)
 	}
 	if v := again.Settings(); v.BotHome != mine {
@@ -79,9 +85,8 @@ func TestSettings(t *testing.T) {
 	if v, err := again.SetSettings(want); err != nil || v.LaunchDefaults != want.launchDefaults() || v.BotHome != mine {
 		t.Fatalf("set: %+v %v", v, err)
 	}
-	fourth := NewHub()
-	fourth.BotHomeDefault = def
-	if err := fourth.Open(data); err != nil {
+	fourth, err := open()
+	if err != nil {
 		t.Fatal(err)
 	}
 	if v := fourth.Settings(); v.LaunchDefaults != want.launchDefaults() || v.BotHome != mine {
@@ -89,9 +94,8 @@ func TestSettings(t *testing.T) {
 	}
 	// a hand edit's choice the drop-downs don't offer is Claude Code's own; the rest stays
 	writeFile(t, filepath.Join(data, "settings.json"), `{"model": "gpt", "effort": "max", "permissionMode": "yolo", "context": true}`)
-	fifth := NewHub()
-	fifth.BotHomeDefault = def
-	if err := fifth.Open(data); err != nil {
+	fifth, err := open()
+	if err != nil {
 		t.Fatal(err)
 	}
 	if v := fifth.Settings(); v.LaunchDefaults != (LaunchDefaults{Effort: "max", Context: true}) || v.BotHome != def {
@@ -100,9 +104,8 @@ func TestSettings(t *testing.T) {
 
 	// damaged: set aside, and the defaults
 	writeFile(t, filepath.Join(data, "settings.json"), `{"botHome": `)
-	third := NewHub()
-	third.BotHomeDefault = def
-	if err := third.Open(data); err != nil {
+	third, err := open()
+	if err != nil {
 		t.Fatalf("a damaged settings.json doesn't stop the bridge: %v", err)
 	}
 	aside, _ := filepath.Glob(filepath.Join(data, "settings.json.corrupt-*"))
