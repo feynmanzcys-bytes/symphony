@@ -35,6 +35,30 @@ type Account struct {
 	// Home is the folder made for it in the bot home when it was started from the page without a working folder
 	// (botFolder): a start without one goes back there
 	Home string `json:"home,omitempty"`
+	// Look is the face the page shows for it, picked when it was made or on the employees page; none: the page picks
+	// one from the name
+	Look *Look `json:"look,omitempty"`
+}
+
+// Look is a face: a shape with eyes, in a color (a hue of the color wheel).
+type Look struct {
+	Shape string `json:"shape"`
+	Hue   int    `json:"hue"`
+}
+
+// lookShapes are the shapes the page draws (ui/faces.js).
+var lookShapes = []string{"circle", "square", "hex", "diamond", "drop", "pill"}
+
+func (l *Look) valid() bool {
+	if l == nil || l.Hue < 0 || l.Hue > 359 {
+		return false
+	}
+	for _, s := range lookShapes {
+		if s == l.Shape {
+			return true
+		}
+	}
+	return false
 }
 
 // AccountView is an account as the snapshot shows it: without the token.
@@ -47,12 +71,13 @@ type AccountView struct {
 	Last    *LaunchRequest `json:"last,omitempty"`
 	Dir     string         `json:"dir,omitempty"`
 	Home    string         `json:"home,omitempty"`
+	Look    *Look          `json:"look,omitempty"`
 }
 
 // accountViewLocked is an account as the snapshot shows it: without the token, with its desk session while it's online.
 // (Last is shared, never changed in place: a change puts a new one in its place.)
 func (h *Hub) accountViewLocked(a *Account) AccountView {
-	v := AccountView{ID: a.ID, Name: a.Name, Seat: a.Seat, Advisor: a.Advisor, Last: a.Last, Dir: a.Dir, Home: a.Home}
+	v := AccountView{ID: a.ID, Name: a.Name, Seat: a.Seat, Advisor: a.Advisor, Last: a.Last, Dir: a.Dir, Home: a.Home, Look: a.Look}
 	if s := h.onlineLocked(a.ID); s != nil {
 		v.Session = s.ID
 	}
@@ -61,6 +86,7 @@ func (h *Hub) accountViewLocked(a *Account) AccountView {
 
 var (
 	ErrUnknownAccount = newError("account_unknown", "no such account")
+	ErrBadLook        = newError("account_bad_look", "no such shape or color")
 	ErrNameTaken      = newError("account_name_taken", "that name is already taken")
 	ErrAccountBusy    = newError("account_busy", "this account already has a session online, or one starting")
 	ErrSessionGone    = newError("session_gone", "this session's process has ended")
@@ -366,12 +392,20 @@ func (h *Hub) Flush() error {
 }
 
 // CreateAccount creates an account in the lowest free seat. Names are unique (sessions message each other by name).
-func (h *Hub) CreateAccount(name string) (*Account, error) { return h.createAccount(name, false) }
+func (h *Hub) CreateAccount(name string) (*Account, error) { return h.createAccount(name, false, nil) }
+
+// CreateAccountLook creates an account with the face the page picked for it.
+func (h *Hub) CreateAccountLook(name string, look *Look) (*Account, error) {
+	if look != nil && !look.valid() {
+		return nil, ErrBadLook
+	}
+	return h.createAccount(name, false, look)
+}
 
 // CreateAdvisor creates an account for one task: no seat, deleted when the task ends.
-func (h *Hub) CreateAdvisor(name string) (*Account, error) { return h.createAccount(name, true) }
+func (h *Hub) CreateAdvisor(name string) (*Account, error) { return h.createAccount(name, true, nil) }
 
-func (h *Hub) createAccount(name string, advisor bool) (*Account, error) {
+func (h *Hub) createAccount(name string, advisor bool, look *Look) (*Account, error) {
 	name = strings.TrimSpace(name)
 	if !validName(name) {
 		return nil, ErrBadName
@@ -392,7 +426,7 @@ func (h *Hub) createAccount(name string, advisor bool) (*Account, error) {
 	if advisor {
 		seat = -1
 	}
-	a := &Account{ID: newID(), Name: name, Token: newToken(), Seat: seat, Advisor: advisor, Created: h.now()}
+	a := &Account{ID: newID(), Name: name, Token: newToken(), Seat: seat, Advisor: advisor, Created: h.now(), Look: look}
 	h.accounts[a.ID] = a
 	if err := h.saveLocked(); err != nil {
 		delete(h.accounts, a.ID)

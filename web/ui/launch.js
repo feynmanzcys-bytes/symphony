@@ -16,6 +16,7 @@
 import { t, lang, esc, errorText, base, fill, browse, showEnd } from '/ui/common.js'
 import { dialog } from '/ui/a11y.js'
 import { putErrorBox, showError, onBackdrop } from '/ui/errors.js'
+import { lookPicker, lookOf } from '/ui/faces.js'
 
 const MARKUP = `
 <div class="modal" id="launch" hidden>
@@ -23,6 +24,7 @@ const MARKUP = `
     <h2 class="title"></h2>
     <label for="launch-name" data-i18n="launch.name"></label>
     <input id="launch-name" name="name" data-i18n-placeholder="launch.namePlaceholder" required>
+    <div class="look-row"><span class="label" data-i18n="launch.look"></span><div class="look"></div></div>
     <details class="adv">
       <summary><b data-i18n="launch.advanced"></b> <span class="digest"></span></summary>
       <div class="advbody">
@@ -62,6 +64,12 @@ export function createLaunchDialog(sym, { options = () => sym.launchOptions(true
   dialog(dlg, form.querySelector('.title'))
   const field = name => form.elements[name]
   const adv = form.querySelector('.adv')
+  // a new employee's face: what its name would pick until one is picked here (the picker follows the name typed)
+  const lookRow = form.querySelector('.look-row'), look = lookPicker('launch')
+  lookRow.querySelector('.look').appendChild(look)
+  let lookPicked = false
+  look.addEventListener('change', () => { lookPicked = true })
+  field('name').addEventListener('input', () => { if (!lookPicked) look.set(lookOf(field('name').value.trim())) })
   let opts = null
   let pending = null // the launch we're waiting to see online
   let account = null // the existing employee going back to work; null for a new one
@@ -96,7 +104,7 @@ export function createLaunchDialog(sym, { options = () => sym.launchOptions(true
       permissionMode: field('permissionMode').value, resume: field('resume').value, lang }
     if (field('context').checked) r.context = true // the session hears who else is in the office (SYMPHONY_CONTEXT=1)
     if (account) r.account = account
-    else r.name = field('name').value.trim()
+    else { r.name = field('name').value.trim(); r.look = look.value }
     return r
   }
   // the folder an employee started without one gets: the one made for it before, else a new one in the bridge's default
@@ -209,6 +217,9 @@ export function createLaunchDialog(sym, { options = () => sym.launchOptions(true
       form.querySelector('.title').textContent = acc ? t('launch.titleExisting', { name: acc.name }) : t('launch.titleNew')
       field('name').value = acc ? acc.name : ''
       field('name').readOnly = !!acc
+      lookRow.hidden = !!acc // (an employee's face is changed on the employees page)
+      lookPicked = false
+      if (!acc) look.set(lookOf(''))
       const recent = opts.recentDirs || []
       // (one whose last choices say its own folder goes back there, wherever its session went since: the employees page
       // may have said so)

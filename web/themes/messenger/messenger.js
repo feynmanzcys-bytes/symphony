@@ -15,6 +15,7 @@ import { createTaskUI } from '/ui/task.js'
 import { createTerminal } from '/ui/terminal.js'
 import { createSettings, settingsButton } from '/ui/settings.js'
 import '/ui/look.js' // the size and the typeface from the settings, applied as the page loads
+import { faceHTML, avatarURL } from '/ui/faces.js'
 import { showError } from '/ui/errors.js'
 
 const sym = connect()
@@ -109,18 +110,8 @@ const shortModel = s => [s.model ? s.model.replace(/^claude-/, '').replace(/-\d+
 const limitLabel = kind => LIMIT_KEY[kind] ? t(LIMIT_KEY[kind]) : String(kind).replace(/_/g, ' ')
 
 // a face: the shape and the hue from the name, the eyes, a mouth; the state is on the element, the motion in CSS
-const SHAPES = ['<circle class="body" cx="22" cy="22" r="20"/>', '<rect class="body" x="3" y="3" width="38" height="38" rx="10"/>', '<polygon class="body" points="22,2 40,12 40,32 22,42 4,32 4,12"/>', '<path class="body" d="M22 3 L41 22 L22 41 L3 22 Z" />']
-function face(name, state, cls = '') {
-  const h = hash(name), hue = h % 360, shape = SHAPES[(h >>> 8) % SHAPES.length], mouth = (h >>> 12) % 2
-  // (one lightness for both schemes: the sidebar is graphite in either, and the profile's and the group's faces
-  // sit on paper that is light or dark)
-  return `<div class="face ${cls}" data-state="${esc(state)}" aria-hidden="true" style="--c:hsl(${hue} 50% 50%)"><svg viewBox="0 0 44 44">` +
-    `<circle class="ring" cx="22" cy="22" r="21.5"/>${shape}` +
-    `<ellipse class="eye" cx="15" cy="19" rx="4" ry="4.5"/><ellipse class="eye" cx="29" cy="19" rx="4" ry="4.5"/>` +
-    `<circle class="pupil" cx="15.5" cy="19.5" r="2"/><circle class="pupil" cx="29.5" cy="19.5" r="2"/>` +
-    (mouth ? `<path class="mouth" d="M15 29 Q22 34 29 29"/>` : `<path class="mouth" d="M16 30 L28 30"/>`) +
-    `<rect class="hand" x="34" y="4" width="7" height="14" rx="3.5"/><path class="check" d="M30 36 L35 41 L43 31"/></svg></div>`
-}
+// a face (ui/faces.js): the account's own look, else what its name picks; the state is on the element, the motion in CSS
+const face = (name, state, cls = '', look) => faceHTML(name, state, cls, look)
 
 // ---------- the shared pieces, embedded in the middle column ----------
 let picked = null // what the middle column shows: { account, sid?, task? } for a conversation, { group: taskId } for a group chat
@@ -144,7 +135,7 @@ const launch = createLaunchDialog(sym, { options: loadOptions, onOnline: l => op
 const tasks = createTaskUI(sym, {
   options: loadOptions,
   roomLabel: task => task.title.split('\n')[0].slice(0, 48),
-  memberAvatar: m => avatarURL(m?.name || '?'), youAvatar: () => avatarURL('you'),
+  memberAvatar: m => avatarURL(m?.name || '?', sym.accountById(m?.account)?.look), youAvatar: () => avatarURL('you'),
   isMemberOpen: (task, m) => !!picked?.sid && picked.sid === m.session,
   onOpenMember: (task, m) => openCoworker(m.account, m.session, task.id),
   mentionName: (name, task) => displayName(name, task), // grace, not grace-T1 (the bridge takes both)
@@ -153,11 +144,6 @@ const tasks = createTaskUI(sym, {
   onDialogOpen: () => {},
 })
 center.append(chat.el, tasks.win)
-function avatarURL(name) {
-  const h = hash(name), hue = h % 360
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><circle cx="16" cy="16" r="15" fill="hsl(${hue} 48% 46%)"/><ellipse cx="11" cy="14" rx="3" ry="3.4" fill="#fff"/><ellipse cx="21" cy="14" rx="3" ry="3.4" fill="#fff"/><circle cx="11.5" cy="14.5" r="1.5" fill="#111b21"/><circle cx="21.5" cy="14.5" r="1.5" fill="#111b21"/><path d="M11 22 Q16 26 21 22" stroke="#fff" stroke-width="1.6" fill="none" stroke-linecap="round"/></svg>`
-  return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`
-}
 // what the middle column shows, for the narrow window's one column
 const app = document.querySelector('.app')
 const markPicked = () => app.classList.toggle('picked', !!(picked?.account || picked?.group))
@@ -290,7 +276,7 @@ function renderSide() {
     const st = stateOf(s), on = online(s), hot = st === 'waiting', line = progress(acc, s)
     const picked_ = picked?.account === acc.id && !picked.sid
     // (the state is the ring around the face, and for a screen reader a hidden word after the name)
-    const html = `<div class="row${picked_ ? ' on' : ''}${on ? '' : ' off'}" data-account="${esc(acc.id)}" role="button" tabindex="0"${picked_ ? ' aria-current="true"' : ''}>${face(acc.name, st)}` +
+    const html = `<div class="row${picked_ ? ' on' : ''}${on ? '' : ' off'}" data-account="${esc(acc.id)}" role="button" tabindex="0"${picked_ ? ' aria-current="true"' : ''}>${face(acc.name, st, '', acc.look)}` +
       `<div class="nm">${esc(acc.name)}${hot || !on ? '' : `<span class="vh"> · ${esc(statusText(s))}</span>`}${task ? ` <span class="badge" title="${esc(task.title)}">${esc(t('msgr.inGroup', { id: task.id }))}</span>` : ''}</div>` +
       `<div class="sub${hot ? ' hot' : ''}" title="${esc(line)}">${esc(line)}</div></div>`
     return { key: acc.id, sig: `${acc.name}|${st}|${line}|${picked_}|${task?.id}|${dark}`, html }
@@ -354,7 +340,7 @@ function renderProfile() {
     if (!k) { profileEl.hidden = true; return }
     setHTML(profileEl, `<div class="top">${face(k.id, k.status === 'failed' ? 'ended' : 'tool', 'big')}<h2>${esc(k.id)}</h2><div class="st">${esc(t('task.status.' + k.status))}</div></div>` +
       `<h3>${esc(t('msgr.profile.about'))}</h3><div class="wrap" style="font-size:13px;white-space:pre-wrap;overflow-wrap:anywhere">${esc(k.title)}</div>` +
-      `<h3>${esc(t('msgr.profile.members'))}</h3><div class="list">` + k.members.map(m => { const s = sym.sessionById(m.session); return `<div class="row" data-session="${esc(m.session || '')}" data-account="${esc(m.account)}"${m.session ? ' role="button" tabindex="0"' : ''}>${face(m.name, stateOf(s))}<span class="txt"><b>${esc(displayName(m.name, k))}</b>${k.leader === m.account ? ` <span class="tag">${esc(t('task.lead'))}</span>` : ''}</span><span class="dim">${esc(!m.session ? t('task.memberStarting') : online(s) ? statusText(s) : t('task.memberEnded'))}</span></div>` }).join('') + '</div>')
+      `<h3>${esc(t('msgr.profile.members'))}</h3><div class="list">` + k.members.map(m => { const s = sym.sessionById(m.session); return `<div class="row" data-session="${esc(m.session || '')}" data-account="${esc(m.account)}"${m.session ? ' role="button" tabindex="0"' : ''}>${face(m.name, stateOf(s), '', sym.accountById(m.account)?.look)}<span class="txt"><b>${esc(displayName(m.name, k))}</b>${k.leader === m.account ? ` <span class="tag">${esc(t('task.lead'))}</span>` : ''}</span><span class="dim">${esc(!m.session ? t('task.memberStarting') : online(s) ? statusText(s) : t('task.memberEnded'))}</span></div>` }).join('') + '</div>')
     return
   }
   const acc = sym.accountById(picked.account)
@@ -365,7 +351,7 @@ function renderProfile() {
   const u = s?.usage, ctx = u?.context?.percent
   const totals = u?.totals ? Object.values(u.totals).reduce((n, tk) => n + tk.input + tk.output, 0) : 0
   const recent = activity.filter(a => a.session === s?.id && (a.kind === 'tool' || a.kind === 'ask' || a.kind === 'error')).slice(-5).reverse()
-  const drawn = setHTML(profileEl, `<div class="top">${face(name, st, 'big')}<h2>${esc(name)}</h2><div class="st">${esc(on ? statusText(s) : t('state.ended'))}</div></div>` +
+  const drawn = setHTML(profileEl, `<div class="top">${face(name, st, 'big', acc.look)}<h2>${esc(name)}</h2><div class="st">${esc(on ? statusText(s) : t('state.ended'))}</div></div>` +
     (picked.task ? `<span class="link" data-group="${esc(picked.task)}" role="button" tabindex="0">← ${esc(t('msgr.profile.backToGroup', { id: picked.task }))}</span>` : task ? `<span class="link" data-group="${esc(task.id)}" role="button" tabindex="0">${esc(t('msgr.profile.inGroup', { id: task.id }))}</span>` : '') +
     `<h3>${esc(t('msgr.profile.computer'))}</h3><div class="computer">` +
     `<div class="now ${on && s.state === 'tool' ? 'on' : on ? '' : 'off'}"><i></i><span>${esc(on ? (s.state === 'tool' && s.tool ? s.tool : s.state === 'thinking' ? t('state.thinking') : t('msgr.profile.idle')) : t('state.ended'))}</span></div>` +

@@ -1014,12 +1014,25 @@ func TestA11y(t *testing.T) {
 		t.Errorf("the name field should be named by its label: %+v", n)
 	}
 	named(q, "launch", `document.getElementById('launch')`)
+	// the face: two radio groups, the shapes and the colors, each a named radio (Tab enters a group at the one picked
+	// and leaves it with the next Tab)
+	key(ctx, kb.Tab, false)
+	if n := ax(t, ctx, `document.activeElement`); !q.is(`document.activeElement.matches('#launch .look-pick .shapes input:checked')`) || n.Role != "radio" || n.Name != "Round" {
+		t.Errorf("Tab from the name should reach the shape picked, a radio named Round: %+v, %s", n, q.js(`document.activeElement.outerHTML.slice(0, 80)`))
+	}
+	if g := ax(t, ctx, `document.querySelector('#launch .look-pick .shapes')`); g.Role != "radiogroup" || g.Name != "Shape" {
+		t.Errorf("the shapes should be a radio group named Shape: %+v", g)
+	}
+	key(ctx, kb.Tab, false)
+	if n := ax(t, ctx, `document.activeElement`); !q.is(`document.activeElement.matches('#launch .look-pick .hues input:checked')`) || n.Role != "radio" || n.Name != "Red" {
+		t.Errorf("the next Tab should reach the color picked, a radio named Red: %+v, %s", n, q.js(`document.activeElement.outerHTML.slice(0, 80)`))
+	}
 	// Advanced settings: the next stop, a disclosure named by what it is and what the start will use; Enter unfolds it
 	// and Tab goes on into its fields
 	key(ctx, kb.Tab, false)
 	if n := ax(t, ctx, `document.querySelector('#launch .adv > summary')`); !q.is(`document.activeElement === document.querySelector('#launch .adv > summary')`) ||
 		!strings.HasPrefix(n.Name, "Advanced settings own folder") {
-		t.Errorf("Tab from the name should reach Advanced settings, named with what the start will use: %+v, %s", n, q.js(`document.activeElement.outerHTML.slice(0, 80)`))
+		t.Errorf("Tab from the face should reach Advanced settings, named with what the start will use: %+v, %s", n, q.js(`document.activeElement.outerHTML.slice(0, 80)`))
 	}
 	key(ctx, kb.Enter, false)
 	key(ctx, kb.Tab, false)

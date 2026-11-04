@@ -14,6 +14,7 @@
 import { t, lang, esc, errorText, lower, dot, fill, browse, showEnd, statusText, setHTML, deferWhilePressed } from '/ui/common.js'
 import { dialog } from '/ui/a11y.js'
 import { onBackdrop, setText } from '/ui/errors.js'
+import { lookPicker, lookOf, SHAPES } from '/ui/faces.js'
 import { folderName } from '/ui/launch.js'
 
 const MAX = 100 // employees one import may name: the bridge's maxImport
@@ -71,6 +72,7 @@ const EDITOR = `
   </div>
   <div class="warn" id="staff-warn" hidden></div>
   <label class="check"><input type="checkbox" name="context"><span></span></label>
+  <div class="look-row"><span class="label" id="staff-look"></span><div class="look"></div></div>
   <div class="acts end"><button type="button" class="px cancel"></button><button type="submit" class="px primary save"></button></div>
   <p class="said" role="status"></p>
 </form>`
@@ -131,6 +133,7 @@ export function createStaff(sym) {
   }
   // a choice in words: a model's name, an effort, a permission mode, "Default" for Claude Code's own
   function valueText(field, v) {
+    if (field === 'look') return v && typeof v === 'object' ? `${t('launch.shape.' + v.shape)} · ${v.hue}°` : t('option.default')
     if (field === 'dir') return v || t('launch.ownDir')
     if (field === 'context') return t(v ? 'staff.on' : 'staff.off')
     if (!v) return t('option.default')
@@ -282,6 +285,10 @@ export function createStaff(sym) {
     ['label[for=staff-mode]', 'launch.permissionMode'], ['.check span', 'launch.context'], ['.browse', 'launch.browse'], ['.pick', 'launch.pick'],
     ['.cancel', 'common.cancel'], ['.save', 'settings.save'], ['.warn', 'launch.bypassWarning']]) form.querySelector(sel).textContent = t(key)
   form.querySelector('.check').title = t('launch.contextTitle')
+  // the face: the account's own, or what its name picks, changed here
+  const look = lookPicker('staff')
+  form.querySelector('.look-row .look').appendChild(look)
+  form.querySelector('#staff-look').textContent = t('staff.f.look')
   const tellEditor = (text, err) => { esaid.classList.toggle('err', !!err); setText(esaid, text) }
   function warnEditor() {
     ewarn.hidden = field('permissionMode').value !== 'bypassPermissions'
@@ -300,6 +307,7 @@ export function createStaff(sym) {
     fill(field('effort'), choices.efforts, c.effort)
     fill(field('permissionMode'), choices.permissionModes, c.permissionMode)
     field('context').checked = c.context
+    look.set(lookOf(acc.name, acc.look))
     form.querySelector('.browser').hidden = true
     form.querySelector('.save').disabled = false
     tellEditor('')
@@ -334,7 +342,7 @@ export function createStaff(sym) {
     const save = form.querySelector('.save')
     save.disabled = true
     tellEditor('')
-    const r = await sym.importStaff([{ name: acc.name, dir, model: field('model').value, effort: field('effort').value, permissionMode: field('permissionMode').value, context: field('context').checked }])
+    const r = await sym.importStaff([{ name: acc.name, dir, model: field('model').value, effort: field('effort').value, permissionMode: field('permissionMode').value, context: field('context').checked, look: look.value }])
     save.disabled = false
     if (!r.ok) return tellEditor(t('settings.saveFailed', { reason: errorText(r.data) }), true)
     closeEditor(true)
@@ -395,6 +403,8 @@ export function createStaff(sym) {
         continue
       }
       const now = startsWith(acc), diff = FIELDS.filter(f => f in e && e[f] !== now[f])
+      const lookKey = l => l ? `${l.shape} ${l.hue}` : ''
+      if (e.look && lookKey(e.look) !== lookKey(acc.look)) { diff.push('look'); now.look = acc.look } // (the face too)
       if (!diff.length) { rows.push(['same', e.name, [t('staff.same')].concat(extra)]); continue }
       changed++
       sending.push(it)
@@ -434,7 +444,7 @@ export function createStaff(sym) {
   const exportBtn = $('.tools .export')
   exportBtn.textContent = t('staff.export')
   exportBtn.onclick = () => {
-    const out = employees().sort(byName).map(a => a.last ? { name: a.name, dir: a.last.dir || '', model: a.last.model || '', effort: a.last.effort || '', permissionMode: a.last.permissionMode || '', context: !!a.last.context } : { name: a.name })
+    const out = employees().sort(byName).map(a => ({ ...(a.last ? { name: a.name, dir: a.last.dir || '', model: a.last.model || '', effort: a.last.effort || '', permissionMode: a.last.permissionMode || '', context: !!a.last.context } : { name: a.name }), ...(a.look ? { look: { shape: a.look.shape, hue: a.look.hue } } : {}) }))
     const stamp = new Date().toISOString().slice(0, 19).replace(/[-:]/g, '').replace('T', '-')
     const link = document.createElement('a')
     link.href = URL.createObjectURL(new Blob([JSON.stringify({ employees: out }, null, 2) + '\n'], { type: 'application/json' }))
@@ -534,6 +544,10 @@ export function parseStaff(text, choices, accounts = []) {
         if (v === true || /^(true|yes|on|1)$/.test(want)) e.context = true
         else if (v === false || /^(false|no|off|0)$/.test(want)) e.context = false
         else it.bad.push(t('staff.badValue', { field: t('staff.f.context'), value: String(v) }))
+      } else if (k === 'look') { // the face: {shape, hue}, as the export gives it
+        const hue = Number(v?.hue)
+        if (v && typeof v === 'object' && SHAPES.includes(v.shape) && Number.isInteger(hue) && hue >= 0 && hue < 360) e.look = { shape: v.shape, hue }
+        else it.bad.push(t('staff.badValue', { field: t('staff.f.look'), value: JSON.stringify(v) }))
       } else it.notes.push(t('staff.unknownField', { field: k }))
     }
   })

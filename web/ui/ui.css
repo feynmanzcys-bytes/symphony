@@ -295,6 +295,17 @@ html.w-lt-520 .chat .say textarea { min-height:calc(4.5em + 14px); }
 #launch input[readonly] { background:var(--field-ro); }
 :is(#launch, #task, #staff) :is(input:not([type=checkbox]), select, textarea):focus, :is(#asks, .flow .card, #queue) input[type=text]:focus { outline:none; border-color:var(--focus-line); box-shadow:var(--focus-ring); }
 #launch .row { display:flex; gap:6px; }
+/* the face picker (ui/faces.js): the shapes as faces in the color picked, the colors as round swatches. The radio
+   itself lies over its face or swatch, drawn as nothing but its outline when picked or focused (so the focus is the
+   control's own, as the keyboard and the contrast test see it); the dialogs' own label rules are beaten by the ids */
+.look-row { margin:8px 0 2px; } .look-row > .label { display:block; font-size:12px; color:var(--muted-2); margin-bottom:4px; }
+.look-pick .row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:2px 0 6px; }
+#launch .look-pick label, #staff .look-pick label, .look-pick label { position:relative; display:inline-flex; margin:0; padding:2px; line-height:0; border-radius:50%; cursor:pointer; }
+.look-pick input { position:absolute; inset:0; width:100%; height:100%; margin:0; appearance:none; -webkit-appearance:none; border:0; background:transparent; border-radius:50%; cursor:pointer; }
+.look-pick .face { width:38px; height:38px; }
+.look-pick .swatch { display:block; width:22px; height:22px; border-radius:50%; background:var(--c); }
+.look-pick input:checked { outline:2px solid var(--focus-line); outline-offset:1px; }
+.look-pick input:focus-visible { outline:2px solid var(--focus-line); outline-offset:1px; box-shadow:var(--focus-ring); }
 #launch .row input { flex:1; }
 #launch .grid { display:grid; grid-template-columns:1fr 1fr; gap:0 10px; }
 :is(#launch, #task, #staff) .browser { border:2px solid var(--ink); margin-top:6px; background:var(--card); }

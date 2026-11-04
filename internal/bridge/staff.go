@@ -27,6 +27,7 @@ type StaffEntry struct {
 	Effort         *string `json:"effort,omitempty"`
 	PermissionMode *string `json:"permissionMode,omitempty"`
 	Context        *bool   `json:"context,omitempty"`
+	Look           *Look   `json:"look,omitempty"` // the face (Account.Look): set as given; left out, as it is
 }
 
 // StaffImport is what an import did: the employees it made and the ones whose choices it changed (one it named that
@@ -129,6 +130,9 @@ func (h *Hub) ImportStaff(entries []StaffEntry) (StaffImport, error) {
 				return StaffImport{}, entryError(errBadOption, i+1, e.Name)
 			}
 		}
+		if e.Look != nil && !e.Look.valid() {
+			return StaffImport{}, entryError(ErrBadLook, i+1, e.Name)
+		}
 	}
 
 	h.mu.Lock()
@@ -145,6 +149,7 @@ func (h *Hub) ImportStaff(entries []StaffEntry) (StaffImport, error) {
 	// made and changed, remembered so that all of it can be taken back when accounts.json can't be written
 	var made, changed []*Account
 	was := map[*Account]*LaunchRequest{}
+	wasLook := map[*Account]*Look{}
 	defaults := h.settings.launchDefaults()
 	seat := 0
 	for _, e := range list {
@@ -154,13 +159,20 @@ func (h *Hub) ImportStaff(entries []StaffEntry) (StaffImport, error) {
 				seat++
 			}
 			taken[seat] = true
-			a = &Account{ID: newID(), Name: e.Name, Token: newToken(), Seat: seat, Created: h.now()}
+			a = &Account{ID: newID(), Name: e.Name, Token: newToken(), Seat: seat, Created: h.now(), Look: e.Look}
 			if e.choices() {
 				a.Last = e.over(nil, defaults, "", e.dir)
 			}
 			h.accounts[a.ID] = a
 			made = append(made, a)
 			continue
+		}
+		// the face: set when the entry gives one that differs (the same one again changes nothing)
+		newLook := e.Look != nil && (a.Look == nil || *a.Look != *e.Look)
+		if newLook {
+			wasLook[a] = a.Look
+			a.Look = e.Look
+			changed = append(changed, a)
 		}
 		if !e.choices() {
 			continue
@@ -171,7 +183,9 @@ func (h *Hub) ImportStaff(entries []StaffEntry) (StaffImport, error) {
 		}
 		was[a] = a.Last
 		a.Last = next
-		changed = append(changed, a)
+		if !newLook {
+			changed = append(changed, a)
+		}
 	}
 	if len(made) == 0 && len(changed) == 0 {
 		return StaffImport{Created: []AccountView{}, Updated: []AccountView{}}, nil // (nothing to write, nothing to tell the pages)
@@ -182,6 +196,9 @@ func (h *Hub) ImportStaff(entries []StaffEntry) (StaffImport, error) {
 		}
 		for a, last := range was {
 			a.Last = last
+		}
+		for a, look := range wasLook {
+			a.Look = look
 		}
 		return StaffImport{}, errAccountsWrite
 	}

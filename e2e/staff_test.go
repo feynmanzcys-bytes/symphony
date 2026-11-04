@@ -180,11 +180,16 @@ func TestStaff(t *testing.T) {
 		t.Error("bypassPermissions should show its warning, the select's description")
 	}
 	p.run(`document.querySelector('#staff-editor [name=context]').click()`)
+	// his face: a hexagon in blue (the picker's radios, named for a screen reader)
+	if !p.is(`document.querySelectorAll('#staff-editor .look-pick .shapes input').length === 6 && document.querySelectorAll('#staff-editor .look-pick .hues input').length === 10 && document.querySelector('#staff-editor .look-pick input[name=staff-shape]:checked') !== null`) {
+		t.Fatalf("the editor should offer the six shapes and ten colors with one of each picked: %s", p.js(`document.querySelector('#staff-editor .look-pick')?.outerHTML.slice(0, 300)`))
+	}
+	p.run(`document.querySelector('#staff-editor .look-pick input[value=hex]').click(); document.querySelector('#staff-editor .look-pick input[name=staff-hue][value="212"]').click()`)
 	p.shot("edit")
 	p.run(`document.querySelector('#staff-editor .save').click()`)
 	waitUntil(t, 10*time.Second, "bob's choices saved, his row folded, the focus back on his Edit", func() bool {
-		l := last("bob")
-		return l.Dir == "" && l.Model == "haiku" && l.Effort == "max" && l.PermissionMode == "bypassPermissions" && l.Context &&
+		l, acc := last("bob"), b.account("bob")
+		return l.Dir == "" && l.Model == "haiku" && l.Effort == "max" && l.PermissionMode == "bypassPermissions" && l.Context && acc.Look != nil && acc.Look.Shape == "hex" && acc.Look.Hue == 212 &&
 			p.is(`!document.getElementById('staff-editor') && document.activeElement === `+row("bob")+`.querySelector('.edit') && document.querySelector('#staff .said.main').textContent === 'Saved: bob starts so next time.'`)
 	}, func() string {
 		return fmt.Sprintf("%+v %s", last("bob"), p.js(`document.querySelector('#staff .said.main').textContent`))
@@ -316,7 +321,7 @@ func TestStaff(t *testing.T) {
 	for _, e := range file.Employees {
 		got = append(got, fmt.Sprintf("%v %d", e["name"], len(e)))
 	}
-	if strings.Join(got, ",") != "alice 6,bob 6,carol 6,dave 1,erin 1,frank 6,gina 1,hank 1" || strings.Contains(exported, "rev") || strings.Contains(exported, "token") || strings.Contains(exported, tokens["bob"]) {
+	if strings.Join(got, ",") != "alice 6,bob 7,carol 6,dave 1,erin 1,frank 6,gina 1,hank 1" || !strings.Contains(exported, `"shape": "hex"`) || strings.Contains(exported, "rev") || strings.Contains(exported, "token") || strings.Contains(exported, tokens["bob"]) {
 		t.Errorf("the export should hold every employee by name, its choices when it has them, no advisor, no token: %v\n%s", got, exported)
 	}
 	importing(exported)

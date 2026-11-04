@@ -453,6 +453,9 @@ func TestScreens(t *testing.T) {
 	if !p.is(`!document.querySelector('#launch .adv').open && document.querySelector('#launch .digest').textContent === "own folder · Claude Code's own settings"`) {
 		t.Fatalf("the dialog should open folded, its line saying what the start will use: %s", p.js(`document.querySelector('#launch .digest').textContent`))
 	}
+	if !p.is(`(r => !!r && !r.hidden && r.querySelectorAll('.look-pick input:checked').length === 2)(document.querySelector('#launch .look-row'))`) {
+		t.Errorf("a new employee's dialog should offer a face, with a shape and a color picked: %s", p.js(`document.querySelector('#launch .look-row')?.outerHTML.slice(0, 200)`))
+	}
 	p.shot("launch-dialog")
 	p.check()
 	p.run(`document.querySelector('#launch .adv > summary').click()`)

@@ -390,11 +390,12 @@ func (s *Server) askInput(w http.ResponseWriter, r *http.Request) {
 func (s *Server) createAccount(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Name string `json:"name"`
+		Look *Look  `json:"look"`
 	}
 	if !decode(w, r, &req) {
 		return
 	}
-	acc, err := s.Hub.CreateAccount(req.Name)
+	acc, err := s.Hub.CreateAccountLook(req.Name, req.Look)
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -642,12 +643,13 @@ func (s *Server) launch(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	} else {
-		if acc, err = s.Hub.CreateAccount(req.Name); err != nil {
+		if acc, err = s.Hub.CreateAccountLook(req.Name, req.Look); err != nil {
 			writeErr(w, err)
 			return
 		}
 		created = true
 	}
+	req.Look = nil // (the face is the account's, never part of what the next start fills in)
 	// one start at a time: the desk is held until the launch is in the hub (a failed start lets go of it)
 	release, err := s.Hub.reserveDesk(acc.ID)
 	if err != nil {
