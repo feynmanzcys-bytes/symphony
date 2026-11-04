@@ -399,6 +399,8 @@ html.w-lt-520 .chat .say textarea { min-height:calc(4.5em + 14px); }
 #task .adv .row { display:flex; gap:6px; margin-top:4px; }
 #task .adv .row input { flex:1; }
 #task .add-adv { margin-top:6px; }
+#task .hint { margin:2px 0 0 24px; font-size:12px; line-height:1.45; color:var(--muted-2); }
+#task form.adding .new-only { display:none; } /* adding members to a running task: only who joins */
 :is(#launch, #task) label.check { display:flex; align-items:center; gap:6px; color:var(--ink); font-size:13px; margin-top:10px; cursor:pointer; }
 #task .actions { align-items:center; }
 /* the status line and the buttons stay at the bottom of the dialog while the rest scrolls */
@@ -422,7 +424,14 @@ html.w-lt-520 .chat .say textarea { min-height:calc(4.5em + 14px); }
 #taskwin .err { margin-top:8px; }
 #taskwin .mode[hidden], #taskwin .err[hidden] { display:none; }
 #taskwin .members { margin-top:10px; border-top:2px solid var(--ink); }
-#taskwin .mrow { display:flex; flex-wrap:wrap; align-items:center; gap:4px 8px; padding:5px 6px; border-bottom:2px solid var(--pane-2); cursor:pointer; font-size:13px; }
+#taskwin .mitem { display:flex; align-items:stretch; border-bottom:2px solid var(--pane-2); }
+#taskwin .mitem.left .mrow { cursor:default; color:var(--muted); } /* a member that left the team stays on the list, grayed as one not yet there */
+#taskwin .mitem.left .mrow:hover { background:none; }
+#taskwin .mitem .acts { flex:none; display:flex; align-items:center; gap:4px; padding:0 6px; }
+#taskwin .mitem .acts button { padding:2px 8px; font-size:12px; }
+#taskwin .mitem .acts .kick { display:inline-grid; place-items:center; width:26px; padding:0; }
+#taskwin .mitem .acts .kick::before { content:''; width:12px; height:12px; background:currentColor; -webkit-mask:var(--ico-close) center / contain no-repeat; mask:var(--ico-close) center / contain no-repeat; }
+#taskwin .mrow { flex:1; min-width:0; display:flex; flex-wrap:wrap; align-items:center; gap:4px 8px; padding:5px 6px; cursor:pointer; font-size:13px; }
 #taskwin .mrow:hover { background:var(--paper-2); }
 #taskwin .mrow.wait { cursor:default; color:var(--muted); }
 #taskwin .mrow.wait:hover { background:none; }
@@ -441,6 +450,9 @@ html.w-lt-520 .chat .say textarea { min-height:calc(4.5em + 14px); }
 #taskwin .tlist .empty { margin:auto; color:var(--muted); font-size:12px; text-align:center; }
 #taskwin .tmsg { flex:none; display:flex; align-items:flex-start; gap:6px; max-width:88%; align-self:flex-start; }
 #taskwin .tmsg.me { flex-direction:row-reverse; align-self:flex-end; }
+#taskwin .tmsg.sys { align-self:center; max-width:100%; } /* the bridge's own: who joined, who left */
+#taskwin .tmsg.sys .body { font-size:12px; color:var(--muted-2); text-align:center; }
+#taskwin .tid { font-size:11px; line-height:1.6; padding:0 6px; background:var(--chip); color:var(--muted-2); white-space:nowrap; }
 #taskwin .tmsg .av { flex:none; width:48px; height:24px; margin-top:4px; background-size:100% 100%; image-rendering:pixelated; }
 #taskwin .tmsg .bub { min-width:0; padding:4px 10px 6px; background:var(--msg-bg); color:var(--msg-ink); border:2px solid var(--msg-line); box-shadow:2px 2px 0 rgba(0,0,0,.2); font-size:13px; line-height:1.5; }
 #taskwin .tmsg.me .bub { background:var(--me-bg); border-color:var(--me-bg); color:var(--me-ink); }

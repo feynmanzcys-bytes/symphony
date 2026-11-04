@@ -19,13 +19,18 @@ import (
 	"github.com/feynmanzcys-bytes/symphony/internal/i18n"
 )
 
-// Tasks: a team of 2 to 5 sessions in a small meeting room, working together on one description the user wrote.
-// The members are employees (each gets a second, task-only session; its desk session stays as it is) and advisors
-// (accounts made for the task and deleted when it ends). Each member works in a git worktree of its own, on a branch
-// of its own, of its folder's repository (git.go). The members talk among themselves with SendMessage; the bridge
-// only names them predictably and sends each a kickoff prompt. When the task ends, the sessions stop, what they left
-// uncommitted is committed to their branches and the worktrees go; in a repository the bridge made for the task, the
-// branches are merged into the base branch, so the folder holds the results. The repositories and the branches stay.
+// Tasks (the page calls them groups): a team of 2 to 20 sessions on one description the user wrote, or on none
+// (then the kickoff only introduces the team, and the user hands out the work in the group chat). The members are
+// employees (each gets a second, task-only session per task; its desk session stays as it is, and it may be in
+// several tasks at once) and advisors (accounts made for the task and deleted when it ends). Members come and go
+// while the task runs (AddMembers, KickMember: one that left stays on the list, Member.Left), one whose session
+// ended starts again (StartMember), and the task lives until the user ends it: no member at it doesn't end it. By
+// default each member works in its folder as it is, the desk session's; with Task.Git each works in a git worktree of
+// its own, on a branch of its own, of its folder's repository (git.go). The members talk among themselves with
+// SendMessage; the bridge only names them predictably and sends each a kickoff prompt. When the task ends, the
+// sessions stop; with Git, what they left uncommitted is committed to their branches and the worktrees go, and in a
+// repository the bridge made for the task the branches are merged into the base branch, so the folder holds the
+// results. The repositories and the branches stay.
 
 // task states
 const (
@@ -39,7 +44,9 @@ const (
 	// keepTasks is how many tasks tasks.json keeps for the record
 	keepTasks      = 200
 	taskMinMembers = 2
-	taskMaxMembers = 5
+	taskMaxMembers = 20 // (the task dialog's MAX_MEMBERS in ui/task.js is the same number)
+	// taskNameMax is the longest name a task may have, in runes
+	taskNameMax = 80
 	// memberExitWait is how long ending a task waits for a member's killed process before touching its worktree
 	memberExitWait = 20 * time.Second // a kill takes up to killGrace, plus listing what it started (ps on macOS)
 )
@@ -52,8 +59,10 @@ var (
 
 type Task struct {
 	ID             string            `json:"id"`
-	Title          string            `json:"title"`            // the user's task description
+	Name           string            `json:"name,omitempty"`   // what the user called it; the page shows the id without one
+	Title          string            `json:"title"`            // the user's task description; may be empty
 	Leader         string            `json:"leader,omitempty"` // the lead's account id; empty when everyone gets the task alike
+	Git            bool              `json:"git"`              // every member in a git worktree on a branch of its own (else in its folder as it is)
 	PermissionMode string            `json:"permissionMode"`
 	Lang           string            `json:"lang,omitempty"`
 	Members        []*Member         `json:"members"`
@@ -87,11 +96,17 @@ type Member struct {
 	Effort   string `json:"effort,omitempty"`
 	Launch   string `json:"launch,omitempty"`
 	Session  string `json:"session,omitempty"` // set when the session reports in
+	// Left is when the member was taken out of the task (KickMember); it stays on the list, out of the team, and its
+	// branch (with Git) is tidied up with the others when the task ends. Added again, it is the same member.
+	Left *time.Time `json:"left,omitempty"`
 	// Kept is where what git ignored in the worktree (build output, .env ...) went when the task ended:
 	// <folder>/.symphony/kept/<slug>-<task id>; empty when there was nothing
 	Kept string `json:"kept,omitempty"`
+
+	back bool // being added again after it left (AddMembers): it keeps its names, branch and worktree
 }
 
+// member is the account's record in the task, in the team or left.
 func (t *Task) member(account string) *Member {
 	for _, m := range t.Members {
 		if m.Account == account {
@@ -101,11 +116,48 @@ func (t *Task) member(account string) *Member {
 	return nil
 }
 
+// active is the account's record while it is in the team (not left).
+func (t *Task) active(account string) *Member {
+	if m := t.member(account); m != nil && m.Left == nil {
+		return m
+	}
+	return nil
+}
+
+// leftAdvisor is the advisor of that name that left the task, if any (its account is still there).
+func (t *Task) leftAdvisor(name string) *Member {
+	for _, m := range t.Members {
+		if m.Advisor && m.Left != nil && strings.TrimSuffix(m.Name, "-"+t.ID) == name {
+			return m
+		}
+	}
+	return nil
+}
+
+// team is the members in the task now, in order.
+func (t *Task) team() []*Member {
+	var team []*Member
+	for _, m := range t.Members {
+		if m.Left == nil {
+			team = append(team, m)
+		}
+	}
+	return team
+}
+
 func (t *Task) lead() *Member {
 	if t.Leader == "" {
 		return nil
 	}
-	return t.member(t.Leader)
+	return t.active(t.Leader)
+}
+
+// label is the task as the kickoff names it: the id, with the name after it.
+func (t *Task) label() string {
+	if t.Name == "" {
+		return t.ID
+	}
+	return t.ID + " (" + t.Name + ")"
 }
 
 func (t *Task) repo(dir string) *TaskRepo {
@@ -233,38 +285,17 @@ func (h *Hub) nameTaken(name string) bool {
 	return false
 }
 
-// reserveTask checks that the accounts are free and takes the next task id for them. Until it is published the
-// task is out of sight, but it holds the accounts.
-func (h *Hub) reserveTask(accounts []string) (string, error) {
+// reserveTask takes the next task id. Until it is published the task is out of sight.
+func (h *Hub) reserveTask() string {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	for _, t := range h.tasks {
-		if t.Status == TaskEnded {
-			continue
-		}
-		if !t.open() {
-			continue
-		}
-		for _, a := range accounts {
-			if t.member(a) != nil {
-				name := a
-				if acc := h.accounts[a]; acc != nil {
-					name = acc.Name
-				}
-				return "", newError("task_member_busy", name+" is already in task "+t.ID, "name", name, "task", t.ID)
-			}
-		}
-	}
 	n := max(h.taskNext, 1)
 	h.taskNext = n + 1
 	t := &Task{ID: "T" + strconv.Itoa(n), Status: TaskRunning, Created: h.now(), starting: true}
-	for _, a := range accounts {
-		t.Members = append(t.Members, &Member{Account: a})
-	}
 	h.tasks = append(h.tasks, t)
 	h.trimTasksLocked()
 	h.saveTasksLocked()
-	return t.ID, nil
+	return t.ID
 }
 
 // raiseTaskNext makes sure task number n is never given out (again): the counter only goes up.
@@ -347,6 +378,14 @@ func (h *Hub) publishTask(id string, launches []*Launch) *Task {
 	defer h.mu.Unlock()
 	t := h.taskLocked(id)
 	t.starting = false
+	h.addLaunchesLocked(id, launches)
+	h.saveTasksLocked()
+	h.broadcastLocked(taskEvent(id))
+	return t.copy()
+}
+
+// addLaunchesLocked records a task's member launches and follows their processes.
+func (h *Hub) addLaunchesLocked(id string, launches []*Launch) {
 	for _, l := range launches {
 		h.launches[l.ID] = l
 		// a session quick enough to report in before this has its launch online already
@@ -364,10 +403,176 @@ func (h *Hub) publishTask(id string, launches []*Launch) *Task {
 			}
 		}
 	}
+}
+
+// taskCopy is a running task as it is now, for a change to be prepared outside the lock (AddMembers, StartMember).
+func (h *Hub) taskCopy(id string) (*Task, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	t := h.taskLocked(id)
+	if t == nil || t.starting {
+		return nil, ErrTaskUnknown
+	}
+	if t.Status != TaskRunning {
+		return nil, ErrTaskEnded
+	}
+	return t.copy(), nil
+}
+
+// joinMembers puts members made for a running task (AddMembers) on its list with their launches, and tells the team.
+// A member added again (it had left) is its old record, back in the team. When the task stopped running meanwhile,
+// nothing is added and the caller takes back what it made.
+func (h *Hub) joinMembers(id string, members []*Member, repos []*TaskRepo, launches []*Launch) (*Task, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	t := h.taskLocked(id)
+	if t == nil || t.Status != TaskRunning {
+		return nil, ErrTaskEnded
+	}
+	var names []string
+	for _, m := range members {
+		if old := t.member(m.Account); old != nil {
+			h.forgetLaunchLocked(old.Launch, m.Launch) // the left member's launch, over since it was kicked
+			*old = *m
+		} else {
+			t.Members = append(t.Members, m)
+		}
+		names = append(names, m.Name)
+	}
+	for _, r := range repos {
+		if t.repo(r.Dir) == nil {
+			t.Repos = append(t.Repos, r)
+		}
+	}
+	h.addLaunchesLocked(id, launches)
+	h.tellTeamLocked(t, "task.joined", map[string]string{"names": strings.Join(names, ", "), "task": t.label()}, names)
 	h.saveTasksLocked()
 	h.broadcastLocked(taskEvent(id))
-	h.checkTaskLocked(id)
-	return t.copy()
+	return t.copy(), nil
+}
+
+// tellTeamLocked tells the members online, but those named, what changed in the team, as a prompt in the task's
+// language, and logs it in the task chat (a Message of the bridge's own: no sender, origin "bridge").
+func (h *Hub) tellTeamLocked(t *Task, key string, params map[string]string, except []string) {
+	text := i18n.TLang(t.Lang, key, params)
+	for _, m := range t.team() {
+		if slices.Contains(except, m.Name) {
+			continue
+		}
+		if s := h.onlineTaskLocked(m.Account, t.ID); s != nil {
+			h.sayLocked(s.ID, text, "task")
+		}
+	}
+	msg := &Message{ID: newID(), Text: text, Origin: "bridge", Task: t.ID, Delivered: true, Received: true, Time: h.now()}
+	h.pushMessageLocked(msg)
+	h.saveMessagesLocked()
+	h.broadcastLocked(map[string]any{"type": "message", "message": msg})
+}
+
+// KickMember takes a member out of a running task: its session stops (its process is killed) and it stays on the
+// list as left; the team is told. The last member can't go (end the task instead); a lead that goes leaves the task
+// flat.
+func (h *Hub) KickMember(id, account string) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	t := h.taskLocked(id)
+	if t == nil || t.starting {
+		return ErrTaskUnknown
+	}
+	if t.Status != TaskRunning {
+		return ErrTaskEnded
+	}
+	m := t.active(account)
+	if m == nil {
+		return errMemberUnknown(account)
+	}
+	if len(t.team()) == 1 {
+		return newError("task_last_member", m.Name+" is the task's last member: end the task instead", "name", m.Name)
+	}
+	now := h.now()
+	m.Left = &now
+	wasLead := t.Leader == account
+	if wasLead {
+		t.Leader = ""
+	}
+	if s := h.sessions[m.Session]; s != nil && s.Task == id {
+		h.offDutyLocked(s, "")
+	}
+	if h.terms != nil && m.Launch != "" {
+		if term := h.terms.Get(m.Launch); term != nil && !term.Ended() {
+			term.Kill()
+		}
+	}
+	key := "task.left"
+	if wasLead {
+		key = "task.leadLeft"
+	}
+	h.tellTeamLocked(t, key, map[string]string{"name": m.Name, "task": t.label()}, nil)
+	h.saveTasksLocked()
+	h.broadcastLocked(taskEvent(id))
+	return nil
+}
+
+// forgetLaunchLocked drops the record of a member's launch that is over, replaced by another (its terminal too, once
+// its process is gone: a kill may still be in its grace).
+func (h *Hub) forgetLaunchLocked(old, now string) {
+	if old == "" || old == now {
+		return
+	}
+	delete(h.launches, old)
+	if h.terms != nil {
+		if term := h.terms.Get(old); term != nil && term.Ended() {
+			h.terms.Forget(old)
+		}
+	}
+}
+
+func errMemberUnknown(name string) *Error {
+	return newError("task_member_unknown", name+" is not in this task", "name", name)
+}
+
+// memberToStart is a member of a running task whose session is over (StartMember): its record, for a new launch.
+func (h *Hub) memberToStart(id, account string) (*Task, *Member, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	t := h.taskLocked(id)
+	if t == nil || t.starting {
+		return nil, nil, ErrTaskUnknown
+	}
+	if t.Status != TaskRunning {
+		return nil, nil, ErrTaskEnded
+	}
+	m := t.active(account)
+	if m == nil {
+		return nil, nil, errMemberUnknown(account)
+	}
+	if h.memberAliveLocked(m) {
+		return nil, nil, newError("task_member_running", m.Name+"'s session is still at it", "name", m.Name)
+	}
+	cp := *m
+	return t.copy(), &cp, nil
+}
+
+// startedMember records a member's new launch (StartMember); its session gets the kickoff again when it reports in
+// (joinTaskLocked: the member's last session is on record). When the task stopped running meanwhile, the launch is
+// refused and the caller ends it.
+func (h *Hub) startedMember(id, account string, l *Launch) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	t := h.taskLocked(id)
+	if t == nil || t.Status != TaskRunning {
+		return ErrTaskEnded
+	}
+	m := t.active(account)
+	if m == nil {
+		return errMemberUnknown(account)
+	}
+	h.forgetLaunchLocked(m.Launch, l.ID) // the launch that is over makes way
+	m.Launch = l.ID
+	h.addLaunchesLocked(id, []*Launch{l})
+	h.saveTasksLocked()
+	h.broadcastLocked(taskEvent(id))
+	return nil
 }
 
 // dropTask forgets a task that couldn't be made; sessions that already reported in stop.
@@ -396,7 +601,7 @@ func (h *Hub) joinTaskLocked(s *Session, started bool) {
 	if t == nil || t.Status != TaskRunning {
 		return
 	}
-	m := t.member(s.Account)
+	m := t.active(s.Account)
 	if m == nil {
 		return
 	}
@@ -418,29 +623,55 @@ func (h *Hub) joinTaskLocked(s *Session, started bool) {
 	}
 }
 
-// kickoffText is a member's first prompt, in the task's language: the task, the team, and how they work together.
+// kickoffText is a member's first prompt, in the task's language, paragraph by paragraph: who it is in the task (the
+// lead, a member under the lead, one of equals), the user's task (or that there is none yet: the user says what to do
+// in the task chat), the team, where it works (its worktree and branch, or its folder as it is) and how they work
+// together (with Git, the branches and the merge at the end).
 func kickoffText(t *Task, m *Member) string {
+	role := "flat"
+	lead := t.lead()
+	switch {
+	case lead == m:
+		role = "lead"
+	case lead != nil:
+		role = "member"
+	}
 	var team []string
-	for _, o := range t.Members {
-		if o != m {
-			team = append(team, i18n.TLang(t.Lang, "task.kickoff.teammate", map[string]string{"name": o.Name, "dir": o.Dir, "branch": o.Branch, "worktree": o.Worktree}))
+	for _, o := range t.team() {
+		if o == m {
+			continue
 		}
+		key := "task.kickoff.teammatePlain"
+		if t.Git {
+			key = "task.kickoff.teammate"
+		}
+		team = append(team, i18n.TLang(t.Lang, key, map[string]string{"name": o.Name, "dir": o.Dir, "branch": o.Branch, "worktree": o.Worktree}))
 	}
 	base := ""
 	if r := t.repo(m.Dir); r != nil {
 		base = r.Base
 	}
-	p := map[string]string{"task": t.ID, "title": t.Title, "team": strings.Join(team, "\n"),
+	p := map[string]string{"task": t.label(), "title": t.Title, "team": strings.Join(team, "\n"),
 		"name": m.Name, "dir": m.Dir, "branch": m.Branch, "worktree": m.Worktree, "base": base}
-	lead := t.lead()
-	switch {
-	case lead == nil:
-		return i18n.TLang(t.Lang, "task.kickoff.flat", p)
-	case lead == m:
-		return i18n.TLang(t.Lang, "task.kickoff.lead", p)
+	if lead != nil {
+		p["lead"] = lead.Name
 	}
-	p["lead"] = lead.Name
-	return i18n.TLang(t.Lang, "task.kickoff.member", p)
+	parts := []string{i18n.TLang(t.Lang, "task.kickoff.intro."+role, p)}
+	if t.Title != "" {
+		parts = append(parts, i18n.TLang(t.Lang, "task.kickoff.title", p))
+	} else {
+		parts = append(parts, i18n.TLang(t.Lang, "task.kickoff.untitled", p))
+	}
+	parts = append(parts, i18n.TLang(t.Lang, "task.kickoff.team", p))
+	where := "task.kickoff.where.plain"
+	if t.Git {
+		where = "task.kickoff.where.git"
+	}
+	parts = append(parts, i18n.TLang(t.Lang, where, p), i18n.TLang(t.Lang, "task.kickoff.rules."+role, p))
+	if t.Git {
+		parts = append(parts, i18n.TLang(t.Lang, "task.kickoff.git."+role, p))
+	}
+	return strings.Join(parts, "\n\n")
 }
 
 // memberAliveLocked says whether a member is still at it: its session is online, its process still runs (a session
@@ -460,23 +691,8 @@ func (h *Hub) memberAliveLocked(m *Member) bool {
 	return l != nil && l.Status == LaunchStarting
 }
 
-// checkTaskLocked ends a running task once no member is at it any more: the last one went off duty, or never came.
-// A bridge on its way out leaves its tasks to the next one (Stop).
-func (h *Hub) checkTaskLocked(id string) {
-	t := h.taskLocked(id)
-	if t == nil || t.starting || t.Status != TaskRunning || h.stopping {
-		return
-	}
-	for _, m := range t.Members {
-		if h.memberAliveLocked(m) {
-			return
-		}
-	}
-	h.endTaskLocked(t)
-}
-
 // memberExited: a member's process is gone. Its session is off duty at once (a killed process has no time to say
-// so), and the task ends with the last member.
+// so); the task goes on without it (the member can be started again, StartMember) until the user ends it.
 func (h *Hub) memberExited(task, launch string, exitErr error, screen string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -491,9 +707,8 @@ func (h *Hub) memberExited(task, launch string, exitErr error, screen string) {
 		}
 	}
 	if changed {
-		h.broadcastLocked(nil)
+		h.broadcastLocked(taskEvent(task))
 	}
-	h.checkTaskLocked(task)
 }
 
 // stopTaskSessionsLocked puts a task's sessions off duty and withdraws what they left pending.
@@ -589,9 +804,10 @@ func (h *Hub) SayTask(id, text string) (*Message, error) {
 	}
 	m := &Message{ID: newID(), Text: text, Origin: "page", Task: id, Delivered: true, Received: true, Time: h.now()}
 	// a member is reached by its session name ("bob-T7") or by its account's ("bob", as the page shows it)
-	memberNames := make([]string, 0, 2*len(t.Members))
+	team := t.team()
+	memberNames := make([]string, 0, 2*len(team))
 	byShort := map[string]string{}
-	for _, mb := range t.Members {
+	for _, mb := range team {
 		memberNames = append(memberNames, mb.Name)
 		if short := strings.TrimSuffix(mb.Name, "-"+id); short != mb.Name && short != "" {
 			memberNames = append(memberNames, short)
@@ -617,7 +833,7 @@ func (h *Hub) SayTask(id, text string) (*Message, error) {
 			return nil, newError("say_empty", "nothing to send")
 		}
 		for _, name := range names {
-			mb := t.Members[slices.IndexFunc(t.Members, func(mb *Member) bool { return mb.Name == name })]
+			mb := team[slices.IndexFunc(team, func(mb *Member) bool { return mb.Name == name })]
 			if s := h.onlineTaskLocked(mb.Account, id); s != nil {
 				targets = append(targets, s)
 			} else {
@@ -632,7 +848,7 @@ func (h *Hub) SayTask(id, text string) (*Message, error) {
 		}
 		m.ToName, m.ToNames, m.Text = strings.Join(names, " "), names, rest
 	} else {
-		for _, mb := range t.Members {
+		for _, mb := range team {
 			if s := h.onlineTaskLocked(mb.Account, id); s != nil {
 				targets = append(targets, s)
 			}
@@ -951,10 +1167,11 @@ func (h *Hub) saveTasksLocked() {
 	h.taskSave.put(path, data)
 }
 
-// openTasksLocked reads tasks.json. A task found running or ending lost its sessions with the previous bridge: it is
-// ended now, the same way. Advisors without such a task or a failed one are left over (the bridge stopped while
-// making one): they go. A tasks.json that doesn't parse, empty too, stops the bridge (DamagedFile): it holds the task
-// counter, and the tasks it names may have worktrees to tidy up.
+// openTasksLocked reads tasks.json. A task found running lost its sessions with the previous bridge, and goes on
+// without them: its members are off duty, to be started again (StartMember), until the user ends it. One found
+// ending is ended now, the same way. Advisors without such a task or a failed one are left over (the bridge stopped
+// while making one): they go. A tasks.json that doesn't parse, empty too, stops the bridge (DamagedFile): it holds the
+// task counter, and the tasks it names may have worktrees to tidy up.
 func (h *Hub) openTasksLocked(dir string) error {
 	path := filepath.Join(dir, "tasks.json")
 	data, err := os.ReadFile(path)
@@ -983,8 +1200,7 @@ func (h *Hub) openTasksLocked(dir string) error {
 	var stale []string
 	keep := map[string]bool{}
 	for _, t := range h.tasks {
-		if t.open() {
-			t.Status = TaskEnding
+		if t.Status == TaskEnding {
 			stale = append(stale, t.ID)
 		}
 		if t.open() || t.Status == TaskFailed {

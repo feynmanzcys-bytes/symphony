@@ -279,6 +279,16 @@ func gitAddWorktree(dir, branch, path, base string) error {
 	return err
 }
 
+// gitReaddWorktree adds a worktree for a branch that is there already (a member coming back whose worktree was removed
+// by hand); the record git kept of the old one goes first.
+func gitReaddWorktree(dir, branch, path string) error {
+	if _, err := runGit(dir, "worktree", "prune"); err != nil {
+		return err
+	}
+	_, err := runGit(dir, "worktree", "add", "-q", path, branch)
+	return err
+}
+
 // gitCommitAll commits whatever a checkout has uncommitted, untracked files included; it says whether there was any.
 func gitCommitAll(dir, msg string) (bool, error) {
 	status, err := runGit(dir, "status", "--porcelain")

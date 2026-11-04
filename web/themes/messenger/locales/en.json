@@ -59,7 +59,7 @@
   "staff.title": "All coworkers",
   "staff.find": "Find a coworker by name or folder",
   "staff.count": "Coworkers: {n}",
-  "task.end": "End the group",
+  "task.end": "Dissolve the group",
   "task.go": "Start the group",
   "launch.name": "Name (how the other sessions reach it; also the session's name)",
   "launch.model": "Model",
@@ -70,6 +70,13 @@
   "settings.staffWhat": "What a new coworker starts with (“Default”: Claude Code's own settings). The launch dialog's Advanced settings can change any of it for one start; a coworker going back to work starts as it last did.",
   "settings.botHomeHint": "A coworker started without a working folder gets a new folder of its own in here, named after it and made a git repository. A coworker that has one keeps it.",
   "launch.fromSettings": "Filled in from the settings (Settings → Coworkers). Changing them here doesn't change the settings.",
-  "task.members": "Members, in the order you tick them (2 to 5)",
-  "error.unreachable": "Can't reach the bridge — reconnecting. Sending and approvals wait until it's back."
+  "task.members": "Members, in the order you tick them (2 to 20)",
+  "error.unreachable": "Can't reach the bridge — reconnecting. Sending and approvals wait until it's back.",
+  "task.titleAdd": "Add to {name}",
+  "task.addMembers": "+ Add members",
+  "task.kick": "Remove {name} from the group",
+  "task.kickConfirm": "Remove {name} from the group? Their session stops; they stay on the list as left, and can be added again.",
+  "task.endConfirm": "Dissolve {id}? The members’ sessions stop.",
+  "task.endConfirmGit": "Dissolve {id}? The members’ sessions stop and their uncommitted work is committed to their branches; in a folder that wasn’t a git repository, the branches are merged back into its files.",
+  "task.gitHint": "Off (the usual way): each member works in its own folder as it is, the same one as at its desk, so what it does is in the folder at once and nothing has to be merged later; members who share a folder agree who edits what. On: each member gets a branch and a worktree of its own (symphony/<group>/<name> under .symphony/worktrees), apart from the desk session and from the other members; over a long-lived group the worktree and the folder drift apart, and the branches are merged back only when the group is dissolved, and only in a repository the bridge made for it; elsewhere you merge them yourself."
 }

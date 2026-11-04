@@ -178,7 +178,7 @@ func TestFaultWriter(t *testing.T) {
 	}
 	answer("POST", "/api/tasks", 500, `{"error":"git worktree add failed: fatal: not a git repository","code":"task_git_failed","params":{"dir":"/w/app","git":"fatal"}}`)
 	answer("POST", "/api/tasks", 400, `{"error":"the folder is the home folder","code":"task_dir_home","params":{"dir":"/home/x"}}`)
-	answer("POST", "/api/tasks", 400, `{"error":"the task needs a description","code":"task_empty_title"}`)
+	answer("POST", "/api/tasks", 400, `{"error":"a task needs at least 2 members","code":"task_too_few"}`)
 	answer("POST", "/api/launch", 409, `{"error":"busy","code":"account_busy"}`)
 	answer("POST", "/api/launch", 501, `{"error":"this bridge can't start sessions","code":"launch_disabled"}`)
 	answer("POST", "/api/say/s1", 409, `{"error":"the session is not online","code":"session_offline"}`)

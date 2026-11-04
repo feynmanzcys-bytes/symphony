@@ -247,7 +247,7 @@ func makeTask(t *testing.T, b *testBridge, accounts []string, advisors []string,
 		ms = append(ms, map[string]any{"advisor": map[string]any{"name": n, "dir": dir}, "model": "sonnet", "effort": "high"})
 	}
 	start := time.Now()
-	out := mustSend(t, b.URL, "", "/api/tasks", map[string]any{"title": "Make the tests faster and write it up",
+	out := mustSend(t, b.URL, "", "/api/tasks", map[string]any{"title": "Make the tests faster and write it up", "git": true,
 		"leader": true, "permissionMode": "bypassPermissions", "lang": "en", "members": ms})
 	took := time.Since(start)
 	var task bridge.Task

@@ -108,10 +108,10 @@ func TestScreens(t *testing.T) {
 	})
 
 	// tasks: made from the page's own fetch (the bridge refuses writes from elsewhere), in its language as the task
-	// dialog does, members reported in as the mod would, from their worktrees
+	// dialog does, with git (T1 fails on a merge), members reported in as the mod would, from their worktrees
 	createTaskIn := func(s *screens, title string, leader bool, members []map[string]any) *bridge.Task {
 		t.Helper()
-		body, _ := json.Marshal(map[string]any{"title": title, "leader": leader, "permissionMode": "bypassPermissions", "lang": s.lang, "members": members})
+		body, _ := json.Marshal(map[string]any{"title": title, "leader": leader, "git": true, "permissionMode": "bypassPermissions", "lang": s.lang, "members": members})
 		res := s.fetch("POST", "/api/tasks", string(body))
 		var task bridge.Task
 		if err := json.Unmarshal([]byte(res), &task); err != nil || task.ID == "" {
@@ -231,11 +231,14 @@ func TestScreens(t *testing.T) {
 	p.tick("alice")
 	p.tick("carol")
 	p.tick("erin")
+	// past the cap: 21 members (every coworker and enough advisors)
+	p.run(`for (let i = 0; i < 15; i++) document.querySelector('#task .add-adv').click(); document.activeElement?.blur()`)
 	if !p.is(`document.querySelector('#task .count').classList.contains('over') && document.querySelector('#task .go').disabled`) {
-		t.Fatalf("6 members should be too many (a task takes 5 at most): %s", p.js(`document.querySelector('#task .count').textContent`))
+		t.Fatalf("21 members should be too many (a task takes 20 at most): %s", p.js(`document.querySelector('#task .count').textContent`))
 	}
 	p.shot("task-dialog-over")
 	p.check()
+	p.run(`[...document.querySelectorAll('#task .adv')].slice(1).forEach(r => r.querySelector('.rm').click())`)
 	p.tick("erin")
 	p.tick("alice")
 	p.tick("carol")
@@ -695,7 +698,8 @@ func (s *screens) openGroup(id string) {
 	waitUntil(s.t, 10*time.Second, "the sidebar lists "+id, func() bool { return s.is(fmt.Sprintf(`!!document.querySelector('#groups .row[data-group=%q]')`, id)) })
 	s.run(fmt.Sprintf(`document.querySelector('#groups .row[data-group=%q]').click()`, id))
 	waitUntil(s.t, 10*time.Second, "the group window opens", func() bool {
-		return s.is(fmt.Sprintf(`!document.getElementById('taskwin').hidden && document.querySelector('#taskwin h2').textContent.startsWith(%q)`, id+" "))
+		// the head reads the group's name, else its id (then beside the name)
+		return s.is(fmt.Sprintf(`!document.getElementById('taskwin').hidden && (document.querySelector('#taskwin .top h2').textContent === %q || document.querySelector('#taskwin .tid').textContent === %q)`, id, id))
 	})
 }
 

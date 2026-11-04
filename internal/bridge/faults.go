@@ -465,9 +465,9 @@ func (s *Server) diagnostics(w http.ResponseWriter, r *http.Request) {
 
 // formErrors are failed starts the error log leaves out: a form left incomplete, a desk already in use.
 var formErrors = map[string]bool{
-	"task_empty_title": true, "task_too_few": true, "task_too_many": true, "task_member_dup": true, "launch_bad_option": true,
+	"task_name_long": true, "task_member_unknown": true, "task_member_running": true, "task_last_member": true, "task_too_few": true, "task_too_many": true, "task_member_dup": true, "launch_bad_option": true,
 	"account_bad_name": true, "account_name_taken": true, "launch_dir_not_absolute": true, "account_busy": true,
-	"task_member_busy": true, "launch_still_running": true, "model_empty": true, "file_too_big": true, "file_not_image": true, "say_empty": true,
+	"launch_still_running": true, "model_empty": true, "file_too_big": true, "file_not_image": true, "say_empty": true,
 }
 
 // faultWriter watches the answer to a page's call: one that fails as the error log keeps (faultWorthy) is copied

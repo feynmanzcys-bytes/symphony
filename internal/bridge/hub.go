@@ -339,6 +339,8 @@ type Hub struct {
 	activity   []*Activity // the last keepActivity things that happened
 	// gitLocks let one task at a time make or tidy up the repositories of a folder tree (tasks may share a folder)
 	gitLocks treeLocks
+	// taskLocks let one change of a task's team at a time be made (members added, one started again), by task id
+	taskLocks treeLocks
 	// AttachHint tells, by launch id, where to find a session's terminal; the current terminal backend provides it
 	AttachHint func(launchID string) string
 	// Warn writes a line to the bridge's log (the program sets it; nothing without it)
@@ -519,7 +521,7 @@ func (h *Hub) snapshotLocked(full bool) Snapshot {
 // StaleAfter (lost).
 func (h *Hub) joinableLocked(s *Session, task, launch string) bool {
 	t := h.taskLocked(task)
-	if t == nil || t.Status != TaskRunning || t.member(s.Account) == nil {
+	if t == nil || t.Status != TaskRunning || t.active(s.Account) == nil {
 		return false
 	}
 	switch other := h.onlineTaskLocked(s.Account, task); {
@@ -569,8 +571,8 @@ func (h *Hub) sessionLocked(id string, acc *Account, task, restart, launch strin
 		}
 	}
 	if task != "" {
-		if t := h.taskLocked(task); t == nil || t.Status != TaskRunning || t.member(acc.ID) == nil {
-			return nil, false, ErrTaskEnded
+		if t := h.taskLocked(task); t == nil || t.Status != TaskRunning || t.active(acc.ID) == nil {
+			return nil, false, ErrTaskEnded // (a member that left is refused the same way: its process was killed)
 		}
 	}
 	if other := h.onlineTaskLocked(acc.ID, task); other != nil && other.ID != id {
@@ -851,9 +853,6 @@ func (h *Hub) apply(ev Event, acc *Account, created *bool) error {
 	h.refreshWaitingLocked(s)
 	h.markStateLocked(s, before)
 	h.broadcastLocked(extra)
-	if ev.Kind == "session.end" && s.Task != "" {
-		h.checkTaskLocked(s.Task) // the last member gone ends the task
-	}
 	return nil
 }
 
@@ -1084,21 +1083,14 @@ func (h *Hub) Reap() {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	changed := false
-	var tasks []string
 	for _, s := range h.sessions {
 		if s.State != StateEnded && h.now().Sub(s.Updated) >= StaleAfter {
 			h.offDutyLocked(s, "lost")
 			changed = true
-			if s.Task != "" {
-				tasks = append(tasks, s.Task)
-			}
 		}
 	}
 	if changed {
 		h.broadcastLocked(nil)
-	}
-	for _, t := range tasks {
-		h.checkTaskLocked(t)
 	}
 }
 
@@ -1649,9 +1641,6 @@ func (h *Hub) failLaunchLocked(l *Launch, why *Error) {
 			if term := h.terms.Get(id); term != nil && term.Clients() == 0 {
 				term.Kill()
 			}
-		}
-		if l.Task != "" {
-			h.checkTaskLocked(l.Task) // a task whose last member never came ends
 		}
 	}
 }

@@ -59,7 +59,7 @@
   "staff.title": "Tous les collègues",
   "staff.find": "Chercher un collègue par nom ou dossier",
   "staff.count": "Collègues : {n}",
-  "task.end": "Terminer le groupe",
+  "task.end": "Dissoudre le groupe",
   "task.go": "Lancer le groupe",
   "launch.name": "Nom (c'est ainsi que les autres sessions le joignent ; c'est aussi le nom de la session)",
   "launch.model": "Modèle",
@@ -70,6 +70,13 @@
   "settings.staffWhat": "Ce avec quoi un nouveau collègue démarre (« Par défaut » : les réglages propres de Claude Code). Les réglages avancés de la fenêtre de lancement peuvent en changer n’importe lequel pour un seul démarrage ; un collègue qui reprend le travail démarre comme la dernière fois.",
   "settings.botHomeHint": "Un collègue lancé sans dossier de travail reçoit ici un nouveau dossier à lui, à son nom, initialisé en dépôt git. Celui qui en a déjà un le garde.",
   "launch.fromSettings": "Rempli d’après les réglages (Réglages → Collègues). Les modifier ici ne change pas les réglages.",
-  "task.members": "Membres : cochez-les dans l’ordre, qui sera celui du groupe (de 2 à 5)",
-  "error.unreachable": "Impossible de joindre le bridge, reconnexion en cours. Les envois et les approbations attendent son retour."
+  "task.members": "Membres : cochez-les dans l’ordre, qui sera celui du groupe (de 2 à 20)",
+  "error.unreachable": "Impossible de joindre le bridge, reconnexion en cours. Les envois et les approbations attendent son retour.",
+  "task.titleAdd": "Ajouter à {name}",
+  "task.addMembers": "+ Ajouter des membres",
+  "task.kick": "Retirer {name} du groupe",
+  "task.kickConfirm": "Retirer {name} du groupe ? Sa session s’arrête ; il reste dans la liste comme parti et peut être ajouté de nouveau.",
+  "task.endConfirm": "Dissoudre {id} ? Les sessions des membres s’arrêtent.",
+  "task.endConfirmGit": "Dissoudre {id} ? Les sessions des membres s’arrêtent et leur travail pas encore commité est commité dans leurs branches ; dans un dossier qui n’était pas un dépôt git, les branches sont fusionnées dans ses fichiers.",
+  "task.gitHint": "Décoché (l’habitude) : chaque membre travaille dans son propre dossier tel quel, le même qu’à son bureau, donc ce qu’il fait est aussitôt dans le dossier et il n’y a rien à fusionner ensuite ; les membres qui partagent un dossier se répartissent les fichiers. Coché : chaque membre reçoit une branche et un worktree à lui (symphony/<groupe>/<nom> sous .symphony/worktrees), à l’écart de la session de son bureau et des autres membres ; dans un groupe qui dure, le worktree et le dossier s’éloignent l’un de l’autre, et les branches ne sont fusionnées qu’à la dissolution du groupe, et seulement dans un dépôt que le bridge a créé pour lui ; ailleurs, c’est vous qui fusionnez."
 }

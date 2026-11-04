@@ -263,7 +263,7 @@ func TestTaskNumberPastBranches(t *testing.T) {
 	bob, bobAcc := as(t, e.srv, e.base, "bob")
 	bob.ok("POST", "/api/event", Event{Session: "bob-desk", Kind: "session.start", Cwd: mine})
 
-	task := asTask(t, e.page.ok("POST", "/api/tasks", TaskRequest{Title: "t", Members: []TaskMemberRequest{
+	task := asTask(t, e.page.ok("POST", "/api/tasks", TaskRequest{Git: true, Title: "t", Members: []TaskMemberRequest{
 		{Account: bobAcc.ID}, {Advisor: &AdvisorRequest{Name: "rev", Dir: theirs}}}}))
 	if task.ID != "T4" || task.Members[0].Branch != "symphony/T4/bob" {
 		t.Fatalf("want task T4 past the repositories' branches, got %s (%s)", task.ID, task.Members[0].Branch)

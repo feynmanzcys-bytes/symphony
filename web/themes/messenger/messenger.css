@@ -381,9 +381,13 @@ button.px.primary, button.px.alert, :is(#asks, .flow .card) :is(button, button.a
 #taskwin .top .actions button.end { background: transparent; border-color: var(--field-line); color: var(--danger-ink); }
 #taskwin .top .actions button.end:hover:not(:disabled) { background: var(--danger-bg); }
 #taskwin .members { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; border: 0; }
-#taskwin .mrow { flex: 1 1 200px; min-width: 0; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; column-gap: 8px; row-gap: 2px; align-items: center; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); }
+#taskwin .mitem { flex: 1 1 220px; min-width: 0; flex-direction: column; border: 1px solid var(--line); border-radius: 10px; background: var(--card); overflow: hidden; }
+#taskwin .mitem.open { box-shadow: inset 0 0 0 1px var(--accent); border-color: var(--accent); }
+#taskwin .mitem .acts { justify-content: flex-end; padding: 0 8px 8px; }
+#taskwin .mitem .acts button { border-radius: 999px; }
+#taskwin .mrow { flex: 1 1 auto; min-width: 0; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; column-gap: 8px; row-gap: 2px; align-items: center; padding: 10px 12px; border: 0; border-radius: 10px 10px 0 0; background: none; }
 #taskwin .mrow:hover { background: var(--pane); }
-#taskwin .mrow.open { box-shadow: inset 0 0 0 1px var(--accent); border-color: var(--accent); }
+#taskwin .mrow.open { box-shadow: none; }
 #taskwin .mrow .dot { grid-row: 1; grid-column: 1; }
 #taskwin .mrow b { grid-row: 1; grid-column: 2; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 #taskwin .mrow .badge { grid-row: 1; grid-column: 3; }

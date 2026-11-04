@@ -42,7 +42,7 @@ func taskOffDuty(t *testing.T, put func(e *taskEnv, task *Task)) offDuty {
 	alice, aliceAcc := as(t, e.srv, e.base, "alice")
 	e.srv.Hub.setLast(bobAcc.ID, LaunchRequest{Dir: plain})
 	e.srv.Hub.setLast(aliceAcc.ID, LaunchRequest{Dir: plain})
-	task := asTask(t, e.page.ok("POST", "/api/tasks", TaskRequest{Title: "t", Leader: true,
+	task := asTask(t, e.page.ok("POST", "/api/tasks", TaskRequest{Git: true, Title: "t", Leader: true,
 		Members: []TaskMemberRequest{{Account: bobAcc.ID}, {Account: aliceAcc.ID}}}))
 	bob.ok("POST", "/api/event", Event{Session: "b", Kind: "session.start", Launch: task.Members[0].Launch, Task: task.ID})
 	alice.ok("POST", "/api/event", Event{Session: "a", Kind: "session.start", Launch: task.Members[1].Launch, Task: task.ID})

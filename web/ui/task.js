@@ -1,11 +1,13 @@
-// The collaborative tasks' UI, shared by every theme: the task dialog (#task: what the team should do, its members —
-// employees ticked in order, advisors made for this task —, whether the first one leads) and the task window
-// (#taskwin: what it's on, who is in it — a click opens a member's window —, the team chat with the mention picker,
-// and the button to end it; a failed one says why and can be dismissed). The bridge starts a session for each member
-// in a git worktree of its own and sends each the kickoff.
+// The collaborative tasks' UI, shared by every theme: the task dialog (#task: the task's name and what the team should
+// do, both optional, its members — employees ticked in order, advisors made for this task —, whether the first one
+// leads, whether each gets a git branch and worktree of its own; the same dialog adds members to a running task) and
+// the task window (#taskwin: what it's on, who is in it — a click opens a member's window; a member can be removed,
+// or started again once its session is over, and more can be added —, the team chat with the mention picker, and the
+// button to end it; a failed one says why and can be dismissed). The bridge starts a session for each member, in its
+// folder or in a git worktree of its own, and sends each the kickoff.
 //
 //   const tasks = createTaskUI(sym, { options, roomLabel, memberAvatar, youAvatar, isMemberOpen, onOpenMember, onWindowOpen, onWindowClose, onDialogOpen })
-//   tasks.openDialog()
+//   tasks.openDialog(addTo?)        a new task, or more members for the running task addTo
 //   tasks.closeDialog()
 //   tasks.openWindow(id, data)      data: what the bridge answered, until the snapshot has the task; once the task ended
 //                                   and left the snapshot, the window says so until it is closed
@@ -18,22 +20,30 @@ import { dialog as asDialog } from '/ui/a11y.js'
 import { putErrorBox, setText, showError, onBackdrop } from '/ui/errors.js'
 import { markdown } from '/ui/markdown.js'
 
-const MAX_MEMBERS = 5 // the bridge's cap (taskMaxMembers)
+const MAX_MEMBERS = 20 // the bridge's cap (taskMaxMembers)
 
 const DIALOG = `
 <div class="modal" id="task" hidden>
   <form class="panel" autocomplete="off">
     <h2 class="title"></h2>
-    <label for="task-desc" data-i18n="task.description"></label>
-    <textarea id="task-desc" name="desc" rows="4" data-i18n-placeholder="task.descriptionPlaceholder"></textarea>
-    <label id="task-members" data-i18n="task.members"></label>
+    <div class="new-only">
+      <label for="task-name" data-i18n="task.name"></label>
+      <input id="task-name" name="name" maxlength="80" data-i18n-placeholder="task.namePlaceholder">
+      <label for="task-desc" data-i18n="task.description"></label>
+      <textarea id="task-desc" name="desc" rows="3" data-i18n-placeholder="task.descriptionPlaceholder"></textarea>
+    </div>
+    <label id="task-members"></label>
     <div class="emps" role="group" aria-labelledby="task-members"></div>
     <div class="advs" role="group" aria-labelledby="task-members"></div>
     <button type="button" class="px add-adv" data-i18n="task.addAdvisor" data-i18n-title="task.advisorTitle"></button>
-    <label class="check"><input type="checkbox" name="leader" checked><span data-i18n="task.leader"></span></label>
-    <label for="task-mode" data-i18n="launch.permissionMode"></label>
-    <select id="task-mode" name="permissionMode"></select>
-    <div class="warn" data-i18n="launch.bypassWarning" hidden></div>
+    <div class="new-only">
+      <label class="check"><input type="checkbox" name="leader" checked><span data-i18n="task.leader"></span></label>
+      <label class="check"><input type="checkbox" name="git" aria-describedby="task-git-hint"><span data-i18n="task.git"></span></label>
+      <div class="hint" id="task-git-hint" data-i18n="task.gitHint"></div>
+      <label for="task-mode" data-i18n="launch.permissionMode"></label>
+      <select id="task-mode" name="permissionMode"></select>
+      <div class="warn" data-i18n="launch.bypassWarning" hidden></div>
+    </div>
     <div class="foot">
       <div class="status"></div>
       <div class="actions"><span class="count"></span><button type="button" class="px cancel" data-i18n="common.cancel"></button><button type="submit" class="px primary go" data-i18n="task.go"></button></div>
@@ -45,7 +55,7 @@ const WINDOW = `
 <div class="modal" id="taskwin" hidden>
   <div class="panel">
     <button type="button" class="close"></button>
-    <div class="top"><h2></h2><span class="status"><i class="lamp" aria-hidden="true"></i><span class="tx"></span></span><div class="actions"></div></div>
+    <div class="top"><h2></h2><span class="tid" hidden></span><span class="status"><i class="lamp" aria-hidden="true"></i><span class="tx"></span></span><div class="actions"></div></div>
     <div class="desc"></div>
     <div class="mode" data-i18n="task.flat" hidden></div>
     <div class="err" hidden></div>
@@ -74,9 +84,13 @@ function mount(markup) {
   return el
 }
 
-// the names a message goes by; one you sent from a task's chat has no sender
+// the names a message goes by; one you sent from a task's chat has no sender, nor has a notice of the bridge's own
+// (who joined, who left)
 export const fromYou = m => m.origin === 'page' && !m.fromName
+export const fromBridge = m => m.origin === 'bridge'
 export const msgFrom = m => m.fromName || '?' // (yours carry no name: the bubble's side says it)
+// a task's members in the team now (one that left stays on the list)
+export const team = task => (task?.members ?? []).filter(m => !m.left)
 
 // why a task failed: its first failure in this page's language, then the bridge's own words when they say more (every
 // failure of its cleanup, one a line, git's among them)
@@ -88,7 +102,7 @@ function failedWhy(task) {
 
 export function createTaskUI(sym, {
   options = () => sym.launchOptions(true),
-  roomLabel = task => task.id,
+  roomLabel = task => task.name || task.id,
   memberAvatar = () => 'none',
   youAvatar = () => 'none',
   isMemberOpen = () => false,
@@ -105,6 +119,7 @@ export function createTaskUI(sym, {
   let opts = null
   let picks = [] // the members, in order: rows of the dialog (an employee ticked, or an advisor added)
   let posting = false
+  let adding = null // the running task the dialog adds members to, else null: a new task
   const offReason = () => opts?.mod ? errorText(opts.mod) : t('error.launch_disabled')
 
   // ---------- the dialog ----------
@@ -159,20 +174,21 @@ export function createTaskUI(sym, {
     row.querySelector('[name=name]').focus()
     showEnd(dir)
   }
-  // the members' numbers, the lead's tag, the count; Start only for 2 to MAX_MEMBERS members
+  // the members' numbers, the lead's tag, the count; Start only for 2 to MAX_MEMBERS members (adding: 1 to what's left)
   function renderPicks() {
-    const lead = form.elements.leader.checked
+    const lead = !adding && form.elements.leader.checked
+    const max = adding ? Math.max(0, MAX_MEMBERS - team(sym.taskById(adding)).length) : MAX_MEMBERS, min = adding ? 1 : 2
     for (const row of form.querySelectorAll('.mem, .adv')) {
       const i = picks.indexOf(row)
       row.classList.toggle('on', i >= 0)
       row.classList.toggle('lead', i === 0 && lead)
-      row.classList.toggle('over', i >= MAX_MEMBERS) // past the team's size
+      row.classList.toggle('over', i >= max) // past the team's size
       row.querySelector('.ord').textContent = i >= 0 ? String(i + 1) : ''
     }
     const n = picks.length, count = form.querySelector('.count')
-    count.textContent = t('task.count', { n, max: MAX_MEMBERS })
-    count.classList.toggle('over', n > MAX_MEMBERS)
-    form.querySelector('.go').disabled = posting || n < 2 || n > MAX_MEMBERS
+    count.textContent = t('task.count', { n, max })
+    count.classList.toggle('over', n > max)
+    form.querySelector('.go').disabled = posting || n < min || n > max
   }
   // bypassPermissions runs everything without asking: a red line under the select says what that means. It's the last
   // field, so picked, the dialog scrolls down to it, above the buttons that stay at the bottom
@@ -189,8 +205,6 @@ export function createTaskUI(sym, {
   onBackdrop(dialog, () => tasks.closeDialog()) // (not a drag that selects text and lets go outside the dialog)
   form.addEventListener('submit', async ev => {
     ev.preventDefault()
-    const title = form.elements.desc.value.trim()
-    if (!title) return setStatus(t('task.descriptionRequired'), true)
     const members = picks.map(row => {
       const m = { model: row.querySelector('[name=model]').value, effort: row.querySelector('[name=effort]').value }
       if (row.dataset.account) m.account = row.dataset.account
@@ -199,20 +213,22 @@ export function createTaskUI(sym, {
     })
     if (members.some(m => m.advisor && (!m.advisor.name || !m.advisor.dir))) { markBad('incomplete'); return setStatus(t('task.advisorIncomplete'), true) }
     markBad('')
-    const body = { title, leader: form.elements.leader.checked, permissionMode: form.elements.permissionMode.value, lang, members }
+    const to = adding
     posting = true
     renderPicks()
     setStatus(t('launch.starting'))
-    const res = await sym.tasks.create(body)
+    const res = to ? await sym.tasks.addMembers(to, members)
+      : await sym.tasks.create({ name: form.elements.name.value.trim(), title: form.elements.desc.value.trim(), leader: form.elements.leader.checked,
+        git: form.elements.git.checked, permissionMode: form.elements.permissionMode.value, lang, members })
     posting = false
     if (!res.ok) {
       if (res.data?.code) markBad(res.data.code, res.data.params)
-      setStatus(t('task.failed', { reason: res.data ? errorText(res.data) + (res.data.fix ? '\n' + res.data.fix : '') : `${t('error.unknown')} (HTTP ${res.status})` }), true)
+      setStatus(t(to ? 'task.addFailed' : 'task.failed', { reason: res.data ? errorText(res.data) + (res.data.fix ? '\n' + res.data.fix : '') : `${t('error.unknown')} (HTTP ${res.status})` }), true)
       if (!dialog.hidden) renderPicks()
       return
     }
     tasks.closeDialog()
-    tasks.openWindow(res.data.id, res.data)
+    if (to) { windowData = res.data; render() } else tasks.openWindow(res.data.id, res.data)
   })
 
   // ---------- the window ----------
@@ -236,37 +252,51 @@ export function createTaskUI(sym, {
     if (!task) return tasks.closeWindow()
     shown.task = task
     // (each written only when it changed: what is selected in it stays through the redraws, every snapshot)
-    setText(win.querySelector('h2'), `${task.id} · ${roomLabel(task)}`)
+    setText(win.querySelector('.top h2'), roomLabel(task))
+    const tid = win.querySelector('.tid')
+    setText(tid, task.name ? task.id : '')
+    tid.hidden = !task.name
     const st = win.querySelector('.top .status')
-    setText(st.querySelector('.tx'), t('task.status.' + task.status))
+    setText(st.querySelector('.tx'), t('task.status.' + task.status + (task.git && (task.status === 'ending' || task.status === 'ended') ? 'Git' : '')))
     st.style.setProperty('--c', TASK_MARK[task.status] ?? GRAY_MARK)
     setText(win.querySelector('.desc'), task.title)
+    win.querySelector('.desc').hidden = !task.title
     win.querySelector('.mode').hidden = !!task.leader
     // a failed task: why, all of it (the bridge lists every failure of the cleanup, and its error log has it already)
     const err = win.querySelector('.err')
     err.hidden = task.status !== 'failed'
     putErrorBox(err, err.hidden ? '' : failedWhy(task), { report: false })
-    // the members: state, name, lead and advisor tags, where it works, its model; a click opens its window
+    // the members: state, name, lead and advisor tags, where it works, its model; a click on the row opens its window;
+    // beside it, while the task runs, the buttons to take it out of the team and to start it again once its session
+    // is over (one that left stays on the list, grayed; a launch on its way counts as at it)
+    const running = task.status === 'running'
     const rows = task.members.map((m, i) => {
       const s = sym.sessionById(m.session), online = sym.isOnline(s), state = !online ? 'ended' : sym.asking(m.session) ? 'waiting' : s.state
       const runs = [s?.model || m.model, s?.effort || m.effort].filter(Boolean).join(' · ')
       const open = m.session && isMemberOpen(task, m) // its window is beside this one
-      return `<div class="mrow${m.session ? '' : ' wait'}${open ? ' open' : ''}" data-i="${i}"${m.session ? ' role="button" tabindex="0"' : ''}${open ? ' aria-current="true"' : ''}>${dot(state)}<b>${esc(displayName(m.name, task))}</b>` +
+      // a launch on its way (its first, or one started again: m.session is then still the session that is over)
+      const name = displayName(m.name, task), starting = !m.left && sym.state.launches.some(l => l.id === m.launch && l.status === 'starting')
+      const over = !m.left && !online && !starting // its session is over (or its launch failed): it can start again
+      const acts = !running || m.left ? '' : `<div class="acts">` +
+        (over ? `<button type="button" class="px start" data-i="${i}" aria-label="${esc(t('task.startMember', { name }))}" title="${esc(t('task.startMember', { name }))}">${esc(t('task.start'))}</button>` : '') +
+        `<button type="button" class="px kick" data-i="${i}" aria-label="${esc(t('task.kick', { name }))}" title="${esc(t('task.kick', { name }))}"></button></div>`
+      return `<div class="mitem${m.left ? ' left' : ''}${open ? ' open' : ''}"><div class="mrow${m.session ? '' : ' wait'}${open ? ' open' : ''}" data-i="${i}"${m.session ? ' role="button" tabindex="0"' : ''}${open ? ' aria-current="true"' : ''}>${dot(state)}<b>${esc(name)}</b>` +
         (task.leader && m.account === task.leader ? `<span class="badge lead">${esc(t('task.lead'))}</span>` : '') +
         (m.advisor ? `<span class="badge adv" title="${esc(t('task.advisorTitle'))}">${esc(t('task.advisor'))}</span>` : '') +
-        `<span class="where" title="${esc([m.dir, m.worktree].filter(Boolean).join('\n'))}">${esc(base(m.dir))} · ${esc(m.branch || '')}</span>` +
+        `<span class="where" title="${esc([m.dir, m.worktree].filter(Boolean).join('\n'))}">${esc(base(m.dir))}${m.branch ? ' · ' + esc(m.branch) : ''}</span>` +
         (runs ? `<span class="chip">${esc(runs)}</span>` : '') +
-        `<span class="st">${esc(!m.session ? t('task.memberStarting') : online ? statusText(sym, s) : t('task.memberEnded'))}</span></div>`
+        `<span class="st">${esc(m.left ? t('task.memberLeft') : starting ? t('task.memberStarting') : online ? statusText(sym, s) : t('task.memberEnded'))}</span></div>${acts}</div>`
     }).join('')
     if (rows !== shown.members) { shown.members = rows; setHTML(win.querySelector('.members'), rows) } // (a row with the focus keeps it)
     const stick = renderChat(task)
-    const btnKey = task.id + '|' + task.status
+    const btnKey = task.id + '|' + task.status + '|' + (team(task).length >= MAX_MEMBERS) + '|' + !!opts?.enabled
     if (btnKey !== shown.btns) {
       shown.btns = btnKey
       const btns = win.querySelector('.actions')
       btns.innerHTML = ''
-      if (task.status === 'running') btns.appendChild(button(t('task.end'), 'alert end', async () => {
-        if (!confirm(t('task.endConfirm', { id: task.id }))) return
+      if (running && team(task).length < MAX_MEMBERS) btns.appendChild(button(t('task.addMembers'), 'add', () => tasks.openDialog(task.id)))
+      if (running) btns.appendChild(button(t('task.end'), 'alert end', async () => {
+        if (!confirm(t(task.git ? 'task.endConfirmGit' : 'task.endConfirm', { id: roomLabel(task) }))) return
         const r = await sym.tasks.end(task.id)
         if (!r.ok) showError(errorText(r.data), { title: t('errlog.oops.endTask') })
       }))
@@ -286,6 +316,7 @@ export function createTaskUI(sym, {
   // the members a message names go before its words, in its first paragraph when it has one (a member's is Markdown)
   const withMentions = (to, body) => to && body.startsWith('<p>') ? '<p>' + to + body.slice(3) : to + body
   function msgHTML(task, m) {
+    if (fromBridge(m)) return `<div class="tmsg sys"><div class="body">${esc(m.text)}</div></div>` // who joined, who left
     const me = fromYou(m), who = me ? null : task.members.find(x => (x.session && x.session === m.from) || x.name === m.fromName)
     const names = m.toNames?.length ? m.toNames : m.toName ? [m.toName] : [] // one or several members, or everyone
     const missed = m.missed || [] // of those, the ones that were offline: struck through
@@ -326,7 +357,7 @@ export function createTaskUI(sym, {
     if (!running) closePick()
     tBox.disabled = !running
     tSay.querySelector('button').disabled = !running
-    const ph = running ? t('task.chatPlaceholder', { name: task.members[0] ? mentionName(task.members[0].name, task) : '' }) : t('task.chatOff')
+    const ph = running ? t('task.chatPlaceholder', { name: team(task)[0] ? mentionName(team(task)[0].name, task) : '' }) : t('task.chatOff')
     if (tBox.placeholder !== ph) { tBox.placeholder = ph; shown.grow = true }
     return stick
   }
@@ -345,7 +376,7 @@ export function createTaskUI(sym, {
   function pickNames() {
     const task = sym.taskById(windowFor) ?? windowData
     const q = pick ? lower(pick.q) : ''
-    return (task?.members ?? []).filter(m => lower(m.name).startsWith(q) || lower(mentionName(m.name, task)).startsWith(q))
+    return team(task).filter(m => lower(m.name).startsWith(q) || lower(mentionName(m.name, task)).startsWith(q))
   }
   function closePick() { pick = null; tPick.hidden = true; pointAt(tBox, null) }
   function markPick() { // the highlighted member, for the eye and for screen readers
@@ -418,8 +449,25 @@ export function createTaskUI(sym, {
     if (!tBox.value) { tBox.value = text; growBox() } // back in the box, to fix and send again
     tStatus.textContent = t('task.sayFailed', { reason: errorText(r.data) })
   })
-  win.querySelector('.members').addEventListener('click', ev => {
-    const row = ev.target.closest('.mrow'), task = sym.taskById(windowFor) ?? windowData, m = row && task?.members[row.dataset.i]
+  win.querySelector('.members').addEventListener('click', async ev => {
+    const task = sym.taskById(windowFor) ?? windowData
+    const act = ev.target.closest('.acts button')
+    if (act) { // take the member out of the team, or start it again
+      const m = task?.members[act.dataset.i]
+      if (!m) return
+      const name = displayName(m.name, task)
+      if (act.classList.contains('kick')) {
+        if (!confirm(t('task.kickConfirm', { name }))) return
+        const r = await sym.tasks.kick(task.id, m.account)
+        if (!r.ok) showError(errorText(r.data), { title: t('errlog.oops.kickMember') })
+      } else {
+        act.disabled = true
+        const r = await sym.tasks.startMember(task.id, m.account)
+        if (!r.ok) { act.disabled = false; showError(errorText(r.data), { title: t('errlog.oops.startMember') }) }
+      }
+      return
+    }
+    const row = ev.target.closest('.mrow'), m = row && task?.members[row.dataset.i]
     if (m?.session) onOpenMember(task, m)
   })
 
@@ -427,29 +475,38 @@ export function createTaskUI(sym, {
     dialog, win,
     get windowFor() { return windowFor },
     get dialogHidden() { return dialog.hidden },
-    // the dialog: the employees not in a running task, with a folder to work in, can be picked
-    async openDialog() {
+    // the dialog: the employees with a folder to work in can be picked (one in other tasks too: each task has a
+    // session of its own); adding to a running task, those not in its team
+    async openDialog(addTo = null) {
       opts = await options()
       if (!opts?.enabled) return showError(opts ? offReason() : t('error.unreachable'), { title: t('errlog.oops.launchOff') })
-      form.querySelector('.title').textContent = t('task.titleNew')
+      const target = addTo ? sym.taskById(addTo) : null
+      if (addTo && !target) return
+      adding = addTo
+      form.classList.toggle('adding', !!adding)
+      form.querySelector('.title').textContent = adding ? t('task.titleAdd', { name: roomLabel(target) }) : t('task.titleNew')
+      form.querySelector('#task-members').textContent = adding ? t('task.membersAdd') : t('task.members')
+      form.querySelector('.go').textContent = adding ? t('task.add') : t('task.go')
+      form.elements.name.value = ''
       form.elements.desc.value = ''
       form.elements.leader.checked = true
+      form.elements.git.checked = false
       fill(form.elements.permissionMode, opts.permissionModes, opts.defaults?.permissionMode ?? '') // the settings' (Claude Code's own when they say nothing)
       warn()
-      // the employees: one in a running task, or without a folder to work in yet, can't be picked
-      const busy = new Map()
-      for (const task of sym.state.tasks) if (task.status !== 'failed') for (const m of task.members) busy.set(m.account, task.id)
+      // the employees: the tasks each is in are said; one without a folder to work in yet can't be picked
+      const inTasks = new Map()
+      for (const task of sym.state.tasks) if (task.status === 'running') for (const m of team(task)) inTasks.set(m.account, [...(inTasks.get(m.account) || []), roomLabel(task)])
       picks = []
       const list = form.querySelector('.emps')
       list.innerHTML = ''
-      for (const acc of sym.state.accounts.filter(a => !a.advisor)) {
-        const s = sym.sessionOf(acc), dir = s?.cwd || acc.last?.dir || acc.dir || '', inTask = busy.get(acc.id), off = !!inTask || !dir
+      for (const acc of sym.state.accounts.filter(a => !a.advisor && !(target && team(target).some(m => m.account === a.id)))) {
+        const s = sym.sessionOf(acc), dir = s?.cwd || acc.last?.dir || acc.dir || '', where = inTasks.get(acc.id), off = !dir
         const row = document.createElement('div')
         row.className = 'mem' + (off ? ' off' : '')
         row.dataset.account = acc.id
         row.innerHTML = `<label><input type="checkbox"${off ? ' disabled' : ''}><b class="ord"></b>` +
           `${dot(s && s.state !== 'ended' ? s.state : 'ended', statusText(sym, s && s.state !== 'ended' ? s : null))}<span class="nm">${esc(acc.name)}</span><span class="lead-tag">${esc(t('task.lead'))}</span>` +
-          `<small title="${esc(dir)}">${esc(inTask ? t('task.inTask', { id: inTask }) : dir ? base(dir) : t('task.noDir'))}</small></label>` +
+          `<small title="${esc(dir)}">${esc(dir ? base(dir) : t('task.noDir'))}${where ? ' · ' + esc(t('task.inTask', { id: where.join(', ') })) : ''}</small></label>` +
           `<select name="model" title="${esc(t('launch.model'))}" aria-label="${esc(t('launch.model'))}"></select><select name="effort" title="${esc(t('launch.effort'))}" aria-label="${esc(t('launch.effort'))}"></select>`
         // as it last worked, or, never started from the page, as the settings say
         const from = acc.last || opts.defaults || {}
@@ -464,9 +521,10 @@ export function createTaskUI(sym, {
       renderPicks()
       onDialogOpen()
       dialog.hidden = false
-      form.elements.desc.focus()
+      if (adding) form.querySelector('.emps input:not([disabled]), .add-adv')?.focus()
+      else form.elements.name.focus()
     },
-    closeDialog() { dialog.hidden = true },
+    closeDialog() { dialog.hidden = true; adding = null },
     // the window; until the snapshot has a task just started, it shows what the bridge answered
     openWindow(id, data = null) {
       if (id !== chatFor) { chatFor = id; tBox.value = ''; tStatus.textContent = '' } // a draft stays with its task

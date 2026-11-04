@@ -11,7 +11,7 @@ import { connectionBanner } from '/ui/banner.js'
 import { announceAsks } from '/ui/a11y.js'
 import { createChat } from '/ui/chat.js'
 import { createLaunchDialog } from '/ui/launch.js'
-import { createTaskUI } from '/ui/task.js'
+import { createTaskUI, team } from '/ui/task.js'
 import { createTerminal } from '/ui/terminal.js'
 import { createSettings, settingsButton } from '/ui/settings.js'
 import '/ui/look.js' // the size and the typeface from the settings, applied as the page loads
@@ -134,7 +134,7 @@ const chat = createChat(sym, { askWho, onClose: () => { if (picked?.account) pic
 const launch = createLaunchDialog(sym, { options: loadOptions, onOnline: l => openCoworker(l.account) })
 const tasks = createTaskUI(sym, {
   options: loadOptions,
-  roomLabel: task => task.title.split('\n')[0].slice(0, 48),
+  roomLabel: task => task.name || task.id,
   memberAvatar: m => avatarURL(m?.name || '?', sym.accountById(m?.account)?.look), youAvatar: () => avatarURL('you'),
   isMemberOpen: (task, m) => !!picked?.sid && picked.sid === m.session,
   onOpenMember: (task, m) => openCoworker(m.account, m.session, task.id),
@@ -206,13 +206,13 @@ function showChat() {
   chat.show({
     name: picked.sid ? displayName(member?.name, task) || s?.title || acc.name : acc.name,
     state: stateOf(s), line: statusText(on ? s : null),
-    taskChip: task ? { id: task.id, title: task.title, label: `${task.id} · ${task.title.split('\n')[0].slice(0, 40)}` } : null,
+    taskChip: task ? { id: task.id, title: task.title, label: task.name || task.id } : null,
     // the chips say little and tell the rest on hover: "opus · xhigh" (the model's full name), the folder's name (its path)
     chips: [['model', on ? shortModel(s) : '', on ? modelText(s) : ''], ['dir', base(picked.sid && member?.dir ? member.dir : dir), dir]], // (a member's folder by the repository's name, its worktree on hover: the worktree is named like the session)
     buttons, buttonsKey: `${picked.account}|${picked.sid}|${on}|${busy}|${!!launchOpts?.enabled}|${task?.id}|${member?.session}`,
     terminal: on && s.launch ? s.launch : null, // its terminal in the conversation, as the computer's screen shows it small
     session: picked.sid || s?.id || null, online: on,
-    offText: picked.sid ? t('task.offline') : task && member ? t('chat.awayInTask', { id: task.id, name: displayName(member.name, task) }) : t('chat.offline'),
+    offText: picked.sid ? t('task.offline') : task && member ? t('chat.awayInTask', { id: task.name || task.id, name: displayName(member.name, task) }) : t('chat.offline'),
     // an off-duty coworker's empty conversation offers the start in the middle, where the eye lands
     emptyAction: !on && !picked.sid && !task && launchOpts?.enabled ? { text: t('launch.go'), onclick: () => launch.open(acc.id) } : null,
   })
@@ -292,12 +292,14 @@ function renderSide() {
   const heading = t('msgr.groups') + (snapshot.tasks.length ? ' ' + snapshot.tasks.length : '') // (said apart: a space before a count shown later stays collapsed in Edge's tree)
   if (gc.parentElement.getAttribute('aria-label') !== heading) gc.parentElement.setAttribute('aria-label', heading)
   syncRows(document.getElementById('groups'), groups.map(k => {
-    const waiting = k.members.some(m => sym.asking(m.session)), st = k.status === 'failed' ? 'ended' : waiting ? 'waiting' : 'tool'
-    const picked_ = picked?.group === k.id || picked?.task === k.id, line = k.title.split('\n')[0]
+    const members = team(k), waiting = members.some(m => sym.asking(m.session)), st = k.status === 'failed' ? 'ended' : waiting ? 'waiting' : 'tool'
+    const picked_ = picked?.group === k.id || picked?.task === k.id, line = k.name || k.id
+    // the second line: what the group is on, or its state while it isn't just running
+    const sub = k.status === 'running' && k.title ? k.title.split('\n')[0] : t('task.status.' + k.status)
     const html = `<div class="row${picked_ ? ' on' : ''}" data-group="${esc(k.id)}" role="button" tabindex="0"${picked_ ? ' aria-current="true"' : ''}>${face(k.id, st)}` +
-      `<div class="nm"><span class="t">${esc(line)}</span> <span class="badge plain${waiting ? ' hot' : ''}" title="${esc(t('msgr.members', { n: k.members.length }))}">${esc(k.id)} · ${k.members.length}</span></div>` +
-      `<div class="sub${waiting ? ' hot' : ''}" title="${esc(k.title)}">${esc(t('task.status.' + k.status))}</div></div>`
-    return { key: k.id, sig: `${st}|${k.status}|${k.members.length}|${waiting}|${picked_}|${line}|${dark}`, html }
+      `<div class="nm"><span class="t">${esc(line)}</span> <span class="badge plain${waiting ? ' hot' : ''}" title="${esc(t('msgr.members', { n: members.length }))}">${k.name ? esc(k.id) + ' · ' : ''}${members.length}</span></div>` +
+      `<div class="sub${waiting ? ' hot' : ''}" title="${esc(k.title)}">${esc(sub)}</div></div>`
+    return { key: k.id, sig: `${st}|${k.status}|${members.length}|${waiting}|${picked_}|${line}|${sub}|${dark}`, html }
   }), t('msgr.noGroups'))
 }
 document.getElementById('people').addEventListener('click', ev => { const r = ev.target.closest('.row'); if (r) openCoworker(r.dataset.account) })
@@ -338,9 +340,9 @@ function renderProfile() {
     placeScreen(null)
     const k = sym.taskById(picked.group)
     if (!k) { profileEl.hidden = true; return }
-    setHTML(profileEl, `<div class="top">${face(k.id, k.status === 'failed' ? 'ended' : 'tool', 'big')}<h2>${esc(k.id)}</h2><div class="st">${esc(t('task.status.' + k.status))}</div></div>` +
-      `<h3>${esc(t('msgr.profile.about'))}</h3><div class="wrap" style="font-size:13px;white-space:pre-wrap;overflow-wrap:anywhere">${esc(k.title)}</div>` +
-      `<h3>${esc(t('msgr.profile.members'))}</h3><div class="list">` + k.members.map(m => { const s = sym.sessionById(m.session); return `<div class="row" data-session="${esc(m.session || '')}" data-account="${esc(m.account)}"${m.session ? ' role="button" tabindex="0"' : ''}>${face(m.name, stateOf(s), '', sym.accountById(m.account)?.look)}<span class="txt"><b>${esc(displayName(m.name, k))}</b>${k.leader === m.account ? ` <span class="tag">${esc(t('task.lead'))}</span>` : ''}</span><span class="dim">${esc(!m.session ? t('task.memberStarting') : online(s) ? statusText(s) : t('task.memberEnded'))}</span></div>` }).join('') + '</div>')
+    setHTML(profileEl, `<div class="top">${face(k.id, k.status === 'failed' ? 'ended' : 'tool', 'big')}<h2>${esc(k.name || k.id)}</h2><div class="st">${k.name ? esc(k.id) + ' · ' : ''}${esc(t('task.status.' + k.status))}</div></div>` +
+      (k.title ? `<h3>${esc(t('msgr.profile.about'))}</h3><div class="wrap" style="font-size:13px;white-space:pre-wrap;overflow-wrap:anywhere">${esc(k.title)}</div>` : '') +
+      `<h3>${esc(t('msgr.profile.members'))}</h3><div class="list">` + team(k).map(m => { const s = sym.sessionById(m.session); return `<div class="row" data-session="${esc(m.session || '')}" data-account="${esc(m.account)}"${m.session ? ' role="button" tabindex="0"' : ''}>${face(m.name, stateOf(s), '', sym.accountById(m.account)?.look)}<span class="txt"><b>${esc(displayName(m.name, k))}</b>${k.leader === m.account ? ` <span class="tag">${esc(t('task.lead'))}</span>` : ''}</span><span class="dim">${esc(!m.session ? t('task.memberStarting') : online(s) ? statusText(s) : t('task.memberEnded'))}</span></div>` }).join('') + '</div>')
     return
   }
   const acc = sym.accountById(picked.account)

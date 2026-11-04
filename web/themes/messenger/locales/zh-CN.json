@@ -59,7 +59,7 @@
   "staff.title": "所有同事",
   "staff.find": "按名字或目录找同事",
   "staff.count": "同事：{n} 位",
-  "task.end": "结束群",
+  "task.end": "解散群",
   "task.go": "开始群",
   "launch.name": "名字（其他会话靠它找到这位同事，也是会话名）",
   "launch.model": "模型",
@@ -70,6 +70,13 @@
   "settings.staffWhat": "新同事按这些上班（「Claude Code 默认」就是交给 Claude Code 自己的设置）。新建时，对话框的「高级设置」可以只为这一次改任意几项；老同事回来上班按它上次的选择。",
   "settings.botHomeHint": "启动同事时不填工作目录，就在这里新建一个以它名字命名的专属目录，并初始化成 git 仓库。已有专属目录的同事继续用原来的。",
   "launch.fromSettings": "已按全局设置填好（设置 → 同事）。在这里改不会动全局设置。",
-  "task.members": "成员：按顺序勾选，勾选的顺序就是群里的顺序（2 到 5 人）",
-  "error.unreachable": "连不上 bridge，正在重连。恢复前发不了消息、批不了审批。"
+  "task.members": "成员：按顺序勾选，勾选的顺序就是群里的顺序（2 到 20 人）",
+  "error.unreachable": "连不上 bridge，正在重连。恢复前发不了消息、批不了审批。",
+  "task.titleAdd": "拉进 {name}",
+  "task.addMembers": "+ 拉人",
+  "task.kick": "把 {name} 移出群",
+  "task.kickConfirm": "把 {name} 移出群？它的会话会停下；它还留在名单上，标为已离开，可以再拉回来。",
+  "task.endConfirm": "解散 {id}？成员的会话会停下。",
+  "task.endConfirmGit": "解散 {id}？成员的会话会停下，没提交的改动会提交到各自的分支；如果目录原本不是 git 仓库，各分支会合并回目录里的文件。",
+  "task.gitHint": "不勾（默认）：每位成员就在自己的目录里干活，和它在工位上用的是同一个目录，改动立刻就在目录里，之后也不用合并；几个人共用一个目录时，要自己商量好各改什么。勾上：每位成员各有一个分支和一个 worktree（.symphony/worktrees 下的 symphony/<群>/<名字>），和工位会话、和其他成员都隔开；群开得久了，worktree 和目录会越差越远，而分支只在解散群时才合并回去，而且只合并 bridge 为这个群新建的仓库，其他仓库要你自己合并。"
 }

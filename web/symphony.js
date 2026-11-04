@@ -145,6 +145,9 @@ export function connect({ stream = true } = {}) {
     reportError,
     tasks: {
       create: body => post('/api/tasks', body, { timeout: 0 }), // git readies every member's worktree first
+      addMembers: (id, members) => post(`/api/tasks/${id}/members`, { members }, { timeout: 0 }),
+      kick: (id, account) => call('DELETE', `/api/tasks/${id}/members/${account}`),
+      startMember: (id, account) => post(`/api/tasks/${id}/members/${account}/start`, {}),
       end: id => post(`/api/tasks/${id}/end`, {}),
       forget: id => call('DELETE', `/api/tasks/${id}`),
       say: (id, text) => post(`/api/tasks/${id}/say`, { text }),

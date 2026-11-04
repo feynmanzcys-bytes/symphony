@@ -120,6 +120,9 @@ func NewServer(hub *Hub, web fs.FS) *Server {
 	s.mux.HandleFunc("POST /api/tasks", s.createTask)
 	s.mux.HandleFunc("POST /api/tasks/{id}/end", s.endTask)
 	s.mux.HandleFunc("DELETE /api/tasks/{id}", s.forgetTask)
+	s.mux.HandleFunc("POST /api/tasks/{id}/members", s.addTaskMembers)
+	s.mux.HandleFunc("DELETE /api/tasks/{id}/members/{account}", s.kickTaskMember)
+	s.mux.HandleFunc("POST /api/tasks/{id}/members/{account}/start", s.startTaskMember)
 	s.mux.HandleFunc("POST /api/tasks/{id}/say", s.sayTask)
 	s.mux.HandleFunc("GET /api/tasks/{id}/chat", s.taskChat)
 	return s
@@ -219,7 +222,7 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 
 // errStatus is the HTTP status of errors made on the spot (with params), which errors.Is can't tell apart.
 var errStatus = map[string]int{
-	"task_member_busy": http.StatusConflict, "task_ended": http.StatusConflict,
+	"task_member_unknown": http.StatusNotFound, "task_member_running": http.StatusConflict, "task_last_member": http.StatusConflict, "task_ended": http.StatusConflict,
 	"task_running": http.StatusConflict, "task_unknown": http.StatusNotFound, "task_no_git": http.StatusPreconditionFailed,
 	"ask_not_mod_settled": http.StatusForbidden, "ask_not_page_answered": http.StatusForbidden, "task_git_failed": http.StatusInternalServerError, "pty_start_failed": http.StatusInternalServerError, "cmd_unsafe_arg": http.StatusBadRequest, "task_repo_in_use": http.StatusConflict,
 	"data_write_failed": http.StatusInternalServerError, "launch_still_running": http.StatusConflict,

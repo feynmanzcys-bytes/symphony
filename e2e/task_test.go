@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -103,15 +104,18 @@ func TestTask(t *testing.T) {
 	if !jsBool(`document.querySelector('#task .go').disabled`) {
 		t.Fatal("Start should be off before 2 members are picked")
 	}
-	// the description, bob then alice (bob leads), and an advisor on bob's repository
-	run(`document.querySelector('#task [name=desc]').value = 'Add a CHANGELOG and a Makefile'`)
+	if !jsBool(`!document.querySelector('#task [name=git]').checked && !document.getElementById('task-git-hint').hidden && document.getElementById('task-git-hint').textContent.length > 40`) {
+		t.Fatal("the git box should start unticked, explained beside it")
+	}
+	// the description, git branches for everyone, bob then alice (bob leads), and an advisor on bob's repository
+	run(`document.querySelector('#task [name=desc]').value = 'Add a CHANGELOG and a Makefile'; document.querySelector('#task [name=git]').click()`)
 	for _, name := range []string{"bob", "alice"} {
 		run(fmt.Sprintf(`[...document.querySelectorAll('#task .mem')].find(r => r.querySelector('.nm').textContent === %q).querySelector('input').click()`, name))
 	}
 	run(`document.querySelector('#task .add-adv').click()`)
 	run(fmt.Sprintf(`(() => { const r = document.querySelector('#task .adv'); r.querySelector('[name=name]').value = 'rev'; r.querySelector('[name=dir]').value = %q })()`, app))
-	if got := js(`document.querySelector('#task .count').textContent`); !strings.Contains(got, "3") || !strings.Contains(got, "5") {
-		t.Fatalf("the count should read 3 of 5 members, got %q", got)
+	if got := js(`document.querySelector('#task .count').textContent`); !strings.Contains(got, "3") || !strings.Contains(got, "20") {
+		t.Fatalf("the count should read 3 of 20 members, got %q", got)
 	}
 	if !jsBool(`[...document.querySelectorAll('#task .mem.on, #task .adv')].map(r => r.querySelector('.ord').textContent).join() === '1,2,3' && document.querySelector('#task .mem.lead .nm').textContent === 'bob'`) {
 		t.Fatalf("the members should be numbered in the order picked, bob leading: %s", js(`document.querySelector('#task form').innerHTML`))
@@ -132,7 +136,7 @@ func TestTask(t *testing.T) {
 		}
 		return false
 	}, func() string { return js(`document.querySelector('#task .status')?.textContent`) })
-	if task.ID != "T1" || task.Leader == "" || len(task.Members) != 3 || len(task.Repos) != 2 {
+	if task.ID != "T1" || task.Leader == "" || len(task.Members) != 3 || len(task.Repos) != 2 || !task.Git || task.Name != "" {
 		t.Fatalf("unexpected task: %+v", task)
 	}
 	names := map[string]*bridge.Member{}
@@ -206,7 +210,7 @@ func TestTask(t *testing.T) {
 		}
 		return body.Items[0].Text
 	}
-	if text := kickoff("bob"); !strings.Contains(text, "lead of task T1") || !strings.Contains(text, "alice-T1") || !strings.Contains(text, "symphony/T1/bob") || !strings.Contains(text, "Add a CHANGELOG") {
+	if text := kickoff("bob"); !strings.Contains(text, "lead of group T1") || !strings.Contains(text, "alice-T1") || !strings.Contains(text, "symphony/T1/bob") || !strings.Contains(text, "Add a CHANGELOG") {
 		t.Fatalf("bob's kickoff should make him the lead and name the team:\n%s", text)
 	}
 	if text := kickoff("alice"); !strings.Contains(text, "the lead is bob-T1") || !strings.Contains(text, "symphony/T1/alice") {
@@ -281,6 +285,145 @@ func TestTask(t *testing.T) {
 	}
 	if b.account("rev") != nil {
 		t.Fatal("the advisor's account should be gone with the task")
+	}
+
+	// ---------- a group the usual way: named, without a description, without git; members come and go ----------
+	run(`document.getElementById('new-task').click()`)
+	waitUntil(t, 5*time.Second, "the task dialog opens again", func() bool {
+		return jsBool(`!document.getElementById('task').hidden && document.activeElement === document.getElementById('task-name')`)
+	})
+	run(`document.querySelector('#task [name=name]').value = 'Payments'`)
+	for _, name := range []string{"bob", "alice"} {
+		run(fmt.Sprintf(`[...document.querySelectorAll('#task .mem')].find(r => r.querySelector('.nm').textContent === %q).querySelector('input').click()`, name))
+	}
+	run(`document.querySelector('#task .go').click()`)
+	var group *bridge.Task
+	waitUntil(t, 30*time.Second, "the group is running", func() bool {
+		for _, k := range b.Hub.Tasks() {
+			if k.ID == "T2" && k.Status == "running" {
+				group = k
+				return true
+			}
+		}
+		return false
+	}, func() string { return js(`document.querySelector('#task .status')?.textContent`) })
+	if group.Git || group.Name != "Payments" || group.Title != "" || len(group.Repos) != 0 || group.Members[0].Branch != "" || group.Members[0].Worktree != "" {
+		t.Fatalf("a plain, untitled group: %+v %+v", group, group.Members[0])
+	}
+	gb, ga := group.Members[0], group.Members[1]
+	// the members' sessions start in their folders as they are: no new branch, no .symphony
+	if l := b.Hub.Snapshot().Launches; !slices.ContainsFunc(l, func(l *bridge.Launch) bool { return l.ID == gb.Launch && l.Dir == app }) || !slices.ContainsFunc(l, func(l *bridge.Launch) bool { return l.ID == ga.Launch && l.Dir == plain }) {
+		t.Fatalf("bob should start in %s and alice in %s: %+v", app, plain, l)
+	}
+	if got := git(app, "branch", "--list", "symphony/T2/*"); got != "" || isDirectory(filepath.Join(app, ".symphony")) {
+		t.Fatalf("a plain group makes no branch: %q", got)
+	}
+	// the window and the sidebar go by the name, the number beside it
+	waitUntil(t, 10*time.Second, "the group window shows Payments with its number", func() bool {
+		return jsBool(`!document.getElementById('taskwin').hidden && document.querySelector('#taskwin .top h2').textContent === 'Payments' && document.querySelector('#taskwin .tid').textContent === 'T2' && document.querySelectorAll('#taskwin .mitem').length === 2 && !!document.querySelector('#taskwin .actions .add')`)
+	}, func() string { return js(`document.querySelector('#taskwin .top').innerHTML`) })
+	waitUntil(t, 10*time.Second, "the sidebar lists Payments", func() bool {
+		return jsBool(`(r => !!r && r.querySelector('.t').textContent === 'Payments' && r.querySelector('.badge').textContent.startsWith('T2'))(document.querySelector('#groups .row[data-group="T2"]'))`)
+	}, func() string { return js(`document.getElementById('groups').innerHTML`) })
+	for _, name := range []string{"bob", "alice"} {
+		m := map[string]*bridge.Member{"bob": gb, "alice": ga}[name]
+		b.post(t, tokens[name], "/api/event", map[string]any{"session": "g-" + name, "kind": "session.start", "cwd": m.Dir, "launch": m.Launch, "task": "T2", "model": "opus"})
+	}
+	// the kickoff of a plain, untitled group: the folder, no branch, and the user's word to come in the group chat
+	gkick := func(name string) string {
+		req, _ := http.NewRequest("GET", b.URL+"/api/inbox?session=g-"+name, nil)
+		req.Header.Set("Authorization", "Bearer "+tokens[name])
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer res.Body.Close()
+		var body struct{ Items []struct{ Kind, Text string } }
+		if err := json.NewDecoder(res.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		var texts []string
+		for _, it := range body.Items {
+			if it.Kind == "say" {
+				texts = append(texts, it.Text)
+			}
+		}
+		return strings.Join(texts, "\n---\n")
+	}
+	if text := gkick("bob"); !strings.Contains(text, "lead of group T2 (Payments)") || !strings.Contains(text, "hasn't described a task yet") || !strings.Contains(text, "you work in "+app+" itself") || strings.Contains(text, "symphony/T2") {
+		t.Fatalf("bob's kickoff should be the plain, untitled one:\n%s", text)
+	}
+	gkick("alice")
+	// "+ Add members" opens the dialog for who joins: bob and alice are in already, carol has no folder; an advisor joins
+	run(`document.querySelector('#taskwin .actions .add').click()`)
+	waitUntil(t, 5*time.Second, "the dialog opens to add members", func() bool {
+		return jsBool(`!document.getElementById('task').hidden && document.querySelector('#task form').classList.contains('adding') && [...document.querySelectorAll('#task .mem .nm')].map(e => e.textContent).join() === 'carol' && document.querySelector('#task .title').textContent.includes('Payments') && document.getElementById('task-name').getClientRects().length === 0`)
+	}, func() string { return js(`document.querySelector('#task form').innerHTML.slice(0, 600)`) })
+	run(`document.querySelector('#task .add-adv').click()`)
+	run(fmt.Sprintf(`(() => { const r = document.querySelector('#task .adv'); r.querySelector('[name=name]').value = 'rev'; r.querySelector('[name=dir]').value = %q })()`, app))
+	if got := js(`document.querySelector('#task .count').textContent`); !strings.Contains(got, "1") || !strings.Contains(got, "18") {
+		t.Fatalf("the count should read 1 of 18 (two are in already), got %q", got)
+	}
+	run(`document.querySelector('#task .go').click()`)
+	waitUntil(t, 30*time.Second, "the advisor joins: three member cards and the bridge's note in the team chat", func() bool {
+		return jsBool(`document.getElementById('task').hidden && document.querySelectorAll('#taskwin .mitem').length === 3 && [...document.querySelectorAll('#taskwin .tmsg.sys')].some(m => m.textContent.includes('rev-T2'))`)
+	}, func() string {
+		return js(`document.querySelector('#task .status')?.textContent + ' | ' + document.querySelector('#taskwin .members').innerHTML`)
+	})
+	if text := gkick("bob"); !strings.Contains(text, "New in group T2 (Payments): rev-T2") {
+		t.Fatalf("bob should be told rev joined:\n%s", text)
+	}
+	// alice is removed: her card says so, grayed, without buttons; bob is told
+	run(`window.confirm = () => true; [...document.querySelectorAll('#taskwin .mitem')].find(c => c.querySelector('b').textContent === 'alice').querySelector('.acts .kick').click()`)
+	waitUntil(t, 10*time.Second, "alice's card says she left", func() bool {
+		return jsBool(`(c => !!c && c.classList.contains('left') && !c.querySelector('.acts'))([...document.querySelectorAll('#taskwin .mitem')].find(c => c.querySelector('b').textContent === 'alice'))`)
+	}, func() string { return js(`document.querySelector('#taskwin .members').innerHTML`) })
+	if text := gkick("bob"); !strings.Contains(text, "alice-T2 left group T2 (Payments)") {
+		t.Fatalf("bob should be told alice left:\n%s", text)
+	}
+	// bob's process dies: his card offers to start him again; the new session gets the kickoff again
+	if term := b.Launcher.Terms.Get(gb.Launch); term != nil {
+		term.Kill()
+	}
+	waitUntil(t, 20*time.Second, "bob's card offers Start again", func() bool {
+		return jsBool(`!![...document.querySelectorAll('#taskwin .mitem')].find(c => c.querySelector('b').textContent === 'bob')?.querySelector('.acts .start')`)
+	}, func() string { return js(`document.querySelector('#taskwin .members').innerHTML`) })
+	run(`[...document.querySelectorAll('#taskwin .mitem')].find(c => c.querySelector('b').textContent === 'bob').querySelector('.acts .start').click()`)
+	var again *bridge.Member
+	waitUntil(t, 20*time.Second, "bob has a new launch", func() bool {
+		for _, k := range b.Hub.Tasks() {
+			if k.ID == "T2" && k.Members[0].Launch != gb.Launch {
+				again = k.Members[0]
+				return true
+			}
+		}
+		return false
+	})
+	b.post(t, tokens["bob"], "/api/event", map[string]any{"session": "g2-bob", "kind": "session.start", "cwd": app, "launch": again.Launch, "task": "T2", "model": "opus"})
+	if text := gkick("bob"); text != "" {
+		t.Fatalf("the old session gets nothing more: %s", text)
+	}
+	req, _ := http.NewRequest("GET", b.URL+"/api/inbox?session=g2-bob", nil)
+	req.Header.Set("Authorization", "Bearer "+tokens["bob"])
+	if res, err := http.DefaultClient.Do(req); err != nil {
+		t.Fatal(err)
+	} else {
+		var body struct{ Items []struct{ Kind, Text string } }
+		_ = json.NewDecoder(res.Body).Decode(&body)
+		res.Body.Close()
+		if len(body.Items) != 1 || !strings.Contains(body.Items[0].Text, "lead of group T2 (Payments)") {
+			t.Fatalf("bob's new session should get the kickoff again: %+v", body.Items)
+		}
+	}
+	waitUntil(t, 10*time.Second, "bob is online again in the window", func() bool {
+		return jsBool(`(c => !!c && !c.querySelector('.acts .start'))([...document.querySelectorAll('#taskwin .mitem')].find(c => c.querySelector('b').textContent === 'bob'))`)
+	})
+	screenshot(t, page, "task-group-plain.png")
+	// dissolved: the folders are left as they are, the advisor goes
+	run(`document.querySelector('#taskwin .end').click()`)
+	waitUntil(t, 60*time.Second, "the group ends", func() bool { return len(b.Hub.Tasks()) == 0 })
+	if got := git(app, "branch", "--list", "symphony/T2/*"); got != "" || isDirectory(filepath.Join(app, ".symphony")) || b.account("rev") != nil {
+		t.Fatalf("dissolving a plain group leaves git alone and deletes the advisor: %q", got)
 	}
 	if errs := js(`window.__errors`); errs != "[]" {
 		t.Fatalf("page errors: %s", errs)

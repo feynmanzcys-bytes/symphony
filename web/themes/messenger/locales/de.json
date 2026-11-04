@@ -59,7 +59,7 @@
   "staff.title": "Alle Kollegen",
   "staff.find": "Kollegen nach Name oder Ordner suchen",
   "staff.count": "Kollegen: {n}",
-  "task.end": "Gruppe beenden",
+  "task.end": "Gruppe auflösen",
   "task.go": "Gruppe starten",
   "launch.name": "Name (so erreichen ihn die anderen Sitzungen; zugleich der Name der Sitzung)",
   "launch.model": "Modell",
@@ -70,6 +70,13 @@
   "settings.staffWhat": "Damit startet ein neuer Kollege („Standard“: Claude Codes eigene Einstellungen). Die erweiterten Einstellungen im Startdialog können jede davon für einen Start ändern; ein Kollege, der wieder an die Arbeit geht, startet wie zuletzt.",
   "settings.botHomeHint": "Ein Kollege, der ohne Arbeitsordner startet, bekommt hier einen neuen eigenen Ordner mit seinem Namen, als git-Repository angelegt. Wer schon einen hat, behält ihn.",
   "launch.fromSettings": "Aus den Einstellungen übernommen (Einstellungen → Kollegen). Änderungen hier ändern die Einstellungen nicht.",
-  "task.members": "Mitglieder: der Reihe nach anhaken, die Reihenfolge gilt für die Gruppe (2 bis 5)",
-  "error.unreachable": "Bridge nicht erreichbar, verbinde neu. Senden und Freigaben warten, bis sie zurück ist."
+  "task.members": "Mitglieder: der Reihe nach anhaken, die Reihenfolge gilt für die Gruppe (2 bis 20)",
+  "error.unreachable": "Bridge nicht erreichbar, verbinde neu. Senden und Freigaben warten, bis sie zurück ist.",
+  "task.titleAdd": "Zu {name} hinzufügen",
+  "task.addMembers": "+ Mitglieder hinzufügen",
+  "task.kick": "{name} aus der Gruppe nehmen",
+  "task.kickConfirm": "{name} aus der Gruppe nehmen? Die Sitzung stoppt; das Mitglied bleibt als ausgeschieden in der Liste und kann wieder hinzugefügt werden.",
+  "task.endConfirm": "{id} auflösen? Die Sitzungen der Mitglieder stoppen.",
+  "task.endConfirmGit": "{id} auflösen? Die Sitzungen der Mitglieder stoppen, und ihre nicht committete Arbeit wird in ihre Branches committet; in einem Ordner, der kein git-Repository war, werden die Branches in seine Dateien zurückgeführt.",
+  "task.gitHint": "Aus (der Normalfall): Jedes Mitglied arbeitet in seinem eigenen Ordner, wie er ist, demselben wie an seinem Schreibtisch; was es tut, ist sofort im Ordner, und später muss nichts zusammengeführt werden. Mitglieder, die sich einen Ordner teilen, sprechen ab, wer was bearbeitet. An: Jedes Mitglied bekommt einen eigenen Branch und Worktree (symphony/<Gruppe>/<Name> unter .symphony/worktrees), getrennt von der Schreibtisch-Sitzung und den anderen Mitgliedern; in einer lange bestehenden Gruppe laufen Worktree und Ordner auseinander, und die Branches werden erst beim Auflösen der Gruppe zurückgeführt, und nur in einem Repository, das die Bridge dafür angelegt hat; sonst führst du sie selbst zusammen."
 }

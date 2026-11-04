@@ -59,7 +59,7 @@
   "staff.title": "Todos os colegas",
   "staff.find": "Procurar um colega por nome ou pasta",
   "staff.count": "Colegas: {n}",
-  "task.end": "Encerrar o grupo",
+  "task.end": "Dissolver o grupo",
   "task.go": "Começar o grupo",
   "launch.name": "Nome (é assim que as outras sessões o encontram; também é o nome da sessão)",
   "launch.model": "Modelo",
@@ -70,6 +70,13 @@
   "settings.staffWhat": "Com isto começa um colega novo (“Padrão”: as configurações do próprio Claude Code). As configurações avançadas da janela de início podem mudar qualquer uma para um só início; um colega que volta ao trabalho começa como da última vez.",
   "settings.botHomeHint": "Um colega iniciado sem pasta de trabalho ganha aqui uma pasta nova só dele, com o nome dele e iniciada como repositório git. Quem já tem uma continua com ela.",
   "launch.fromSettings": "Preenchido com as configurações (Configurações → Colegas). Mudar aqui não muda as configurações.",
-  "task.members": "Membros: marque-os em ordem; essa será a ordem do grupo (de 2 a 5)",
-  "error.unreachable": "Não foi possível conectar ao bridge; reconectando. Envios e aprovações esperam até ele voltar."
+  "task.members": "Membros: marque-os em ordem; essa será a ordem do grupo (de 2 a 20)",
+  "error.unreachable": "Não foi possível conectar ao bridge; reconectando. Envios e aprovações esperam até ele voltar.",
+  "task.titleAdd": "Adicionar a {name}",
+  "task.addMembers": "+ Adicionar membros",
+  "task.kick": "Tirar {name} do grupo",
+  "task.kickConfirm": "Tirar {name} do grupo? A sessão para; fica na lista como saído e pode ser adicionado de novo.",
+  "task.endConfirm": "Dissolver {id}? As sessões dos membros param.",
+  "task.endConfirmGit": "Dissolver {id}? As sessões dos membros param e o trabalho sem commit é salvo em um commit nos branches deles; numa pasta que não era um repositório git, os branches são mesclados de volta nos arquivos dela.",
+  "task.gitHint": "Desligado (o normal): cada membro trabalha na própria pasta como ela está, a mesma da sua mesa, então o que faz já fica na pasta e não há nada para mesclar depois; membros que dividem uma pasta combinam quem edita o quê. Ligado: cada membro ganha um branch e um worktree próprios (symphony/<grupo>/<nome> em .symphony/worktrees), separados da sessão da mesa e dos outros membros; num grupo que dura, o worktree e a pasta vão se distanciando, e os branches só são mesclados de volta quando o grupo é dissolvido, e só num repositório que o bridge criou para ele; nos outros, você mescla."
 }

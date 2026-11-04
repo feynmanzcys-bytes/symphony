@@ -59,7 +59,7 @@
   "staff.title": "Todos los compañeros",
   "staff.find": "Buscar un compañero por nombre o carpeta",
   "staff.count": "Compañeros: {n}",
-  "task.end": "Terminar el grupo",
+  "task.end": "Disolver el grupo",
   "task.go": "Empezar el grupo",
   "launch.name": "Nombre (así lo encuentran las otras sesiones; también es el nombre de la sesión)",
   "launch.model": "Modelo",
@@ -70,6 +70,13 @@
   "settings.staffWhat": "Con esto empieza un compañero nuevo («Predeterminado»: los ajustes propios de Claude Code). Los ajustes avanzados del diálogo de inicio pueden cambiar cualquiera para un solo inicio; un compañero que vuelve al trabajo empieza como la última vez.",
   "settings.botHomeHint": "Un compañero que empieza sin carpeta de trabajo recibe aquí una carpeta nueva propia, con su nombre y convertida en repositorio git. Quien ya tiene una la conserva.",
   "launch.fromSettings": "Rellenado con los ajustes (Ajustes → Compañeros). Cambiarlo aquí no cambia los ajustes.",
-  "task.members": "Miembros: márcalos en orden; ese será el orden del grupo (de 2 a 5)",
-  "error.unreachable": "No se puede conectar con el bridge; reconectando. Los envíos y las aprobaciones esperan hasta que vuelva."
+  "task.members": "Miembros: márcalos en orden; ese será el orden del grupo (de 2 a 20)",
+  "error.unreachable": "No se puede conectar con el bridge; reconectando. Los envíos y las aprobaciones esperan hasta que vuelva.",
+  "task.titleAdd": "Añadir a {name}",
+  "task.addMembers": "+ Añadir miembros",
+  "task.kick": "Quitar a {name} del grupo",
+  "task.kickConfirm": "¿Quitar a {name} del grupo? Su sesión se detiene; queda en la lista como salido y se puede volver a añadir.",
+  "task.endConfirm": "¿Disolver {id}? Las sesiones de los miembros se detienen.",
+  "task.endConfirmGit": "¿Disolver {id}? Las sesiones de los miembros se detienen y el trabajo que no tenga commit se guarda con un commit en sus ramas; en una carpeta que no era un repositorio git, las ramas se fusionan de vuelta en sus archivos.",
+  "task.gitHint": "Desactivado (lo habitual): cada miembro trabaja en su propia carpeta tal cual, la misma que en su mesa, así que lo que hace está en la carpeta de inmediato y no hay nada que fusionar después; los miembros que comparten carpeta acuerdan quién edita qué. Activado: cada miembro recibe una rama y un worktree propios (symphony/<grupo>/<nombre> bajo .symphony/worktrees), aparte de la sesión de su mesa y de los demás; en un grupo que dura, el worktree y la carpeta se van separando, y las ramas se fusionan de vuelta solo al disolver el grupo, y solo en un repositorio que el bridge creó para él; en los demás las fusionas tú."
 }

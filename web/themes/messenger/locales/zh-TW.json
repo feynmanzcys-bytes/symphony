@@ -59,7 +59,7 @@
   "staff.title": "所有同事",
   "staff.find": "依名字或資料夾找同事",
   "staff.count": "同事：{n} 位",
-  "task.end": "結束群",
+  "task.end": "解散群",
   "task.go": "開始群",
   "launch.name": "名字（其他工作階段靠它找到這位同事，也是工作階段名）",
   "launch.model": "模型",
@@ -70,6 +70,13 @@
   "settings.staffWhat": "新同事依這些上班（「預設」就是交給 Claude Code 自己的設定）。新增時，對話框的「進階設定」可以只為這一次修改任意幾項；老同事回來上班時依它上次的選擇。",
   "settings.botHomeHint": "啟動同事時不填工作資料夾，就在這裡新建一個以它名字命名的專屬資料夾，並初始化成 git 儲存庫。已有專屬資料夾的同事繼續用原來的。",
   "launch.fromSettings": "已依全域設定填好（設定 → 同事）。在這裡修改不會變更全域設定。",
-  "task.members": "成員：依序勾選，勾選的順序就是群裡的順序（2 到 5 人）",
-  "error.unreachable": "無法連線到 bridge，正在重新連線。恢復前無法傳送訊息或審批。"
+  "task.members": "成員：依序勾選，勾選的順序就是群裡的順序（2 到 20 人）",
+  "error.unreachable": "無法連線到 bridge，正在重新連線。恢復前無法傳送訊息或審批。",
+  "task.titleAdd": "拉進 {name}",
+  "task.addMembers": "+ 拉人",
+  "task.kick": "把 {name} 移出群",
+  "task.kickConfirm": "把 {name} 移出群？它的工作階段會停止；它還留在名單上，標為已離開，可以再拉回來。",
+  "task.endConfirm": "要解散 {id} 嗎？成員的工作階段會停止。",
+  "task.endConfirmGit": "要解散 {id} 嗎？成員的工作階段會停止，尚未提交的變更會提交到各自的分支；如果資料夾原本不是 git 儲存庫，各分支會合併回資料夾裡的檔案。",
+  "task.gitHint": "不勾（預設）：每位成員就在自己的資料夾裡工作，和它在工位上用的是同一個資料夾，改動立刻就在資料夾裡，之後也不用合併；幾個人共用一個資料夾時，要自己講好各改什麼。勾起來：每位成員各有一個分支和一個 worktree（.symphony/worktrees 下的 symphony/<群>/<名字>），和工位的工作階段、和其他成員都隔開；群開得久了，worktree 和資料夾會越差越遠，而分支只在解散群時才合併回去，而且只合併 bridge 為這個群新建的儲存庫，其他儲存庫要你自己合併。"
 }
