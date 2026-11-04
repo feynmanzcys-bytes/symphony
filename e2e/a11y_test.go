@@ -974,6 +974,8 @@ func TestA11y(t *testing.T) {
 	key(office, kb.Enter, false)
 	waitUntil(t, 5*time.Second, "the pending chip opens carol's window, the focus on her first card", func() bool {
 		return p.is(`document.querySelectorAll('#chat #asks .card').length === 2`) && focusIn(p, "#chat #asks")
+	}, func() string {
+		return p.js(`document.querySelectorAll('#chat #asks .card').length + ' cards; active: ' + document.activeElement.outerHTML.slice(0, 120) + '; asking: ' + document.querySelector('#chat .dock').className`)
 	})
 	if n := ax(t, office, `document.querySelector('#chat #asks .card')`); n.Role != "group" || !strings.Contains(n.Name, "Permission") {
 		t.Errorf("an ask's card should be a group named by its top line: %+v", n)

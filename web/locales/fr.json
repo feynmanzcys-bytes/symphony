@@ -102,6 +102,8 @@
   "asks.submit": "Envoyer la réponse",
   "asks.answerRequired": "Choisissez une réponse ou écrivez la vôtre",
   "asks.reason": "Motif (facultatif, transmis au modèle)",
+  "asks.allInput": "L'entrée complète",
+  "asks.addReason": "Ajouter une raison (transmise au modèle)",
   "asks.allow": "Autoriser",
   "asks.deny": "Refuser",
   "asks.allowSessionEdits": "Autoriser les modifications pour cette session",

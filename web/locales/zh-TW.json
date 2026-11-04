@@ -102,6 +102,8 @@
   "asks.submit": "送出回答",
   "asks.answerRequired": "選一個答案，或自行填寫",
   "asks.reason": "理由（選填，會回傳給模型）",
+  "asks.allInput": "完整輸入",
+  "asks.addReason": "加一句理由（會回傳給模型）",
   "asks.allow": "允許",
   "asks.deny": "拒絕",
   "asks.allowSessionEdits": "本工作階段的修改都允許",

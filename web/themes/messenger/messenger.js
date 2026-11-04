@@ -66,13 +66,17 @@ const stateOf = s => !online(s) ? 'ended' : sym.asking(s.id) ? 'waiting' : s.sta
 const GROUP_ORDER = { waiting: 0, tool: 1, thinking: 1, idle: 2, ended: 3, done: 3 }
 // the rate-limit windows: the ones known by name, any other as Claude Code calls it
 const LIMIT_KEY = { five_hour: 'msgr.limit.fiveHour', seven_day: 'msgr.limit.sevenDay', spend_limit: 'msgr.limit.spend' }
+// the model in a word with the effort: "opus · xhigh" (claude-opus-5-5 with the thinking effort xhigh)
+const shortModel = s => [s.model ? s.model.replace(/^claude-/, '').replace(/-\d+-\d+$/, '') : '', s.effort || ''].filter(Boolean).join(' · ')
 const limitLabel = kind => LIMIT_KEY[kind] ? t(LIMIT_KEY[kind]) : String(kind).replace(/_/g, ' ')
 
 // a face: the shape and the hue from the name, the eyes, a mouth; the state is on the element, the motion in CSS
 const SHAPES = ['<circle class="body" cx="22" cy="22" r="20"/>', '<rect class="body" x="3" y="3" width="38" height="38" rx="10"/>', '<polygon class="body" points="22,2 40,12 40,32 22,42 4,32 4,12"/>', '<path class="body" d="M22 3 L41 22 L22 41 L3 22 Z" />']
 function face(name, state, cls = '') {
   const h = hash(name), hue = h % 360, shape = SHAPES[(h >>> 8) % SHAPES.length], mouth = (h >>> 12) % 2
-  return `<div class="face ${cls}" data-state="${esc(state)}" aria-hidden="true" style="--c:hsl(${hue} 48% ${document.documentElement.hasAttribute('data-dark') ? 52 : 44}%)"><svg viewBox="0 0 44 44">` +
+  // (one lightness for both schemes: the sidebar is graphite in either, and the profile's and the group's faces
+  // sit on paper that is light or dark)
+  return `<div class="face ${cls}" data-state="${esc(state)}" aria-hidden="true" style="--c:hsl(${hue} 50% 50%)"><svg viewBox="0 0 44 44">` +
     `<circle class="ring" cx="22" cy="22" r="21.5"/>${shape}` +
     `<ellipse class="eye" cx="15" cy="19" rx="4" ry="4.5"/><ellipse class="eye" cx="29" cy="19" rx="4" ry="4.5"/>` +
     `<circle class="pupil" cx="15.5" cy="19.5" r="2"/><circle class="pupil" cx="29.5" cy="19.5" r="2"/>` +
@@ -83,7 +87,20 @@ function face(name, state, cls = '') {
 // ---------- the shared pieces, embedded in the middle column ----------
 let picked = null // what the middle column shows: { account, sid?, task? } for a conversation, { group: taskId } for a group chat
 const center = document.getElementById('center'), placeholder = document.getElementById('placeholder')
-const askWho = a => `<div class="who"><span class="name">${esc(askKind(a.kind))}</span>` + (a.agentId ? `<span class="kind">${esc(t('common.subagent'))}</span>` : '') + `</div>`
+// a card's top line: an icon for the kind, the kind, the tool, the subagent it came from (by what it was told to do),
+// and since when it waits
+const ASK_ICON = {
+  question: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.3-1 .9-1 1.7M12 17h.01"/></svg>',
+  permission: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 4 6v6c0 5 3.4 8.4 8 9 4.6-.6 8-4 8-9V6z"/></svg>',
+  elicitation: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>',
+}
+const askWho = a => {
+  const agent = a.agentId ? sym.sessionById(a.session)?.agents?.[a.agentId] : null
+  const from = a.agentId ? (agent?.description ? t('msgr.askFromAgent', { what: agent.description }) : t('common.subagent')) : ''
+  return `<div class="who">${ASK_ICON[a.kind] || ASK_ICON.permission}<span class="name">${esc(askKind(a.kind))}</span>` +
+    (a.tool ? `<span class="kind">· ${esc(a.tool)}</span>` : '') + (from ? `<span class="kind from">· ${esc(from)}</span>` : '') +
+    (a.created ? `<span class="since">${esc(t('msgr.askSince', { time: fmtTime(a.created) }))}</span>` : '') + `</div>`
+}
 const chat = createChat(sym, { askWho, asks: 'inline', onClose: () => { if (picked?.account) picked = null; showCenter() }, onTaskChip: id => openGroup(id) })
 const launch = createLaunchDialog(sym, { options: loadOptions, onOnline: l => openCoworker(l.account), log: () => {} })
 const tasks = createTaskUI(sym, {
@@ -151,6 +168,7 @@ function showChat() {
   const task = picked.sid ? sym.taskOfSession(picked.sid) : taskOf(acc)
   const member = task?.members.find(m => picked.sid ? m.session === picked.sid : m.account === picked.account)
   const busy = on && (s.state === 'thinking' || s.state === 'tool' || s.state === 'waiting')
+  const dir = s?.cwd || (picked.sid ? member?.worktree : acc.last?.dir || acc.dir) || ''
   const buttons = []
   if (busy) buttons.push({ key: 'stop', text: t('chat.stop'), cls: 'stop', onclick: async () => { const r = await sym.abort(s.id); if (!r.ok) showError(errorText(r.data), { title: t('errlog.oops.stop') }) }, title: t('chat.stopTitle') })
   if (!picked.sid && task && member?.session) buttons.push({ key: 'to-task', text: t('task.openMember', { name: member.name }), cls: 'primary to-task', onclick: () => openCoworker(picked.account, member.session, task.id) })
@@ -165,7 +183,8 @@ function showChat() {
     name: picked.sid ? member?.name || s?.title || acc.name : acc.name,
     state: stateOf(s), line: statusText(on ? s : null),
     taskChip: task ? { id: task.id, title: task.title, label: `${task.id} · ${task.title.split('\n')[0].slice(0, 40)}` } : null,
-    chips: [['model', on ? modelText(s) : ''], ['dir', s?.cwd || (picked.sid ? member?.worktree : acc.last?.dir || acc.dir)]],
+    // the chips say little and tell the rest on hover: "opus · xhigh" (the model's full name), the folder's name (its path)
+    chips: [['model', on ? shortModel(s) : '', on ? modelText(s) : ''], ['dir', base(dir), dir]],
     buttons, buttonsKey: `${picked.account}|${picked.sid}|${on}|${busy}|${!!launchOpts?.enabled}|${task?.id}|${member?.session}`,
     terminal: on && s.launch ? s.launch : null, // its terminal in the conversation, as the computer's screen shows it small
     session: picked.sid || s?.id || null, online: on,
@@ -186,14 +205,30 @@ addEventListener('keydown', ev => {
   ev.preventDefault()
   findEl.focus()
 })
-// the progress line: what the coworker is on, in a few words
+// the progress line: what the coworker is on, in a few words. What it waits for comes first and in plain words (a
+// question asked, a command it wants to run, a file it wants to edit); else what it does, or what it was last asked.
+const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit'])
 function progress(acc, s) {
   if (!online(s)) return s ? t('msgr.offSince', { time: fmtTime(s.updated) }) : t('state.ended')
   const ask = snapshot.asks.find(a => a.session === s.id)
-  if (ask) return t('msgr.waitingFor', { what: ask.kind === 'permission' ? [ask.tool, askSummary(ask)].filter(Boolean).join(' ') : askSummary(ask) || askKind(ask.kind) })
+  if (ask) {
+    const what = askSummary(ask)
+    if (ask.kind === 'question') return t('msgr.asks', { what: what || askKind(ask.kind) })
+    if (ask.kind === 'elicitation') return t('msgr.needsForm', { what: ask.server || what || '' })
+    if (ask.tool === 'Bash' && what) return t('msgr.wantsRun', { what })
+    if (EDIT_TOOLS.has(ask.tool) && what) return t('msgr.wantsEdit', { what })
+    return t('msgr.wantsTool', { tool: ask.tool || askKind(ask.kind), what: what || '' })
+  }
   if (s.state === 'tool' && s.tool) return t('state.working', { tool: s.tool })
   if (s.state === 'thinking') return t('state.thinking')
-  return s.prompt ? t('msgr.lastAsked', { text: s.prompt }) : t('state.idle')
+  return s.prompt ? `${t('state.idle')} · ${t('msgr.lastAsked', { text: s.prompt })}` : t('state.idle')
+}
+// the state's word at the start of the line, colored (working amber, idle green), the rest plain
+function progressHTML(s, line) {
+  const busy = s.state === 'tool' || s.state === 'thinking'
+  const word = s.state === 'tool' ? t('state.working', { tool: '' }).replace(/\s*[·:：-]\s*$/, '') : busy ? t('state.thinking') : t('state.idle')
+  if (word && line.startsWith(word)) return `<span class="st${busy ? '' : ' idle'}">${esc(word)}</span>${esc(line.slice(word.length))}`
+  return esc(line)
 }
 // The rows are kept and replaced only when what they show changed (a face rebuilt would start its motion over), in
 // the order the list wants; the empty line is put in when there is nothing
@@ -224,16 +259,23 @@ function renderSide() {
   const rows = desks().map(acc => ({ acc, s: deskOf(acc), task: taskOf(acc) }))
     .filter(r => !q || [r.acc.name, r.s?.title, base(r.s?.cwd || r.acc.dir || '')].some(v => lower(v).includes(q)))
     .sort((a, b) => GROUP_ORDER[stateOf(a.s)] - GROUP_ORDER[stateOf(b.s)] || a.acc.name.localeCompare(b.acc.name, lang))
-  syncRows(document.getElementById('people'), rows.map(({ acc, s, task }) => {
-    const st = stateOf(s), on = online(s), hot = st === 'waiting', line = progress(acc, s), when = on ? fmtTime(s.updated) : ''
-    const title = on ? [s.model ? s.model.replace(/^claude-/, '').replace(/-\d+-\d+$/, '') + (s.effort ? ' · ' + s.effort : '') : '', base(s.cwd || '')].filter(Boolean).join(' · ') : (acc.last?.model || '')
+  // each row: the face, the name (with the group it is in), one line saying what it waits for or does; the ones
+  // waiting for you first, under a red "Needs you" heading, the rest under a hairline (both plain elements between
+  // the rows, keyed like them)
+  const waiting = rows.filter(r => stateOf(r.s) === 'waiting').length
+  const items = rows.map(({ acc, s, task }) => {
+    const st = stateOf(s), on = online(s), hot = st === 'waiting', line = progress(acc, s)
     const picked_ = picked?.account === acc.id && !picked.sid
     const html = `<div class="row${picked_ ? ' on' : ''}${on ? '' : ' off'}" data-account="${esc(acc.id)}" role="button" tabindex="0"${picked_ ? ' aria-current="true"' : ''}>${face(acc.name, st)}` +
-      `<div class="nm">${esc(acc.name)}${task ? ` <span class="badge" title="${esc(task.title)}">${esc(task.id)}</span>` : ''}</div>` +
-      `<div class="when">${esc(when)}</div>` +
-      `<div class="sub${hot ? ' hot' : ''}" title="${esc(line)}">${esc(title ? title + ' — ' : '')}${esc(line)}</div></div>`
-    return { key: acc.id, sig: `${acc.name}|${st}|${title}|${line}|${when}|${picked_}|${task?.id}|${dark}`, html }
-  }), t('msgr.nobody'))
+      `<div class="nm">${esc(acc.name)}${task ? ` <span class="badge" title="${esc(task.title)}">${esc(t('msgr.inGroup', { id: task.id }))}</span>` : ''}</div>` +
+      `<div class="sub${hot ? ' hot' : ''}" title="${esc(line)}">${hot || !on ? esc(line) : progressHTML(s, line)}</div></div>`
+    return { key: acc.id, sig: `${acc.name}|${st}|${line}|${picked_}|${task?.id}|${dark}`, html }
+  })
+  if (waiting) {
+    items.splice(waiting, 0, { key: '#rest', sig: 'rest', html: `<div class="sect rest" aria-hidden="true"></div>` })
+    items.unshift({ key: '#needs', sig: `needs|${waiting}`, html: `<h3 class="sect" aria-label="${esc(t('msgr.needsYou'))} ${waiting}">${esc(t('msgr.needsYou'))} <span class="n">${waiting}</span></h3>` })
+  }
+  syncRows(document.getElementById('people'), items, t('msgr.nobody'))
   const groups = snapshot.tasks.filter(k => !q || lower(k.id).includes(q) || lower(k.title).includes(q))
   const gc = document.getElementById('groups-count')
   gc.hidden = !snapshot.tasks.length; gc.textContent = snapshot.tasks.length
@@ -243,8 +285,8 @@ function renderSide() {
     const waiting = k.members.some(m => sym.asking(m.session)), st = k.status === 'failed' ? 'ended' : waiting ? 'waiting' : 'tool'
     const picked_ = picked?.group === k.id || picked?.task === k.id, line = k.title.split('\n')[0]
     const html = `<div class="row${picked_ ? ' on' : ''}" data-group="${esc(k.id)}" role="button" tabindex="0"${picked_ ? ' aria-current="true"' : ''}>${face(k.id, st)}` +
-      `<div class="nm">${esc(k.id)} <span class="badge${waiting ? ' hot' : ''}">${esc(t('msgr.members', { n: k.members.length }))}</span></div><div class="when">${esc(t('task.status.' + k.status))}</div>` +
-      `<div class="sub" title="${esc(k.title)}">${esc(line)}</div></div>`
+      `<div class="nm"><span class="t">${esc(line)}</span> <span class="badge plain${waiting ? ' hot' : ''}" title="${esc(t('msgr.members', { n: k.members.length }))}">${esc(k.id)} · ${k.members.length}</span></div>` +
+      `<div class="sub${waiting ? ' hot' : ''}" title="${esc(k.title)}">${esc(t('task.status.' + k.status))}</div></div>`
     return { key: k.id, sig: `${st}|${k.status}|${k.members.length}|${waiting}|${picked_}|${line}|${dark}`, html }
   }), t('msgr.noGroups'))
 }

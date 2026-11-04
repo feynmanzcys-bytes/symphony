@@ -100,7 +100,7 @@ func TestMessenger(t *testing.T) {
 	if !p.is(`document.querySelector('h1[data-i18n="msgr.title"]').textContent === 'Symphony Coworkers' && document.title.endsWith('Symphony Coworkers')`) {
 		t.Fatalf("the title should be Symphony Coworkers: %s | %s", p.js(`document.querySelector('h1[data-i18n="msgr.title"]').textContent`), p.js(`document.title`))
 	}
-	if !p.is(`document.querySelector('#people .row[data-account] .face').dataset.state === 'waiting' && document.querySelector('#people .row .sub.hot')?.textContent.includes('Waiting for you: Should the README')`) {
+	if !p.is(`document.querySelector('#people .row[data-account] .face').dataset.state === 'waiting' && document.querySelector('#people .row .sub.hot')?.textContent.includes('Asks: Should the README')`) {
 		t.Fatalf("carol's face should wave and her line say what she waits for: %s", p.js(`document.querySelector('#people .row .sub').textContent`))
 	}
 	if !p.is(`[...document.querySelectorAll('#people .row')].some(r => r.textContent.includes('erin') && r.querySelector('.face').dataset.state === 'ended' && /Off duty since \d/.test(r.querySelector('.sub').textContent))`) {

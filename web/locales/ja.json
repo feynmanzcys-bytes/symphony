@@ -102,6 +102,8 @@
   "asks.submit": "回答を送信",
   "asks.answerRequired": "回答を選ぶか、自分で入力してください",
   "asks.reason": "理由（任意。モデルに伝えられます）",
+  "asks.allInput": "入力の全体",
+  "asks.addReason": "理由を添える（モデルに返されます）",
   "asks.allow": "許可",
   "asks.deny": "拒否",
   "asks.allowSessionEdits": "このセッション中の編集を許可",

@@ -19,8 +19,8 @@ import (
 
 // TestStaff walks through the employees page with made-up employees (no tokens; claude is a script that sits there):
 // alice works in a session started by hand, bob was started from the page before, carol worked by hand and is off duty,
-// an advisor is in no list. In Coworkers, Settings → "All employees (3)" opens the page over the settings, a dialog
-// named "All employees", every control named: the employees by name, each with its state, its folder and what it
+// an advisor is in no list. In Coworkers, Settings → "All coworkers (3)" opens the page over the settings, a dialog
+// named "All coworkers", every control named: the employees by name, each with its state, its folder and what it
 // starts with (one never started from the page "as the settings say", its folder the one it worked in); the find box
 // narrows them. bob's Edit unfolds his row: a relative folder is refused, his own folder, the model, the effort,
 // bypassPermissions (its warning) and the office context saved, the focus back on his Edit. alice and carol selected
@@ -114,7 +114,7 @@ func TestStaff(t *testing.T) {
 	// ---------- the page, from the settings ----------
 	p.run(`document.querySelector('.open-settings').click()`)
 	waitUntil(t, 10*time.Second, "the settings show the button to every employee", func() bool {
-		return p.is(`!document.getElementById('settings').hidden && document.querySelector('#settings .people .all').textContent === 'All employees (3)'`)
+		return p.is(`!document.getElementById('settings').hidden && document.querySelector('#settings .people .all').textContent === 'All coworkers (3)'`)
 	})
 	p.run(`document.querySelector('#settings .people .all').focus()`)
 	key(p, kb.Enter)
@@ -122,8 +122,8 @@ func TestStaff(t *testing.T) {
 		return p.is(`!document.getElementById('staff').hidden && !document.getElementById('settings').hidden && document.getElementById('staff').contains(document.activeElement) &&
 			[...document.querySelectorAll('#staff .emp .nm')].map(n => n.textContent).join() === 'alice,bob,carol' && document.querySelectorAll('#staff .batch select[name=model] option').length > 2`)
 	}, func() string { return p.js(`document.getElementById('staff').innerText`) })
-	if n := ax(t, ctx, `document.getElementById('staff')`); n.Role != "dialog" || n.Name != "All employees" {
-		t.Errorf("the page should be a dialog named All employees: %+v", n)
+	if n := ax(t, ctx, `document.getElementById('staff')`); n.Role != "dialog" || n.Name != "All coworkers" {
+		t.Errorf("the page should be a dialog named All coworkers: %+v", n)
 	}
 	for name, want := range map[string][]string{
 		"alice": {"Working · Bash", "as the settings say", "/work/app", "Opus · high"},
@@ -137,7 +137,7 @@ func TestStaff(t *testing.T) {
 			}
 		}
 	}
-	if p.is(`document.querySelector('#staff .list').textContent.includes('rev')`) || !p.is(`document.querySelector('#staff .head .count').textContent === 'Employees: 3'`) {
+	if p.is(`document.querySelector('#staff .list').textContent.includes('rev')`) || !p.is(`document.querySelector('#staff .head .count').textContent === 'Coworkers: 3'`) {
 		t.Error("an advisor belongs to its task: not on the page, nor counted")
 	}
 	if bad := unnamed(t, ctx, `document.getElementById('staff')`); len(bad) > 0 {
@@ -343,7 +343,7 @@ func TestStaff(t *testing.T) {
 	})
 	key(p, kb.Escape)
 	waitUntil(t, 5*time.Second, "Esc closes the page, back on the settings' button", func() bool {
-		return p.is(`document.getElementById('staff').hidden && !document.getElementById('settings').hidden && document.activeElement === document.querySelector('#settings .people .all') && document.querySelector('#settings .people .all').textContent === 'All employees (6)'`)
+		return p.is(`document.getElementById('staff').hidden && !document.getElementById('settings').hidden && document.activeElement === document.querySelector('#settings .people .all') && document.querySelector('#settings .people .all').textContent === 'All coworkers (6)'`)
 	})
 	key(p, kb.Escape)
 	waitUntil(t, 5*time.Second, "Esc closes the settings", func() bool { return p.is(`document.getElementById('settings').hidden`) })

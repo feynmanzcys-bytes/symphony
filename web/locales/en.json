@@ -102,6 +102,8 @@
   "asks.submit": "Submit answer",
   "asks.answerRequired": "Pick an answer or write your own",
   "asks.reason": "Reason (optional, passed back to the model)",
+  "asks.allInput": "All the input",
+  "asks.addReason": "Add a reason (passed back to the model)",
   "asks.allow": "Allow",
   "asks.deny": "Deny",
   "asks.allowSessionEdits": "Allow edits this session",

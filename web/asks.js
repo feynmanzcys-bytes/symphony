@@ -32,6 +32,14 @@ async function answer(el, id, body) {
   return false
 }
 
+// a permission's main argument, shown first: a command (as a command line), else a file, a pattern or an address
+function mainOf(input) {
+  if (!input || typeof input !== 'object') return null
+  if (typeof input.command === 'string' && input.command) return { cls: 'cmd', text: input.command }
+  for (const k of ['file_path', 'notebook_path', 'pattern', 'url', 'path']) if (typeof input[k] === 'string' && input[k]) return { cls: 'path', text: input[k] }
+  return null
+}
+
 // the words of a rule on its button: every edit, the commands that start with a prefix, or a tool
 export function ruleText(r) {
   if (!r) return ''
@@ -92,13 +100,18 @@ export function askCard(a, who, opts = {}) {
       ${opts.onTerminal ? `<div class="row"><button class="to-term">${esc(t('asks.elicitOpen'))}</button></div>` : ''}`
     el.querySelector('.to-term')?.addEventListener('click', () => opts.onTerminal(a))
   } else {
+    // the main argument first, in plain sight (a command as a command line, a file by its path), the description as
+    // a sentence, the whole input folded under them (open when there is nothing else to show); the reason folded too
+    const main = mainOf(a.input)
     el.innerHTML = `${who}
       <div class="tool">${esc(a.tool)}</div>
       ${a.reason ? `<div class="meta">${esc(a.reason)}</div>` : ''}
-      <pre>${esc(JSON.stringify(a.input, null, 2))}</pre>
+      ${main ? `<div class="main ${main.cls}">${esc(main.text)}</div>` : ''}
+      ${a.input?.description && main ? `<div class="meta desc">${esc(a.input.description)}</div>` : ''}
+      <details class="all"${main ? '' : ' open'}><summary>${esc(t('asks.allInput'))}</summary><pre>${esc(JSON.stringify(a.input, null, 2))}</pre></details>
       ${a.inputTruncated ? `<div class="cut"><span class="warn">${esc(t('asks.truncatedWarn'))}</span><button class="show-all">${esc(t('asks.showAll'))}</button></div>` : ''}
+      <details class="why"><summary>${esc(t('asks.addReason'))}</summary><input type="text" class="reason" placeholder="${esc(t('asks.reason'))}" aria-label="${esc(t('asks.reason'))}"></details>
       <div class="row">
-        <input type="text" class="reason" placeholder="${esc(t('asks.reason'))}" aria-label="${esc(t('asks.reason'))}">
         <button class="allow">${esc(t('asks.allow'))}</button>${a.remember ? `<button class="allow-session" title="${esc(t('asks.allowSessionTitle'))}">${esc(ruleText(a.remember))}</button>` : ''}<button class="deny">${esc(t('asks.deny'))}</button>
       </div>`
     const reason = el.querySelector('.reason'), allow = el.querySelector('.allow'), session = el.querySelector('.allow-session')
@@ -115,7 +128,9 @@ export function askCard(a, who, opts = {}) {
         more.disabled = true
         const r = await request('GET', `/api/asks/${encodeURIComponent(a.id)}/input`)
         if (r.ok && r.data && 'input' in r.data) {
-          el.querySelector('pre').textContent = JSON.stringify(r.data.input, null, 2)
+          el.querySelector('details.all pre').textContent = JSON.stringify(r.data.input, null, 2)
+          const whole = mainOf(r.data.input), shown = el.querySelector('.main')
+          if (whole && shown) shown.textContent = whole.text
           cut.remove()
         } else if (r.status === 404 && !r.data?.code) {
           // a bridge without the call (its plain 404, no error code): what was cut can't be seen here; the warning

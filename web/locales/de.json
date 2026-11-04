@@ -102,6 +102,8 @@
   "asks.submit": "Antwort senden",
   "asks.answerRequired": "Wähl eine Antwort oder schreib deine eigene",
   "asks.reason": "Begründung (optional, geht ans Modell zurück)",
+  "asks.allInput": "Die ganze Eingabe",
+  "asks.addReason": "Begründung hinzufügen (geht an das Modell zurück)",
   "asks.allow": "Erlauben",
   "asks.deny": "Ablehnen",
   "asks.allowSessionEdits": "Änderungen für diese Sitzung erlauben",

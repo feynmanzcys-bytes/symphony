@@ -83,6 +83,9 @@ const MARKUP = `
   </div>
 </div>`
 
+// the first control of a card one can reach: an input or a button that is shown (a reason's input waits folded away)
+const firstControl = root => root && [...root.querySelectorAll('input, button, textarea, select')].find(el => !el.disabled && !el.closest('details:not([open])'))
+
 export function createChat(sym, { askWho, onClose = () => {}, onTaskChip = () => {}, asks: asksMode = 'overlay' } = {}) {
   const inline = asksMode === 'inline'
   const cards = new Map() // (inline) ask id -> its card: one element, moved into its line whenever the flow is drawn
@@ -453,8 +456,8 @@ export function createChat(sym, { askWho, onClose = () => {}, onTaskChip = () =>
       case 'ask': {
         node.className = `it ask ${it.status || ''}`
         node.dataset.ask = it.ask
-        node.innerHTML = `${sub}${esc(askKind(it.askKind))}${esc(t('common.colon'))}` +
-          `${esc(it.tool ? it.tool + ' ' : '')}${esc(it.summary || '')} · ${esc(t('chat.ask.' + (it.status || 'pending')))}${it.text ? esc(' · ' + it.text) : ''}`
+        node.innerHTML = `<span class="line">${sub}${esc(askKind(it.askKind))}${esc(t('common.colon'))}` +
+          `${esc(it.tool ? it.tool + ' ' : '')}${esc(it.summary || '')} · ${esc(t('chat.ask.' + (it.status || 'pending')))}${it.text ? esc(' · ' + it.text) : ''}</span>`
         node.title = (it.summary || '') + (it.text ? '\n' + it.text : '')
         // (inline) a pending ask's card, under its line
         const card = inline && (it.status || 'pending') === 'pending' ? cards.get(it.ask) : null
@@ -562,8 +565,8 @@ export function createChat(sym, { askWho, onClose = () => {}, onTaskChip = () =>
     focus() {
       if (el.hidden) return
       if (termOn) term.focus()
-      else if (dock.classList.contains('asking')) dock.querySelector('#asks input, #asks button')?.focus()
-      else if (inline && asking) flow.querySelector('.card input, .card button')?.focus()
+      else if (dock.classList.contains('asking')) firstControl(dock.querySelector('#asks'))?.focus()
+      else if (inline && asking) firstControl(flow.querySelector('.card'))?.focus()
       else if (!sayBox.disabled) sayBox.focus()
     },
     close() {

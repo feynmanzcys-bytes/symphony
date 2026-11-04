@@ -102,6 +102,8 @@
   "asks.submit": "提交回答",
   "asks.answerRequired": "选一个答案，或者自己写一个",
   "asks.reason": "理由（可选，会回给模型）",
+  "asks.allInput": "完整输入",
+  "asks.addReason": "加一句理由（会回传给模型）",
   "asks.allow": "允许",
   "asks.deny": "拒绝",
   "asks.allowSessionEdits": "本会话的改动都允许",

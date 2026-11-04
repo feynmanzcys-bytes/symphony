@@ -102,6 +102,8 @@
   "asks.submit": "답변 제출",
   "asks.answerRequired": "답을 고르거나 직접 입력하세요",
   "asks.reason": "이유(선택 사항, 모델에게 전달됩니다)",
+  "asks.allInput": "전체 입력",
+  "asks.addReason": "이유 추가 (모델에 전달됨)",
   "asks.allow": "허용",
   "asks.deny": "거부",
   "asks.allowSessionEdits": "이 세션의 편집 모두 허용",

@@ -257,6 +257,15 @@ button.close:focus-visible { outline:2px solid var(--focus-line); outline-offset
 :is(#asks, .flow .card, #queue) .q h3 { margin:4px 0; font-size:14px; } :is(#asks, .flow .card, #queue) .q .hd { color:var(--muted); font-weight:400; font-size:12px; margin-right:6px; }
 :is(#asks, .flow .card, #queue) label.opt { display:block; cursor:pointer; padding:1px 0; } :is(#asks, .flow .card, #queue) label.opt small { color:var(--muted); margin-left:6px; }
 :is(#asks, .flow .card, #queue) .q input.other { display:block; width:100%; box-sizing:border-box; margin-top:4px; }
+/* a permission's main argument (a command line, a file), its description, the whole input and the reason folded */
+:is(#asks, .flow .card, #queue) .main { margin:6px 0; padding:6px 8px; background:var(--ink); color:var(--paper-2); font:12px/1.5 var(--mono); white-space:pre-wrap; overflow-wrap:anywhere; }
+:is(#asks, .flow .card, #queue) .main.cmd::before { content:'$ '; color:#a39e94; }
+:is(#asks, .flow .card, #queue) .meta.desc { font-size:13px; color:var(--ink); }
+:is(#asks, .flow .card, #queue) details.all { margin:4px 0; font-size:12px; color:var(--muted); }
+:is(#asks, .flow .card, #queue) details.all > summary, :is(#asks, .flow .card, #queue) details.why > summary { cursor:pointer; }
+:is(#asks, .flow .card, #queue) details.all pre { margin:4px 0 0; }
+:is(#asks, .flow .card, #queue) details.why { margin-top:6px; font-size:12px; }
+:is(#asks, .flow .card, #queue) details.why input { display:block; width:100%; box-sizing:border-box; margin-top:4px; }
 /* (any page's cards) an input the bridge cut: the warning, and the button that shows all of it; Allow waits for it */
 .card .cut { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:4px 0; }
 .card .cut .warn { flex:1; min-width:200px; color:var(--danger-ink); font-weight:700; font-size:12px; }
