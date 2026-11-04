@@ -5,7 +5,7 @@ Thanks for helping. Bug reports and pull requests are welcome; report security p
 ## Set up
 
 - Go 1.27 or later, for the bridge.
-- Claude Code 2.1.316, for the mod: its function hooks are an early-access API, and this is the version it is tested with.
+- Claude Code 2.1.317, for the mod: its function hooks are an early-access API, and this is the version it is tested with.
 - For the end-to-end tests: Chromium or Google Chrome (`SYMPHONY_E2E_BROWSER` picks one), and `tmux`. They run on Linux and macOS.
 
 [CLAUDE.md](CLAUDE.md) is the detailed map of the code: what each file does, the conventions, and every command. The README's "Development" section has the short version.

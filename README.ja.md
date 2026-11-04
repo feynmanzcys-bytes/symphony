@@ -33,7 +33,7 @@ symphony は 2 つの部分からなり、両方が必要です。
 
 ```bash
 uname -sm                 # Linux/macOS：下のアーカイブを選ぶ（x86_64 → amd64、arm64/aarch64 → arm64）
-claude --version          # Claude Code 2.1.x が必要（2.1.316 で動作確認済み）
+claude --version          # Claude Code 2.1.x が必要（2.1.317 で動作確認済み）
 git --version             # チームでのタスクにだけ必要。なければ報告に書き、止まらない
 symphony -version         # インストール済み？ "symphony v1.4.0 (darwin/arm64)" と表示される
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:7788/api/state   # bridge が動いている？ 401：symphony 1.x、200：それより古いもの、000：なし
@@ -289,7 +289,7 @@ Homebrew でインストールした場合は、`rm` の行の代わりに `brew
 
 ## 必要なもの
 
-- Claude Code 2.1.316（このバージョンで動作確認済み）。mod は Claude Code の function hooks を使っていますが、これはまだアーリーアクセスの API なので、Claude Code をアップグレードしたらエンドツーエンドテストを実行してください。
+- Claude Code 2.1.317（このバージョンで動作確認済み）。mod は Claude Code の function hooks を使っていますが、これはまだアーリーアクセスの API なので、Claude Code をアップグレードしたらエンドツーエンドテストを実行してください。
 - bridge は Linux、macOS、Windows 用のビルド済みプログラムとして配布しています。Go 1.27 以降が必要なのは、ソースからビルドする場合だけです。
 - `git`（チームでのタスクにだけ必要です）。タスクのメンバーは、それぞれ git worktree で作業します。
 - ほかには何も要りません。ページから起動したセッションは、どのプラットフォームでも bridge の中で動きます。

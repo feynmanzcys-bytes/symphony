@@ -59,7 +59,7 @@ func TestDocsScreens(t *testing.T) {
 	if raw, err := os.ReadFile(filepath.Join(repo, "mods", "symphony-bridge", ".claude-plugin", "plugin.json")); err != nil || json.Unmarshal(raw, &plugin) != nil {
 		t.Fatalf("reading the mod's version: %v", err)
 	}
-	const engine = "2.1.316" // the Claude Code version the mod is tested with (CLAUDE.md, ci.yml)
+	const engine = "2.1.317" // the Claude Code version the mod is tested with (CLAUDE.md, ci.yml)
 
 	// the task's folder: a real repository (the members get worktrees in it), named like a project
 	work := t.TempDir()

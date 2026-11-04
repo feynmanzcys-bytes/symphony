@@ -33,7 +33,7 @@ symphony a deux parties et a besoin des deux :
 
 ```bash
 uname -sm                 # Linux/macOS : choisit l’archive ci-dessous (x86_64 → amd64 ; arm64/aarch64 → arm64)
-claude --version          # il faut Claude Code 2.1.x (testé avec 2.1.316)
+claude --version          # il faut Claude Code 2.1.x (testé avec 2.1.317)
 git --version             # seulement pour les tâches en équipe ; s’il manque, le noter dans le compte rendu sans s’arrêter
 symphony -version         # déjà installé ? affiche "symphony v1.4.0 (darwin/arm64)"
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:7788/api/state   # un bridge tourne ? 401 : symphony 1.x ; 200 : un plus ancien ; 000 : aucun
@@ -289,7 +289,7 @@ Le dossier de données (les comptes avec leurs tokens, la clé des pages, le jou
 
 ## Prérequis
 
-- Claude Code 2.1.316 (testé avec cette version). Le mod utilise les function hooks de Claude Code, une API encore en accès anticipé : après chaque mise à jour de Claude Code, relancez les tests de bout en bout.
+- Claude Code 2.1.317 (testé avec cette version). Le mod utilise les function hooks de Claude Code, une API encore en accès anticipé : après chaque mise à jour de Claude Code, relancez les tests de bout en bout.
 - Le bridge existe en programme prêt à l’emploi pour Linux, macOS et Windows ; Go 1.27 ou plus récent n’est nécessaire que pour le compiler depuis les sources.
 - `git`, pour les tâches en équipe seulement : chaque membre d’une tâche travaille dans un worktree git.
 - Rien d’autre : les sessions démarrées depuis la page tournent dans le bridge, sur toutes les plateformes.

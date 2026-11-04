@@ -51,7 +51,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      CLAUDE_CODE_VERSION: 2.1.316 # the version the mod is tested with, as CLAUDE.md says; bump both together
+      CLAUDE_CODE_VERSION: 2.1.317 # the version the mod is tested with, as CLAUDE.md says; bump both together
     steps:
       - uses: actions/checkout@v7
       - name: Cache Claude Code

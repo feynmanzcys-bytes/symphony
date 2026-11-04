@@ -33,7 +33,7 @@ Claude Code прочитает этот README и выполнит шаги из
 
 ```bash
 uname -sm                 # Linux/macOS: по нему выбирается архив ниже (x86_64 → amd64; arm64/aarch64 → arm64)
-claude --version          # нужен Claude Code 2.1.x (проверено на 2.1.316)
+claude --version          # нужен Claude Code 2.1.x (проверено на 2.1.317)
 git --version             # только для совместных задач; если его нет, отметьте это в отчёте, но не останавливайтесь
 symphony -version         # уже установлен? выводит "symphony v1.4.0 (darwin/arm64)"
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:7788/api/state   # bridge уже работает? 401: symphony 1.x; 200: более старый; 000: никакого
@@ -289,7 +289,7 @@ $p = ([Environment]::GetEnvironmentVariable('Path', 'User') -split ';' | Where-O
 
 ## Требования
 
-- Claude Code 2.1.316 (проверено на этой версии). Для mod нужны function hooks из Claude Code, а это API пока в раннем доступе, поэтому после обновления Claude Code прогоните сквозные тесты.
+- Claude Code 2.1.317 (проверено на этой версии). Для mod нужны function hooks из Claude Code, а это API пока в раннем доступе, поэтому после обновления Claude Code прогоните сквозные тесты.
 - Для Linux, macOS и Windows есть готовая программа bridge; Go 1.27 или новее нужен только для сборки из исходников.
 - `git` — только для совместных задач: каждый участник задачи работает в git worktree.
 - Больше ничего: сеансы, запущенные со страницы, работают внутри bridge на любой платформе.

@@ -33,7 +33,7 @@ symphony는 두 부분으로 되어 있고, 둘 다 있어야 합니다.
 
 ```bash
 uname -sm                 # Linux/macOS: 아래에서 고를 압축 파일이 정해집니다 (x86_64 → amd64; arm64/aarch64 → arm64)
-claude --version          # Claude Code 2.1.x 필요 (2.1.316에서 테스트)
+claude --version          # Claude Code 2.1.x 필요 (2.1.317에서 테스트)
 git --version             # 협업 작업에만 필요. 없으면 보고에 적되 멈추지는 마세요
 symphony -version         # 이미 설치돼 있나? "symphony v1.4.0 (darwin/arm64)" 출력
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:7788/api/state   # bridge가 실행 중인가? 401: symphony 1.x, 200: 그보다 오래된 버전, 000: 없음
@@ -289,7 +289,7 @@ Homebrew로 설치했다면 `rm` 줄 대신 `brew uninstall symphony`와 `brew u
 
 ## 요구 사항
 
-- Claude Code 2.1.316 (이 버전에서 테스트했습니다). mod는 Claude Code의 function hooks를 쓰는데, 아직 얼리 액세스 단계의 API이므로 Claude Code를 업그레이드한 뒤에는 엔드투엔드 테스트를 돌려 보세요.
+- Claude Code 2.1.317 (이 버전에서 테스트했습니다). mod는 Claude Code의 function hooks를 쓰는데, 아직 얼리 액세스 단계의 API이므로 Claude Code를 업그레이드한 뒤에는 엔드투엔드 테스트를 돌려 보세요.
 - bridge는 Linux, macOS, Windows용으로 미리 빌드된 프로그램이 있습니다. Go 1.27 이상은 소스에서 빌드할 때만 필요합니다.
 - `git`: 협업 작업에만 필요합니다. 작업의 멤버는 저마다 git worktree에서 일합니다.
 - 그 외에는 아무것도 필요 없습니다. 페이지에서 시작한 세션은 모든 플랫폼에서 bridge 안에서 돌아갑니다.

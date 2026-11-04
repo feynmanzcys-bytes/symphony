@@ -33,7 +33,7 @@ symphony 分两部分，两部分都要装：
 
 ```bash
 uname -sm                 # Linux/macOS：据此选下面的压缩包（x86_64 → amd64；arm64/aarch64 → arm64）
-claude --version          # 要 Claude Code 2.1.x（在 2.1.316 上验证过）
+claude --version          # 要 Claude Code 2.1.x（在 2.1.317 上验证过）
 git --version             # 只有协作任务要用；没有的话在汇报里写明，不用停下
 symphony -version         # 已经装了？会输出 "symphony v1.4.0 (darwin/arm64)"
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:7788/api/state   # 有 bridge 在跑吗？401：symphony 1.x；200：旧版的；000：没有
@@ -289,7 +289,7 @@ $p = ([Environment]::GetEnvironmentVariable('Path', 'User') -split ';' | Where-O
 
 ## 需要什么
 
-- Claude Code 2.1.316（在这个版本上验证过）。mod 用的 function hooks 还是早期接口，升级 Claude Code 后最好先跑一遍端到端测试。
+- Claude Code 2.1.317（在这个版本上验证过）。mod 用的 function hooks 还是早期接口，升级 Claude Code 后最好先跑一遍端到端测试。
 - bridge 有 Linux、macOS、Windows 的现成程序；只有从源码编译才要 Go 1.27 以上。
 - `git`，只有协作任务要用：任务里的每个成员都在一个 git worktree 里干活。
 - 不需要别的：页面开的会话在每个平台上都跑在 bridge 内部。
