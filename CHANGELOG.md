@@ -2,6 +2,12 @@
 
 What changed in each release of symphony. The program (the bridge) and the mod share one version number. A release's notes start with its section here: the release workflow stops before building when the section is missing. Releases before v1.0.0 came out before the repository was public; their notes are kept below.
 
+## v1.7.3 (2026-11-04)
+
+Update the program (`brew upgrade symphony`, `scoop update symphony`, or the archive) and, as before, the mod with `claude plugin update symphony-bridge@symphony` (only its version changed).
+
+- **Coworkers**: a coworker's row in the sidebar no longer carries an "in T1" badge; the groups it is in are in the list below, and its profile still links to them.
+
 ## v1.7.2 (2026-11-04)
 
 Update the program (`brew upgrade symphony`, `scoop update symphony`, or the archive) and the mod with `claude plugin update symphony-bridge@symphony`: this time the mod changed too (a session that types `/clear` carries on). (v1.7.0 and v1.7.1 were tagged with the same code, but their releases were never published: a check in the workflow took braces in these notes for a placeholder it had left, and release tags can't be moved. v1.7.2 is that release.)
