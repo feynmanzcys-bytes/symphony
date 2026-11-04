@@ -1616,6 +1616,48 @@ test('/clear: the old session ends, the new one starts under its own id, and hea
   expect(w.polls.at(-1)?.url).toContain('session=sess-2')
 })
 
+test('/clear whose SessionStart comes before the old session\'s end: the new session still starts once the end came', async ($, on) => {
+  const w = world(on, { SYMPHONY_TOKEN: 'tok', SYMPHONY_LAUNCH: 'L1' })
+  on('session.end', (_$, e) => ({ sessionId: e.sessionId }))
+  on('classic.SessionStart', () => ({}))
+  on('tool.list', () => ({ value: [{ name: 'Bash', description: '', mcp: false }] }))
+
+  await $.session.start(start)
+  await w.clock.settle()
+  const before = w.reqs.length
+  // the engine says the new session first: nothing starts yet (the old one is still on)
+  await $.classic.SessionStart({ source: 'clear', session_id: 'sess-2', session_title: 'alice', cwd: '/work' })
+  await w.clock.settle()
+  expect(w.reqs.slice(before).map(r => r.body?.kind)).not.toContain('session.start')
+  w.session.id = 'sess-2'
+  await $.session.end({ reason: 'clear', sessionId: 'sess-1', resume: { id: 'sess-1' } })
+  await w.clock.settle()
+  const after = w.reqs.slice(before).map(r => r.body)
+  const end = after.findIndex(b => b?.kind === 'session.end'), start2 = after.findIndex(b => b?.kind === 'session.start')
+  expect(after[end]).toEqual(expect.objectContaining({ kind: 'session.end', reason: 'clear', session: 'sess-1' }))
+  expect(start2).toBeGreaterThan(end) // the goodbye first, then the new session's start
+  expect(after[start2]).toEqual(expect.objectContaining({ kind: 'session.start', session: 'sess-2', launch: 'L1', cwd: '/work' }))
+  await w.clock.advance(15_000)
+  await w.clock.settle()
+  expect(w.reqs.at(-1)?.body).toEqual(expect.objectContaining({ kind: 'heartbeat', session: 'sess-2' }))
+  expect(w.polls.at(-1)?.url).toContain('session=sess-2')
+})
+
+test('claude --resume: the resume right after the start names the same session, and nothing starts again, then or at its end', async ($, on) => {
+  const w = world(on, { SYMPHONY_TOKEN: 'tok' })
+  on('session.end', (_$, e) => ({ sessionId: e.sessionId }))
+  on('classic.SessionStart', () => ({}))
+
+  await $.session.start(start)
+  await $.classic.SessionStart({ source: 'resume', session_id: 'sess-1', session_title: 'alice', cwd: '/work' })
+  await w.clock.settle()
+  expect(w.reqs.filter(r => r.body?.kind === 'session.start')).toHaveLength(1)
+  await $.session.end({ reason: 'prompt_input_exit', sessionId: 'sess-1' })
+  await w.clock.settle()
+  expect(w.reqs.at(-1)?.body).toEqual(expect.objectContaining({ kind: 'session.end', session: 'sess-1' }))
+  expect(w.reqs.filter(r => r.body?.kind === 'session.start')).toHaveLength(1)
+})
+
 test('/resume inside the session: the same, under the resumed id', async ($, on) => {
   const w = world(on, { SYMPHONY_TOKEN: 'tok' })
   on('session.end', (_$, e) => ({ sessionId: e.sessionId }))

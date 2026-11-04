@@ -121,7 +121,7 @@ Every call shows the page key (§1.1).
 | `GET /api/errors` | | `{errors: [Fault]}`, oldest first |
 | `POST /api/errors` | `{kind: "js"\|"rejection"\|"csp"\|"api"\|"ui", text, detail?, theme?, page?}`: something that went wrong in the page itself (`symphony.js` sends a script's errors, promises nobody caught and what the content security policy blocked, at most 10 a minute per page, the same one every 30 s at most) | `{}`; `fault_bad_request` (400), `fault_too_many` (429: the pages reported 30 in the last minute) |
 | `DELETE /api/errors` | | `{}`: the error log emptied |
-| `GET /api/diagnostics` | | what a report says besides the error log: `{version, os, arch, go, protocol, started, now, lang, dataDir, accounts, sessions: {online, known, engines, mods, surfaces}, tasks, launch: {enabled, mod?, terminal?}, themes, log: [the bridge's last 200 log lines], errors: [Fault]}`, redacted as the log is |
+| `GET /api/diagnostics` | | what a report says besides the error log: `{version, os, arch, go, protocol, started, now, lang, dataDir, accounts, sessions: {online, known, engines, mods, surfaces}, tasks, launch: {enabled, mod?, terminal?}, themes, log: [the bridge's last 200 log lines], activity: [Activity] (the activity log's last 100 lines), errors: [Fault]}`, redacted as the log is |
 | `POST /api/shutdown` | | 202 `{ok}`, then the bridge stops and its sessions end (`symphony -stop` sends it after the key's proof, §1.1) |
 
 ## 6. The mod's side

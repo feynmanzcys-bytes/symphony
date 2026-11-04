@@ -90,6 +90,9 @@ let sessionId: string | undefined
 let transcriptPath: string | undefined
 // every event carries the folder, the launch id and the task id, so a restarted bridge recognizes the session right away
 let sticky: { cwd?: string; launch?: string; task?: string } = {}
+// a SessionStart of a /clear, /resume or fork that came before the old session's end (the engine may say them in
+// either order): the session it names is taken up once the end comes
+let goesOnPending: { id: string; cwd?: string } | undefined
 // what session.start learned of the session, for a restart after /clear and for the heartbeat
 let known: Known | undefined
 let interactive = false
@@ -822,6 +825,18 @@ function begin(id: string | undefined, model: string, carryOn = false) {
   usagePending = undefined
 }
 
+// the conversation goes on under a new id (after /clear, or a /resume or fork inside it): started as session.start
+// does, so the bridge ends the old session and seats the new one (a task member gets its kickoff again)
+async function carryOnAs($: EngineInterface, id: string, cwd: string | undefined) {
+  goesOnPending = undefined
+  begin(id, (await safe($.session.model())) || reported.model || known!.model)
+  void keepOffice($, { session: id, context: undefined }) // a reload from now on is this session's
+  if (cwd) sticky = { ...sticky, cwd }
+  report($, 'session.start', { interactive, ...knownNow() })
+  beat($)
+  void reportTools($)
+}
+
 // what the start told, as the heartbeat carries it: the model and effort as last reported
 function knownNow() {
   return known ? { ...known, model: reported.model || known.model, effort: reported.effort || undefined } : {}
@@ -1036,13 +1051,12 @@ export const register: Register = on => {
   on('classic.SessionStart', async ($, e, next) => {
     transcriptPath = e.transcript_path
     const goesOn = e.source === 'clear' || e.source === 'resume' || e.source === 'fork'
-    if (ended && goesOn && known && (await office($))) {
-      begin(e.session_id, (await safe($.session.model())) || reported.model || known.model)
-      void keepOffice($, { session: e.session_id, context: undefined }) // a reload from now on is this session's
-      if (e.cwd) sticky = { ...sticky, cwd: e.cwd }
-      report($, 'session.start', { interactive, ...knownNow() })
-      beat($)
-      void reportTools($)
+    if (goesOn && known) {
+      if (ended) {
+        if (await office($)) await carryOnAs($, e.session_id, e.cwd)
+      } else if (e.session_id !== sessionId) {
+        goesOnPending = { id: e.session_id, cwd: e.cwd } // before the old session's end: taken up when it comes
+      }
     }
     reportTitle($, e.session_title)
     return next(e)
@@ -1098,6 +1112,14 @@ export const register: Register = on => {
     // /clear and a /resume inside the session go on under another id, which classic.SessionStart names
     if (e.reason === 'clear' || e.reason === 'resume') sessionId = undefined
     await sending // the goodbye, and whatever was still on its way, before the session goes
+    // its SessionStart came first: that session starts now (not one that names the session just ended, such as the
+    // resume claude --resume fires right after its start)
+    const pending = goesOnPending
+    goesOnPending = undefined
+    if (pending && pending.id !== e.sessionId && known && (await office($))) {
+      sessionId = undefined
+      await carryOnAs($, pending.id, pending.cwd)
+    }
     return next(e)
   })
 

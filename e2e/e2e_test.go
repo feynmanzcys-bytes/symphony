@@ -394,6 +394,37 @@ func TestOffice(t *testing.T) {
 		t.Fatal("attaching to D's terminal should give its history")
 	}
 
+	// ---------- 7c. /clear typed in D's terminal: the conversation goes on under a new session id, in the same launch ----------
+	// (the mod reports the old session's end and the new session's start, in whichever order the engine says them)
+	sidD := b.online(nameD).ID
+	if err := termD.Write([]byte("/clear")); err != nil {
+		t.Fatalf("typing into D's terminal: %v", err)
+	}
+	time.Sleep(time.Second) // the typeahead picks the command up
+	_ = termD.Write([]byte("\r"))
+	waitUntil(t, 60*time.Second, "D carries on under a new session id, online in the same launch", func() bool {
+		s := b.online(nameD)
+		if s == nil || s.ID == sidD || s.Launch != launchD {
+			return false
+		}
+		for _, l := range b.Hub.Snapshot().Launches {
+			if l.ID == launchD {
+				return l.Status == "online"
+			}
+		}
+		return false
+	}, func() string {
+		data, _ := json.Marshal(b.Hub.Snapshot().Sessions)
+		return string(data) + "\n" + termD.Screen(40)
+	})
+	if sess := b.Hub.Snapshot().Sessions; len(sess) > 0 { // the old session is off duty with reason clear, not lost
+		for _, s := range sess {
+			if s.ID == sidD && (s.State != bridge.StateEnded || s.EndReason != "clear") {
+				t.Fatalf("D's old session should have ended with reason clear: state %s, reason %q", s.State, s.EndReason)
+			}
+		}
+	}
+
 	// ---------- 8. B goes off duty, then back to work from its conversation: same seat ----------
 	seatB := b.account(nameB).Seat
 	// B just got A's message and may be working on it; wait until it's idle before sending it home

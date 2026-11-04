@@ -368,6 +368,8 @@ export function createSettings(sym, { scheme = null, extra = [], records = [] } 
       lines.push(entryText(f))
     }
     if (d.log?.length) lines.push('', `bridge log, last ${d.log.length} lines:`, ...d.log)
+    // the activity log: what the sessions did around the time (on and off duty, asks, messages, starts)
+    if (d.activity?.length) lines.push('', `activity, last ${d.activity.length} lines:`, ...d.activity.map(a => [a.time, a.kind, a.name, a.task, a.session && a.session.slice(0, 8)].filter(Boolean).join(' ') + (a.text ? ' · ' + a.text : '')))
     return lines.join('\n') + '\n'
   }
   // the report as a file the browser saves (its downloads); its name, to say where it went

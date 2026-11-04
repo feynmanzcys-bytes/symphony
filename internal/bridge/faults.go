@@ -431,7 +431,17 @@ func (s *Server) diagnostics(w http.ResponseWriter, r *http.Request) {
 	if abs, err := filepath.Abs(dataDir); err == nil && dataDir != "" {
 		dataDir = abs
 	}
+	// the activity log's last lines (sessions on and off duty, asks, messages, starts), redacted like the log: what a
+	// session did around the time something went wrong
+	activity := h.Activity()
+	if len(activity) > 100 {
+		activity = activity[len(activity)-100:]
+	}
+	for _, a := range activity {
+		a.Text = l.redact(a.Text)
+	}
 	writeJSON(w, 200, map[string]any{
+		"activity": activity,
 		"version":  s.Version,
 		"os":       runtime.GOOS,
 		"arch":     runtime.GOARCH,
