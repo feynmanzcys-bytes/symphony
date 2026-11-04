@@ -265,21 +265,21 @@ function syncRows(box, items, empty) {
 function renderSide() {
   markPicked()
   const q = lower(findEl.value.trim()), dark = document.documentElement.hasAttribute('data-dark')
-  const rows = desks().map(acc => ({ acc, s: deskOf(acc), task: taskOf(acc) }))
+  const rows = desks().map(acc => ({ acc, s: deskOf(acc) }))
     .filter(r => !q || [r.acc.name, r.s?.title, base(r.s?.cwd || r.acc.dir || '')].some(v => lower(v).includes(q)))
     .sort((a, b) => GROUP_ORDER[stateOf(a.s)] - GROUP_ORDER[stateOf(b.s)] || a.acc.name.localeCompare(b.acc.name, lang))
-  // each row: the face, the name (with the group it is in), one line saying what it waits for or does; the ones
+  // each row: the face, the name, one line saying what it waits for or does (its groups are in the list below); the ones
   // waiting for you first, under a red "Needs you" heading, the rest under a hairline (both plain elements between
   // the rows, keyed like them)
   const waiting = rows.filter(r => stateOf(r.s) === 'waiting').length
-  const items = rows.map(({ acc, s, task }) => {
+  const items = rows.map(({ acc, s }) => {
     const st = stateOf(s), on = online(s), hot = st === 'waiting', line = progress(acc, s)
     const picked_ = picked?.account === acc.id && !picked.sid
     // (the state is the ring around the face, and for a screen reader a hidden word after the name)
     const html = `<div class="row${picked_ ? ' on' : ''}${on ? '' : ' off'}" data-account="${esc(acc.id)}" role="button" tabindex="0"${picked_ ? ' aria-current="true"' : ''}>${face(acc.name, st, '', acc.look)}` +
-      `<div class="nm">${esc(acc.name)}${hot || !on ? '' : `<span class="vh"> · ${esc(statusText(s))}</span>`}${task ? ` <span class="badge" title="${esc(task.title)}">${esc(t('msgr.inGroup', { id: task.id }))}</span>` : ''}</div>` +
+      `<div class="nm">${esc(acc.name)}${hot || !on ? '' : `<span class="vh"> · ${esc(statusText(s))}</span>`}</div>` +
       `<div class="sub${hot ? ' hot' : ''}" title="${esc(line)}">${esc(line)}</div></div>`
-    return { key: acc.id, sig: `${acc.name}|${st}|${line}|${picked_}|${task?.id}|${dark}`, html }
+    return { key: acc.id, sig: `${acc.name}|${st}|${line}|${picked_}|${dark}`, html }
   })
   if (waiting) {
     items.splice(waiting, 0, { key: '#rest', sig: 'rest', html: `<div class="sect rest" aria-hidden="true"></div>` })
