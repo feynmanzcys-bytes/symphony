@@ -1,6 +1,7 @@
 package bridge
 
 import (
+	"fmt"
 	"slices"
 	"strings"
 	"time"
@@ -47,10 +48,12 @@ type ChatItem struct {
 	To      string    `json:"to,omitempty"`     // message: the recipient's name
 	Ask     string    `json:"ask,omitempty"`    // ask: its id; kind: permission|question in Status until settled
 	AskKind string    `json:"askKind,omitempty"`
-	Secs    int       `json:"secs,omitempty"` // thinking: how long it took, once done
-	Ms      int       `json:"ms,omitempty"`   // tool: how long it took; ask: how long it waited to be settled
+	Secs    int       `json:"secs,omitempty"`   // thinking: how long it took, once done
+	Ms      int       `json:"ms,omitempty"`     // tool: how long it took; ask: how long it waited to be settled
+	Images  []string  `json:"images,omitempty"` // user: the images sent with it, as the page fetches them (/api/files/...)
 	Time    time.Time `json:"time"`
 	key     string    // streamed blocks: turn/step/block; tools: the tool_use id; asks: the ask id
+	sent    string    // user (from the page, with images): the text that went to the session, the images' paths in it
 }
 
 type chatLog struct {
@@ -280,7 +283,7 @@ func (h *Hub) chatSubmittedLocked(s *Session, text, status, summary string) {
 	c := h.chatLocked(s.ID)
 	text = strings.TrimSpace(text)
 	for _, it := range c.items {
-		if it.Kind == ChatUser && it.Status == "queued" && sameText(it.Text, text) {
+		if it.Kind == ChatUser && it.Status == "queued" && (sameText(it.Text, text) || (it.sent != "" && sameText(it.sent, text))) {
 			it.Status, it.Summary, it.Done = status, summary, true
 			h.pushChatLocked(s.ID, it, "")
 			return
@@ -534,19 +537,62 @@ func (h *Hub) postInboxLocked(session string, it InboxItem) {
 }
 
 // Say queues text for a session as the person's next prompt; the chat shows it as queued until the mod has it.
-func (h *Hub) Say(session, text string) (*ChatItem, error) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	s := h.sessions[session]
-	if s == nil || s.State == StateEnded {
+func (h *Hub) Say(session, text string) (*ChatItem, error) { return h.SayImages(session, text, nil) }
+
+// SayImages is a say with images the page uploaded first (SaveFile): their paths go to the session after the text,
+// for its Read tool; the chat shows the text with the images. Text or images may be empty, not both.
+func (h *Hub) SayImages(session, text string, images []string) (*ChatItem, error) {
+	s := h.sessionByIDLocked(session)
+	if s == nil {
 		return nil, ErrSessionOffline
 	}
 	text = strings.TrimSpace(text)
-	if text == "" {
+	if text == "" && len(images) == 0 {
 		return nil, newError("say_empty", "nothing to send")
 	}
-	cp := *h.sayLocked(session, text, "page")
+	var urls, paths []string
+	for _, id := range images {
+		path, err := h.FilePath(session, id)
+		if err != nil {
+			return nil, err
+		}
+		urls = append(urls, "/api/files/"+session+"/"+id)
+		paths = append(paths, path)
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if s := h.sessions[session]; s == nil || s.State == StateEnded {
+		return nil, ErrSessionOffline
+	}
+	if len(paths) == 0 {
+		cp := *h.sayLocked(session, text, "page")
+		return &cp, nil
+	}
+	sent := text
+	for i, p := range paths {
+		if sent != "" {
+			sent += "\n"
+		}
+		sent += fmt.Sprintf("\nAttached image %d (read it with the Read tool): %s", i+1, p)
+	}
+	it := h.chatAppendLocked(session, &ChatItem{Kind: ChatUser, Text: cutRunes(text, chatPromptMax), Origin: "page", Status: "queued", Images: urls, sent: sent})
+	h.postInboxLocked(session, InboxItem{Kind: "say", Text: sent})
+	if text != "" {
+		h.lastLocked(h.sessions[session], text)
+	}
+	cp := *it
 	return &cp, nil
+}
+
+// sessionByIDLocked is a session by id while it's online, under the lock for a moment.
+func (h *Hub) sessionByIDLocked(id string) *Session {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if s := h.sessions[id]; s != nil && s.State != StateEnded {
+		cp := *s
+		return &cp
+	}
+	return nil
 }
 
 // sayLocked queues text for a session as the person's next prompt: a queued item in the chat (origin page, or task for

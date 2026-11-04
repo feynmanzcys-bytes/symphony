@@ -76,7 +76,10 @@ const MARKUP = `
     <div class="flow" role="region"></div>
     <div class="dock">
       <div id="asks"></div>
+      <div class="pending" hidden></div>
       <form class="say" autocomplete="off" role="none">
+        <button type="button" class="px attach"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.4 11.1 12.3 20.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.1a2 2 0 0 1-2.8-2.8l8.5-8.5"/></svg></button>
+        <input type="file" accept="image/*" multiple hidden>
         <textarea rows="2"></textarea>
         <button type="submit" class="px primary"></button>
       </form>
@@ -99,7 +102,12 @@ export function createChat(sym, { askWho, onClose = () => {}, onTaskChip = () =>
   sayBox.placeholder = t('chat.placeholder')
   sayBox.setAttribute('aria-label', t('chat.placeholder'))
   dialog(el, head.querySelector('h2')) // a dialog over the page, a region where the theme lays it out (a11y.js)
-  sayForm.querySelector('button').textContent = t('chat.send')
+  sayForm.querySelector('button[type=submit]').textContent = t('chat.send')
+  const attach = sayForm.querySelector('.attach'), fileIn = sayForm.querySelector('input[type=file]'), pendingEl = el.querySelector('.pending')
+  attach.title = t('chat.attach')
+  attach.setAttribute('aria-label', t('chat.attach'))
+  attach.onclick = () => fileIn.click()
+  fileIn.addEventListener('change', () => { addImages(fileIn.files); fileIn.value = '' })
 
   let session = null // the session whose log the flow shows and pushes keep up (null while it is closed)
   let name = ''
@@ -112,16 +120,57 @@ export function createChat(sym, { askWho, onClose = () => {}, onTaskChip = () =>
   onBackdrop(el, () => chat.close()) // (not a drag that selects text and lets go outside the window)
   head.querySelector('.meta').addEventListener('click', ev => { const c = ev.target.closest('[data-task]'); if (c) onTaskChip(c.dataset.task) })
 
+  // Images for the session: picked with the button, pasted into the box or dropped on the dock; shown small until
+  // sent (the bridge keeps each, the session gets its path after the text and reads it); the draft stays when sending
+  // fails
+  const IMAGE_MAX = 10 << 20
+  let attachments = [] // { file, url } waiting to go with the next prompt
+  function addImages(files) {
+    for (const file of files) {
+      if (!file.type.startsWith('image/')) { showError(t('chat.notImage', { name: file.name || '' }), { title: t('errlog.oops.say') }); continue }
+      if (file.size > IMAGE_MAX) { showError(t('chat.imageTooBig', { name: file.name || '' }), { title: t('errlog.oops.say') }); continue }
+      attachments.push({ file, url: URL.createObjectURL(file) })
+    }
+    drawPending()
+  }
+  function dropPending(i) {
+    const [p] = attachments.splice(i, 1)
+    if (p) URL.revokeObjectURL(p.url)
+    drawPending()
+  }
+  function clearPending() { for (const p of attachments) URL.revokeObjectURL(p.url); attachments = []; drawPending() }
+  function drawPending() {
+    pendingEl.hidden = !attachments.length
+    pendingEl.innerHTML = attachments.map((p, i) => `<span class="thumb"><img src="${esc(p.url)}" alt="${esc(p.file.name || '')}"><button type="button" class="rm" data-i="${i}" aria-label="${esc(t('chat.removeImage', { name: p.file.name || '' }))}">×</button></span>`).join('')
+  }
+  pendingEl.addEventListener('click', ev => { const b = ev.target.closest('.rm'); if (b) { dropPending(Number(b.dataset.i)); sayBox.focus() } })
+  sayBox.addEventListener('paste', ev => {
+    const files = [...(ev.clipboardData?.files || [])].filter(f => f.type.startsWith('image/'))
+    if (files.length) { ev.preventDefault(); addImages(files) }
+  })
+  for (const type of ['dragenter', 'dragover']) dock.addEventListener(type, ev => { if ([...(ev.dataTransfer?.types || [])].includes('Files')) { ev.preventDefault(); dock.classList.add('dragging') } })
+  dock.addEventListener('dragleave', ev => { if (!dock.contains(ev.relatedTarget)) dock.classList.remove('dragging') })
+  dock.addEventListener('drop', ev => { ev.preventDefault(); dock.classList.remove('dragging'); addImages(ev.dataTransfer?.files || []) })
   // sending: Enter sends, Shift+Enter makes a new line; the bridge queues it for the session's mod, and the chat shows
-  // it as queued until the mod has submitted it
+  // it as queued until the mod has submitted it; the images go up first, then the prompt names them
+  let sending = false
   sayForm.addEventListener('submit', async ev => {
     ev.preventDefault()
     const text = sayBox.value.trim()
-    if (!text || !session) return
-    sayBox.value = ''
-    const r = await sym.say(session, text)
-    if (!r.ok) { showError(errorText(r.data), { title: t('errlog.oops.say') }); sayBox.value = text }
-    sayBox.focus()
+    if ((!text && !attachments.length) || !session || sending) return
+    sending = true
+    try {
+      const ids = []
+      for (const p of attachments) {
+        const up = await sym.upload(session, p.file)
+        if (!up.ok) { showError(t('chat.imageFailed', { name: p.file.name || '', reason: errorText(up.data) }), { title: t('errlog.oops.say') }); return }
+        ids.push(up.data.id)
+      }
+      const r = await sym.say(session, text, ids)
+      if (!r.ok) { showError(errorText(r.data), { title: t('errlog.oops.say') }); return }
+      sayBox.value = ''
+      clearPending()
+    } finally { sending = false; sayBox.focus() }
   })
   sayBox.addEventListener('keydown', ev => {
     if (ev.key === 'Enter' && !ev.shiftKey && !ev.isComposing) { ev.preventDefault(); sayForm.requestSubmit() }
@@ -448,7 +497,9 @@ export function createChat(sym, { askWho, onClose = () => {}, onTaskChip = () =>
             `<div class="${bodyClass(it)}">${bodyHTML(it)}</div></details>${why}${timeOf(it)}`
           break
         }
-        node.innerHTML = `<div class="body">${richText(it.text)}</div>${why}${timeOf(it)}`
+        // the images sent with it, small; a click opens one as it is
+        const imgs = it.images?.length ? `<div class="imgs">${it.images.map(u => `<a href="${esc(u)}" target="_blank" rel="noopener noreferrer"><img src="${esc(u)}" alt=""></a>`).join('')}</div>` : ''
+        node.innerHTML = `${it.text ? `<div class="body">${richText(it.text)}</div>` : ''}${imgs}${why}${timeOf(it)}`
         break
       }
       case 'thinking': {
@@ -569,6 +620,7 @@ export function createChat(sym, { askWho, onClose = () => {}, onTaskChip = () =>
         flow.innerHTML = ''
         for (const c of cards.values()) c.remove() // another session's cards
         cards.clear()
+        clearPending() // (images picked for the other session)
         pending = []
         shown.asks = undefined
         if (sid) load(sid)

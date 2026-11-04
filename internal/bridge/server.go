@@ -109,6 +109,8 @@ func NewServer(hub *Hub, web fs.FS) *Server {
 	s.mux.HandleFunc("POST /api/say/{session}", s.say)
 	s.mux.HandleFunc("POST /api/abort/{session}", s.abort)
 	s.mux.HandleFunc("POST /api/sessions/{session}/model", s.setModel)
+	s.mux.HandleFunc("POST /api/files/{session}", s.uploadFile)
+	s.mux.HandleFunc("GET /api/files/{session}/{id}", s.serveUpload)
 	s.mux.HandleFunc("GET /api/terminal/{id}/stream", s.termStream)
 	s.mux.HandleFunc("POST /api/terminal/{id}/input", s.termInput)
 	s.mux.HandleFunc("POST /api/terminal/{id}/resize", s.termResize)
@@ -221,7 +223,8 @@ var errStatus = map[string]int{
 	"task_running": http.StatusConflict, "task_unknown": http.StatusNotFound, "task_no_git": http.StatusPreconditionFailed,
 	"ask_not_mod_settled": http.StatusForbidden, "ask_not_page_answered": http.StatusForbidden, "task_git_failed": http.StatusInternalServerError, "pty_start_failed": http.StatusInternalServerError, "cmd_unsafe_arg": http.StatusBadRequest, "task_repo_in_use": http.StatusConflict,
 	"data_write_failed": http.StatusInternalServerError, "launch_still_running": http.StatusConflict,
-	"bot_home_failed": http.StatusInternalServerError,
+	"bot_home_failed": http.StatusInternalServerError, "file_too_big": http.StatusRequestEntityTooLarge, "file_unknown": http.StatusNotFound,
+	"files_nowhere": http.StatusInternalServerError,
 }
 
 func writeErr(w http.ResponseWriter, err error) {

@@ -14,17 +14,44 @@ func (s *Server) chat(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) say(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Text string `json:"text"`
+		Text   string   `json:"text"`
+		Images []string `json:"images"` // ids of files uploaded first (POST /api/files/<session>)
 	}
 	if !decode(w, r, &req) {
 		return
 	}
-	it, err := s.Hub.Say(r.PathValue("session"), req.Text)
+	it, err := s.Hub.SayImages(r.PathValue("session"), req.Text, req.Images)
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
 	writeJSON(w, 200, it)
+}
+
+// uploadFile keeps an image the page sends for a session (the body, with its Content-Type; X-Symphony-Name its
+// name), to be sent into its conversation with the next say.
+func (s *Server) uploadFile(w http.ResponseWriter, r *http.Request) {
+	body := http.MaxBytesReader(w, r.Body, fileMax+1)
+	f, err := s.Hub.SaveFile(r.PathValue("session"), r.Header.Get("X-Symphony-Name"), body)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, 200, f)
+}
+
+// serveUpload gives the page an image a session was sent, by its id.
+func (s *Server) serveUpload(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	path, err := s.Hub.FilePath(r.PathValue("session"), id)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	w.Header().Set("Content-Type", fileType(id))
+	w.Header().Set("Content-Disposition", "inline")
+	w.Header().Set("Cache-Control", "private, max-age=86400")
+	http.ServeFile(w, r, path)
 }
 
 // setModel changes a running session's model and thinking effort: {model?, effort?}, each a launch dialog choice.

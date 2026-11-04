@@ -110,7 +110,14 @@ export function connect({ stream = true } = {}) {
     taskOfSession: sid => sym.taskById(sym.sessionById(sid)?.task) ?? sym.state.tasks.find(k => k.members.some(m => m.session === sid)) ?? null,
     // ---------- calls ----------
     post, get,
-    say: (sid, text) => post(`/api/say/${sid}`, { text }),
+    say: (sid, text, images = []) => post(`/api/say/${sid}`, images.length ? { text, images } : { text }), // images: ids from upload()
+    // an image for a conversation, kept by the bridge in the session's folder (POST /api/files/<session>, the file's bytes and type); answers {id, url, name, size}
+    upload: async (sid, file) => {
+      try {
+        const r = await fetch(`/api/files/${sid}`, { method: 'POST', body: file, headers: { 'Content-Type': file.type || 'application/octet-stream', 'X-Symphony-Name': file.name || '' } })
+        return { ok: r.ok, status: r.status, data: await r.json().catch(() => null) }
+      } catch { return { ok: false, status: 0, data: { code: 'unreachable', error: "can't reach the bridge" } } }
+    },
     abort: sid => post(`/api/abort/${sid}`, {}),
     setModel: (sid, change) => post(`/api/sessions/${sid}/model`, change), // {model?, effort?}: a running session's, through /model and /effort
     answer: (id, body) => post(`/api/answer/${id}`, body),

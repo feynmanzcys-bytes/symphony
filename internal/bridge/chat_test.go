@@ -1,7 +1,12 @@
 package bridge
 
 import (
+	"bytes"
+	"encoding/json"
+	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -278,5 +283,88 @@ func TestSetModel(t *testing.T) {
 	chat := srv.Hub.Chat("s1")
 	if last := chat[len(chat)-1]; last.Kind != ChatNotice || last.Text != "commandFailed" || last.Summary != "/model opus: unknown model" {
 		t.Fatalf("the failure should be a notice: %+v", last)
+	}
+}
+
+// An image sent into a conversation: uploaded first (kept in the session's folder, .symphony/inbox, served back by its
+// id, png/jpeg/gif/webp only, 10 MiB at most), then named in a say: the session gets the file's path after the text,
+// the chat shows the text with the image, and the mod's echo of the sent text settles the bubble.
+func TestSayImages(t *testing.T) {
+	srv, page, hub, _ := staffBridge(t)
+	srv.WaitTimeout = 300 * time.Millisecond
+	acc, _ := hub.CreateAccount("ann")
+	other, _ := hub.CreateAccount("bob")
+	cwd := t.TempDir()
+	mod := client{t: t, base: page.base, header: map[string]string{"authorization": "Bearer " + acc.Token}, modOnly: true}
+	mod.ok("POST", "/api/event", map[string]any{"session": "s1", "kind": "session.start", "cwd": cwd})
+	modB := client{t: t, base: page.base, header: map[string]string{"authorization": "Bearer " + other.Token}, modOnly: true}
+	modB.ok("POST", "/api/event", map[string]any{"session": "s2", "kind": "session.start", "cwd": t.TempDir()})
+
+	png := append([]byte("\x89PNG\r\n\x1a\n"), make([]byte, 64)...)
+	upload := func(session string, body []byte, typ string) (int, map[string]any) {
+		req, _ := http.NewRequest("POST", page.base+"/api/files/"+session, bytes.NewReader(body))
+		req.Header.Set("Content-Type", typ)
+		req.Header.Set("X-Symphony-Name", "shot.png")
+		req.Header.Set(keyHeader, testKey)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		var out map[string]any
+		_ = json.NewDecoder(resp.Body).Decode(&out)
+		return resp.StatusCode, out
+	}
+	if st, out := upload("s1", []byte("hello, not an image"), "text/plain"); st != http.StatusBadRequest || out["code"] != "file_not_image" {
+		t.Fatalf("text isn't an image: %d %v", st, out)
+	}
+	if st, out := upload("s1", append(png, make([]byte, fileMax)...), "image/png"); st != http.StatusRequestEntityTooLarge || out["code"] != "file_too_big" {
+		t.Fatalf("over the cap: %d %v", st, out)
+	}
+	if st, out := upload("nope", png, "image/png"); st != http.StatusConflict || out["code"] != "session_offline" {
+		t.Fatalf("an unknown session: %d %v", st, out)
+	}
+	st, saved := upload("s1", png, "image/png")
+	id, _ := saved["id"].(string)
+	if st != 200 || !strings.HasSuffix(id, ".png") || saved["url"] != "/api/files/s1/"+id || saved["name"] != "shot.png" {
+		t.Fatalf("the upload should answer the file's id and url: %d %v", st, saved)
+	}
+	if _, err := os.Stat(filepath.Join(cwd, ".symphony", "inbox", id)); err != nil {
+		t.Fatalf("the file should be in the session's folder: %v", err)
+	}
+	// served back to the page, as an image; not under another session, nor by a name that isn't an id
+	resp, err := pageGet(page.base + "/api/files/s1/" + id)
+	if err != nil || resp.StatusCode != 200 || resp.Header.Get("Content-Type") != "image/png" {
+		t.Fatalf("serving the file: %v %v", err, resp)
+	}
+	resp.Body.Close()
+	for _, path := range []string{"/api/files/s2/" + id, "/api/files/s1/../accounts.json", "/api/files/s1/x.png"} {
+		if resp, err := pageGet(page.base + path); err == nil && resp.StatusCode == 200 {
+			t.Fatalf("%s should not be served", path)
+		}
+	}
+	// the say: the chat item shows the text with the image, the session gets the path
+	if st, code := page.failure("POST", "/api/say/s1", map[string]any{"text": "look", "images": []string{"nope.png"}}); st != http.StatusNotFound || code != "file_unknown" {
+		t.Fatalf("a file that isn't there: %d %s", st, code)
+	}
+	it := page.ok("POST", "/api/say/s1", map[string]any{"text": "What is in this screenshot?", "images": []string{id}})
+	if it["text"] != "What is in this screenshot?" || it["status"] != "queued" || fmt.Sprint(it["images"]) != "["+saved["url"].(string)+"]" {
+		t.Fatalf("the queued item should carry the text and the image: %v", it)
+	}
+	items := mod.ok("GET", "/api/inbox?session=s1", nil)["items"].([]any)
+	sent, _ := items[0].(map[string]any)["text"].(string)
+	want := filepath.Join(cwd, ".symphony", "inbox", id)
+	if len(items) != 1 || !strings.HasPrefix(sent, "What is in this screenshot?") || !strings.Contains(sent, "Attached image 1 (read it with the Read tool): "+want) {
+		t.Fatalf("the session should get the text and the path: %v", items)
+	}
+	mod.ok("POST", "/api/event", map[string]any{"session": "s1", "kind": "chat.sent", "text": sent})
+	chat := hub.Chat("s1")
+	if last := chat[len(chat)-1]; last.Status != "sent" || last.Text != "What is in this screenshot?" || len(last.Images) != 1 {
+		t.Fatalf("the mod's echo of the sent text should settle the bubble: %+v", last)
+	}
+	// an image alone is a say too
+	page.ok("POST", "/api/say/s1", map[string]any{"text": "", "images": []string{id}})
+	if st, code := page.failure("POST", "/api/say/s1", map[string]any{"text": " ", "images": []string{}}); st != http.StatusBadRequest || code != "say_empty" {
+		t.Fatalf("nothing at all: %d %s", st, code)
 	}
 }

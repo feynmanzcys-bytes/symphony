@@ -16,6 +16,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"image"
+	"image/color"
+	"image/png"
 	"net/http"
 	"os"
 	"os/exec"
@@ -366,7 +369,7 @@ func TestOffice(t *testing.T) {
 	// ---------- 7b. the page talks to D through its conversation: the prompt reaches the session, the answer streams back ----------
 	do(t, page, 10*time.Second,
 		chromedp.SetValue(chromedp.CSS(`#chat .say textarea`), "Reply with exactly the word pineapple and nothing else."),
-		chromedp.Click(chromedp.CSS(`#chat .say button`)))
+		chromedp.Click(chromedp.CSS(`#chat .say button[type=submit]`))) // (the clip comes first)
 	waitUntil(t, 3*time.Minute, "D's conversation shows the page's prompt as sent, and the streamed answer", func() bool {
 		return get(t, page, 5*time.Second, chromedp.Evaluate[bool](
 			`!!document.querySelector('#chat .flow .it.user.sent') && [...document.querySelectorAll('#chat .flow .it.text .body')].some(e => e.textContent.toLowerCase().includes('pineapple'))`))
@@ -451,6 +454,48 @@ func TestOffice(t *testing.T) {
 		data, _ := json.Marshal(b.Hub.Chat(sidD2))
 		return fmt.Sprintf("model %q\n%s", b.session(sidD2).Model, data)
 	})
+
+	// ---------- 7e. an image into D's conversation: the session gets its path and reads it ----------
+	// (the prompt goes through the mod with the path in it; the mod's echo of that text settles the bubble)
+	shot := filepath.Join(t.TempDir(), "dot.png")
+	{
+		img := image.NewRGBA(image.Rect(0, 0, 16, 16))
+		for i := range img.Pix {
+			img.Pix[i] = 0xff
+		}
+		for x := 4; x < 12; x++ {
+			for y := 4; y < 12; y++ {
+				img.Set(x, y, color.RGBA{R: 220, A: 255})
+			}
+		}
+		f, err := os.Create(shot)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := png.Encode(f, img); err != nil {
+			t.Fatal(err)
+		}
+		f.Close()
+	}
+	do(t, page, 10*time.Second, chromedp.SetUploadFiles(`#chat .say input[type=file]`, []string{shot}))
+	waitUntil(t, 10*time.Second, "the image waits in the strip", func() bool {
+		return get(t, page, 5*time.Second, chromedp.Evaluate[bool](`document.querySelectorAll('#chat .pending .thumb img').length === 1`))
+	})
+	do(t, page, 10*time.Second, chromedp.Evaluate[chromedp.Void](`(b => { b.value = 'What color is the square in this image? Answer with the color word only.'; b.form.requestSubmit() })(document.querySelector('#chat .say textarea'))`))
+	waitUntil(t, 2*time.Minute, "D's conversation shows the image sent, and D reads the file", func() bool {
+		sent := get(t, page, 5*time.Second, chromedp.Evaluate[bool](`!!document.querySelector('#chat .flow .it.user.sent .imgs img')`))
+		read := false
+		for _, it := range b.Hub.Chat(sidD2) {
+			if it.Kind == bridge.ChatTool && it.Tool == "Read" && strings.Contains(it.Summary, filepath.Join(".symphony", "inbox")) {
+				read = true
+			}
+		}
+		return sent && read
+	}, func() string {
+		data, _ := json.Marshal(b.Hub.Chat(sidD2))
+		return termD.Screen(30) + "\n" + string(data)
+	})
+	screenshot(t, page, "coworkers-image.png")
 
 	// ---------- 8. B goes off duty, then back to work from its conversation: same seat ----------
 	seatB := b.account(nameB).Seat
