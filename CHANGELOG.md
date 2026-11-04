@@ -2,6 +2,16 @@
 
 What changed in each release of symphony. The program (the bridge) and the mod share one version number. A release's notes start with its section here: the release workflow stops before building when the section is missing. Releases before v1.0.0 came out before the repository was public; their notes are kept below.
 
+## v1.6.0 (2026-11-04)
+
+Update the program (`brew upgrade symphony`, `scoop update symphony`, or the archive) and, as before, the mod with `claude plugin update symphony-bridge@symphony` (only its version changed).
+
+- **Coworkers, redesigned**: a graphite sidebar in both color schemes, the coworkers waiting for you first under a red "Needs you" heading, each row one line saying what it waits for ("Asks: …", "Wants to run: …") or does, no times but "off duty since"; the conversation's head on one row with short chips (the whole on hover); the answers without bubbles and the steps a gray line; your prompts in ultramarine, the one color of the page, which also marks the focus, what is picked and the progress bars; the primary buttons in ink. The settings read like a page (their sections listed down the left, each a card), and the coworkers page is a table whose batch bar appears once someone is picked. Coworkers says coworker and group throughout (New coworker, All coworkers, End the group) and drops the CLI flags from its labels.
+- **Cards that say it in one line**: an ask's card has a head line (the kind, the tool, the subagent it came from by what it was told to do, since when it waits); a permission shows its command as a command line (or the file it wants to edit) and its description as a sentence, with the whole input and the reason folded under them (both themes).
+- **The group**: its members as cards, the end button quiet, the team chat naming members short (`@grace` reaches `grace-T1`: the bridge takes both names at `POST /api/tasks/<id>/say`), the mention picker showing their faces. An off-duty coworker's empty conversation offers "Start work" in the middle, and the connection banner is a strip across the top that says what waits.
+- The launch dialog folds the command it runs (both themes).
+- `TestDesignScreens`, a screenshot tour of Coworkers for design reviews (`SYMPHONY_DESIGN_OUT`); the README's screenshots are remade.
+
 ## v1.5.0 (2026-11-04)
 
 Update the program (`brew upgrade symphony`, `scoop update symphony`, or the archive) and, as before, the mod with `claude plugin update symphony-bridge@symphony` (only its version changed). A browser that never picked a theme opens Coworkers now; Settings → Theme brings the pixel office back.

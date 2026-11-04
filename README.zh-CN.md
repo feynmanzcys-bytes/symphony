@@ -35,7 +35,7 @@ symphony 分两部分，两部分都要装：
 uname -sm                 # Linux/macOS：据此选下面的压缩包（x86_64 → amd64；arm64/aarch64 → arm64）
 claude --version          # 要 Claude Code 2.1.x（在 2.1.317 上验证过）
 git --version             # 只有协作任务要用；没有的话在汇报里写明，不用停下
-symphony -version         # 已经装了？会输出 "symphony v1.5.0 (darwin/arm64)"
+symphony -version         # 已经装了？会输出 "symphony v1.6.0 (darwin/arm64)"
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:7788/api/state   # 有 bridge 在跑吗？401：symphony 1.x；200：旧版的；000：没有
 claude plugin list --json # mod 已经装了？找有 "id": "symphony-bridge@symphony" 的那一项
 brew --version            # 有 Homebrew 吗（macOS、Linux）？有的话第 2 步可以用它装
@@ -132,7 +132,7 @@ cd "$d/src" && go build -o "$d/symphony" ./cmd/bridge   # 程序现在就是 "$d
 ```bash
 install -m 755 "$d/symphony" ~/.local/bin/symphony
 xattr -d com.apple.quarantine ~/.local/bin/symphony 2>/dev/null || true   # macOS：程序没有签名
-symphony -version          # 输出 "symphony v1.5.0 (linux/amd64)"：版本号和平台
+symphony -version          # 输出 "symphony v1.6.0 (linux/amd64)"：版本号和平台
 ```
 
 这些目录一个都不在 `PATH` 里的话，动手改之前先问用户。用户同意，就建一个 `~/.local/bin`，把它加进 shell 的 rc 文件（`~/.zshrc` 或 `~/.bashrc`），并在汇报里说明；用户不同意，就把程序装到用户指定的地方，并告诉用户：`symphony` 不在他们 Claude Code 会话的 `PATH` 里时，mod 没法自己把 bridge 拉起来（第 5 步的随登录启动照样能用）。
@@ -142,7 +142,7 @@ Windows 上，把它解压到一个专门的目录（`$d` 和 `$zip` 来自第 2
 ```powershell
 $dest = Join-Path $env:LOCALAPPDATA 'Programs\symphony'
 Expand-Archive -LiteralPath (Join-Path $d $zip) -DestinationPath $dest -Force
-& (Join-Path $dest 'symphony.exe') -version   # 输出 "symphony v1.5.0 (windows/amd64)"
+& (Join-Path $dest 'symphony.exe') -version   # 输出 "symphony v1.6.0 (windows/amd64)"
 ```
 
 把这个目录加进用户的 `Path` 是一项长期的改动：先问用户。用户同意，就运行下面这行，再开一个新的 shell；用户不同意，就用完整路径。用 `Expand-Archive` 解压出来的程序不带下载标记，SmartScreen 不会拦；用资源管理器“全部解压缩”解出来、再双击运行的，可能会被拦：点“更多信息”，再点“仍要运行”。
