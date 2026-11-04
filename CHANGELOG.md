@@ -2,6 +2,13 @@
 
 What changed in each release of symphony. The program (the bridge) and the mod share one version number. A release's notes start with its section here: the release workflow stops before building when the section is missing. Releases before v1.0.0 came out before the repository was public; their notes are kept below.
 
+## v1.8.0 (2026-11-05)
+
+Update the program (`brew upgrade symphony`, `scoop update symphony`, or the archive) and the mod with `claude plugin update symphony-bridge@symphony` (only its version changed).
+
+- **Coworkers in a warm palette**: ivory paper and a deeper ivory sidebar in the light scheme, warm charcoals in the dark (no blue-black), warm ink, and clay as the one accent (links, the focus, what is picked, the progress bars, the send buttons), in place of v1.6.0's graphite sidebar and ultramarine; your own bubbles a kraft plate with ink text; the code blocks and the computer panel warm charcoal; the titles (the office's name, a conversation's and the profile's name, a group's, the dialogs') in the system's serif; bubbles, cards and dialogs a little rounder. Every color keeps WCAG 2.1 AA (text at 4.5:1, marks, field edges and focus indicators at 3:1), measured by the tests. The README's screenshots retaken.
+- **READMEs**: the nine translations brought up to date with the English one (the pixel office is gone, the groups as they are now).
+
 ## v1.7.3 (2026-11-04)
 
 Update the program (`brew upgrade symphony`, `scoop update symphony`, or the archive) and, as before, the mod with `claude plugin update symphony-bridge@symphony` (only its version changed).
