@@ -35,7 +35,7 @@ Claude Code прочитает этот README и выполнит шаги из
 uname -sm                 # Linux/macOS: по нему выбирается архив ниже (x86_64 → amd64; arm64/aarch64 → arm64)
 claude --version          # нужен Claude Code 2.1.x (проверено на 2.1.316)
 git --version             # только для совместных задач; если его нет, отметьте это в отчёте, но не останавливайтесь
-symphony -version         # уже установлен? выводит "symphony v1.3.0 (darwin/arm64)"
+symphony -version         # уже установлен? выводит "symphony v1.4.0 (darwin/arm64)"
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:7788/api/state   # bridge уже работает? 401: symphony 1.x; 200: более старый; 000: никакого
 claude plugin list --json # mod уже установлен? ищите запись с "id": "symphony-bridge@symphony"
 brew --version            # есть Homebrew (macOS, Linux)? тогда шаг 2 может установить через него
@@ -132,7 +132,7 @@ cd "$d/src" && go build -o "$d/symphony" ./cmd/bridge   # теперь прог�
 ```bash
 install -m 755 "$d/symphony" ~/.local/bin/symphony
 xattr -d com.apple.quarantine ~/.local/bin/symphony 2>/dev/null || true   # macOS: исполняемый файл не подписан
-symphony -version          # выводит "symphony v1.3.0 (linux/amd64)": версию и платформу
+symphony -version          # выводит "symphony v1.4.0 (linux/amd64)": версию и платформу
 ```
 
 Если ни одной из этих папок нет в `PATH`, спросите пользователя, прежде чем что-либо менять. Если он согласен, создайте `~/.local/bin`, добавьте её в rc-файл оболочки (`~/.zshrc` или `~/.bashrc`) и упомяните это в отчёте; если нет, установите программу туда, куда он скажет, и предупредите его, что mod не сможет сам запускать bridge, пока `symphony` нет в `PATH` его сеансов Claude Code (запуск при входе в систему из шага 5 всё равно работает).
@@ -142,7 +142,7 @@ symphony -version          # выводит "symphony v1.3.0 (linux/amd64)": в�
 ```powershell
 $dest = Join-Path $env:LOCALAPPDATA 'Programs\symphony'
 Expand-Archive -LiteralPath (Join-Path $d $zip) -DestinationPath $dest -Force
-& (Join-Path $dest 'symphony.exe') -version   # выводит "symphony v1.3.0 (windows/amd64)"
+& (Join-Path $dest 'symphony.exe') -version   # выводит "symphony v1.4.0 (windows/amd64)"
 ```
 
 Добавить эту папку в `Path` пользователя — изменение надолго: сначала спросите пользователя. Если он согласен, выполните строку ниже и откройте новую оболочку; если нет, используйте полный путь. Распакованная через `Expand-Archive` программа не несёт отметки о загрузке, и SmartScreen её не останавливает; копию, распакованную через «Извлечь все» в Проводнике, он может остановить при двойном щелчке: нажмите «Подробнее», затем «Выполнить в любом случае».

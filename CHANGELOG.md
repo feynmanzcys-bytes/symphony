@@ -2,6 +2,17 @@
 
 What changed in each release of symphony. The program (the bridge) and the mod share one version number. A release's notes start with its section here: the release workflow stops before building when the section is missing. Releases before v1.0.0 came out before the repository was public; their notes are kept below.
 
+## v1.4.0 (2026-11-04)
+
+Update the program (`brew upgrade symphony`, `scoop update symphony`, or the archive) and, as before, the mod with `claude plugin update symphony-bridge@symphony` (only its version changed).
+
+- **A folder of its own for each employee**: Settings → Employees has a default folder (`symphony-bots` in your home folder until you pick another). An employee started from the page with no folder given works in a folder of its own: the one made for it before, else a new one in the default folder named after it (`-2`, `-3` when the name is taken: a folder already there is never taken over), made a git repository with an empty first commit so a task can branch off it. A new employee whose start fails at once leaves no folder behind. Advisors still give their folder.
+- **What a new employee starts with, in the settings**: Settings → Employees also holds the model, the thinking effort, the permission mode and whether it hears who else is in the office ("Default", Claude Code's own settings, until you pick one). They are the bridge's own settings (`settings.json` in the data folder), the same in every browser, each saved as it changes; a red line under `bypassPermissions` says what it allows.
+- **The launch dialog folds them into Advanced settings**: it asks for the name, and one line says where and how the employee will work (the folder, the model, the effort, the permission mode, the session, the office context). A new employee starts as the settings say, one going back to work as it last did. Unfolded, any of them can be changed for this start without changing the settings, and "Use the settings" sets them all to what the settings say. The `bypassPermissions` warning shows under the folded line too, and a start refused for its folder or its options unfolds it.
+- The task dialog's permission mode, a new advisor's model and effort, and those of an employee never started from the page start as the settings say.
+- In Simplified Chinese the "Default" option reads "Claude Code 默认" (it read "跟随设置", which sounded like following these settings).
+- `docs/protocol.md` has what's new for the pages: `GET` and `POST /api/settings`, the launch options' `botHome` and `defaults`, `POST /api/launch` without `dir` (the employee's own folder), an account's `home` and the `bot_home_*` errors (additions: the protocol stays 2).
+
 ## v1.3.0 (2026-11-03)
 
 Update the program (`brew upgrade symphony`, `scoop update symphony`, or the archive) and, as before, the mod with `claude plugin update symphony-bridge@symphony` (only its version changed). The HQ console and Mission Control are gone: a browser that had one of them picked opens the pixel office.

@@ -35,7 +35,7 @@ symphony a deux parties et a besoin des deux :
 uname -sm                 # Linux/macOS : choisit l’archive ci-dessous (x86_64 → amd64 ; arm64/aarch64 → arm64)
 claude --version          # il faut Claude Code 2.1.x (testé avec 2.1.316)
 git --version             # seulement pour les tâches en équipe ; s’il manque, le noter dans le compte rendu sans s’arrêter
-symphony -version         # déjà installé ? affiche "symphony v1.3.0 (darwin/arm64)"
+symphony -version         # déjà installé ? affiche "symphony v1.4.0 (darwin/arm64)"
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:7788/api/state   # un bridge tourne ? 401 : symphony 1.x ; 200 : un plus ancien ; 000 : aucun
 claude plugin list --json # le mod est déjà installé ? cherchez une entrée avec "id": "symphony-bridge@symphony"
 brew --version            # Homebrew est là (macOS, Linux) ? l’étape 2 peut installer avec
@@ -132,7 +132,7 @@ Installez le programme de l’étape 2, `$d/symphony` (si votre shell ne garde p
 ```bash
 install -m 755 "$d/symphony" ~/.local/bin/symphony
 xattr -d com.apple.quarantine ~/.local/bin/symphony 2>/dev/null || true   # macOS : le binaire n’est pas signé
-symphony -version          # affiche "symphony v1.3.0 (linux/amd64)" : la version et la plateforme
+symphony -version          # affiche "symphony v1.4.0 (linux/amd64)" : la version et la plateforme
 ```
 
 Si aucun de ces dossiers n’est dans le `PATH`, demandez à l’utilisateur avant de changer quoi que ce soit. S’il accepte, créez `~/.local/bin`, ajoutez-le au fichier rc du shell (`~/.zshrc` ou `~/.bashrc`) et signalez-le dans le compte rendu ; s’il refuse, installez le programme là où il l’indique et prévenez-le que le mod ne peut pas démarrer le bridge tout seul tant que `symphony` n’est pas dans le `PATH` de ses sessions Claude Code (le démarrage à l’ouverture de session, à l’étape 5, fonctionne quand même).
@@ -142,7 +142,7 @@ Sous Windows, décompressez-le dans un dossier rien qu’à lui (`$d` et `$zip` 
 ```powershell
 $dest = Join-Path $env:LOCALAPPDATA 'Programs\symphony'
 Expand-Archive -LiteralPath (Join-Path $d $zip) -DestinationPath $dest -Force
-& (Join-Path $dest 'symphony.exe') -version   # affiche "symphony v1.3.0 (windows/amd64)"
+& (Join-Path $dest 'symphony.exe') -version   # affiche "symphony v1.4.0 (windows/amd64)"
 ```
 
 Ajouter ce dossier au `Path` de l’utilisateur est un changement durable : demandez d’abord à l’utilisateur. S’il accepte, lancez la ligne ci-dessous et ouvrez un nouveau shell ; s’il refuse, utilisez le chemin complet. Décompressé avec `Expand-Archive`, le programme ne porte pas la marque du téléchargement et SmartScreen le laisse s’exécuter ; une copie décompressée avec « Extraire tout » de l’Explorateur peut être bloquée au double-clic : « Informations complémentaires », puis « Exécuter quand même ».
