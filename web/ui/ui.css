@@ -40,6 +40,10 @@
 }
 /* motion paused (ui/motion.js: the system asks for less motion, or the page's switch): nothing moves or blinks by
    itself (WCAG 2.1 2.2.2), transitions are instant; a theme gives what only an animation said a still form */
+/* the page's size, from the settings (ui/look.js): a zoom of everything, as the pages lay out in pixels. A zoomed page
+   is that much narrower and shorter: what is sized by the window divides by the scale, and the narrow layouts go by
+   html.w-lt-<px> classes look.js sets from the width at that size, in place of media queries (which know the window) */
+body { zoom:var(--ui-scale, 1); }
 html[data-still] *, html[data-still] *::before, html[data-still] *::after { animation:none !important; transition-duration:0s !important; scroll-behavior:auto !important; }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation:none !important; transition-duration:0s !important; } } /* (before the page's code says it) */
 /* the browser's own surfaces, in the page's colors */
@@ -73,12 +77,12 @@ button.px:disabled { opacity:.5; cursor:default; }
 /* a press answers at once: the pixel button sinks into its shadow */
 button.px { transition:transform .1s var(--ease-out), box-shadow .1s var(--ease-out); }
 button.px:active:not(:disabled) { transform:translateY(1px); box-shadow:inset 0 -1px 0 rgba(0,0,0,.15); }
-.panel { width:min(560px, calc(100vw - 32px)); max-height:calc(100vh - 32px); overflow:auto; background:var(--paper); color:var(--ink);
+.panel { width:min(560px, calc(100vw / var(--ui-scale, 1) - 32px)); max-height:calc(100vh / var(--ui-scale, 1) - 32px); overflow:auto; background:var(--paper); color:var(--ink);
   border:2px solid var(--ink); box-shadow:4px 4px 0 rgba(0,0,0,.35); padding:14px 16px; box-sizing:border-box; }
 .panel h2 { margin:0 0 10px; font-size:15px; }
 .panel .actions { display:flex; justify-content:flex-end; gap:8px; margin-top:12px; }
 /* the employee window: the employee at the top, the session as a chat below, the input at the bottom */
-.panel.chat { position:relative; width:min(1100px, 94vw); height:min(90vh, 960px); max-height:none; padding:0; display:flex; flex-direction:column; overflow:hidden; }
+.panel.chat { position:relative; width:min(1100px, calc(94vw / var(--ui-scale, 1))); height:min(calc(90vh / var(--ui-scale, 1)), 960px); max-height:none; padding:0; display:flex; flex-direction:column; overflow:hidden; }
 .chat .head { padding:10px 16px 8px; border-bottom:2px solid var(--ink); background:var(--paper); }
 /* a window's ✕ */
 /* a window's close button: a drawn cross (its name comes from dialog(): "Close") */
@@ -240,7 +244,7 @@ button.close:focus-visible { outline:2px solid var(--focus-line); outline-offset
 .chat .say { display:flex; gap:8px; align-items:flex-end; }
 .chat .say textarea { flex:1; resize:none; font:inherit; color:var(--ink); background:var(--field); border:2px solid var(--field-line); padding:5px 8px; box-sizing:border-box; }
 /* a narrow window wraps the hint in the box to three lines: the box has room for them */
-@media (max-width: 520px) { .chat .say textarea { min-height:calc(4.5em + 14px); } }
+html.w-lt-520 .chat .say textarea { min-height:calc(4.5em + 14px); }
 .chat .say textarea:focus { outline:none; border-color:var(--focus-line); box-shadow:var(--focus-ring); }
 .chat .say[hidden] { display:none; }
 .chat .offline { color:var(--muted); font-size:12px; padding:4px 0; }
@@ -337,7 +341,7 @@ button.close:focus-visible { outline:2px solid var(--focus-line); outline-offset
 #launch .adv[open] + .warn.out { display:none; }
 #launch .warn.out { margin-top:6px; }
 /* the task dialog: the launch dialog's fields, the employees ticked in order and the advisors, numbered as the team */
-#task .panel { width:min(680px, calc(100vw - 32px)); }
+#task .panel { width:min(680px, calc(100vw / var(--ui-scale, 1) - 32px)); }
 #task label { display:block; margin:8px 0 2px; font-size:12px; color:var(--muted-2); }
 #task :is(input:not([type=checkbox]), select, textarea) { width:100%; box-sizing:border-box; font:inherit; color:var(--ink); background:var(--field); border:2px solid var(--field-line); padding:3px 6px; }
 #task textarea { resize:vertical; }
@@ -377,7 +381,7 @@ button.close:focus-visible { outline:2px solid var(--focus-line); outline-offset
 #task .count { margin-right:auto; font-size:12px; color:var(--muted-2); }
 #task .count.over { color:var(--danger-ink); font-weight:700; }
 /* the task window: what the team is on, its members (a click opens one's window), the button to end it */
-#taskwin > .panel { position:relative; width:min(780px, calc(100vw - 32px)); height:min(90vh, 960px); display:flex; flex-direction:column; }
+#taskwin > .panel { position:relative; width:min(780px, calc(100vw / var(--ui-scale, 1) - 32px)); height:min(calc(90vh / var(--ui-scale, 1)), 960px); display:flex; flex-direction:column; }
 #taskwin > .panel > :not(.tchat) { flex:none; } /* (">": a docked member's window is inside #taskwin too) */
 #taskwin .close { position:absolute; right:8px; top:6px; }
 #taskwin .top { display:flex; align-items:center; gap:10px; margin-right:24px; }
@@ -385,7 +389,7 @@ button.close:focus-visible { outline:2px solid var(--focus-line); outline-offset
 #taskwin .top .actions { margin:0 0 0 auto; }
 #taskwin .top .status { display:inline-flex; align-items:center; gap:6px; font-size:12px; line-height:1.6; padding:0 8px; background:var(--pane-2); white-space:nowrap; }
 #taskwin .top .status .lamp { flex:none; width:8px; height:8px; background:var(--c, var(--st-off)); }
-#taskwin .desc { margin-top:8px; padding:6px 10px; background:var(--pane-2); white-space:pre-wrap; overflow-wrap:anywhere; max-height:30vh; overflow:auto; }
+#taskwin .desc { margin-top:8px; padding:6px 10px; background:var(--pane-2); white-space:pre-wrap; overflow-wrap:anywhere; max-height:calc(30vh / var(--ui-scale, 1)); overflow:auto; }
 #taskwin .mode { margin-top:6px; font-size:12px; color:var(--muted-2); }
 #taskwin .err { margin-top:8px; }
 #taskwin .mode[hidden], #taskwin .err[hidden] { display:none; }
@@ -484,14 +488,14 @@ button.close:focus-visible { outline:2px solid var(--focus-line); outline-offset
 .chat .btns button.termview.on { background:var(--ink); color:var(--paper); }
 /* an error (ui/errors.js): its whole text, however long (it scrolls), then that the error log has it */
 .errbox { border:2px solid var(--danger); background:var(--danger-bg); color:var(--danger-ink); padding:6px 8px; font-size:12px; text-align:left; }
-.errbox .msg { white-space:pre-wrap; overflow-wrap:anywhere; max-height:40vh; overflow:auto; }
+.errbox .msg { white-space:pre-wrap; overflow-wrap:anywhere; max-height:calc(40vh / var(--ui-scale, 1)); overflow:auto; }
 .errbox .hint { margin-top:6px; padding-top:5px; border-top:2px solid color-mix(in srgb, currentColor 18%, transparent); color:var(--muted-2); font-size:11px; }
 #oops { z-index:30; }
-#oops .panel { width:min(560px, calc(100vw - 32px)); }
-#oops .errbox .msg { max-height:50vh; }
+#oops .panel { width:min(560px, calc(100vw / var(--ui-scale, 1) - 32px)); }
+#oops .errbox .msg { max-height:calc(50vh / var(--ui-scale, 1)); }
 /* the settings (ui/settings.js): sections one under another, each row a label and its control; the top stays */
 #settings { z-index:25; }
-#settings .panel { width:min(640px, calc(100vw - 32px)); max-height:min(88vh, 920px); padding:0; display:flex; flex-direction:column; overflow:hidden; }
+#settings .panel { width:min(640px, calc(100vw / var(--ui-scale, 1) - 32px)); max-height:min(calc(88vh / var(--ui-scale, 1)), 920px); padding:0; display:flex; flex-direction:column; overflow:hidden; }
 #settings .top { flex:none; display:flex; align-items:center; gap:8px; padding:10px 12px 8px 16px; border-bottom:2px solid var(--ink); }
 #settings .top h2 { margin:0; flex:1; font-size:16px; }
 #settings .body { overflow:auto; padding:2px 16px 16px; overscroll-behavior:contain; }
@@ -568,14 +572,12 @@ button.close:focus-visible { outline:2px solid var(--focus-line); outline-offset
 #settings .about dd { margin:0; overflow-wrap:anywhere; font:11.5px/1.6 var(--mono); }
 #settings .about p { margin:10px 0 0; font-size:12px; }
 #settings .about a { color:var(--ink); text-underline-offset:2px; }
-@media (max-width: 520px) {
-  #settings .row, #settings .about dl { grid-template-columns:minmax(0, 1fr); }
-  #settings .row .hint, #settings .row.home .said, #settings .row.mode .warn { grid-column:1; }
-  #settings .defaults > .said { padding-left:0; }
-  #settings .row.check { grid-template-columns:auto minmax(0, 1fr); column-gap:8px; } /* the box beside its words */
-  #settings .row.check > input { grid-column:1; justify-self:start; }
-  #settings .row.check > label, #settings .row.check > .hint { grid-column:2; }
-}
+html.w-lt-520 #settings .row, html.w-lt-520 #settings .about dl { grid-template-columns:minmax(0, 1fr); }
+html.w-lt-520 #settings .row .hint, html.w-lt-520 #settings .row.home .said, html.w-lt-520 #settings .row.mode .warn { grid-column:1; }
+html.w-lt-520 #settings .defaults > .said { padding-left:0; }
+html.w-lt-520 #settings .row.check { grid-template-columns:auto minmax(0, 1fr); column-gap:8px; } /* the box beside its words */
+html.w-lt-520 #settings .row.check > input { grid-column:1; justify-self:start; }
+html.w-lt-520 #settings .row.check > label, html.w-lt-520 #settings .row.check > .hint { grid-column:2; }
 #settings .people { display:flex; flex-wrap:wrap; align-items:center; gap:6px 12px; margin:14px 0 2px; }
 #settings .people .all { padding:4px 12px; }
 #settings .people .hint { flex:1 1 220px; font-size:11px; color:var(--muted-2); }
@@ -583,7 +585,7 @@ button.close:focus-visible { outline:2px solid var(--focus-line); outline-offset
    (the list, what it would do, entry by entry), the selected ones' drop-downs, and the list: each employee a row (its
    box, who it is and what it starts with, its Edit button), the one being edited unfolded under its row */
 #staff { z-index:26; }
-#staff .panel { width:min(980px, calc(100vw - 32px)); max-height:min(90vh, 980px); padding:0; display:flex; flex-direction:column; overflow:hidden; }
+#staff .panel { width:min(980px, calc(100vw / var(--ui-scale, 1) - 32px)); max-height:min(calc(90vh / var(--ui-scale, 1)), 980px); padding:0; display:flex; flex-direction:column; overflow:hidden; }
 #staff .top { flex:none; display:flex; align-items:center; gap:8px; padding:10px 12px 8px 16px; border-bottom:2px solid var(--ink); }
 #staff .top h2 { margin:0; flex:1; font-size:16px; }
 #staff .body { overflow:auto; padding:10px 16px 16px; overscroll-behavior:contain; }
@@ -647,14 +649,12 @@ button.close:focus-visible { outline:2px solid var(--focus-line); outline-offset
 #staff .editing .grid { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:0 10px; }
 #staff .editing .warn { margin-top:4px; font-size:12px; font-weight:700; color:var(--danger-ink); }
 #staff .editing label.check { display:flex; align-items:center; gap:6px; color:var(--ink); font-size:13px; margin-top:10px; cursor:pointer; }
-@media (max-width: 640px) {
-  #staff .body { padding:10px 10px 14px; }
-  #staff .emp { grid-template-columns:auto minmax(0, 1fr); }
-  #staff .emp .edit { grid-column:2; justify-self:start; }
-  #staff .editing { padding-left:14px; }
-  #staff .editing .grid { grid-template-columns:minmax(0, 1fr); }
-  #staff .batch .acts { margin-left:0; }
-}
+html.w-lt-640 #staff .body { padding:10px 10px 14px; }
+html.w-lt-640 #staff .emp { grid-template-columns:auto minmax(0, 1fr); }
+html.w-lt-640 #staff .emp .edit { grid-column:2; justify-self:start; }
+html.w-lt-640 #staff .editing { padding-left:14px; }
+html.w-lt-640 #staff .editing .grid { grid-template-columns:minmax(0, 1fr); }
+html.w-lt-640 #staff .batch .acts { margin-left:0; }
 /* the theme's button that opens them: a mark while the error log has news */
 .open-settings { position:relative; }
 .open-settings .news { position:absolute; top:-5px; right:-5px; width:8px; height:8px; background:var(--danger-strong); border:2px solid var(--paper); }

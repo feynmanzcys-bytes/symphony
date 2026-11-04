@@ -59,8 +59,12 @@ body:lang(zh-CN) { font-family: var(--sans), "PingFang SC", "Microsoft YaHei", "
 body:lang(zh-TW) { font-family: var(--sans), "PingFang TC", "Microsoft JhengHei", "Noto Sans CJK TC"; }
 body:lang(ja) { font-family: var(--sans), "Hiragino Sans", "Yu Gothic UI", "Noto Sans CJK JP"; }
 body:lang(ko) { font-family: var(--sans), "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans CJK KR"; }
-.app { display: grid; grid-template-columns: 300px 1fr 320px; height: 100vh; }
-@media (max-width: 1100px) { .app { grid-template-columns: 280px 1fr; } .app > .profile { display: none; } } /* (over .profile's own display below) */
+/* the typeface picked in the settings (ui/look.js): the system's faces, by kind, with the CJK ones of each */
+html[data-font=serif] body { font-family: Georgia, "Times New Roman", "Songti SC", "Songti TC", "Hiragino Mincho ProN", "Yu Mincho", "SimSun", "PMingLiU", "Apple Myungjo", "Batang", "Noto Serif CJK SC", "Noto Serif", serif; }
+html[data-font=rounded] body { font-family: ui-rounded, "SF Pro Rounded", "Hiragino Maru Gothic ProN", "Yuanti SC", "YouYuan", "Arial Rounded MT Bold", "Varela Round", var(--sans); }
+html[data-font=mono] body { font-family: var(--mono); }
+.app { display: grid; grid-template-columns: 300px 1fr 320px; height: calc(100vh / var(--ui-scale, 1)); }
+html.w-lt-1100 .app { grid-template-columns: 280px 1fr; } html.w-lt-1100 .app > .profile { display: none; } /* (over .profile's own display below; the html.w-lt-<px> classes: ui/look.js, the width at the page's size) */
 
 /* the shared pieces, in the app's flat style: ink primary buttons, the spark only where something is picked or focused */
 button.px { border-radius: 8px; box-shadow: none; border-color: var(--field-line); background: var(--paper); font-size: 13px; }
@@ -107,11 +111,9 @@ button.px.icon { width: 32px; padding: 2px 0; text-align: center; }
 #taskwin .close, #chat .head .close { display: none; } /* the sidebar is the way out */
 /* a narrow window (a phone, a page zoomed in): one column, the lists or what is picked in them, whose close button
    leads back to the lists (.picked: messenger.js) */
-@media (max-width: 700px) {
-  .app { grid-template-columns: minmax(0, 1fr); }
-  .app.picked > .side, .app:not(.picked) > .center { display: none; }
-  #taskwin .close, #chat .head .close { display: inline-grid; } /* (inline-grid: the drawn cross is a pseudo-element that needs a box) */
-}
+html.w-lt-700 .app { grid-template-columns: minmax(0, 1fr); }
+html.w-lt-700 .app.picked > .side, html.w-lt-700 .app:not(.picked) > .center { display: none; }
+html.w-lt-700 #taskwin .close, html.w-lt-700 #chat .head .close { display: inline-grid; } /* (inline-grid: the drawn cross is a pseudo-element that needs a box) */
 /* the window's head on one line: the state and the name, what it does, then the chips and the buttons to the right;
    on a narrow window the chips and the buttons wrap under the name */
 .chat .head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 10px 16px; min-height: 56px; box-sizing: border-box; border-bottom: 1px solid var(--line); }
@@ -251,6 +253,7 @@ button.px.icon { width: 32px; padding: 2px 0; text-align: center; }
 .profile .computer button { margin-top: 8px; width: 100%; background: transparent; color: var(--code-ink); border-color: #3a3f49; }
 .profile .computer button:hover:not(:disabled) { background: rgba(255,255,255,.08); }
 .profile .computer .term { margin-top: 8px; border-radius: 6px; cursor: zoom-in; }
+.profile .computer .hint { display: block; margin-top: 4px; font-size: 11px; color: #c3c8d1; } /* what the small screen is for, apart from the button that opens a window */
 .profile .list .row { display: flex; align-items: center; gap: 8px; padding: 3px 0; font-size: 13px; cursor: pointer; }
 .profile .list .row:hover { background: var(--pane); }
 .profile .list .row .face { width: 28px; height: 28px; }
@@ -397,7 +400,7 @@ button.px.primary, button.px.alert, :is(#asks, .flow .card) :is(button, button.a
 
 /* the settings as a page: a wide dialog, its sections listed down the left (settingsNav in messenger.js), the body
    on the right with each section a card; on a narrow window the list goes and the sections stack */
-#settings .panel { width: min(1100px, calc(100vw - 32px)); height: min(88vh, 900px); max-height: none; display: grid; grid-template-columns: 200px minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+#settings .panel { width: min(1100px, calc(100vw / var(--ui-scale, 1) - 32px)); height: min(calc(88vh / var(--ui-scale, 1)), 900px); max-height: none; display: grid; grid-template-columns: 200px minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
 #settings .top { grid-column: 1 / -1; padding: 12px 16px; border-bottom: 1px solid var(--line); }
 #settings .set-nav { display: flex; flex-direction: column; gap: 2px; padding: 14px 10px; border-right: 1px solid var(--line); background: var(--pane); overflow: auto; }
 #settings .set-nav button { text-align: left; padding: 8px 12px; border: 0; border-radius: 8px; background: transparent; color: var(--ink); font: inherit; cursor: pointer; }
@@ -410,14 +413,12 @@ button.px.primary, button.px.alert, :is(#asks, .flow .card) :is(button, button.a
 #settings .what { font-size: 13px; color: var(--muted); }
 #settings .errlog .acts .report { background: var(--paper); border-color: var(--field-line); color: var(--ink); } /* (a report is not the day's main action) */
 #settings .errlog .acts .report:hover:not(:disabled) { background: var(--pane-2); border-color: var(--field-line); }
-@media (max-width: 700px) {
-  #settings .panel { grid-template-columns: minmax(0, 1fr); }
-  #settings .set-nav { display: none; }
-}
+html.w-lt-700 #settings .panel { grid-template-columns: minmax(0, 1fr); }
+html.w-lt-700 #settings .set-nav { display: none; }
 
 /* all coworkers: a table (the pick, who and its state, the folder and what it starts with, Edit), the batch bar only
    once someone is picked, the import a card over the table; the page's long explanation goes (the table says it) */
-#staff .panel { width: min(1100px, calc(100vw - 32px)); }
+#staff .panel { width: min(1100px, calc(100vw / var(--ui-scale, 1) - 32px)); }
 #staff .body { background: var(--pane); padding: 14px 20px 20px; }
 #staff > .panel > .body > .what { display: none; }
 #staff .tools { gap: 8px; }
@@ -440,11 +441,9 @@ button.px.primary, button.px.alert, :is(#asks, .flow .card) :is(button, button.a
 #staff .emp .opts { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #staff .emp.open { background: var(--hl); box-shadow: none; }
 #staff .editing { background: var(--pane); padding: 10px 14px 12px 54px; }
-@media (max-width: 640px) {
-  #staff .emp { grid-template-columns: 28px minmax(0, 1fr); }
-  #staff .emp .edit { grid-column: 2; justify-self: start; }
-  #staff .editing { padding-left: 14px; }
-}
+html.w-lt-640 #staff .emp { grid-template-columns: 28px minmax(0, 1fr); }
+html.w-lt-640 #staff .emp .edit { grid-column: 2; justify-self: start; }
+html.w-lt-640 #staff .editing { padding-left: 14px; }
 
 /* the launch and group dialogs: the folded command, the warning tight under its select */
 #launch details.cmd { color: var(--muted); }

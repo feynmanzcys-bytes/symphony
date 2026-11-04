@@ -23,6 +23,7 @@ import { langPicker, LANGS } from '/i18n.js'
 import { dialog } from '/ui/a11y.js'
 import { motion } from '/ui/motion.js'
 import { themePicker } from '/ui/themes.js'
+import { look, SCALES, FONTS } from '/ui/look.js'
 import { pref, setPref, STEPS_OPEN, FAULTS_SEEN } from '/ui/prefs.js'
 import { onBackdrop, showError, setText } from '/ui/errors.js'
 import { createStaff } from '/ui/staff.js'
@@ -40,6 +41,8 @@ const MARKUP = `
         <div class="row"><label for="set-theme"></label><span class="ctl theme"></span></div>
         <div class="row scheme" role="radiogroup" aria-labelledby="set-scheme" hidden><span class="label" id="set-scheme"></span><span class="ctl seg"></span></div>
         <div class="extra"></div>
+        <div class="row size" role="radiogroup" aria-labelledby="set-size"><span class="label" id="set-size"></span><span class="ctl seg"></span></div>
+        <div class="row"><label for="set-font"></label><span class="ctl"><select id="set-font"></select></span></div>
         <div class="row check"><input type="checkbox" id="set-still"><label for="set-still"></label><small class="hint" id="set-still-hint"></small></div>
       </section>
       <section class="talk" aria-labelledby="set-talk"><h3 id="set-talk"></h3>
@@ -120,6 +123,20 @@ export function createSettings(sym, { scheme = null, extra = [], records = [] } 
     x.el.setAttribute('aria-labelledby', label.id)
     row.append(x.el)
     if (x.hint) { const h = row.appendChild(document.createElement('small')); h.className = 'hint'; h.textContent = x.hint }
+  }
+  // the size (a zoom of the whole page) and the typeface, kept in this browser (ui/look.js)
+  {
+    const box = $('.size'), seg = box.querySelector('.seg'), names = ['normal', 'large', 'larger', 'largest']
+    box.querySelector('.label').textContent = t('settings.size')
+    SCALES.forEach((v, i) => seg.insertAdjacentHTML('beforeend', `<input type="radio" name="set-size" id="set-size-${i}" value="${v}"><label for="set-size-${i}">${esc(t('settings.size.' + names[i]))}</label>`))
+    const font = $('#set-font')
+    $('label[for=set-font]').textContent = t('settings.font')
+    for (const f of FONTS) font.add(new Option(t('settings.font.' + f), f))
+    const mark = () => { for (const r of seg.querySelectorAll('input')) r.checked = r.value === look.scale; font.value = look.font }
+    seg.addEventListener('change', ev => look.set({ scale: ev.target.value }))
+    font.addEventListener('change', () => look.set({ font: font.value }))
+    look.on(mark)
+    mark()
   }
   const still = $('#set-still')
   $('label[for=set-still]').textContent = t('motion.pause')

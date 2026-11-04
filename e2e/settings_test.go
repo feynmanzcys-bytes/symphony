@@ -96,6 +96,39 @@ func TestSettings(t *testing.T) {
 	})
 	p.run(`document.getElementById('set-still').click()`)
 	waitUntil(t, 5*time.Second, "motion goes on", func() bool { return p.is(`!document.documentElement.hasAttribute('data-still')`) })
+	// the text size: a zoom of the whole page, remembered; the typeface: the system's by kind, remembered
+	p.run(`document.getElementById('set-size-2').click()`)
+	waitUntil(t, 5*time.Second, "the page grows", func() bool {
+		return p.is(`getComputedStyle(document.body).zoom === '1.3' && localStorage.getItem('symphony.fontScale') === '1.3'`)
+	}, func() string {
+		return p.js(`getComputedStyle(document.body).zoom + ' ' + localStorage.getItem('symphony.fontScale')`)
+	})
+	// the page still fits the window: what is sized by the window divides by the scale, and the layout is the one a
+	// window that much narrower gets (1400 / 1.3 is under 1100: the profile column goes)
+	if !p.is(`document.documentElement.scrollHeight <= innerHeight + 1 && document.documentElement.scrollWidth <= innerWidth + 1 && (r => r.bottom <= innerHeight + 1 && r.right <= innerWidth + 1 && r.top >= -1)(document.querySelector('#settings .panel').getBoundingClientRect()) && document.documentElement.classList.contains('w-lt-1100') && getComputedStyle(document.querySelector('.app > .profile')).display === 'none'`) {
+		t.Errorf("at a larger size the page and the settings should still fit the window, laid out as a narrower one: %s", p.js(`JSON.stringify({ sh: document.documentElement.scrollHeight, ih: innerHeight, sw: document.documentElement.scrollWidth, iw: innerWidth, panel: document.querySelector('#settings .panel').getBoundingClientRect(), cls: document.documentElement.className })`))
+	}
+	p.shot("text-larger")
+	p.run(`(s => { s.value = 'serif'; s.dispatchEvent(new Event('change', { bubbles:true })) })(document.getElementById('set-font'))`)
+	waitUntil(t, 5*time.Second, "the typeface changes", func() bool {
+		return p.is(`document.documentElement.dataset.font === 'serif' && getComputedStyle(document.body).fontFamily.startsWith('Georgia') && localStorage.getItem('symphony.font') === 'serif'`)
+	}, func() string {
+		return p.js(`document.documentElement.dataset.font + ' ' + getComputedStyle(document.body).fontFamily`)
+	})
+	do(t, ctx, 20*time.Second, chromedp.Reload())
+	waitUntil(t, 20*time.Second, "both are remembered after a reload", func() bool {
+		return p.is(`getComputedStyle(document.body).zoom === '1.3' && document.documentElement.dataset.font === 'serif'`)
+	})
+	p.run(`localStorage.removeItem('symphony.fontScale'); localStorage.removeItem('symphony.font')`)
+	do(t, ctx, 20*time.Second, chromedp.Reload())
+	waitUntil(t, 20*time.Second, "the page is back at its size", func() bool {
+		return p.is(`getComputedStyle(document.body).zoom === '1' && !document.documentElement.dataset.font && !document.documentElement.classList.contains('w-lt-1100')`)
+	})
+	p.run(`document.querySelector('.side-actions .open-settings').focus()`)
+	key(ctx, kb.Enter)
+	waitUntil(t, 10*time.Second, "the settings are open again, the focus in them", func() bool {
+		return p.is(`!document.getElementById('settings').hidden && document.getElementById('settings').contains(document.activeElement) && document.getElementById('set-size-0').checked && document.getElementById('set-font').value === 'system'`)
+	})
 	p.run(`document.getElementById('set-steps').click()`)
 	if !p.is(`localStorage.getItem('symphony.steps') === 'open'`) {
 		t.Error("the steps' fold should be remembered")

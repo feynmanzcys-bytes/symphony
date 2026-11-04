@@ -14,6 +14,7 @@ import { createLaunchDialog } from '/ui/launch.js'
 import { createTaskUI } from '/ui/task.js'
 import { createTerminal } from '/ui/terminal.js'
 import { createSettings, settingsButton } from '/ui/settings.js'
+import '/ui/look.js' // the size and the typeface from the settings, applied as the page loads
 import { showError } from '/ui/errors.js'
 
 const sym = connect()
@@ -368,7 +369,7 @@ function renderProfile() {
     (picked.task ? `<span class="link" data-group="${esc(picked.task)}" role="button" tabindex="0">← ${esc(t('msgr.profile.backToGroup', { id: picked.task }))}</span>` : task ? `<span class="link" data-group="${esc(task.id)}" role="button" tabindex="0">${esc(t('msgr.profile.inGroup', { id: task.id }))}</span>` : '') +
     `<h3>${esc(t('msgr.profile.computer'))}</h3><div class="computer">` +
     `<div class="now ${on && s.state === 'tool' ? 'on' : on ? '' : 'off'}"><i></i><span>${esc(on ? (s.state === 'tool' && s.tool ? s.tool : s.state === 'thinking' ? t('state.thinking') : t('msgr.profile.idle')) : t('state.ended'))}</span></div>` +
-    (on && s.launch ? `<div class="screen-slot"></div>` : '') +
+    (on && s.launch ? `<div class="screen-slot"></div><small class="hint">${esc(t('msgr.profile.screenHint'))}</small>` : '') +
     (recent.length ? `<div class="recent">${recent.map(a => `<div><time>${esc(fmtTime(a.time))}</time>${esc(a.text)}</div>`).join('')}</div>` : '') +
     (on && s.launch ? `<button class="px" id="take-over" title="${esc(t('chat.terminalTitle'))}">${esc(t('msgr.profile.takeOver'))}</button>` : '') + `</div>` +
     `<h3>${esc(t('msgr.profile.about'))}</h3><dl>` +
