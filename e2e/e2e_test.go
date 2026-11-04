@@ -16,6 +16,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -424,6 +425,32 @@ func TestOffice(t *testing.T) {
 			}
 		}
 	}
+
+	// ---------- 7d. the page changes D's model and thinking effort: /model and /effort run in the session ----------
+	sidD2 := b.online(nameD).ID
+	for _, body := range []string{`{"model":"haiku"}`, `{"effort":"low"}`} {
+		resp, err := http.DefaultClient.Do(pageReq("POST", b.URL, "/api/sessions/"+sidD2+"/model", strings.NewReader(body)))
+		if err != nil || resp.StatusCode != 200 {
+			t.Fatalf("changing D's model: %v %v", err, resp)
+		}
+		resp.Body.Close()
+	}
+	waitUntil(t, 2*time.Minute, "D switches to haiku, and both commands show in its chat", func() bool {
+		s := b.session(sidD2)
+		if s == nil || !strings.Contains(s.Model, "haiku") {
+			return false
+		}
+		cmds := map[string]bool{}
+		for _, it := range b.Hub.Chat(sidD2) {
+			if it.Kind == bridge.ChatCommand {
+				cmds[it.Text] = true
+			}
+		}
+		return cmds["/model"] && cmds["/effort"]
+	}, func() string {
+		data, _ := json.Marshal(b.Hub.Chat(sidD2))
+		return fmt.Sprintf("model %q\n%s", b.session(sidD2).Model, data)
+	})
 
 	// ---------- 8. B goes off duty, then back to work from its conversation: same seat ----------
 	seatB := b.account(nameB).Seat

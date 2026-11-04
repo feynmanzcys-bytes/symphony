@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"testing"
 	"time"
@@ -697,12 +698,13 @@ func (s *screens) openGroup(id string) {
 // openMember opens a member's conversation from its row in the open group window.
 func (s *screens) openMember(name string) {
 	s.t.Helper()
+	short := regexp.MustCompile(`-T\d+$`).ReplaceAllString(name, "") // shown short: bob, not bob-T2
 	waitUntil(s.t, 10*time.Second, "the group window lists "+name, func() bool {
-		return s.is(fmt.Sprintf(`[...document.querySelectorAll('#taskwin .mrow')].some(r => r.querySelector('b').textContent === %q)`, name))
+		return s.is(fmt.Sprintf(`[...document.querySelectorAll('#taskwin .mrow')].some(r => r.querySelector('b').textContent === %q)`, short))
 	})
-	s.run(fmt.Sprintf(`[...document.querySelectorAll('#taskwin .mrow')].find(r => r.querySelector('b').textContent === %q).click()`, name))
+	s.run(fmt.Sprintf(`[...document.querySelectorAll('#taskwin .mrow')].find(r => r.querySelector('b').textContent === %q).click()`, short))
 	waitUntil(s.t, 10*time.Second, name+"'s conversation opens", func() bool {
-		return s.is(fmt.Sprintf(`!document.getElementById('chat').hidden && document.querySelector('#chat h2').textContent === %q`, name))
+		return s.is(fmt.Sprintf(`!document.getElementById('chat').hidden && document.querySelector('#chat h2').textContent === %q`, short))
 	})
 }
 

@@ -13,7 +13,7 @@
 //   tasks.render()                  draw the window again (on every snapshot and message)
 //   tasks.windowFor                 the task whose window is open, or null
 //   tasks.dialog, tasks.win         the elements
-import { t, lang, esc, errorText, base, lower, dot, fill, browse, showEnd, statusText, richText, TASK_MARK, GRAY_MARK, button, deferWhilePressed, setHTML, pointAt } from '/ui/common.js'
+import { t, lang, esc, errorText, base, lower, dot, fill, browse, showEnd, statusText, richText, TASK_MARK, GRAY_MARK, button, deferWhilePressed, setHTML, pointAt, displayName } from '/ui/common.js'
 import { dialog as asDialog } from '/ui/a11y.js'
 import { putErrorBox, setText, showError, onBackdrop } from '/ui/errors.js'
 import { markdown } from '/ui/markdown.js'
@@ -76,7 +76,7 @@ function mount(markup) {
 
 // the names a message goes by; one you sent from a task's chat has no sender
 export const fromYou = m => m.origin === 'page' && !m.fromName
-export const msgFrom = m => m.fromName || (fromYou(m) ? t('task.you') : '?')
+export const msgFrom = m => m.fromName || '?' // (yours carry no name: the bubble's side says it)
 
 // why a task failed: its first failure in this page's language, then the bridge's own words when they say more (every
 // failure of its cleanup, one a line, git's among them)
@@ -251,7 +251,7 @@ export function createTaskUI(sym, {
       const s = sym.sessionById(m.session), online = sym.isOnline(s), state = !online ? 'ended' : sym.asking(m.session) ? 'waiting' : s.state
       const runs = [s?.model || m.model, s?.effort || m.effort].filter(Boolean).join(' · ')
       const open = m.session && isMemberOpen(task, m) // its window is beside this one
-      return `<div class="mrow${m.session ? '' : ' wait'}${open ? ' open' : ''}" data-i="${i}"${m.session ? ' role="button" tabindex="0"' : ''}${open ? ' aria-current="true"' : ''}>${dot(state)}<b>${esc(m.name)}</b>` +
+      return `<div class="mrow${m.session ? '' : ' wait'}${open ? ' open' : ''}" data-i="${i}"${m.session ? ' role="button" tabindex="0"' : ''}${open ? ' aria-current="true"' : ''}>${dot(state)}<b>${esc(displayName(m.name, task))}</b>` +
         (task.leader && m.account === task.leader ? `<span class="badge lead">${esc(t('task.lead'))}</span>` : '') +
         (m.advisor ? `<span class="badge adv" title="${esc(t('task.advisorTitle'))}">${esc(t('task.advisor'))}</span>` : '') +
         `<span class="where" title="${esc([m.dir, m.worktree].filter(Boolean).join('\n'))}">${esc(base(m.dir))} · ${esc(m.branch || '')}</span>` +
@@ -291,7 +291,7 @@ export function createTaskUI(sym, {
     const missed = m.missed || [] // of those, the ones that were offline: struck through
     const to = names.length ? `<b class="to">${names.map(n => missed.includes(n) ? `<s title="${esc(t('task.missed', { name: n }))}">@${esc(mentionName(n, task))}</s>` : '@' + esc(mentionName(n, task))).join(' ')}</b> ` : ''
     return `<div class="tmsg${me ? ' me' : ''}"><span class="av" style="background-image:${esc(me ? youAvatar() : memberAvatar(who))}"></span>` +
-      `<div class="bub"><div class="hd"><b>${esc(msgFrom(m))}</b></div>` +
+      `<div class="bub">${me ? '' : `<div class="hd"><b>${esc(displayName(msgFrom(m), task))}</b></div>`}` +
       `<div class="body${me ? '' : ' md'}">${withMentions(to, me ? richText(m.text) : markdown(m.text))}</div><time>${esc(new Date(m.time).toLocaleTimeString(lang))}</time></div></div>`
   }
   // redrawn when the message log or the members' figures change; says whether the list should be scrolled to its end

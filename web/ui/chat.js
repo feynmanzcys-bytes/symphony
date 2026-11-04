@@ -19,7 +19,7 @@
 // terminal is the launch id of a page-started session that is online: the window then offers its terminal in the page
 // (ui/terminal.js), interactive, with a button of its own beside the theme's "terminal" button (the one that opens a
 // window on this machine), or first; the button, or Ctrl+], brings the chat back, and so does another session.
-import { t, esc, errorText, richText, timeOf, STATE_MARK, GRAY_MARK, button, askKind } from '/ui/common.js'
+import { t, esc, errorText, richText, timeOf, STATE_MARK, GRAY_MARK, button, askKind, displayName } from '/ui/common.js'
 import { askCard, onAskFailure } from '/asks.js'
 import { createTerminal } from '/ui/terminal.js'
 import { dialog } from '/ui/a11y.js'
@@ -49,6 +49,9 @@ const bodyClass = it => typed(it) ? 'body' : 'body md'
 // model's: what the asks in it waited for you is left out, and while an ask waits after it, it doesn't count on. A step
 // that failed or was denied shows on the line. With motion paused the count goes by the minute.
 const foldable = it => it.kind === 'thinking' || it.kind === 'tool' || it.kind === 'command' || (it.kind === 'ask' && (it.status || 'pending') !== 'pending')
+const DECIDED = new Set(['allow', 'allowSession', 'deny', 'answered']) // an ask the page answered (the terminal's way leaves it cancelled)
+const SYSTEM = new Set(['task-notification', 'scheduled-trigger']) // a prompt the engine put in by itself
+const systemPrompt = it => it.kind === 'user' && (SYSTEM.has(it.origin) || /^\s*<task-notification>/.test(String(it.text ?? '')))
 const BUSY = new Set(['thinking', 'tool'])
 const OPENER_GAP = 120000 // a prompt whose first step came this much later waited for its turn: its fold starts at that step
 // a duration in this page's language: 38s, 2m 38s, 1h 5m; by the minute (2m) when it may change only once a minute
@@ -166,6 +169,7 @@ export function createChat(sym, { askWho, onClose = () => {}, onTaskChip = () =>
       if (!foldable(it)) { fold = null; flow.appendChild(node); continue }
       if (!fold) fold = flow.appendChild(stepsEl(it.id, old.get('steps:' + it.id)))
       fold.querySelector('.list').appendChild(node)
+      if (it.kind === 'ask' && DECIDED.has(it.status)) { flow.appendChild(decisionEl(it)); fold = null } // what you decided: a bubble of yours, outside the steps
     }
     labelSteps()
     ghost()
@@ -193,6 +197,8 @@ export function createChat(sym, { askWho, onClose = () => {}, onTaskChip = () =>
   }
   // the last thing in the flow: an item or a fold (not a card that waits for its line, nor the empty line)
   const lastBlock = () => { for (let n = flow.lastElementChild; n; n = n.previousElementSibling) if (n.matches('.it, .steps')) return n; return null }
+  // the last thing the model did or said: your decision on an ask (a bubble after the fold its line is in) isn't one
+  const lastWork = () => { for (let n = flow.lastElementChild; n; n = n.previousElementSibling) if (n.matches('.it, .steps') && !n.matches('.it.decision')) return n; return null }
   // a new item goes at the end: a step into the fold there (the one waiting for its first step too, or a new one),
   // anything else after it, which ends that fold
   function place(node, it) {
@@ -243,7 +249,7 @@ export function createChat(sym, { askWho, onClose = () => {}, onTaskChip = () =>
     let next = null, asking = false
     for (let n = fold.nextElementSibling; n && !next; n = n.nextElementSibling) {
       if (n.matches('.it.ask.pending')) asking = true
-      else if (n.matches('.it, .steps') && !n.matches('.it.user.queued')) next = n
+      else if (n.matches('.it, .steps') && !n.matches('.it.user.queued, .it.decision')) next = n // (your decision on an ask ends nothing)
     }
     const first = steps.length ? Date.parse(steps[0].time) : NaN, from = opener ? Date.parse(opener.time) : first
     const start = opener && first - from > OPENER_GAP ? first : from
@@ -272,14 +278,14 @@ export function createChat(sym, { askWho, onClose = () => {}, onTaskChip = () =>
   // minute at most: they say whole minutes)
   setInterval(() => {
     if (el.hidden || !session) return
-    const last = lastBlock()
+    const last = lastWork()
     if (last?.matches('.steps.running') || (last?.matches('.steps') && busy())) labelSteps(last)
   }, 1000)
   // the session's state changed (show): the fold at the end may have finished, or one may wait for its first step
   function stepsFollow() {
     if (!session || el.hidden) return
     ghost()
-    const last = lastBlock()
+    const last = lastWork()
     if (last?.matches('.steps')) labelSteps(last)
   }
   // what the settings say goes for every fold
@@ -401,12 +407,37 @@ export function createChat(sym, { askWho, onClose = () => {}, onTaskChip = () =>
     termButtons()
   }
 
+  // a prompt the engine put in by itself (a background task's notification, a scheduled run), shown the way the
+  // terminal shows it: one line (the notification's summary, its status, the first line of what happened), the whole
+  // text folded under it
+  function systemHTML(it, old) {
+    const text = String(it.text ?? ''), tag = n => text.match(new RegExp(`<${n}>([\\s\\S]*?)</${n}>`))?.[1]?.trim() ?? ''
+    const summary = tag('summary'), status = tag('status')
+    const detail = (tag('event') || tag('result') || (summary ? '' : text)).split('\n').map(s => s.trim()).find(Boolean) ?? ''
+    const line = [summary, summary.includes(status) ? '' : status, detail].filter(Boolean).join(' · ') // (a summary that says the status already)
+    const open = old?.querySelector('details')?.open ? ' open' : ''
+    return `<details${open}><summary><b>${esc(t(it.origin === 'scheduled-trigger' ? 'chat.sys.scheduled' : 'chat.sys.task'))}</b>${line ? esc(t('common.colon') + line) : ''}</summary>` +
+      `<pre class="raw">${esc(text)}</pre></details>${timeOf(it)}`
+  }
+  // what you decided on an ask, as a bubble of yours after its line: a question's answers, a permission allowed or
+  // denied (with the reason), at the moment it was settled
+  function decisionEl(it) {
+    const what = [it.tool, it.summary].filter(Boolean).join(' ')
+    const text = it.askKind === 'question' ? (it.text || t('chat.ask.answered')) : t('chat.decided.' + it.status, { what }) + (it.text ? t('common.colon') + it.text : '')
+    const node = document.createElement('div')
+    node.className = `it decision ${it.status}`
+    node.dataset.id = 'd:' + it.id
+    const at = it.time && it.ms ? new Date(new Date(it.time).getTime() + it.ms).toISOString() : it.time
+    node.innerHTML = `<div class="body">${esc(text)}</div>${timeOf({ ...it, time: at })}`
+    return node
+  }
   function itemEl(it, old) {
     const node = document.createElement('div')
     node.dataset.id = it.id
     const sub = it.agentId ? `<span class="sub">${esc(t('common.subagent'))}</span> ` : '' // (a space: read apart from what follows)
     switch (it.kind) {
       case 'user': {
+        if (systemPrompt(it)) { node.className = 'it notice system'; node.innerHTML = systemHTML(it, old); break }
         node.className = `it user ${it.status || ''}`
         // one the bridge couldn't hand the session (it ended first, say): failed, and why
         const why = it.status === 'dropped' ? `<div class="why">${esc(t('chat.dropped') + (it.summary ? t('common.colon') + it.summary : ''))}</div>` : ''
@@ -417,8 +448,7 @@ export function createChat(sym, { askWho, onClose = () => {}, onTaskChip = () =>
             `<div class="${bodyClass(it)}">${bodyHTML(it)}</div></details>${why}${timeOf(it)}`
           break
         }
-        // from the page
-        node.innerHTML = `${it.origin === 'page' ? `<div class="from">${esc(t('task.you'))}</div>` : ''}<div class="body">${richText(it.text)}</div>${why}${timeOf(it)}`
+        node.innerHTML = `<div class="body">${richText(it.text)}</div>${why}${timeOf(it)}`
         break
       }
       case 'thinking': {
@@ -452,7 +482,7 @@ export function createChat(sym, { askWho, onClose = () => {}, onTaskChip = () =>
       case 'message': {
         const out = !!name && it.from === name // a task session sends as its member's name
         node.className = `it message${out ? ' out' : ''}`
-        node.innerHTML = `<div class="from">${esc(out ? t('chat.msgTo', { name: it.to || '?' }) : t('chat.msgFrom', { name: it.from || '?' }))}</div><div class="${bodyClass(it)}">${bodyHTML(it)}</div>${timeOf(it)}`
+        node.innerHTML = `<div class="from">${esc(out ? t('chat.msgTo', { name: displayName(it.to) || '?' }) : t('chat.msgFrom', { name: displayName(it.from) || '?' }))}</div><div class="${bodyClass(it)}">${bodyHTML(it)}</div>${timeOf(it)}`
         break
       }
       case 'ask': {

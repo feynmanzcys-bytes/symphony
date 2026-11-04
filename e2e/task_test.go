@@ -223,9 +223,9 @@ func TestTask(t *testing.T) {
 	screenshot(t, page, "task-group.png")
 
 	// a member's row opens its chat window: bob-T1's, with the kickoff as its first prompt
-	run(`[...document.querySelectorAll('#taskwin .mrow')].find(r => r.querySelector('b').textContent === 'bob-T1').click()`)
+	run(`[...document.querySelectorAll('#taskwin .mrow')].find(r => r.querySelector('b').textContent === 'bob').click()`) // (shown short: bob, not bob-T1)
 	waitUntil(t, 10*time.Second, "bob-T1's chat window opens with the kickoff, the way back to the group in the profile", func() bool {
-		return jsBool(`!document.getElementById('chat').hidden && document.getElementById('taskwin').hidden && document.querySelector('#chat h2').textContent === 'bob-T1' && document.querySelectorAll('#chat .flow .it.user').length === 1 && !!document.querySelector('#profile .link[data-group="T1"]')`)
+		return jsBool(`!document.getElementById('chat').hidden && document.getElementById('taskwin').hidden && document.querySelector('#chat h2').textContent === 'bob' && document.querySelectorAll('#chat .flow .it.user').length === 1 && !!document.querySelector('#profile .link[data-group="T1"]')`)
 	}, func() string {
 		return js(`document.querySelector('#chat .head').innerHTML + document.getElementById('profile').innerHTML`)
 	})

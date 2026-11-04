@@ -143,7 +143,9 @@ button.close:focus-visible { outline:2px solid var(--focus-line); outline-offset
 .md pre code { background:none; padding:0; font:inherit; }
 .it .body pre { background:var(--ink); color:var(--paper-2); padding:6px 8px; margin:4px 0; font:12px/1.5 var(--mono); overflow:auto; white-space:pre; }
 .it .body code { background:rgba(0,0,0,.08); padding:0 3px; font:12px var(--mono); }
-.it.user { align-self:flex-end; background:var(--me-bg); color:var(--me-ink); padding:6px 10px; border:2px solid var(--me-bg); box-shadow:2px 2px 0 rgba(0,0,0,.2); }
+.it.user, .it.decision { align-self:flex-end; background:var(--me-bg); color:var(--me-ink); padding:6px 10px; border:2px solid var(--me-bg); box-shadow:2px 2px 0 rgba(0,0,0,.2); }
+/* what you decided on an ask (allowed, denied, the answers), a bubble of yours after its line */
+.it.decision { font-size:13px; }
 .it.user.queued { border-style:dashed; } /* not in the session yet: its edge dashed (no opacity: the text must still read 4.5:1) */
 /* one the bridge couldn't hand the session: failed, and why */
 .it.user.dropped { border-color:var(--danger); }
@@ -203,9 +205,9 @@ button.close:focus-visible { outline:2px solid var(--focus-line); outline-offset
 .it.tool.ok { --mark:var(--ok); } .it.tool.error { --mark:var(--danger); } .it.tool.denied { --mark:var(--danger); color:var(--danger-ink); }
 .it.tool:not(.done) { --mark:var(--st-busy); }
 .it.tool b { color:var(--ink); } .it.tool .sub { color:var(--muted); margin-right:4px; } .it.tool .res { color:var(--muted); margin-left:6px; }
-/* messages from and to other sessions: purple (a lavender bubble edged in it; a little deeper when this one sent it) */
+/* messages from and to other sessions: purple (a lavender bubble edged in it; a little deeper when this one sent it), all on the left: the right is yours */
 .it.message { align-self:flex-start; background:var(--msg-bg); color:var(--msg-ink); padding:6px 10px; border:2px solid var(--msg-line); box-shadow:2px 2px 0 rgba(0,0,0,.2); }
-.it.message.out { align-self:flex-end; background:var(--msg-out-bg); }
+.it.message.out { background:var(--msg-out-bg); }
 .it.message .from { font-size:11px; margin-bottom:2px; font-weight:700; color:var(--msg-to); }
 .it.ask { align-self:center; font-size:12px; color:var(--muted); background:var(--pane-2); padding:1px 10px; max-width:90%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .it.ask.pending { color:var(--danger-ink); font-weight:700; }
@@ -220,9 +222,15 @@ button.close:focus-visible { outline:2px solid var(--focus-line); outline-offset
 :is(#asks, .flow .card, #queue) .req { color:var(--danger-ink); font-size:12px; }
 :is(#asks, .flow .card, #queue) button.allow-session { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:16em; }
 .it.notice { align-self:center; font-size:11px; color:var(--muted); white-space:pre-wrap; max-width:100%; }
+/* a prompt the engine put in by itself (a background task's notification): one line, the whole text folded under it */
+.it.notice.system { align-self:stretch; white-space:normal; font-size:12px; }
+.it.notice.system summary { cursor:pointer; list-style:none; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.it.notice.system summary::-webkit-details-marker { display:none; }
+.it.notice.system summary b { color:var(--ink); }
+.it.notice.system .raw { white-space:pre-wrap; overflow-wrap:anywhere; font:11px/1.4 var(--mono); margin:4px 0 0; max-height:16em; overflow:auto; color:var(--muted); }
 .it time { display:block; font-size:10px; color:var(--muted); margin-top:2px; }
-.it.user time { color:var(--me-muted); text-align:right; }
-.it.message time { color:var(--msg-muted); } .it.message.out time { text-align:right; }
+.it.user time, .it.decision time { color:var(--me-muted); text-align:right; }
+.it.message time { color:var(--msg-muted); }
 /* the dock: the input; while asks wait, their cards rise over it from the bottom and must be handled first.
    They hang from a fixed line, so a new card goes in below and never moves the one being clicked. */
 .chat .dock { border-top:2px solid var(--ink); background:var(--paper); padding:8px 12px; }

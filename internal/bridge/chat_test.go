@@ -237,3 +237,46 @@ func TestTellingLines(t *testing.T) {
 		t.Fatalf("plain lines: %q", got)
 	}
 }
+
+// A page changes a running session's model and thinking effort: /model and /effort go to its inbox as command items,
+// each only when asked for and one of the launch dialog's choices; an offline session takes nothing.
+func TestSetModel(t *testing.T) {
+	srv, base := newBridge(t)
+	srv.WaitTimeout = 300 * time.Millisecond
+	mod, _ := as(t, srv, base, "a")
+	page := client{t: t, base: base}
+	mod.ok("POST", "/api/event", Event{Session: "s1", Kind: "session.start", Cwd: "/w"})
+
+	if st, code := page.failure("POST", "/api/sessions/nope/model", map[string]any{"model": "opus"}); st != http.StatusConflict || code != "session_offline" {
+		t.Fatalf("unknown session: %d %s", st, code)
+	}
+	if st, code := page.failure("POST", "/api/sessions/s1/model", map[string]any{"model": "gpt"}); st != http.StatusBadRequest || code != "launch_bad_option" {
+		t.Fatalf("a model that isn't a choice: %d %s", st, code)
+	}
+	if st, code := page.failure("POST", "/api/sessions/s1/model", map[string]any{"effort": ""}); st != http.StatusBadRequest || code != "launch_bad_option" {
+		t.Fatalf("the effort can't be unset: %d %s", st, code)
+	}
+	if st, code := page.failure("POST", "/api/sessions/s1/model", map[string]any{}); st != http.StatusBadRequest || code != "model_empty" {
+		t.Fatalf("nothing to change: %d %s", st, code)
+	}
+	page.ok("POST", "/api/sessions/s1/model", map[string]any{"model": "opus", "effort": "max"})
+	page.ok("POST", "/api/sessions/s1/model", map[string]any{"model": ""}) // Claude Code's own: /model default
+	res := mod.ok("GET", "/api/inbox?session=s1", nil)
+	items := res["items"].([]any)
+	want := [][2]string{{"model", "opus"}, {"effort", "max"}, {"model", "default"}}
+	if len(items) != len(want) {
+		t.Fatalf("the inbox should hold the three commands: %v", items)
+	}
+	for i, w := range want {
+		it := items[i].(map[string]any)
+		if it["kind"] != "command" || it["command"] != w[0] || it["args"] != w[1] {
+			t.Fatalf("item %d: %v, want /%s %s", i, it, w[0], w[1])
+		}
+	}
+	// a command the engine wouldn't run is a notice in the chat
+	mod.ok("POST", "/api/event", Event{Session: "s1", Kind: "command.failed", Command: "model", Args: "opus", Text: "unknown model"})
+	chat := srv.Hub.Chat("s1")
+	if last := chat[len(chat)-1]; last.Kind != ChatNotice || last.Text != "commandFailed" || last.Summary != "/model opus: unknown model" {
+		t.Fatalf("the failure should be a notice: %+v", last)
+	}
+}

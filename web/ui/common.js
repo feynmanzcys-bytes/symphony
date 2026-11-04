@@ -18,6 +18,13 @@ export const TASK_MARK = { running: mark('busy', YELLOW), ending: mark('busy', Y
 
 export const base = p => (p || '').split(/[\\/]/).filter(Boolean).pop() || p || '?' // Windows paths use backslashes
 export const lower = s => String(s ?? '').toLowerCase()
+// a session's name as the page shows it: a task member's without its task id (bob for bob-T7); the name itself stays
+// what SendMessage finds it by. With the task known only its own id comes off; without one, any trailing -T<n>
+export const displayName = (name, task) => {
+  const n = String(name ?? '')
+  if (task?.id) return n.endsWith('-' + task.id) ? n.slice(0, -(task.id.length + 1)) : n
+  return n.replace(/-T\d+$/, '')
+}
 // a state's dot: beside words that say the state, hidden from screen readers; alone, it says it (label) as a picture and
 // in its tooltip, so the state is never told by its color only
 export const dot = (state, label) => `<span class="dot" ${label ? `role="img" aria-label="${esc(label)}" title="${esc(label)}"` : 'aria-hidden="true"'} style="background:${STATE_MARK[state] ?? GRAY_MARK}"></span>`

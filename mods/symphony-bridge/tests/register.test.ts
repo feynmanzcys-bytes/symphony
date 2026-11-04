@@ -1793,6 +1793,51 @@ const sayOnce = (text: string): ((r: Req) => Reply) => {
   }
 }
 
+// the page's inbox hands one command item, then nothing
+const commandOnce = (command: string, args: string): ((r: Req) => Reply) => {
+  let polls = 0
+  return r => {
+    if (r.url.includes('/api/inbox')) {
+      polls++
+      return { status: 200, text: polls === 1 ? JSON.stringify({ items: [{ id: 1, kind: 'command', command, args }] }) : '{"items":[]}' }
+    }
+    return { status: 200, text: '{}' }
+  }
+}
+
+test('a command from the page (/model, /effort) runs as if typed, and the run is reported as any command is', async ($, on) => {
+  const w = world(on, { SYMPHONY_TOKEN: 'tok' }, commandOnce('model', 'opus'))
+  const ran: { command: string; args: string }[] = []
+  on('command.run', (_$, e) => { ran.push({ command: e.command, args: e.args }); return { text: '' } })
+
+  await $.session.start(start)
+  await w.clock.settle()
+  expect(ran).toEqual([{ command: 'model', args: 'opus' }])
+  expect(find(w, 'command.run')).toEqual(expect.objectContaining({ command: 'model', args: 'opus' }))
+  expect(kinds(w)).not.toContain('command.failed')
+  expect(kinds(w)).not.toContain('chat.sent')
+})
+
+test('a command the page asks for that the engine won\'t run is reported failed, with why', async ($, on) => {
+  const w = world(on, { SYMPHONY_TOKEN: 'tok' }, commandOnce('effort', 'max'))
+  on('command.run', () => { throw new Error('no such effort here') })
+
+  await $.session.start(start)
+  await w.clock.settle()
+  expect(find(w, 'command.failed')).toEqual(expect.objectContaining({ command: 'effort', args: 'max', text: expect.stringMatching(/./) })) // (the engine's own words for why; the test world's are not the hook's)
+})
+
+test('a command from the page that isn\'t /model or /effort is left alone', async ($, on) => {
+  const w = world(on, { SYMPHONY_TOKEN: 'tok' }, commandOnce('exit', ''))
+  const ran: string[] = []
+  on('command.run', (_$, e) => { ran.push(e.command); return { text: '' } })
+
+  await $.session.start(start)
+  await w.clock.settle()
+  expect(ran).toEqual([])
+  expect(kinds(w)).not.toContain('command.failed')
+})
+
 test('a prompt from the page that a hook drops is reported dropped, with why, not sent', async ($, on) => {
   const w = world(on, { SYMPHONY_TOKEN: 'tok' }, sayOnce('deploy it'))
   on('prompt.submit', () => ({ drop: 'blocked by a UserPromptSubmit hook: no deploys on Friday' }))

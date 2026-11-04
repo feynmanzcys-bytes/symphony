@@ -108,6 +108,7 @@ func NewServer(hub *Hub, web fs.FS) *Server {
 	s.mux.HandleFunc("GET /api/chat/{session}", s.chat)
 	s.mux.HandleFunc("POST /api/say/{session}", s.say)
 	s.mux.HandleFunc("POST /api/abort/{session}", s.abort)
+	s.mux.HandleFunc("POST /api/sessions/{session}/model", s.setModel)
 	s.mux.HandleFunc("GET /api/terminal/{id}/stream", s.termStream)
 	s.mux.HandleFunc("POST /api/terminal/{id}/input", s.termInput)
 	s.mux.HandleFunc("POST /api/terminal/{id}/resize", s.termResize)

@@ -142,14 +142,21 @@ func (h *Hub) chatStreamLocked(s *Session, turn string, step int, blocks []ChatD
 func (h *Hub) chatStopLocked(s *Session, turn string, step int) {
 	c := h.chatLocked(s.ID)
 	prefix := turn + "/" + itoa(step) + "/"
+	var said *ChatItem // the step's last text block: the conversation's newest line
 	for key, it := range c.byKey {
 		if strings.HasPrefix(key, prefix) && !it.Done {
 			it.Done = true
 			if it.Kind == ChatThinking {
 				it.Secs = int(h.now().Sub(it.Time).Round(time.Second) / time.Second)
 			}
+			if it.Kind == ChatText && it.AgentID == "" && (said == nil || it.Seq > said.Seq) {
+				said = it
+			}
 			h.pushChatLocked(s.ID, it, "")
 		}
+	}
+	if said != nil {
+		h.lastLocked(s, said.Text)
 	}
 }
 
@@ -228,6 +235,34 @@ func (h *Hub) chatUserLocked(s *Session, ev Event) {
 		return
 	}
 	h.chatAppendLocked(s.ID, &ChatItem{Kind: ChatUser, Text: cutRunes(text, chatPromptMax), Origin: origin, Done: true})
+	switch origin {
+	case "task-notification", "scheduled-trigger": // the engine's own prompts: not what was said
+	default:
+		h.lastLocked(s, text)
+	}
+}
+
+// lastMax is how much of the conversation's newest line a session keeps (Session.Last), in runes.
+const lastMax = 80
+
+// lastLocked notes the conversation's newest line on the session (a prompt's, an answer's or a message's first line,
+// cut to lastMax runes) and tells the pages without a snapshot, like the usage figures: a list shows it under the name.
+func (h *Hub) lastLocked(s *Session, text string) {
+	line := strings.TrimSpace(text)
+	if i := strings.IndexByte(line, '\n'); i >= 0 {
+		line = strings.TrimSpace(line[:i])
+	}
+	line = cutRunes(line, lastMax)
+	if line == "" || line == s.Last {
+		return
+	}
+	s.Last = line
+	if len(h.subs) == 0 {
+		return
+	}
+	if p := h.pushLocked(map[string]any{"type": "last", "session": s.ID, "text": line}); p != nil {
+		h.deliverLocked(p)
+	}
 }
 
 // chatSentLocked: the mod submitted a prompt the page sent; the queued item becomes sent.
@@ -419,9 +454,49 @@ func itoa(n int) string {
 // a poll cut off between the bridge handing items out and the mod reading them loses nothing, the next poll gets
 // them again.
 type InboxItem struct {
-	ID   int64  `json:"id,omitempty"`
-	Kind string `json:"kind"` // say | abort
-	Text string `json:"text,omitempty"`
+	ID      int64  `json:"id,omitempty"`
+	Kind    string `json:"kind"`              // say | abort | command
+	Text    string `json:"text,omitempty"`    // say: the prompt
+	Command string `json:"command,omitempty"` // command: the slash command's name (model, effort), run as if typed
+	Args    string `json:"args,omitempty"`    // command: what follows the name
+}
+
+// SetModel changes a running session's model and thinking effort from the page: the slash commands /model and /effort
+// go to the session's inbox as command items, which the mod runs as if typed (the engine's own command.run report
+// then shows them in the chat, and the model switch comes back as session.model). Each only when asked for, and one
+// of the launch dialog's choices ("" for the model is Claude Code's own: /model default; the effort can't be unset);
+// nothing asked for is model_empty.
+func (h *Hub) SetModel(session string, model, effort *string) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	s := h.sessions[session]
+	if s == nil || s.State == StateEnded {
+		return ErrSessionOffline
+	}
+	var items []InboxItem
+	if model != nil {
+		if !validOption(launchModels, *model) {
+			return newError("launch_bad_option", "no such model: "+*model)
+		}
+		arg := *model
+		if arg == "" {
+			arg = "default"
+		}
+		items = append(items, InboxItem{Kind: "command", Command: "model", Args: arg})
+	}
+	if effort != nil {
+		if *effort == "" || !validOption(launchEfforts, *effort) {
+			return newError("launch_bad_option", "no such effort: "+*effort)
+		}
+		items = append(items, InboxItem{Kind: "command", Command: "effort", Args: *effort})
+	}
+	if len(items) == 0 {
+		return newError("model_empty", "nothing to change")
+	}
+	for _, it := range items {
+		h.postInboxLocked(session, it)
+	}
+	return nil
 }
 
 type inbox struct {
@@ -479,6 +554,9 @@ func (h *Hub) Say(session, text string) (*ChatItem, error) {
 func (h *Hub) sayLocked(session, text, origin string) *ChatItem {
 	it := h.chatAppendLocked(session, &ChatItem{Kind: ChatUser, Text: cutRunes(text, chatPromptMax), Origin: origin, Status: "queued"})
 	h.postInboxLocked(session, InboxItem{Kind: "say", Text: text})
+	if s := h.sessions[session]; s != nil && origin == "page" {
+		h.lastLocked(s, text)
+	}
 	return it
 }
 

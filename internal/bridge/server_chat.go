@@ -27,6 +27,22 @@ func (s *Server) say(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, it)
 }
 
+// setModel changes a running session's model and thinking effort: {model?, effort?}, each a launch dialog choice.
+func (s *Server) setModel(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Model  *string `json:"model"`
+		Effort *string `json:"effort"`
+	}
+	if !decode(w, r, &req) {
+		return
+	}
+	if err := s.Hub.SetModel(r.PathValue("session"), req.Model, req.Effort); err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, 200, map[string]bool{"ok": true})
+}
+
 func (s *Server) abort(w http.ResponseWriter, r *http.Request) {
 	if err := s.Hub.Abort(r.PathValue("session")); err != nil {
 		writeErr(w, err)

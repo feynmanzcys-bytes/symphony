@@ -76,13 +76,12 @@ button.px.icon { width: 32px; padding: 2px 0; text-align: center; }
 :is(#asks, .flow .card) input[type=text], #launch input:not([type=checkbox]), #launch select, #task :is(input:not([type=checkbox]), select, textarea), .chat .say textarea, #taskwin .tsay textarea { border-radius: 8px; border-color: var(--field-line); }
 :is(#asks, .flow .card) button.allow, :is(#asks, .flow .card) button.submit { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
 #task .lead-tag, #taskwin .badge.lead { background: var(--accent); color: var(--on-accent); }
-/* the conversation: your bubbles in the spark on the right, the model's white on the left */
-.it.user { border: 0; border-radius: 14px 14px 4px 14px; box-shadow: none; }
+/* the conversation: your bubbles in the spark on the right (your decisions on the asks too), the model's white on the left */
+.it.user, .it.decision { border: 0; border-radius: 14px 14px 4px 14px; box-shadow: none; }
 .it.user.queued { border: 2px dashed rgba(255,255,255,.6); padding: 4px 8px; } /* not in the session yet: a dashed edge inside the bubble, the text as readable as ever */
 .it.user .body code { background: rgba(255,255,255,.18); }
 .it.text { background: var(--paper); border: 0; border-radius: 14px 14px 14px 4px; box-shadow: var(--shadow); }
 .it.message { border: 0; border-radius: 14px 14px 14px 4px; box-shadow: var(--shadow); }
-.it.message.out { border-radius: 14px 14px 4px 14px; }
 .it.tool { border-radius: 6px; }
 .it .body pre, #taskwin .tmsg .body pre, :is(#asks, .flow .card) pre, #launch pre { background: var(--code-bg); color: var(--code-ink); }
 .chat .meta span { border-radius: 999px; padding: 1px 9px; }
@@ -166,8 +165,6 @@ button.px.icon { width: 32px; padding: 2px 0; text-align: center; }
 .rows .row .nm .t { min-width: 0; overflow: hidden; text-overflow: ellipsis; } /* a group's title gives way to its tag */
 .rows .row .nm .badge { flex: none; }
 .rows .row .sub { font-size: 13px; color: var(--side-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.rows .row .sub .st { color: var(--side-busy); }
-.rows .row .sub .st.idle { color: var(--side-idle); }
 .rows .row .sub.hot { color: var(--side-hot); }
 .rows .row.off .nm { color: var(--side-muted); } /* off duty: the name as quiet as its line (no opacity: the text must still read 4.5:1) */
 .rows .row .badge { font-size: 11px; line-height: 18px; padding: 0 7px; border-radius: 999px; background: var(--side-tag); color: var(--side-group-ink); font-weight: 600; }
@@ -179,6 +176,21 @@ button.px.icon { width: 32px; padding: 2px 0; text-align: center; }
 
 /* the faces: a shape by the name, a hue by the name, the eyes; the state is the motion, no light beside it */
 .face { position: relative; width: 36px; height: 36px; flex: none; }
+/* in the list, the state is a ring around the face that breathes: green and slow when idle, amber and quicker while it
+   works, red and quick while it waits for you; none off duty. The ring's color stays put (it reads 3:1 on the sidebar
+   in every frame); only its glow moves, and data-still stops that */
+.rows .row .face::after { content: ''; position: absolute; inset: -3px; border-radius: 50%; border: 2px solid var(--ring, transparent); box-shadow: 0 0 0 0 color-mix(in srgb, var(--ring, transparent) 45%, transparent); pointer-events: none; }
+.rows .row .face[data-state=idle] { --ring: var(--side-idle); }
+.rows .row .face[data-state=idle]::after { animation: breathe 3.2s ease-in-out infinite; }
+.rows .row .face[data-state=thinking], .rows .row .face[data-state=tool] { --ring: var(--side-busy); }
+.rows .row .face:is([data-state=thinking], [data-state=tool])::after { animation: breathe 1.6s ease-in-out infinite; }
+.rows .row .face[data-state=waiting] { --ring: var(--side-hot); }
+.rows .row .face[data-state=waiting]::after { animation: breathe .8s ease-in-out infinite; }
+.rows .row .face:is([data-state=ended], [data-state=done])::after { display: none; }
+.rows .row .face .ring { display: none; } /* (the breathing ring says it in the list; the big faces keep theirs) */
+@keyframes breathe { 50% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--ring) 45%, transparent); } }
+/* said to screen readers only */
+.vh { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .face svg { width: 100%; height: 100%; display: block; overflow: visible; }
 .face .body { fill: var(--c); }
 .face .eye { fill: #fff; transform-box: fill-box; transform-origin: center; }
@@ -186,6 +198,7 @@ button.px.icon { width: 32px; padding: 2px 0; text-align: center; }
 .face .mouth { fill: none; stroke: #fff; stroke-width: 2; stroke-linecap: round; }
 .face .ring { fill: none; stroke: var(--side-hot); stroke-width: 3; opacity: 0; }
 .profile .face .ring, #taskwin .face .ring { stroke: var(--danger); }
+.profile dd select { font: inherit; font-size: 12px; max-width: 9em; padding: 1px 4px; margin: -2px 2px -2px 0; border-radius: 6px; border: 1px solid var(--field-line); background: var(--field); color: var(--ink); } /* the running session's model and effort, changed here */
 .face .hand { fill: var(--c); opacity: 0; transform-box: fill-box; transform-origin: bottom center; }
 .face .check { fill: none; stroke: var(--ok); stroke-width: 3; stroke-linecap: round; opacity: 0; }
 .face[data-state=thinking] svg { animation: pulse 1.6s ease-in-out infinite; }
@@ -304,12 +317,12 @@ button.px.primary, button.px.alert, :is(#asks, .flow .card) :is(button, button.a
 :is(#asks, .flow .card) button:hover:not(:disabled) { background: var(--pane-2); }
 :is(#asks, .flow .card) :is(button.allow, button.submit):hover:not(:disabled) { background: var(--primary-hover); }
 
-/* the conversation reads like a document: your prompts in the spark on the right, the model's answers without a
-   bubble, the steps between them a gray line (amber while they go on), the tool rows plain; the time only under
-   your prompts */
-.it.text { background: none; box-shadow: none; padding: 2px 0; max-width: min(88%, 820px); }
+/* the conversation: your prompts in the spark on the right, the model's answers in white bubbles on the left, the
+   messages between sessions in lavender on the left too, the steps between them a gray line (amber while they go
+   on), the tool rows plain; the time only under your prompts */
+.it.text { padding: 8px 12px; max-width: min(88%, 820px); }
 .it.text time, .it.message time, .it.thinking time { display: none; }
-.it.user time { font-size: 11px; }
+.it.user time, .it.decision time { font-size: 11px; }
 .steps > details > summary { background: none; border: 0; padding: 0; color: var(--muted); font-size: 12px; }
 .steps > details > summary:hover { color: var(--ink); }
 .steps.running > details > summary, .steps.ghost > .line { border: 1px solid var(--think-line); border-radius: 999px; padding: 2px 11px; background: var(--think-bg); color: var(--think-ink); }

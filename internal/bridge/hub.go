@@ -88,7 +88,8 @@ type Session struct {
 	State   string            `json:"state"`
 	Tool    string            `json:"tool,omitempty"`
 	Prompt  string            `json:"prompt,omitempty"`
-	Agents  map[string]*Agent `json:"agents"` // the running subagents and the newest finished ones (keepDoneAgents)
+	Last    string            `json:"last,omitempty"` // the conversation's newest line (a prompt's, an answer's, a message's), cut short: what a list shows under the name
+	Agents  map[string]*Agent `json:"agents"`         // the running subagents and the newest finished ones (keepDoneAgents)
 	Tools   int               `json:"tools"`
 	Model   string            `json:"model,omitempty"`  // the model in use; sets the character's size
 	Effort  string            `json:"effort,omitempty"` // the thinking effort; sets the character's muscles
@@ -741,6 +742,8 @@ func (h *Hub) apply(ev Event, acc *Account, created *bool) error {
 		}
 	case "command.run":
 		h.chatCommandLocked(s, ev)
+	case "command.failed": // a command the page asked for (/model, /effort) that the engine wouldn't run
+		h.chatNoticeDetailLocked(s.ID, "commandFailed", strings.TrimSpace("/"+ev.Command+" "+ev.Args)+": "+ev.Text)
 	case "tool.fail":
 		h.chatToolFailLocked(s, ev)
 	default:
@@ -835,12 +838,14 @@ func (h *Hub) apply(ev Event, acc *Account, created *bool) error {
 			extra = map[string]any{"type": "message", "message": m}
 			h.saveMessagesLocked()
 			h.chatMessageLocked(s.ID, m)
+			h.lastLocked(s, m.Text)
 		}
 	case "message.send":
 		if m := h.sendLocked(s, ev); m != nil {
 			extra = map[string]any{"type": "message", "message": m}
 			h.saveMessagesLocked()
 			h.chatMessageLocked(s.ID, m)
+			h.lastLocked(s, m.Text)
 		}
 	}
 	h.refreshWaitingLocked(s)

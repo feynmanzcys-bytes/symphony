@@ -135,6 +135,12 @@ func TestChatSteps(t *testing.T) {
 	waitUntil(t, 10*time.Second, "her conversation shows the folds", func() bool {
 		return m.is(`!document.getElementById('chat').hidden && document.querySelectorAll('#chat .steps').length === 2`)
 	})
+	// a prompt the engine put in by itself (a background task's notification) is a one-line notice, not a bubble of yours
+	ev(map[string]any{"kind": "chat.user", "origin": "task-notification", "text": "<task-notification>\n<task-id>b1x</task-id>\n<status>completed</status>\n<summary>Background command \"go test ./...\" completed (exit code 0)</summary>\n</task-notification>"})
+	waitUntil(t, 10*time.Second, "the notification shows as a system notice with its summary", func() bool {
+		return m.is(`(n => !!n && n.querySelector('summary').textContent.includes('Background command "go test ./..." completed') && n.querySelector('summary').textContent.includes('completed') && !n.querySelector('details').open)(document.querySelector('#chat .flow .it.notice.system'))` +
+			` && ![...document.querySelectorAll('#chat .flow .it.user')].some(u => u.textContent.includes('<task-notification>'))`)
+	}, func() string { return m.js(`document.querySelector('#chat .flow').innerHTML.slice(-1500)`) })
 	ev(map[string]any{"kind": "chat.user", "text": "Now the tests", "origin": "composer"})
 	ev(map[string]any{"kind": "turn.start", "text": "Now the tests"})
 	ev(map[string]any{"kind": "tool.start", "tool": "Bash", "summary": "npm test", "toolUseId": "tu3"})
@@ -149,6 +155,9 @@ func TestChatSteps(t *testing.T) {
 		t.Fatalf("one ask should wait: %+v", asks)
 	}
 	m.fetch("POST", "/api/answer/"+asks[0].ID, `{"answers":{"Run the slow tests too?":"No"}}`)
+	waitUntil(t, 10*time.Second, "the answer shows as a bubble of yours after the ask's line, outside the fold", func() bool {
+		return m.is(`[...document.querySelectorAll('#chat .flow .it.decision')].some(d => d.textContent.includes('No') && !d.closest('.steps'))`)
+	}, func() string { return m.js(`document.querySelector('#chat .flow').innerText`) })
 	m.run(`localStorage.setItem('symphony.still', '1')`)
 	do(t, mctx, 20*time.Second, chromedp.Reload())
 	waitUntil(t, 20*time.Second, "Coworkers lists alice again", func() bool { return m.is(`document.querySelectorAll('#people .row').length === 1`) })

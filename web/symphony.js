@@ -15,7 +15,7 @@
 //   sym.on('ask' | 'settled' | 'launch' | 'task', fn)   the bridge's own notices; a snapshot follows each
 //   sym.on('fault', fn)        the error log kept something (fn(msg): msg.fault, and msg.faults, the summary the state
 //                              keeps as state.faults: how many, and when the newest happened) or was emptied
-//   sym.on('change', fn)       once after any of the above that changed the state (snapshot, message, messages, usage)
+//   sym.on('change', fn)       once after any of the above that changed the state (snapshot, message, messages, usage, a session's last line)
 //   sym.on('protocol', fn)     once, when the bridge's protocol isn't this client's, fn(bridge, page): the page says so and goes on
 //   sym.on('connection', fn)   the stream came up (fn(true)) or was lost (fn(false)); it reconnects by itself
 //   sym.on('resync', fn)       a full snapshot came after the first (the stream reconnected): pushes may have been missed,
@@ -112,6 +112,7 @@ export function connect({ stream = true } = {}) {
     post, get,
     say: (sid, text) => post(`/api/say/${sid}`, { text }),
     abort: sid => post(`/api/abort/${sid}`, {}),
+    setModel: (sid, change) => post(`/api/sessions/${sid}/model`, change), // {model?, effort?}: a running session's, through /model and /effort
     answer: (id, body) => post(`/api/answer/${id}`, body),
     createAccount: name => post('/api/accounts', { name }),
     deleteAccount: id => call('DELETE', `/api/accounts/${id}`),
@@ -230,6 +231,12 @@ export function connect({ stream = true } = {}) {
     emit('usage', msg.session, msg.usage)
     emit('change')
   }
+  // the conversation's newest line (session.last), pushed without a snapshot like the usage figures
+  function applyLast(msg) {
+    const s = sym.sessionById(msg.session)
+    if (s) s.last = msg.text
+    emit('change')
+  }
 
   function take(msg) {
     switch (msg.type) {
@@ -238,6 +245,7 @@ export function connect({ stream = true } = {}) {
       case 'message': return applyMessage(msg.message)
       case 'chat': return emit('chat', msg)
       case 'usage': return applyUsage(msg)
+      case 'last': return applyLast(msg)
       case 'ask': case 'settled': case 'launch': case 'task': return emit(msg.type, msg)
       case 'fault': { // (a summary older than the one the page has, a push overtaken by a snapshot, changes nothing; one
         // that says the log was emptied always does)

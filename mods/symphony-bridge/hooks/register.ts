@@ -730,7 +730,9 @@ function reportTitle($: EngineInterface, name: string | undefined) {
 
 // the inbox: what the page sent to this session. One long poll at a time, for as long as the session runs (a session
 // after /clear starts its own at once).
-type InboxItem = ({ kind: 'say'; text: string } | { kind: 'abort' }) & { id?: number }
+type InboxItem = ({ kind: 'say'; text: string } | { kind: 'abort' } | { kind: 'command'; command: string; args?: string }) & { id?: number }
+// the slash commands the page may have a session run (its model and thinking effort, from the profile)
+const PAGE_COMMANDS = new Set(['model', 'effort'])
 // the id of the last inbox item done, named in the next poll (ack): the bridge drops an item only then, so a poll cut
 // off on its way back loses nothing (a bridge before 1.2.0 sends no ids and hands each item out once)
 let inboxAck = 0
@@ -794,6 +796,19 @@ function pollInbox($: EngineInterface) {
           }
           if (dropped === undefined) report($, 'chat.sent', { text: text.slice(0, 4000) })
           else report($, 'chat.dropped', { text: text.slice(0, 4000), reason: dropped.slice(0, 500) })
+        })()
+      } else if (it.kind === 'command' && PAGE_COMMANDS.has(it.command)) {
+        // the page changes the model or the thinking effort of the running session: the slash command, as if typed
+        // (queued, run once the session is idle; the engine's command.run goes to the chat as any command does); one
+        // the engine won't run is said in the chat
+        const { command, args = '' } = it
+        void (async () => {
+          try {
+            await $.command.run({ command, args })
+            report($, 'command.run', { command, args: args.slice(0, 200) }) // (a plugin's own run passes its own hooks by)
+          } catch (err) {
+            report($, 'command.failed', { command, args: args.slice(0, 200), text: (err instanceof Error ? err.message : String(err)).slice(0, 500) })
+          }
         })()
       } else if (it.kind === 'abort' && mainTurn) {
         try {
@@ -1070,7 +1085,8 @@ export const register: Register = on => {
 
   // every slash command, for the chat; /rename also for the name
   on('command.run', async ($, e, next) => {
-    report($, 'command.run', { command: e.command, args: e.args.trim().slice(0, 200) })
+    // (one this mod ran for the page is reported where it ran it: the engine passes the calling plugin's hooks by)
+    if (e.origin?.kind !== 'plugin') report($, 'command.run', { command: e.command, args: e.args.trim().slice(0, 200) })
     return next(e)
   })
 

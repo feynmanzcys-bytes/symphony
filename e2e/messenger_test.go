@@ -100,14 +100,14 @@ func TestMessenger(t *testing.T) {
 	if !p.is(`document.querySelector('h1[data-i18n="msgr.title"]').textContent === 'Symphony Coworkers' && document.title.endsWith('Symphony Coworkers')`) {
 		t.Fatalf("the title should be Symphony Coworkers: %s | %s", p.js(`document.querySelector('h1[data-i18n="msgr.title"]').textContent`), p.js(`document.title`))
 	}
-	if !p.is(`document.querySelector('#people .row[data-account] .face').dataset.state === 'waiting' && document.querySelector('#people .row .sub.hot')?.textContent.includes('Asks: Should the README')`) {
+	if !p.is(`document.querySelector('#people .row[data-account] .face').dataset.state === 'waiting' && document.querySelector('#people .row .sub.hot')?.textContent === 'Needs an answer'`) {
 		t.Fatalf("carol's face should wave and her line say what she waits for: %s", p.js(`document.querySelector('#people .row .sub').textContent`))
 	}
 	if !p.is(`[...document.querySelectorAll('#people .row')].some(r => r.textContent.includes('erin') && r.querySelector('.face').dataset.state === 'ended' && /Off duty since \d/.test(r.querySelector('.sub').textContent))`) {
 		t.Fatalf("erin's line should say since when she is off duty: %s", p.js(`[...document.querySelectorAll('#people .row')].map(r => r.textContent).join(' | ')`))
 	}
-	if !p.is(`[...document.querySelectorAll('#people .row')].some(r => r.textContent.includes('alice') && r.querySelector('.face').dataset.state === 'tool' && r.textContent.includes('Bash'))`) {
-		t.Fatalf("alice's row should show her tool: %s", p.js(`document.getElementById('people').innerText`))
+	if !p.is(`[...document.querySelectorAll('#people .row')].some(r => r.textContent.includes('alice') && r.querySelector('.face').dataset.state === 'tool' && r.querySelector('.sub').textContent.startsWith('On it: running') && r.querySelector('.nm').textContent.includes('Working'))`) {
+		t.Fatalf("alice's row should show the last line of her conversation, her state said for screen readers only: %s", p.js(`document.getElementById('people').innerText`))
 	}
 	p.shot("start")
 	p.check()
@@ -168,7 +168,7 @@ func TestMessenger(t *testing.T) {
 	p.check()
 	p.run(`document.querySelector('#taskwin .mrow').click()`)
 	waitUntil(t, 10*time.Second, "the member's conversation replaces it, with the way back", func() bool {
-		return p.is(`!document.getElementById('chat').hidden && document.getElementById('taskwin').hidden && document.querySelector('#chat h2').textContent.endsWith('-T1') && !!document.querySelector('#profile .link[data-group]')`)
+		return p.is(`!document.getElementById('chat').hidden && document.getElementById('taskwin').hidden && (h => h && !/-T\d+$/.test(h))(document.querySelector('#chat h2').textContent) && !!document.querySelector('#profile .link[data-group]')`)
 	})
 	p.shot("member")
 	p.check()
