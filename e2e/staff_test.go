@@ -300,7 +300,9 @@ func TestStaff(t *testing.T) {
 		return p.is(`document.getElementById('staff-import-text').value === 'gina\nhank\n' && document.getElementById('staff-sum').textContent === 'New: 2 · changed: 0 · with a problem: 0'`)
 	})
 	p.run(`document.querySelector('#staff .importer .go').click()`)
-	waitUntil(t, 10*time.Second, "gina and hank are employees", func() bool { return b.account("gina") != nil && b.account("hank") != nil })
+	waitUntil(t, 10*time.Second, "gina and hank are employees, and the page says so", func() bool { // (the page's words come with the answer: the export's must not come first)
+		return b.account("gina") != nil && b.account("hank") != nil && p.is(`document.querySelector('#staff .said.main').textContent.startsWith('Imported: 2 new')`)
+	})
 
 	// ---------- exporting ----------
 	p.run(`HTMLAnchorElement.prototype.click = function () { window.__saved = { name: this.download, href: this.href } }; URL.createObjectURL = (make => blob => { window.__blob = blob; return make(blob) })(URL.createObjectURL.bind(URL))`)
