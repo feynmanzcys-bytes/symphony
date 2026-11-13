@@ -1827,8 +1827,25 @@ test('a command the page asks for that the engine won\'t run is reported failed,
   expect(find(w, 'command.failed')).toEqual(expect.objectContaining({ command: 'effort', args: 'max', text: expect.stringMatching(/./) })) // (the engine's own words for why; the test world's are not the hook's)
 })
 
-test('a command from the page that isn\'t /model or /effort is left alone', async ($, on) => {
-  const w = world(on, { SYMPHONY_TOKEN: 'tok' }, commandOnce('exit', ''))
+test('the page starts a conversation over and sends a session off duty: /clear and /exit run as if typed', async ($, on) => {
+  let polls = 0
+  const w = world(on, { SYMPHONY_TOKEN: 'tok' }, r => {
+    if (!r.url.includes('/api/inbox')) return { status: 200, text: '{}' }
+    polls++
+    const items = polls === 1 ? [{ id: 1, kind: 'command', command: 'clear' }, { id: 2, kind: 'command', command: 'exit' }] : []
+    return { status: 200, text: JSON.stringify({ items }) }
+  })
+  const ran: string[] = []
+  on('command.run', (_$, e) => { ran.push(e.command); return { text: '' } })
+
+  await $.session.start(start)
+  await w.clock.settle()
+  expect(ran).toEqual(['clear', 'exit'])
+  expect(kinds(w)).not.toContain('command.failed')
+})
+
+test('a command from the page that isn\'t one the page may run is left alone', async ($, on) => {
+  const w = world(on, { SYMPHONY_TOKEN: 'tok' }, commandOnce('logout', ''))
   const ran: string[] = []
   on('command.run', (_$, e) => { ran.push(e.command); return { text: '' } })
 

@@ -70,6 +70,23 @@ func (s *Server) setModel(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]bool{"ok": true})
 }
 
+// endSession sends a session off duty; clearSession starts its conversation over (/clear).
+func (s *Server) endSession(w http.ResponseWriter, r *http.Request) {
+	if err := s.Hub.EndSession(r.PathValue("session")); err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, 200, map[string]bool{"ok": true})
+}
+
+func (s *Server) clearSession(w http.ResponseWriter, r *http.Request) {
+	if err := s.Hub.ClearSession(r.PathValue("session")); err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, 200, map[string]bool{"ok": true})
+}
+
 func (s *Server) abort(w http.ResponseWriter, r *http.Request) {
 	if err := s.Hub.Abort(r.PathValue("session")); err != nil {
 		writeErr(w, err)

@@ -2,6 +2,15 @@
 
 What changed in each release of symphony. The program (the bridge) and the mod share one version number. A release's notes start with its section here: the release workflow stops before building when the section is missing. Releases before v1.0.0 came out before the repository was public; their notes are kept below.
 
+## v1.9.0 (2026-11-13)
+
+Update the program (`brew upgrade symphony`, `scoop update symphony`, or the archive) and the mod with `claude plugin update symphony-bridge@symphony`.
+
+- **Off duty from the page**: a coworker on duty has an "Off duty" button in its window's head. A session started from the page ends at once, wherever it is stuck (the bridge ends its process); one started by hand is told to `/exit`. A group's member sent off duty stays on its team and can be started again.
+- **Clear**: "Clear" in the window's head starts the conversation over, as `/clear` typed in the terminal does.
+- **Several at once**: on the coworkers page (Settings → All coworkers) the selected ones start work together, each as it last worked (or as the settings say), and go off duty together.
+- **The mod (1.9.0)**: runs `/clear` and `/exit` when the page asks. Sessions on an older mod say so when asked (update the mod and start them again); a session the page started goes off duty with any mod.
+
 ## v1.8.0 (2026-11-05)
 
 Update the program (`brew upgrade symphony`, `scoop update symphony`, or the archive) and the mod with `claude plugin update symphony-bridge@symphony` (only its version changed).

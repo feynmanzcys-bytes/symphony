@@ -214,6 +214,31 @@ func TestMessenger(t *testing.T) {
 	q.run(`[...document.querySelectorAll('#people .row')].find(r => r.textContent.includes('alice')).click()`)
 	waitUntil(t, 10*time.Second, "zh-CN: alice's conversation", func() bool { return q.is(`!document.getElementById('chat').hidden`) })
 	q.shot("conversation")
+	// a coworker on duty: its conversation started over (/clear) and sent off duty from the window's head
+	q.run(`window.confirm = () => true; [...document.querySelectorAll('#people .row')].find(r => r.textContent.includes('bob')).click()`)
+	waitUntil(t, 10*time.Second, "zh-CN: bob's head offers 清空 and 下班", func() bool {
+		return q.is(`document.querySelector('#chat .btns .clear')?.textContent === '清空' && document.querySelector('#chat .btns .off-duty')?.textContent === '下班'`)
+	}, func() string {
+		return q.js(`[...document.querySelectorAll('#chat .btns button')].map(b => b.className + ' ' + b.textContent).join(' | ')`)
+	})
+	q.run(`document.querySelector('#chat .btns .clear').click()`)
+	waitUntil(t, 10*time.Second, "zh-CN: a session whose mod is too old to be told says so", func() bool {
+		return q.is(`document.getElementById('oops')?.hidden === false && document.querySelector('#oops h2').textContent === '没能重新开始对话' && document.querySelector('#oops .msg').textContent.includes('0.11.0')`)
+	}, func() string { return q.js(`document.getElementById('oops')?.textContent || ''`) })
+	q.run(`document.querySelector('#oops .actions button').click()`)
+	event("bob", "s-bob", map[string]any{"kind": "heartbeat", "mod": "1.9.0"})
+	commands := func() string {
+		items, _ := b.Hub.Inbox("s-bob", b.account("bob").ID, -1, time.Millisecond, nil)
+		var got []string
+		for _, it := range items {
+			got = append(got, it.Kind+" "+it.Command)
+		}
+		return strings.Join(got, ",")
+	}
+	q.run(`document.querySelector('#chat .btns .clear').click()`)
+	waitUntil(t, 10*time.Second, "zh-CN: 清空 sends /clear to the session", func() bool { return commands() == "command clear" })
+	q.run(`document.querySelector('#chat .btns .off-duty').click()`)
+	waitUntil(t, 10*time.Second, "zh-CN: 下班 sends a hand-started session /exit", func() bool { return commands() == "command exit" })
 	q.check()
 	q.done()
 	closeZh()

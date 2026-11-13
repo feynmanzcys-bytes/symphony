@@ -269,6 +269,13 @@ func (t *Term) Ended() bool {
 	return !t.ended.IsZero()
 }
 
+// Dying says whether the process has ended or is being ended (Kill was called and its grace may still run).
+func (t *Term) Dying() bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return !t.ended.IsZero() || t.killing != nil
+}
+
 // Exited is closed once the process is gone (after Kill, what it started too) and its output read; ExitErr says how it
 // ended.
 func (t *Term) Exited() <-chan struct{} { return t.exited }

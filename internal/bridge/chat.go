@@ -1,8 +1,10 @@
 package bridge
 
 import (
+	"cmp"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -460,7 +462,7 @@ type InboxItem struct {
 	ID      int64  `json:"id,omitempty"`
 	Kind    string `json:"kind"`              // say | abort | command
 	Text    string `json:"text,omitempty"`    // say: the prompt
-	Command string `json:"command,omitempty"` // command: the slash command's name (model, effort), run as if typed
+	Command string `json:"command,omitempty"` // command: the slash command's name (model, effort, clear, exit), run as if typed
 	Args    string `json:"args,omitempty"`    // command: what follows the name
 }
 
@@ -498,6 +500,90 @@ func (h *Hub) SetModel(session string, model, effort *string) error {
 	}
 	for _, it := range items {
 		h.postInboxLocked(session, it)
+	}
+	return nil
+}
+
+// pageCommandsMod is the first mod version that runs /clear and /exit for the page (PAGE_COMMANDS in the mod); an
+// older one leaves the item alone and says nothing, so the bridge refuses instead (mod_outdated).
+var pageCommandsMod = [3]int{1, 9, 0}
+
+// modAtLeast says whether a mod version ("1.9.0", "1.9.0-rc.1") is want or newer; one that doesn't read as a version
+// (a session that never told its mod's) is not.
+func modAtLeast(version string, want [3]int) bool {
+	version, _, _ = strings.Cut(version, "-")
+	parts := strings.Split(version, ".")
+	if len(parts) != 3 {
+		return false
+	}
+	for i, p := range parts {
+		n, err := strconv.Atoi(p)
+		if err != nil || n < 0 {
+			return false
+		}
+		if n != want[i] {
+			return n > want[i]
+		}
+	}
+	return true
+}
+
+func errModOutdated(s *Session) *Error {
+	need := fmt.Sprintf("%d.%d.%d", pageCommandsMod[0], pageCommandsMod[1], pageCommandsMod[2])
+	return newError("mod_outdated", "this session's symphony-bridge mod ("+s.Mod+") is older than "+need+", which this needs", "need", need, "mod", cmp.Or(s.Mod, "?"))
+}
+
+// ClearSession starts a session's conversation over from the page: /clear goes to its inbox as a command item, which
+// the mod runs as if typed (queued until the session is idle). The engine then ends the session with reason clear
+// and the mod reports the new one in under its new id (carryOnAs); a task member gets its kickoff again.
+func (h *Hub) ClearSession(session string) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	s := h.sessions[session]
+	if s == nil || s.State == StateEnded {
+		return ErrSessionOffline
+	}
+	if !modAtLeast(s.Mod, pageCommandsMod) {
+		return errModOutdated(s)
+	}
+	h.postInboxLocked(session, InboxItem{Kind: "command", Command: "clear"})
+	return nil
+}
+
+// EndSession sends a session off duty from the page. One the bridge started (its process still runs on the bridge's
+// pseudo-terminal) is off duty at once, reason dismissed, and its process ended (Term.Kill: a hangup, then the rest),
+// wherever it is stuck; what it reports while it dies doesn't bring it back (sessionLocked, Term.Dying). A task
+// member's stays on the team and can be started again. One started by hand has no process the bridge could end: /exit
+// goes to its inbox, which the mod runs as if typed once the session is idle, and its own goodbye puts it off duty.
+func (h *Hub) EndSession(session string) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	s := h.sessions[session]
+	if s == nil || s.State == StateEnded {
+		return ErrSessionOffline
+	}
+	var term *Term
+	if h.terms != nil && s.Launch != "" {
+		if t := h.terms.Get(s.Launch); t != nil && !t.Ended() {
+			term = t
+		}
+	}
+	if term == nil {
+		if !modAtLeast(s.Mod, pageCommandsMod) {
+			return errModOutdated(s)
+		}
+		h.postInboxLocked(session, InboxItem{Kind: "command", Command: "exit"})
+		return nil
+	}
+	h.offDutyLocked(s, "dismissed")
+	if l := h.launches[s.Launch]; l != nil && l.Status == LaunchOnline && s.Task == "" {
+		l.Status = LaunchEnded
+	}
+	term.Kill()
+	if s.Task != "" {
+		h.broadcastLocked(taskEvent(s.Task))
+	} else {
+		h.broadcastLocked(map[string]any{"type": "launch", "id": s.Launch})
 	}
 	return nil
 }

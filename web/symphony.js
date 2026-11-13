@@ -119,6 +119,8 @@ export function connect({ stream = true } = {}) {
       } catch { return { ok: false, status: 0, data: { code: 'unreachable', error: "can't reach the bridge" } } }
     },
     abort: sid => post(`/api/abort/${sid}`, {}),
+    endSession: sid => post(`/api/sessions/${sid}/end`, {}), // off duty: the bridge ends the process it started; one started by hand gets /exit
+    clearSession: sid => post(`/api/sessions/${sid}/clear`, {}), // the conversation started over, through /clear
     setModel: (sid, change) => post(`/api/sessions/${sid}/model`, change), // {model?, effort?}: a running session's, through /model and /effort
     answer: (id, body) => post(`/api/answer/${id}`, body),
     createAccount: name => post('/api/accounts', { name }),

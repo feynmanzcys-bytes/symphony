@@ -261,6 +261,18 @@ export function createLaunchDialog(sym, { options = () => sym.launchOptions(true
   return launch
 }
 
+// what a start of an employee from the page asks for when nobody fills in the dialog (several started at once): its last
+// choices and folder, or, never started from the page, the settings' (defaults: the bridge's settings) and the folder
+// it worked in; a folder left empty is its own. The same as the dialog opens with for it.
+export function startRequest(acc, defaults) {
+  const l = acc.last, d = defaults || {}
+  const c = l ? { dir: l.dir || acc.home || '', model: l.model, effort: l.effort, permissionMode: l.permissionMode, context: l.context }
+    : { dir: acc.dir || acc.home || '', model: d.model, effort: d.effort, permissionMode: d.permissionMode, context: d.context }
+  const r = { account: acc.id, dir: c.dir, model: c.model || '', effort: c.effort || '', permissionMode: c.permissionMode || '', resume: '', lang }
+  if (c.context) r.context = true
+  return r
+}
+
 // the codes of a start refused for its folder or its options: the folded fields open
 const FIELD_ERROR = /^(launch_dir_|bot_home_|launch_bad_option$|cmd_unsafe_arg$)/
 

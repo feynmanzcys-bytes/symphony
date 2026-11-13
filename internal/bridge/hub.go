@@ -562,11 +562,11 @@ func (h *Hub) sessionLocked(id string, acc *Account, task, restart, launch strin
 		}
 		return s, false, nil
 	}
-	// a report that was on its way when the session's process exited (it names that process's launch) doesn't bring
-	// the session back; one from another launch (claude --continue from the page) or from a session started by hand
+	// a report that was on its way when the session's process exited or was sent off duty from the page (it names
+	// that process's launch) doesn't bring the session back; one from another launch (claude --continue from the page) or from a session started by hand
 	// (no launch) does
 	if s != nil && s.Launch != "" && launch == s.Launch && h.terms != nil {
-		if t := h.terms.Get(s.Launch); t != nil && t.Ended() {
+		if t := h.terms.Get(s.Launch); t != nil && t.Dying() {
 			return nil, false, ErrSessionGone
 		}
 	}

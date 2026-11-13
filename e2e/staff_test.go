@@ -340,6 +340,36 @@ func TestStaff(t *testing.T) {
 	}, func() string { return p.js(`document.querySelector('#staff .said.main').textContent`) })
 	p.run(row("alice") + `.querySelector('.pick').click()`)
 
+	// ---------- the selected ones start work and go off duty together ----------
+	p.run(row("dave") + `.querySelector('.pick').click(); ` + row("erin") + `.querySelector('.pick').click()`)
+	waitUntil(t, 5*time.Second, "with two off duty selected Start work is on, Off duty isn't", func() bool {
+		return p.is(`document.querySelector('#staff .batch .start').textContent === 'Start work' && !document.querySelector('#staff .batch .start').disabled && document.querySelector('#staff .batch .off').textContent === 'Off duty' && document.querySelector('#staff .batch .off').disabled`)
+	})
+	p.run(`document.querySelector('#staff .batch .start').click()`)
+	launchOf := func(name string) *bridge.Launch {
+		for _, l := range b.Hub.Snapshot().Launches {
+			if l.Name == name {
+				return l
+			}
+		}
+		return nil
+	}
+	waitUntil(t, 20*time.Second, "dave and erin are started as the settings say, and the page says so", func() bool {
+		d, e := launchOf("dave"), launchOf("erin")
+		return d != nil && e != nil && d.Model == "opus" && d.Effort == "high" && p.is(`document.querySelector('#staff .said.main').textContent === 'Started: dave, erin.'`)
+	}, func() string { return p.js(`document.querySelector('#staff .said.main').textContent`) })
+	// erin's session reports in (as its mod would); alice's was started by hand with a mod that can't be told to exit
+	b.post(t, b.Hub.Account(id("erin")).Token, "/api/event", map[string]any{"session": "s-erin", "kind": "session.start", "launch": launchOf("erin").ID})
+	p.run(row("alice") + `.querySelector('.pick').click()`)
+	waitUntil(t, 10*time.Second, "with erin and alice on duty Off duty is on", func() bool { return p.is(`!document.querySelector('#staff .batch .off').disabled`) })
+	p.run(`document.querySelector('#staff .batch .off').click()`)
+	waitUntil(t, 10*time.Second, "erin goes off duty, alice stays and the page says why", func() bool {
+		s := b.session("s-erin")
+		return s != nil && s.State == bridge.StateEnded && s.EndReason == "dismissed" && b.online("alice") != nil &&
+			p.is(`/^Off duty: erin\.\nalice is still on duty: this session’s symphony-bridge mod \(\?\) is older than 1\.9\.0/.test(document.querySelector('#staff .said.main').textContent)`)
+	}, func() string { return p.js(`document.querySelector('#staff .said.main').textContent`) })
+	p.run(row("alice") + `.querySelector('.pick').click(); ` + row("dave") + `.querySelector('.pick').click(); ` + row("erin") + `.querySelector('.pick').click()`)
+
 	// ---------- Esc: the row being edited, then the page ----------
 	p.run(row("carol") + `.querySelector('.edit').focus()`)
 	key(p, kb.Enter)

@@ -15,7 +15,7 @@ import { t, lang, esc, errorText, lower, dot, fill, browse, showEnd, statusText,
 import { dialog } from '/ui/a11y.js'
 import { onBackdrop, setText } from '/ui/errors.js'
 import { lookPicker, lookOf, SHAPES } from '/ui/faces.js'
-import { folderName } from '/ui/launch.js'
+import { folderName, startRequest } from '/ui/launch.js'
 
 const MAX = 100 // employees one import may name: the bridge's maxImport
 const KEEP = '*' // the batch drop-downs' "as it is"
@@ -50,7 +50,7 @@ const MARKUP = `
         <label><span></span><select name="effort"></select></label>
         <label><span></span><select name="permissionMode"></select></label>
         <label><span></span><select name="context"></select></label>
-        <span class="acts"><button type="button" class="px apply"></button><button type="button" class="px delete"></button></span>
+        <span class="acts"><button type="button" class="px apply"></button><button type="button" class="px start"></button><button type="button" class="px off"></button><button type="button" class="px delete"></button></span>
         <p class="warn" id="staff-batch-warn" hidden></p>
       </div>
       <div class="head"><input type="checkbox" id="staff-all"><label for="staff-all"></label><span class="count"></span></div>
@@ -220,7 +220,11 @@ export function createStaff(sym) {
     bsel[name].previousElementSibling.textContent = t('staff.f.' + name)
   }
   const apply = $('.batch .apply'), del = $('.batch .delete'), bwarn = $('#staff-batch-warn')
+  const start = $('.batch .start'), off = $('.batch .off')
+  let working = false // a batch start or off duty is on its way: its buttons wait
   apply.textContent = t('staff.apply')
+  start.textContent = t('staff.start')
+  off.textContent = t('staff.offDuty')
   del.textContent = t('staff.delete')
   bwarn.textContent = t('launch.bypassWarning')
   function fillBatch() {
@@ -247,6 +251,10 @@ export function createStaff(sym) {
     for (const s of Object.values(bsel)) s.disabled = !n
     apply.disabled = !n || !Object.keys(change()).length
     del.disabled = !n
+    // start work for the selected ones off duty, off duty for the ones on (their desk sessions)
+    const on = employees().filter(a => picked.has(a.id) && sym.isOnline(sym.sessionOf(a))).length
+    start.disabled = working || n === on
+    off.disabled = working || !on
   }
   for (const s of Object.values(bsel)) s.addEventListener('change', () => { warnBatch(); drawBatch() })
   apply.onclick = async () => {
@@ -271,6 +279,41 @@ export function createStaff(sym) {
     }
     draw()
     tell([gone.length ? t('staff.deleted', { n: gone.length, names: gone.join(', ') }) : '', ...kept].filter(Boolean).join('\n'), kept.length > 0)
+  }
+  // the selected ones off duty start work, each as the launch dialog would start it (its last choices, else the
+  // settings'), one after the other; one that can't says why and the rest go on
+  start.onclick = async () => {
+    const list = employees().filter(a => picked.has(a.id) && !sym.isOnline(sym.sessionOf(a))).sort(byName)
+    if (!list.length) return
+    working = true
+    drawBatch()
+    tell(t('staff.starting', { n: list.length }))
+    const went = [], not = []
+    for (const a of list) {
+      const r = await sym.launch(startRequest(a, choices))
+      if (r.ok) went.push(a.name)
+      else not.push(t('staff.notStarted', { name: a.name, reason: errorText(r.data) + (r.data?.fix ? ' ' + r.data.fix : '') }))
+    }
+    working = false
+    draw()
+    tell([went.length ? t('staff.started', { n: went.length, names: went.join(', ') }) : '', ...not].filter(Boolean).join('\n'), not.length > 0)
+  }
+  // the selected ones on duty go off duty (their desk sessions; a group's members stay at it)
+  off.onclick = async () => {
+    const list = employees().filter(a => picked.has(a.id) && sym.isOnline(sym.sessionOf(a))).sort(byName)
+    if (!list.length || !confirm(t('staff.offConfirm', { n: list.length, names: list.map(a => a.name).join(', ') }))) return
+    working = true
+    drawBatch()
+    const went = [], not = []
+    for (const a of list) {
+      const s = sym.sessionOf(a)
+      const r = sym.isOnline(s) ? await sym.endSession(s.id) : { ok: true }
+      if (r.ok) went.push(a.name)
+      else not.push(t('staff.notOff', { name: a.name, reason: errorText(r.data) }))
+    }
+    working = false
+    draw()
+    tell([went.length ? t('staff.wentOff', { n: went.length, names: went.join(', ') }) : '', ...not].filter(Boolean).join('\n'), not.length > 0)
   }
   // why an import was refused: the entry and its error (its name, its place in the list), or the error itself
   const reasonOf = data => data?.params?.entry ? t('staff.entryFailed', { n: data.params.entry, name: data.params.name, reason: errorText(data) }) : errorText(data)

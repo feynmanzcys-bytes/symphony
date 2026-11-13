@@ -731,8 +731,9 @@ function reportTitle($: EngineInterface, name: string | undefined) {
 // the inbox: what the page sent to this session. One long poll at a time, for as long as the session runs (a session
 // after /clear starts its own at once).
 type InboxItem = ({ kind: 'say'; text: string } | { kind: 'abort' } | { kind: 'command'; command: string; args?: string }) & { id?: number }
-// the slash commands the page may have a session run (its model and thinking effort, from the profile)
-const PAGE_COMMANDS = new Set(['model', 'effort'])
+// the slash commands the page may have a session run: its model and thinking effort (the profile), /clear (the
+// conversation started over) and /exit (off duty, for a session the bridge didn't start and so can't end itself)
+const PAGE_COMMANDS = new Set(['model', 'effort', 'clear', 'exit'])
 // the id of the last inbox item done, named in the next poll (ack): the bridge drops an item only then, so a poll cut
 // off on its way back loses nothing (a bridge before 1.2.0 sends no ids and hands each item out once)
 let inboxAck = 0
@@ -798,7 +799,8 @@ function pollInbox($: EngineInterface) {
           else report($, 'chat.dropped', { text: text.slice(0, 4000), reason: dropped.slice(0, 500) })
         })()
       } else if (it.kind === 'command' && PAGE_COMMANDS.has(it.command)) {
-        // the page changes the model or the thinking effort of the running session: the slash command, as if typed
+        // the page changes the model or the thinking effort of the running session, starts its conversation over or
+        // sends it off duty: the slash command, as if typed
         // (queued, run once the session is idle; the engine's command.run goes to the chat as any command does); one
         // the engine won't run is said in the chat
         const { command, args = '' } = it

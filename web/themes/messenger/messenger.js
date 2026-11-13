@@ -195,6 +195,18 @@ function showChat() {
   const dir = s?.cwd || (picked.sid ? member?.worktree : acc.last?.dir || acc.dir) || ''
   const buttons = []
   if (busy) buttons.push({ key: 'stop', text: t('chat.stop'), cls: 'stop', onclick: async () => { const r = await sym.abort(s.id); if (!r.ok) showError(errorText(r.data), { title: t('errlog.oops.stop') }) }, title: t('chat.stopTitle') })
+  // on duty: the conversation started over (/clear), and off duty (the session ends; a group's member stays on its team)
+  const who = picked.sid ? displayName(member?.name, task) || acc.name : acc.name
+  if (on) buttons.push({ key: 'clear', text: t('chat.clear'), cls: 'clear', title: t('chat.clearTitle'), onclick: async () => {
+    if (!confirm(t('chat.clearConfirm', { name: who }))) return
+    const r = await sym.clearSession(s.id)
+    if (!r.ok) showError(errorText(r.data), { title: t('errlog.oops.clear') })
+  } })
+  if (on) buttons.push({ key: 'off-duty', text: t('chat.offDuty'), cls: 'off-duty', title: t('chat.offDutyTitle'), onclick: async () => {
+    if (busy && !confirm(t('chat.offDutyConfirm', { name: who }))) return
+    const r = await sym.endSession(s.id)
+    if (!r.ok) showError(errorText(r.data), { title: t('errlog.oops.offDuty') })
+  } })
   if (!picked.sid && task && member?.session) buttons.push({ key: 'to-task', text: t('task.openMember', { name: displayName(member.name, task) }), cls: 'primary to-task', onclick: () => openCoworker(picked.account, member.session, task.id) })
   if (!on && !picked.sid && launchOpts?.enabled) buttons.push({ key: 'go-work', text: t('launch.go'), cls: 'primary go-work', onclick: () => launch.open(acc.id) })
   if (!on && !picked.sid && !task) buttons.push({ key: 'delete', text: t('card.delete'), cls: '', onclick: async () => {
